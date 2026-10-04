@@ -116,6 +116,15 @@ const pl: typeof en = {
     kinds: { stock: "Stany", events: "Dokumenty", tasks: "Kolejka", health: "Połączenie" },
     triggers: { schedule: "Harmonogram", manual: "Ręcznie", webhook: "Webhook", event: "Zdarzenie", auto: "Automatycznie" },
     statuses: { success: "OK", partial: "Częściowo", error: "Błąd", skipped: "Pominięto" },
+    summary: {
+      stockDry: "Próba na sucho: do zmiany {{changes}}, bez zmian {{unchanged}}.",
+      stock: "Zaktualizowane poziomy: {{changes}}, bez zmian: {{unchanged}}.",
+      tasks: "Wysłane: {{succeeded}}.",
+      tasksIssues: "Wysłane: {{succeeded}}, do ponowienia: {{retry}}, wymagają uwagi: {{failed}}.",
+      events: "Nowe dokumenty z Subiekta: {{applied}}.",
+      eventsNone: "Nic nowego.",
+      health: "Most i Subiekt odpowiadają.",
+    },
   },
   widget: {
     title: "Subiekt nexo",

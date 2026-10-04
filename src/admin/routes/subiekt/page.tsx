@@ -29,6 +29,7 @@ import {
   fmtDateTime,
   fmtDuration,
   fmtNumber,
+  runSummary,
 } from "../../lib/subiekt-ui"
 
 /**
@@ -281,7 +282,7 @@ function StockSection({ run, lang }: { run: RunDto | null; lang: string }) {
       ) : (
         <>
           <div className="px-6 py-3">
-            <Text size="small">{run.message}</Text>
+            <Text size="small">{runSummary(run, t)}</Text>
             <Text size="xsmall" className="text-ui-fg-muted">
               {fmtDateTime(run.startedAt, lang)}, {fmtDuration(run.durationMs)}
             </Text>
@@ -581,7 +582,7 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
                     <RunStatusBadge status={r.status} />
                   </Table.Cell>
                   <Table.Cell className="max-w-lg">
-                    <Text size="small">{r.message}</Text>
+                    <Text size="small">{runSummary(r, t)}</Text>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDateTime(r.startedAt, lang)}</Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmtDuration(r.durationMs)}</Table.Cell>

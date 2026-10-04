@@ -16,6 +16,7 @@ const SubiektSyncRun = model.define("subiekt_sync_run", {
   started_at: model.dateTime(),
   finished_at: model.dateTime().nullable(),
   duration_ms: model.number().default(0),
+  demo: model.boolean().default(false),
 })
 
 export default SubiektSyncRun

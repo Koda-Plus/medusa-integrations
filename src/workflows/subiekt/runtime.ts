@@ -153,9 +153,10 @@ export async function recordRun(svc: SubiektModuleService, r: RunRecord): Promis
     started_at: r.startedAt,
     finished_at: finishedAt,
     duration_ms: finishedAt.getTime() - r.startedAt.getTime(),
+    demo: svc.isDemo(),
   } as never)) as unknown as RunRow
 
-  const old = (await svc.listSubiektSyncRuns({ kind: r.kind } as never, {
+  const old = (await svc.listSubiektSyncRuns({ kind: r.kind, demo: svc.isDemo() } as never, {
     skip: RUNS_TO_KEEP,
     take: 200,
     select: ["id"],

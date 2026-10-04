@@ -43,6 +43,7 @@ export class Migration20261004180000 extends Migration {
         "last_error" text null,
         "last_error_code" text null,
         "result" jsonb null,
+        "demo" boolean not null default false,
         "created_at" timestamptz not null default now(),
         "updated_at" timestamptz not null default now(),
         "deleted_at" timestamptz null,
@@ -50,7 +51,7 @@ export class Migration20261004180000 extends Migration {
       );
     `)
     this.addSql(
-      `create unique index if not exists "IDX_subiekt_task_kind_order_reference" on "subiekt_task" ("kind", "order_id", coalesce("reference", '')) where "deleted_at" is null;`,
+      `create unique index if not exists "IDX_subiekt_task_kind_order_reference" on "subiekt_task" ("kind", "order_id", coalesce("reference", ''), "demo") where "deleted_at" is null;`,
     )
     this.addSql(
       `create index if not exists "IDX_subiekt_task_status_due" on "subiekt_task" ("status", "next_attempt_at") where "deleted_at" is null;`,
@@ -99,6 +100,7 @@ export class Migration20261004180000 extends Migration {
         "started_at" timestamptz not null,
         "finished_at" timestamptz null,
         "duration_ms" integer not null default 0,
+        "demo" boolean not null default false,
         "created_at" timestamptz not null default now(),
         "updated_at" timestamptz not null default now(),
         "deleted_at" timestamptz null,

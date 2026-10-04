@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { Badge, Button, StatusBadge, Text, clx } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
-import type { RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
+import type { RunDto, RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -147,6 +147,30 @@ export function Pager({ offset, limit, count, onChange }: { offset: number; limi
       </div>
     </div>
   )
+}
+
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
+
+/**
+ * The summary of a run in the admin language, built from its counters. Errors
+ * keep the stored message: it is the bridge or network text a person needs.
+ */
+export function runSummary(run: RunDto, t: Translate): string {
+  const s = (run.stats ?? {}) as Record<string, unknown>
+  if (run.status === "error" || run.status === "skipped" || !run.stats) return run.message ?? ""
+  if (run.kind === "stock") {
+    const changes = num(s.toUpdate) + num(s.toCreate)
+    return t(run.dryRun ? "runs.summary.stockDry" : "runs.summary.stock", { changes, unchanged: num(s.unchanged) })
+  }
+  if (run.kind === "tasks") {
+    const vars = { succeeded: num(s.succeeded), retry: num(s.retry), failed: num(s.failed) }
+    return t(vars.retry || vars.failed ? "runs.summary.tasksIssues" : "runs.summary.tasks", vars)
+  }
+  if (run.kind === "events") return num(s.read) > 0 ? t("runs.summary.events", { applied: num(s.applied) }) : t("runs.summary.eventsNone")
+  if (run.kind === "health" && run.status === "success") return t("runs.summary.health")
+  return run.message ?? ""
 }
 
 /** Link to an order in the admin. A plain anchor: router links break inside some admin builds. */

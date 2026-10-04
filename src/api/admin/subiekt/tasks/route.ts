@@ -23,7 +23,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const limit = intParam(req.query.limit, 20, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 100_000)
 
-  const where: Record<string, unknown> = {}
+  const where: Record<string, unknown> = { demo: svc.isDemo() }
   const statuses = GROUPS[filter] ?? null
   if (statuses) where.status = statuses
   if (q) {

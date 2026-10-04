@@ -32,11 +32,11 @@ export async function buildStatus(svc: SubiektModuleService): Promise<SubiektSta
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000)
 
   const [waiting, pending, running, failed, succeeded24h, documents, zk, wz] = await Promise.all([
-    count(svc, "task", { status: "waiting" }),
-    count(svc, "task", { status: "pending" }),
-    count(svc, "task", { status: "running" }),
-    count(svc, "task", { status: "failed" }),
-    count(svc, "task", { status: "succeeded", succeeded_at: { $gte: dayAgo } }),
+    count(svc, "task", { demo, status: "waiting" }),
+    count(svc, "task", { demo, status: "pending" }),
+    count(svc, "task", { demo, status: "running" }),
+    count(svc, "task", { demo, status: "failed" }),
+    count(svc, "task", { demo, status: "succeeded", succeeded_at: { $gte: dayAgo } }),
     count(svc, "document", { demo }),
     count(svc, "document", { demo, kind: "ZK" }),
     count(svc, "document", { demo, kind: "WZ" }),
@@ -44,7 +44,7 @@ export async function buildStatus(svc: SubiektModuleService): Promise<SubiektSta
 
   const lastRuns: Partial<Record<RunKind, RunDto>> = {}
   for (const kind of ["stock", "events", "tasks", "health"] as RunKind[]) {
-    const rows = (await svc.listSubiektSyncRuns({ kind } as never, { take: 1, order: { started_at: "DESC" } } as never)) as unknown as RunRow[]
+    const rows = (await svc.listSubiektSyncRuns({ kind, demo } as never, { take: 1, order: { started_at: "DESC" } } as never)) as unknown as RunRow[]
     if (rows[0]) lastRuns[kind] = toRunDto(rows[0])
   }
 
@@ -87,7 +87,7 @@ export async function buildStatus(svc: SubiektModuleService): Promise<SubiektSta
 export async function ensureDemoSnapshot(scope: Scope): Promise<void> {
   const svc = subiektService(scope)
   if (!svc.isDemo()) return
-  const [, tasks] = await svc.listAndCountSubiektTasks({} as never, { take: 1, select: ["id"] } as never)
+  const [, tasks] = await svc.listAndCountSubiektTasks({ demo: true } as never, { take: 1, select: ["id"] } as never)
   if (tasks > 0) return
 
   const { data } = await queryOf(scope).graph({
