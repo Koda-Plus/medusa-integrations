@@ -1,0 +1,48 @@
+{
+  "events": [
+    {
+      "id": 41,
+      "type": "document.issued",
+      "occurred_at": "2026-10-04T09:15:06.000Z",
+      "data": {
+        "order_id": "order_01JDEMO0000000000000000001",
+        "source": "bridge",
+        "document": {
+          "kind": "ZK",
+          "number": "ZK 128/MAG/2026",
+          "id": "48211",
+          "issued_at": "2026-10-04T09:15:06.000Z",
+          "status": "open",
+          "warehouse": "MAG",
+          "related": []
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "document.issued",
+      "occurred_at": "2026-10-04T13:02:41.000Z",
+      "data": {
+        "order_id": "order_01JDEMO0000000000000000001",
+        "source": "subiekt",
+        "document": {
+          "kind": "WZ",
+          "number": "WZ 311/MAG/2026",
+          "id": "48390",
+          "issued_at": "2026-10-04T13:02:10.000Z",
+          "status": "open",
+          "warehouse": "MAG",
+          "related": [
+            {
+              "kind": "ZK",
+              "number": "ZK 128/MAG/2026"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "last_id": 42,
+  "has_more": false,
+  "head_id": 42
+}

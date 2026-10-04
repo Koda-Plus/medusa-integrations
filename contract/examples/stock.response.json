@@ -1,0 +1,11 @@
+{
+  "snapshot_at": "2026-10-04T09:10:00.000Z",
+  "warehouses": ["MAG"],
+  "items": [
+    { "symbol": "KR-050", "ean": "5901234123457", "name": "Krem nawilżający 50 ml", "quantity": 37, "available": 35, "unit": "szt." },
+    { "symbol": "TN-200", "ean": "5901234123464", "name": "Tonik łagodzący 200 ml", "quantity": 12, "available": 11, "unit": "szt." },
+    { "symbol": "SR-030", "ean": "5901234123471", "name": "Serum rewitalizujące 30 ml", "quantity": 0, "available": 0, "unit": "szt." }
+  ],
+  "next_cursor": null,
+  "total": 3
+}
