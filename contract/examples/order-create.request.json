@@ -1,0 +1,99 @@
+{
+  "order_id": "order_01JDEMO0000000000000000001",
+  "display_id": 1042,
+  "currency_code": "pln",
+  "placed_at": "2026-10-04T09:15:00.000Z",
+  "email": "anna.nowak@example.com",
+  "customer": {
+    "id": "cus_01JDEMO0000000000000000001",
+    "first_name": "Anna",
+    "last_name": "Nowak",
+    "company_name": null,
+    "phone": "+48 600 000 000"
+  },
+  "billing_address": {
+    "first_name": "Anna",
+    "last_name": "Nowak",
+    "company": null,
+    "address_1": "ul. Przykładowa 12/3",
+    "address_2": null,
+    "postal_code": "60-101",
+    "city": "Poznań",
+    "province": null,
+    "country_code": "pl",
+    "phone": "+48 600 000 000"
+  },
+  "shipping_address": {
+    "first_name": "Anna",
+    "last_name": "Nowak",
+    "company": null,
+    "address_1": "ul. Przykładowa 12/3",
+    "address_2": null,
+    "postal_code": "60-101",
+    "city": "Poznań",
+    "province": null,
+    "country_code": "pl",
+    "phone": "+48 600 000 000"
+  },
+  "invoice": {
+    "requested": false,
+    "tax_id": null,
+    "company_name": null
+  },
+  "lines": [
+    {
+      "line_id": "ordli_01JDEMO0000000000000000001",
+      "sku": "KR-050",
+      "ean": "5901234123457",
+      "title": "Krem nawilżający",
+      "product_title": "Krem nawilżający",
+      "variant_title": "50 ml",
+      "quantity": 2,
+      "unit_price_gross": 89.9,
+      "total_gross": 179.8,
+      "discount_gross": 0,
+      "tax_rate": 23
+    },
+    {
+      "line_id": "ordli_01JDEMO0000000000000000002",
+      "sku": "TN-200",
+      "ean": "5901234123464",
+      "title": "Tonik łagodzący",
+      "product_title": "Tonik łagodzący",
+      "variant_title": "200 ml",
+      "quantity": 1,
+      "unit_price_gross": 49.5,
+      "total_gross": 49.5,
+      "discount_gross": 5.5,
+      "tax_rate": 23
+    }
+  ],
+  "shipping": {
+    "name": "Paczkomat InPost",
+    "option_id": "so_01JDEMO0000000000000000001",
+    "price_gross": 14.99,
+    "tax_rate": 23,
+    "pickup_point": {
+      "id": "POZ08M",
+      "name": "Paczkomat POZ08M",
+      "address": "ul. Głogowska 1, 60-101 Poznań"
+    }
+  },
+  "payment": {
+    "status": "captured",
+    "provider_id": "pp_stripe_stripe",
+    "method": "Card (Stripe)",
+    "amount_paid": 244.29,
+    "captured_at": "2026-10-04T09:15:04.000Z",
+    "due_days": null
+  },
+  "totals": {
+    "items_gross": 229.3,
+    "shipping_gross": 14.99,
+    "discount_gross": 5.5,
+    "tax_total": 45.68,
+    "total_gross": 244.29
+  },
+  "note": "Proszę o próbkę kremu pod oczy.",
+  "metadata": {}
+}

@@ -1,0 +1,17 @@
+{
+  "error": {
+    "code": "unmatched_lines",
+    "message": "1 of 2 lines has no product in Subiekt nexo. Check the EAN in Subiekt (Miary, Kod kreskowy) or the SKU against the product symbol.",
+    "retryable": false,
+    "details": {
+      "lines": [
+        {
+          "line_id": "ordli_01JDEMO0000000000000000002",
+          "sku": "TN-200",
+          "ean": "5901234123464",
+          "title": "Tonik łagodzący"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "secret": "whsec_test_4f7c1e2b9a6d",
+  "tolerance_seconds": 300,
+  "vectors": [
+    {
+      "name": "get-health",
+      "t": 1791105271,
+      "method": "GET",
+      "path": "/v1/health",
+      "body": "",
+      "header": "t=1791105271,v1=e6a9ae90e34dc4d8bfd618f682a3d1af10476e3e7a62b15b58151cd7496d3eaf"
+    },
+    {
+      "name": "get-events-query",
+      "t": 1791105300,
+      "method": "GET",
+      "path": "/v1/events?after=40&limit=100",
+      "body": "",
+      "header": "t=1791105300,v1=756071670514200b7f1561a0c16580213360c06bb751c442461be00d562ef1b3"
+    },
+    {
+      "name": "post-order",
+      "t": 1791105306,
+      "method": "POST",
+      "path": "/v1/orders",
+      "body": "{\n  \"order_id\": \"order_01JDEMO0000000000000000001\",\n  \"display_id\": 1042,\n  \"currency_code\": \"pln\",\n  \"placed_at\": \"2026-10-04T09:15:00.000Z\",\n  \"email\": \"anna.nowak@example.com\",\n  \"customer\": {\n    \"id\": \"cus_01JDEMO0000000000000000001\",\n    \"first_name\": \"Anna\",\n    \"last_name\": \"Nowak\",\n    \"company_name\": null,\n    \"phone\": \"+48 600 000 000\"\n  },\n  \"billing_address\": {\n    \"first_name\": \"Anna\",\n    \"last_name\": \"Nowak\",\n    \"company\": null,\n    \"address_1\": \"ul. Przykładowa 12/3\",\n    \"address_2\": null,\n    \"postal_code\": \"60-101\",\n    \"city\": \"Poznań\",\n    \"province\": null,\n    \"country_code\": \"pl\",\n    \"phone\": \"+48 600 000 000\"\n  },\n  \"shipping_address\": {\n    \"first_name\": \"Anna\",\n    \"last_name\": \"Nowak\",\n    \"company\": null,\n    \"address_1\": \"ul. Przykładowa 12/3\",\n    \"address_2\": null,\n    \"postal_code\": \"60-101\",\n    \"city\": \"Poznań\",\n    \"province\": null,\n    \"country_code\": \"pl\",\n    \"phone\": \"+48 600 000 000\"\n  },\n  \"invoice\": {\n    \"requested\": false,\n    \"tax_id\": null,\n    \"company_name\": null\n  },\n  \"lines\": [\n    {\n      \"line_id\": \"ordli_01JDEMO0000000000000000001\",\n      \"sku\": \"KR-050\",\n      \"ean\": \"5901234123457\",\n      \"title\": \"Krem nawilżający\",\n      \"product_title\": \"Krem nawilżający\",\n      \"variant_title\": \"50 ml\",\n      \"quantity\": 2,\n      \"unit_price_gross\": 89.9,\n      \"total_gross\": 179.8,\n      \"discount_gross\": 0,\n      \"tax_rate\": 23\n    },\n    {\n      \"line_id\": \"ordli_01JDEMO0000000000000000002\",\n      \"sku\": \"TN-200\",\n      \"ean\": \"5901234123464\",\n      \"title\": \"Tonik łagodzący\",\n      \"product_title\": \"Tonik łagodzący\",\n      \"variant_title\": \"200 ml\",\n      \"quantity\": 1,\n      \"unit_price_gross\": 49.5,\n      \"total_gross\": 49.5,\n      \"discount_gross\": 5.5,\n      \"tax_rate\": 23\n    }\n  ],\n  \"shipping\": {\n    \"name\": \"Paczkomat InPost\",\n    \"option_id\": \"so_01JDEMO0000000000000000001\",\n    \"price_gross\": 14.99,\n    \"tax_rate\": 23,\n    \"pickup_point\": {\n      \"id\": \"POZ08M\",\n      \"name\": \"Paczkomat POZ08M\",\n      \"address\": \"ul. Głogowska 1, 60-101 Poznań\"\n    }\n  },\n  \"payment\": {\n    \"status\": \"captured\",\n    \"provider_id\": \"pp_stripe_stripe\",\n    \"method\": \"Card (Stripe)\",\n    \"amount_paid\": 244.29,\n    \"captured_at\": \"2026-10-04T09:15:04.000Z\",\n    \"due_days\": null\n  },\n  \"totals\": {\n    \"items_gross\": 229.3,\n    \"shipping_gross\": 14.99,\n    \"discount_gross\": 5.5,\n    \"tax_total\": 45.68,\n    \"total_gross\": 244.29\n  },\n  \"note\": \"Proszę o próbkę kremu pod oczy.\",\n  \"metadata\": {}\n}",
+      "header": "t=1791105306,v1=7063c7d9d8422995bb83ff2b84c4d81f8ded8dcae18de2e272bb79e34a9b97b3"
+    },
+    {
+      "name": "post-webhook-unicode",
+      "t": 1791105400,
+      "method": "POST",
+      "path": "/hooks/subiekt",
+      "body": "{\"type\":\"events.available\",\"last_id\":42,\"sent_at\":\"2026-10-04T13:02:42.000Z\",\"note\":\"zażółć gęślą jaźń\"}",
+      "header": "t=1791105400,v1=77af14861a7a08c307c51525f4358f055eceef6ad13e3d3a5ca6045923aa37ca"
+    }
+  ]
+}
