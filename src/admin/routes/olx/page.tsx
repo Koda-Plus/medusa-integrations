@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, Tag } from "@medusajs/icons"
+import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
 import {
   Badge,
   Button,
@@ -31,6 +31,7 @@ import {
   useOlxSync,
 } from "../../lib/olx-api"
 import { AdvertStatus, KeyCell, StatTile, fmtDateTime, fmtDuration, fmtPrice } from "../../lib/olx-ui"
+import { OlxIcon } from "../../lib/olx-icon"
 
 /**
  * OLX by Koda Plus: connection to the seller account, the advert snapshot
@@ -140,6 +141,7 @@ function Header({
     <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
       <div className="min-w-0">
         <div className="flex items-center gap-x-2">
+          <OlxIcon width={24} height={24} className="shrink-0" />
           <Heading level="h1">{t("title")}</Heading>
           <Badge size="2xsmall" color="grey">
             {t("by")}
@@ -570,7 +572,7 @@ function RunsSection({ lang }: { lang: string }) {
 
 export const config = defineRouteConfig({
   label: "OLX",
-  icon: Tag,
+  icon: OlxIcon,
 })
 
 export default OlxPage

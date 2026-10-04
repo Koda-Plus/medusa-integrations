@@ -6,6 +6,7 @@ import { ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Container, Heading, Text } from "@medusajs/ui"
 import { useOlxProductAdverts } from "../lib/olx-api"
 import { AdvertStatus, fmtPrice } from "../lib/olx-ui"
+import { OlxIcon } from "../lib/olx-icon"
 
 /**
  * Product page, side column: the OLX adverts linked to this product's
@@ -22,6 +23,7 @@ const OlxProductAdvertsWidget = ({ data }: DetailWidgetProps<AdminProduct>) => {
     <Container className="divide-y p-0">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-x-2">
+          <OlxIcon width={18} height={18} className="shrink-0" />
           <Heading level="h2">{t("widget.title")}</Heading>
           {q.data?.mode === "demo" ? (
             <Badge size="2xsmall" color="purple">
