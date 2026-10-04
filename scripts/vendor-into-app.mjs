@@ -41,6 +41,7 @@ const MAP = [
   ["admin/widgets/olx-product-adverts.tsx", "admin/widgets/olx-product-adverts.tsx"],
   ["admin/lib/olx-api.ts", "admin/lib/olx-api.ts"],
   ["admin/lib/olx-ui.tsx", "admin/lib/olx-ui.tsx"],
+  ["admin/lib/olx-icon.tsx", "admin/lib/olx-icon.tsx"],
   ["admin/i18n", "admin/i18n"],
 ]
 
