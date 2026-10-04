@@ -8,7 +8,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const svc = subiektService(req.scope)
   const orderId = req.params.id
   const [tasks, documents] = await Promise.all([
-    svc.listSubiektTasks({ order_id: orderId } as never, { take: 20, order: { created_at: "ASC" } } as never),
+    svc.listSubiektTasks({ order_id: orderId, demo: svc.isDemo() } as never, { take: 20, order: { created_at: "ASC" } } as never),
     svc.listSubiektDocuments({ order_id: orderId, demo: svc.isDemo() } as never, { take: 20, order: { created_at: "ASC" } } as never),
   ])
   const body: OrderSubiektResponse = {

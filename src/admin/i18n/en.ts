@@ -114,6 +114,15 @@ const en = {
     kinds: { stock: "Stock", events: "Documents", tasks: "Queue", health: "Connection" },
     triggers: { schedule: "Schedule", manual: "Manual", webhook: "Webhook", event: "Event", auto: "Automatic" },
     statuses: { success: "OK", partial: "Partial", error: "Error", skipped: "Skipped" },
+    summary: {
+      stockDry: "Dry run: {{changes}} level(s) would change, {{unchanged}} already right.",
+      stock: "{{changes}} level(s) updated, {{unchanged}} already right.",
+      tasks: "{{succeeded}} sent.",
+      tasksIssues: "{{succeeded}} sent, {{retry}} to retry, {{failed}} need attention.",
+      events: "{{applied}} new document(s) from Subiekt.",
+      eventsNone: "Nothing new.",
+      health: "Bridge and Subiekt answer.",
+    },
   },
   widget: {
     title: "Subiekt nexo",

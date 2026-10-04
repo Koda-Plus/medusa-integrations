@@ -41,8 +41,9 @@ export interface EnqueueInput {
 }
 
 async function findTask(scope: Scope, kind: TaskKind, orderId: string, reference: string | null): Promise<TaskRow | null> {
-  const rows = (await subiektService(scope).listSubiektTasks(
-    { kind, order_id: orderId, reference } as never,
+  const svc = subiektService(scope)
+  const rows = (await svc.listSubiektTasks(
+    { kind, order_id: orderId, reference, demo: svc.isDemo() } as never,
     { take: 1 } as never,
   )) as unknown as TaskRow[]
   return rows[0] ?? null
@@ -70,6 +71,7 @@ export async function enqueueTask(scope: Scope, input: EnqueueInput): Promise<Ta
         trigger: input.trigger,
         attempts: 0,
         next_attempt_at: input.status === "pending" ? due : null,
+        demo: svc.isDemo(),
       } as never)) as unknown as TaskRow
     } catch {
       // Two subscribers raced for the same order; the unique index kept one row.
@@ -207,13 +209,13 @@ export async function runDueTasks(scope: Scope, trigger: RunTrigger): Promise<Pa
 
     const now = new Date()
     const stale = (await svc.listSubiektTasks(
-      { status: "running", started_at: { $lt: new Date(now.getTime() - RUNNING_STALE_MS) } } as never,
+      { status: "running", demo: svc.isDemo(), started_at: { $lt: new Date(now.getTime() - RUNNING_STALE_MS) } } as never,
       { take: 50 } as never,
     )) as unknown as TaskRow[]
     for (const t of stale) await updateTask(scope, t.id, { status: "pending", next_attempt_at: now })
     stats.requeued = stale.length
 
-    const due = (await svc.listSubiektTasks({ status: "pending", next_attempt_at: { $lte: now } } as never, {
+    const due = (await svc.listSubiektTasks({ status: "pending", demo: svc.isDemo(), next_attempt_at: { $lte: now } } as never, {
       take: TASKS_PER_PASS,
       order: { next_attempt_at: "ASC", created_at: "ASC" },
     } as never)) as unknown as TaskRow[]

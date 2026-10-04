@@ -12,8 +12,9 @@ import { model } from "@medusajs/framework/utils"
  * (due at `next_attempt_at`), `running`, `succeeded`, `failed` (needs a
  * person: a non-retryable error or attempts exhausted), `canceled`.
  *
- * One row per (kind, order, reference): a unique index in the migration
+ * One row per (kind, order, reference, mode): a unique index in the migration
  * makes two subscribers racing for the same order meet on the same row.
+ * `demo` keeps the simulated queue apart, so going live starts with a clean one.
  */
 const SubiektTask = model.define("subiekt_task", {
   id: model.id({ prefix: "sbtask" }).primaryKey(),
@@ -30,6 +31,7 @@ const SubiektTask = model.define("subiekt_task", {
   last_error: model.text().nullable(),
   last_error_code: model.text().nullable(),
   result: model.json().nullable(),
+  demo: model.boolean().default(false),
 })
 
 export default SubiektTask

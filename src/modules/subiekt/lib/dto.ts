@@ -32,6 +32,7 @@ export interface TaskRow {
   last_error: string | null
   last_error_code: string | null
   result: Record<string, unknown> | null
+  demo?: boolean
   created_at?: Date | string | null
   updated_at?: Date | string | null
 }
@@ -65,6 +66,7 @@ export interface RunRow {
   started_at: Date | string | null
   finished_at: Date | string | null
   duration_ms: number
+  demo?: boolean
 }
 
 export function iso(value: Date | string | null | undefined): string | null {
