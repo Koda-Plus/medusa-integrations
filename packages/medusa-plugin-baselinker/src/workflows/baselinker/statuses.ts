@@ -197,10 +197,11 @@ const FULFILL_RETRY_MS = 60 * 60 * 1000
 
 /**
  * Reads status and tracking of sent orders and creates fulfillments.
- * `onlyOrderIds` limits the read (the order widget in demo mode).
+ * `onlyOrderIds` limits the read to Medusa orders (the order widget in demo
+ * mode), `onlyBlIds` to BaseLinker orders (the ones the journal named).
  * Returns null when a read already runs in this process.
  */
-export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderIds?: string[]): Promise<StatusesStats | null> {
+export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderIds?: string[], onlyBlIds?: string[]): Promise<StatusesStats | null> {
   return exclusive("statuses", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
@@ -212,6 +213,7 @@ export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderI
     const since = new Date(now.getTime() - STATUS_WINDOW_DAYS * 24 * 3600 * 1000)
     const filters: Record<string, unknown> = { status: "sent", demo: o.demo, sent_at: { $gte: since } }
     if (onlyOrderIds && onlyOrderIds.length > 0) filters.order_id = onlyOrderIds
+    if (onlyBlIds) filters.bl_order_id = onlyBlIds
     const rows = (await svc.listBaseLinkerOrders(filters as never, { take: null } as never)) as unknown as OrderRow[]
     const candidates = rows
       .filter((r) => r.bl_order_id && !(r.bl_status_id !== null && o.closedStatusIds.includes(r.bl_status_id)))

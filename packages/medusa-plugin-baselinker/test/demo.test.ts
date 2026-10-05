@@ -73,6 +73,34 @@ test("the warehouse pace differs between orders, from 1x to 8x", () => {
   for (const p of paces) assert.ok([1, 2, 4, 8].includes(p))
 })
 
+test("0.2: variants of one product become variant cards of a main card; the bundle, the EAN pair and the details are there", async () => {
+  const { buildDemoDetails, demoNewCardId, demoPrice } = await import("../src/modules/baselinker/lib/demo.ts")
+  const { parseProductsData, containerIds } = await import("../src/modules/baselinker/lib/catalog.ts")
+  const grouped: DemoVariant[] = catalog.map((v, i) => ({ ...v, productId: i < 3 ? "prod_jacket" : `prod_${i}`, productTitle: i < 3 ? "Kurtka" : v.title, variantTitle: i < 3 ? `R${i}` : null, category: "Odzież" }))
+  const list = buildDemoProducts(grouped)
+  const { cards } = parseProductsList(list, DEMO_WAREHOUSE_ID)
+  const parents = containerIds(cards)
+  assert.ok(parents.size >= 2, "the jacket and the gloves only in BaseLinker")
+  const details = parseProductsData(buildDemoDetails(grouped, list).products)
+  const jacket = details.find((d) => d.name === "Kurtka")
+  assert.ok(jacket && jacket.variants.length >= 2)
+  assert.equal(jacket?.variants[0].name.startsWith("R"), true)
+  assert.ok(details.some((d) => d.isBundle))
+  const eans = cards.map((c) => c.ean).filter((e) => e === "5906660000038")
+  assert.equal(eans.length, 2, "one EAN on two cards")
+  assert.ok(catalog.some((v) => demoPrice(v) !== v.price), "some prices differ, for the price plans")
+
+  /* What the simulated writers did is part of the next read. */
+  const overlay = { cards: { var_x: { blId: demoNewCardId("var_x"), sku: "NEW-1", name: "Nowa karta", ean: null } }, stock: {}, prices: {} }
+  const next = parseProductsList(buildDemoProducts(grouped, overlay), DEMO_WAREHOUSE_ID).cards
+  assert.ok(next.some((c) => c.sku === "NEW-1" && c.blProductId === demoNewCardId("var_x")))
+  const anyCard = cards.find((c) => c.sku === catalog[0].sku) as { blProductId: string }
+  const moved = parseProductsList(buildDemoProducts(grouped, { stock: { [anyCard.blProductId]: 77 }, prices: { [anyCard.blProductId]: 1.5 } }), DEMO_WAREHOUSE_ID).cards
+  const after = moved.find((c) => c.blProductId === anyCard.blProductId)
+  assert.equal(after?.stock, 77)
+  assert.deepEqual(after?.prices, { "1001": 1.5 })
+})
+
 test("simulated BaseLinker order ids start at 9100001 and follow the highest one", () => {
   assert.equal(nextDemoOrderId(null), DEMO_ORDER_ID_BASE + 1)
   assert.equal(nextDemoOrderId(9_100_041), 9_100_042)

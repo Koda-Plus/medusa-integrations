@@ -9,8 +9,9 @@ import { ConflictBadge, fmtNumber } from "../lib/baselinker-ui"
 
 /**
  * Product page, side column: the BaseLinker cards linked to this product's
- * variants with their BaseLinker stock, and the cards that carry one of its
- * SKUs but could not be linked, with the reason.
+ * variants with their BaseLinker stock, the cards that carry one of its SKUs
+ * but could not be linked, with the reason, and the main card the variant
+ * cards hang under (a container, never linked itself).
  */
 const BaseLinkerProductWidget = ({ data }: DetailWidgetProps<AdminProduct>) => {
   const { t, i18n } = useTranslation("baselinker")
@@ -53,17 +54,29 @@ const BaseLinkerProductWidget = ({ data }: DetailWidgetProps<AdminProduct>) => {
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="font-mono text-ui-fg-muted txt-compact-xsmall">#{c.blProductId}</span>
                 {c.sku ? <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{c.sku}</span> : null}
+                {c.isContainer ? (
+                  <Badge size="2xsmall" color="blue">
+                    {t("productWidget.container")}
+                  </Badge>
+                ) : null}
                 {c.conflict ? <ConflictBadge conflict={c.conflict} /> : null}
               </span>
+              {c.isContainer ? (
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  {t("productWidget.containerNote")}
+                </Text>
+              ) : null}
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-y-0.5">
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                {t("productWidget.stock")}
-              </Text>
-              <Text size="small" weight="plus" className={c.stock !== null && c.stock < 0 ? "tabular-nums text-ui-tag-red-text" : "tabular-nums"}>
-                {c.stock === null ? t("productWidget.noStock") : fmtNumber(c.stock, lang)}
-              </Text>
-            </div>
+            {c.isContainer ? null : (
+              <div className="flex shrink-0 flex-col items-end gap-y-0.5">
+                <Text size="xsmall" className="text-ui-fg-subtle">
+                  {t("productWidget.stock")}
+                </Text>
+                <Text size="small" weight="plus" className={c.stock !== null && c.stock < 0 ? "tabular-nums text-ui-tag-red-text" : "tabular-nums"}>
+                  {c.stock === null ? t("productWidget.noStock") : fmtNumber(c.stock, lang)}
+                </Text>
+              </div>
+            )}
           </div>
         ))
       )}

@@ -4,7 +4,12 @@ import { Badge, StatusBadge, Text, clx } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
 import type {
   CardConflict,
+  ImportStatus,
+  InvoiceRowStatus,
+  LocalizedDto,
   OrderRowStatus,
+  PlanAction,
+  PlanStatus,
   RunDto,
   RunStatus,
   StatusResponse,
@@ -83,6 +88,68 @@ const CHANGE_TONE: Record<StockChangeStatus, Tone> = { planned: "blue", applied:
 export function ChangeStatusBadge({ status }: { status: StockChangeStatus }) {
   const { t } = useTranslation("baselinker")
   return <StatusBadge color={CHANGE_TONE[status] ?? "grey"}>{t(`stock.statuses.${status}`)}</StatusBadge>
+}
+
+const PLAN_ACTION_TONE: Record<PlanAction, Tone> = { create: "green", update: "blue", draft: "orange", skip: "grey", conflict: "red" }
+
+export function PlanActionBadge({ action }: { action: PlanAction }) {
+  const { t } = useTranslation("baselinker")
+  return <StatusBadge color={PLAN_ACTION_TONE[action] ?? "grey"}>{t(`plans.actions.${action}`)}</StatusBadge>
+}
+
+const PLAN_STATUS_TONE: Record<PlanStatus, Tone> = { planned: "blue", applied: "green", failed: "red", over_cap: "orange", quarantined: "red", info: "grey" }
+
+export function PlanStatusBadge({ status }: { status: PlanStatus }) {
+  const { t } = useTranslation("baselinker")
+  return <StatusBadge color={PLAN_STATUS_TONE[status] ?? "grey"}>{t(`plans.statuses.${status}`)}</StatusBadge>
+}
+
+const IMPORT_TONE: Record<ImportStatus, Tone> = { pending: "blue", imported: "green", skipped: "grey", failed: "red" }
+
+export function ImportStatusBadge({ status }: { status: ImportStatus }) {
+  const { t } = useTranslation("baselinker")
+  return <StatusBadge color={IMPORT_TONE[status] ?? "grey"}>{t(`imports.statuses.${status}`)}</StatusBadge>
+}
+
+const INVOICE_TONE: Record<InvoiceRowStatus, Tone> = { pending: "blue", written: "green", conflict: "red", skipped: "grey", failed: "red" }
+
+export function InvoiceStatusBadge({ status }: { status: InvoiceRowStatus }) {
+  const { t } = useTranslation("baselinker")
+  return <StatusBadge color={INVOICE_TONE[status] ?? "grey"}>{t(`invoices.statuses.${status}`)}</StatusBadge>
+}
+
+export function fmtMoney(value: number | null | undefined, currency: string | null | undefined, lang: string): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return ""
+  const cur = (currency ?? "").toUpperCase()
+  try {
+    return cur ? new Intl.NumberFormat(lang, { style: "currency", currency: cur }).format(value) : new Intl.NumberFormat(lang, { minimumFractionDigits: 2 }).format(value)
+  } catch {
+    return `${value.toFixed(2)} ${cur}`.trim()
+  }
+}
+
+/** A `{ en, pl }` text in the admin language, falling back to the other one. */
+export function localize(text: LocalizedDto | null | undefined, lang: string): string {
+  if (!text) return ""
+  const pl = lang.toLowerCase().startsWith("pl")
+  return (pl ? text.pl ?? text.en : text.en ?? text.pl) ?? ""
+}
+
+/** Polish months in the genitive ("od kwietnia"), which Intl does not give for a month alone. */
+const PL_GENITIVE = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
+
+/** `2026-04` as "April 2026" or "kwietnia 2026" (to follow "Since" / "Od"). */
+export function sinceDate(since: string, lang: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(since)
+  if (!m) return since
+  const year = Number(m[1])
+  const month = Number(m[2])
+  if (lang.toLowerCase().startsWith("pl")) return `${PL_GENITIVE[month - 1] ?? m[2]} ${year}`
+  try {
+    return new Intl.DateTimeFormat(lang, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 15)))
+  } catch {
+    return since
+  }
 }
 
 export function ConflictBadge({ conflict }: { conflict: CardConflict }) {
@@ -215,5 +282,17 @@ export function runSummary(run: RunDto, t: Translate): string {
     if (run.status === "partial" && run.message && num(c.read) === 0) return run.message
     return t("runs.summary.statuses", { read: num(c.read), changed: num(c.changed), fulfilled: num(c.fulfilled) })
   }
+  if (run.kind === "catalog_import" || run.kind === "cards" || run.kind === "stock_push" || run.kind === "prices") {
+    if (c.skipped) return run.message ?? ""
+    if (c.mode === "write") return t("runs.summary.planApplied", { applied: num(c.applied), failed: num(c.failed), overCap: num(c.overCap) })
+    const changes = run.kind === "catalog_import" ? num(c.create) + num(c.update) + num(c.draft) : run.kind === "cards" ? num(c.create) + num(c.update) : num(c.toChange)
+    return t("runs.summary.planOnly", { changes })
+  }
+  if (run.kind === "imports") {
+    if (c.statuses) return run.message ?? ""
+    return t("runs.summary.imports", { created: num(c.created), imported: num(c.imported) + num(c.adopted), skipped: num(c.skipped), failed: num(c.failed) })
+  }
+  if (run.kind === "returns") return t("runs.summary.returns", { read: num(c.read), created: num(c.created), updated: num(c.updated) })
+  if (run.kind === "invoices") return t("runs.summary.invoices", { written: num(c.written), adopted: num(c.adopted), conflict: num(c.conflict) })
   return run.message ?? ""
 }

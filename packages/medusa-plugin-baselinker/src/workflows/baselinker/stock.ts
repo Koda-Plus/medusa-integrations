@@ -1,8 +1,11 @@
 /**
- * THE STOCK PLAN, after every complete catalog read: reads the levels at the
- * stock location, plans with `lib/stock.ts`, stores the plan for the admin
- * and, only in `write` mode outside demo mode, applies it with Medusa's own
- * `batchInventoryItemLevelsWorkflow` (a failure rolls its batch back).
+ * THE STOCK PLAN (BaseLinker to Medusa), after every complete catalog read:
+ * reads the levels at the stock location, plans with `lib/stock.ts`, stores
+ * the plan for the admin and, only when the `stockToMedusa` writer writes
+ * (`stockSync: "write"` and the arm, see `lib/writers.ts`), applies it with
+ * Medusa's own `batchInventoryItemLevelsWorkflow` (a failure rolls its batch
+ * back). In demo mode an armed writer applies to the simulation only: the
+ * demo store's inventory is never written.
  */
 
 import { batchInventoryItemLevelsWorkflow } from "@medusajs/medusa/core-flows"
@@ -12,7 +15,9 @@ import type BaseLinkerModuleService from "../../modules/baselinker/service"
 import type { RunDto, RunTrigger } from "../../modules/baselinker/lib/contract"
 import { toNumber } from "../../modules/baselinker/lib/numbers"
 import { planStock, type StockCard, type StockChange, type StockLevel, type StockVariant } from "../../modules/baselinker/lib/stock"
+import { writerState } from "../../modules/baselinker/lib/writers"
 import { baselinkerService, exclusive, recordRun, type Scope } from "./runtime"
+import { loadDemoState, loadWriters, updateDemoState } from "./settings"
 
 export interface LocationChoice {
   id: string | null
@@ -124,7 +129,9 @@ export async function runStockPlan(scope: Scope, input: StockRunInput): Promise<
       })
     }
     const locationId = input.location.id
-    const mode = !o.demo && o.stockSync === "write" ? "write" : "plan"
+    const { writers } = await loadWriters(svc)
+    const mode = writerState(writers, "stockToMedusa").live ? "write" : "plan"
+    const demoState = o.demo ? await loadDemoState(svc) : null
     const plan = planStock({
       cards: input.cards,
       variants: input.variants,
@@ -148,11 +155,23 @@ export async function runStockPlan(scope: Scope, input: StockRunInput): Promise<
 
     /* Apply in batches of 200, one Medusa workflow per batch. */
     const status = new Map<StockChange, string>()
-    for (const c of plan.changes) status.set(c, mode === "write" ? (c.apply ? "planned" : "over_cap") : "planned")
+    const simulatedKey = (c: StockChange) => `stock:${c.inventoryItemId}:${c.target}`
+    for (const c of plan.changes) {
+      status.set(c, demoState?.imported[simulatedKey(c)] ? "applied" : mode === "write" ? (c.apply ? "planned" : "over_cap") : "planned")
+    }
     let applied = 0
     let applyError: string | null = null
     const after = new Map<string, number>()
-    if (mode === "write") {
+    if (mode === "write" && o.demo) {
+      /* The simulation: the demo inventory is never written, the plan shows what would be. */
+      const at = new Date().toISOString()
+      const toApply = plan.changes.filter((c) => c.apply && !demoState?.imported[simulatedKey(c)])
+      await updateDemoState(svc, (s) => {
+        for (const c of toApply) s.imported[simulatedKey(c)] = at
+      })
+      for (const c of toApply) status.set(c, "applied")
+      applied = toApply.length
+    } else if (mode === "write") {
       const toApply = plan.changes.filter((c) => c.apply)
       for (const part of chunks(toApply, 200)) {
         if (applyError) {

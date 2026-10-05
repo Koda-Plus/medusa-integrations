@@ -34,6 +34,7 @@ import type { OrderRow } from "../../modules/baselinker/lib/dto"
 import { describeError } from "../../modules/baselinker/lib/errors"
 import { findOrderByMarker } from "../../modules/baselinker/lib/exactly-once"
 import { canExportOrders } from "../../modules/baselinker/lib/options"
+import { exportVerdict, type ExportVerdict } from "../../modules/baselinker/lib/order-import"
 import {
   ORDER_FIELDS,
   PayloadError,
@@ -169,6 +170,13 @@ async function demoCreate(svc: BaseLinkerModuleService): Promise<string> {
   return String(nextDemoOrderId(highest || null))
 }
 
+/** Why the loop guard keeps an order out of BaseLinker, in words for the outbox row. */
+export function exportSkipReason(verdict: Extract<ExportVerdict, { send: false }>): string {
+  return verdict.reason === "imported"
+    ? "The order came from BaseLinker (a marketplace order this plugin imported), so it never goes back."
+    : `A marketplace order taken straight from the marketplace (${verdict.ref}): BaseLinker gets it from its own integration. Set exportMarketplaceOrders to send such orders.`
+}
+
 async function markSkipped(svc: BaseLinkerModuleService, row: OrderRow, reason: string): Promise<SendOutcome> {
   await updateRow(svc, row.id, { status: "skipped", next_attempt_at: null, last_error: reason, last_error_code: "skipped" })
   return { status: "skipped", orderId: row.order_id, blOrderId: null, adopted: false, code: "skipped", message: reason }
@@ -217,6 +225,9 @@ async function attempt(scope: Scope, row: OrderRow): Promise<SendOutcome> {
     if (isSkipped(order.metadata, o.skipOrderMetadataKey)) {
       return await stopOrAdopt(scope, row, order, `order.metadata.${o.skipOrderMetadataKey} is true, so the order stays out of BaseLinker.`)
     }
+    /* The loop guard: an order that came from BaseLinker (or straight from a marketplace) never goes back. */
+    const verdict = exportVerdict(order.metadata, o.exportMarketplaceOrders)
+    if (!verdict.send) return await markSkipped(svc, row, exportSkipReason(verdict))
     if (!o.demo && o.orderStatusId === null) throw new PayloadError("not_configured", "orderStatusId is not set in the plugin options.")
 
     const links = await linksFor(svc, order)

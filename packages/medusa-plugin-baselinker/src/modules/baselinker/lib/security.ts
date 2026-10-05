@@ -8,12 +8,19 @@
  * asks it BEFORE every request leaves the process.
  *
  * THE RULE IS ASYMMETRIC ON PURPOSE. Every `get*` method passes: BaseLinker
- * names all its reads that way. The single write of version 0.1 is
- * `addOrder`, and only while `exportOrders` is on. Everything else
- * (`updateInventoryProductsStock`, `updateInventoryProductsPrices`,
- * `addInventoryProduct`, `delete*`, `setOrder*`...) is blocked by name, with
- * a clear error. The pattern is positive: the list of BaseLinker writes can
- * grow, the `get` prefix of reads does not.
+ * names all its reads that way. `addOrder` passes while `exportOrders` is on.
+ * Four more writes exist since version 0.2, and each one passes ONLY with
+ * the permit of its writer, which a job gets when that writer is armed:
+ *
+ *   addInventoryProduct            cards              (create or update a card)
+ *   updateInventoryProductsStock   stockToBaseLinker  (absolute stock values)
+ *   updateInventoryProductsPrices  prices             (one price group)
+ *   setOrderFields                 invoiceNumbers     (one order field)
+ *
+ * Everything else (`delete*`, `setOrderStatus`, `setOrderPayment`,
+ * `addInvoice`, `createPackage`, macros...) is blocked by name, with a clear
+ * error. The pattern is positive: the list of BaseLinker writes can grow, the
+ * `get` prefix of reads does not.
  *
  * Ported from the production integration Koda Plus runs for a Polish tyre
  * and wheel retailer, where the same barrier stands in front of a live
@@ -32,8 +39,16 @@ export const READ_METHOD = /^get[A-Z]/
  */
 export const CREATING_METHOD = /^(add|create)[A-Z]/
 
-/** The only writes version 0.1 sends. */
-export const ALLOWED_WRITES: readonly string[] = ["addOrder"]
+/** Writes behind a writer permit, and the permit each one needs. */
+export const PERMITTED_WRITES: Readonly<Record<string, string>> = {
+  addInventoryProduct: "cards",
+  updateInventoryProductsStock: "stockToBaseLinker",
+  updateInventoryProductsPrices: "prices",
+  setOrderFields: "invoiceNumbers",
+}
+
+/** Every write version 0.2 can send, with or without a permit. */
+export const ALLOWED_WRITES: readonly string[] = ["addOrder", ...Object.keys(PERMITTED_WRITES)]
 
 export function isReadMethod(method: string): boolean {
   return READ_METHOD.test(method.trim())
@@ -43,19 +58,29 @@ export function isCreatingMethod(method: string): boolean {
   return CREATING_METHOD.test(method.trim())
 }
 
-/** Whether a BaseLinker method may leave the process. */
-export function isCallAllowed(args: { method: string; exportOrders: boolean }): Verdict {
+/**
+ * Whether a BaseLinker method may leave the process. `permits` are the
+ * writers armed for the current run; without them every write except
+ * `addOrder` is blocked.
+ */
+export function isCallAllowed(args: { method: string; exportOrders: boolean; permits?: ReadonlySet<string> }): Verdict {
   const method = args.method.trim()
   if (isReadMethod(method)) return { ok: true }
   if (method === "addOrder") {
     if (args.exportOrders) return { ok: true }
     return { ok: false, reason: "addOrder is blocked: exportOrders is off in the plugin options." }
   }
+  const permit = Object.prototype.hasOwnProperty.call(PERMITTED_WRITES, method) ? PERMITTED_WRITES[method] : null
+  if (permit) {
+    if (args.permits?.has(permit)) return { ok: true }
+    return { ok: false, reason: `${method} is blocked: the ${permit} writer is not armed for this run.` }
+  }
   return {
     ok: false,
     reason:
-      `${method || "(empty method)"} is blocked: version 0.1 only reads from BaseLinker (get* methods) and creates orders ` +
-      "(addOrder). It never changes stock, prices, cards or existing orders in BaseLinker.",
+      `${method || "(empty method)"} is blocked: the plugin reads from BaseLinker (get* methods), creates orders (addOrder) ` +
+      "and, through armed writers only, cards, stock, prices and invoice numbers. It never deletes anything and never " +
+      "changes statuses or payments in BaseLinker.",
   }
 }
 

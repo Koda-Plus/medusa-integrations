@@ -3,7 +3,8 @@ import type { SendResponse } from "../../../../../../modules/baselinker/lib/cont
 import { toOrderDto, type OrderRow } from "../../../../../../modules/baselinker/lib/dto"
 import { isSkipped } from "../../../../../../modules/baselinker/lib/order-payload"
 import { canExportOrders } from "../../../../../../modules/baselinker/lib/options"
-import { enqueueOrder, findOrderRow, loadOrderHead, sendOrderNow } from "../../../../../../workflows/baselinker/orders"
+import { exportVerdict } from "../../../../../../modules/baselinker/lib/order-import"
+import { enqueueOrder, exportSkipReason, findOrderRow, loadOrderHead, sendOrderNow } from "../../../../../../workflows/baselinker/orders"
 import { baselinkerService } from "../../../helpers"
 
 /**
@@ -48,6 +49,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   }
   if (isSkipped(order.metadata, o.skipOrderMetadataKey)) {
     res.status(409).json({ message: `order.metadata.${o.skipOrderMetadataKey} is true: remove it to send this order.` })
+    return
+  }
+  /* The loop guard: an order that came from BaseLinker, or straight from a marketplace, is never sent there. */
+  const verdict = exportVerdict(order.metadata, o.exportMarketplaceOrders)
+  if (!verdict.send) {
+    res.status(409).json({ message: exportSkipReason(verdict) })
     return
   }
   const existing = await findOrderRow(svc, orderId)

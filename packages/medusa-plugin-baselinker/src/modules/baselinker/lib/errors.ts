@@ -147,6 +147,24 @@ function fail(err: Error): never {
   throw err
 }
 
+/** Medusa error types that do not get better by waiting (bad data, a refused action, a missing record). */
+const PERMANENT_MEDUSA_TYPES: ReadonlySet<string> = new Set(["invalid_data", "not_allowed", "not_found", "duplicate_error", "invalid_argument", "conflict"])
+
+/**
+ * `describeError` for errors that may come from Medusa itself (the order
+ * workflows of the import): a MedusaError carries a `type`, and invalid data,
+ * a refused action (not enough stock, for example) or a missing record are
+ * permanent, so the row waits for a person instead of retrying for days.
+ */
+export function describeAnyError(err: unknown): { code: string; message: string; retryable: boolean } {
+  const d = describeError(err)
+  const type = (err as { type?: unknown } | null)?.type
+  if (typeof type === "string" && type) {
+    return { code: d.code === "internal" ? type : d.code, message: d.message, retryable: !PERMANENT_MEDUSA_TYPES.has(type) }
+  }
+  return d
+}
+
 /** Short, safe description of any error for the outbox, the runs and the admin. */
 export function describeError(err: unknown): { code: string; message: string; retryable: boolean } {
   if (err instanceof BaseLinkerWriteBlockedError) return { code: "write_blocked", message: err.message, retryable: false }

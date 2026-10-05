@@ -1,7 +1,8 @@
 import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { isSkipped } from "../modules/baselinker/lib/order-payload"
+import { exportVerdict } from "../modules/baselinker/lib/order-import"
 import { canExportOrders } from "../modules/baselinker/lib/options"
-import { enqueueOrder, kickOrders, loadOrderHead } from "../workflows/baselinker/orders"
+import { enqueueOrder, exportSkipReason, kickOrders, loadOrderHead } from "../workflows/baselinker/orders"
 import { baselinkerService } from "../workflows/baselinker/runtime"
 
 /**
@@ -17,6 +18,11 @@ import { baselinkerService } from "../workflows/baselinker/runtime"
  * plugin and configures it a week later does not flood BaseLinker with a
  * week of old orders. An order with `metadata.baselinker_skip = true` (the
  * key is configurable) gets a `skipped` row and never goes out: test orders.
+ *
+ * THE LOOP GUARD (0.2): an order this plugin imported from BaseLinker gets no
+ * row at all (it lives in the imported orders); an order another plugin took
+ * straight from a marketplace (`metadata.marketplace_order_ref`) gets a
+ * `skipped` row unless `exportMarketplaceOrders` is on.
  */
 export default async function baselinkerOrderPlaced({ event: { data }, container }: SubscriberArgs<{ id: string }>): Promise<void> {
   const svc = baselinkerService(container)
@@ -25,13 +31,19 @@ export default async function baselinkerOrderPlaced({ event: { data }, container
   try {
     const order = await loadOrderHead(container, data.id)
     if (!order || order.status === "canceled") return
+    const verdict = exportVerdict(order.metadata, o.exportMarketplaceOrders)
+    if (!verdict.send && verdict.reason === "imported") return
     const skip = isSkipped(order.metadata, o.skipOrderMetadataKey)
     await enqueueOrder(container, {
       orderId: data.id,
       displayId: order.display_id ?? null,
-      skipReason: skip ? `order.metadata.${o.skipOrderMetadataKey} is true, so the order stays out of BaseLinker.` : null,
+      skipReason: !verdict.send
+        ? exportSkipReason(verdict)
+        : skip
+          ? `order.metadata.${o.skipOrderMetadataKey} is true, so the order stays out of BaseLinker.`
+          : null,
     })
-    if (!skip) kickOrders(container, "auto")
+    if (verdict.send && !skip) kickOrders(container, "auto")
   } catch (err) {
     svc.getLogger().error(`[baselinker] order.placed ${data.id}: ${svc.mask((err as Error)?.message ?? String(err))}`)
   }

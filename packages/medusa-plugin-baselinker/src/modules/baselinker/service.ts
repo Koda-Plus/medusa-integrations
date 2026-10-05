@@ -1,7 +1,13 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import type { Logger } from "@medusajs/framework/types"
+import BaseLinkerImport from "./models/baselinker-import"
+import BaseLinkerInvoice from "./models/baselinker-invoice"
 import BaseLinkerOrder from "./models/baselinker-order"
+import BaseLinkerPlanItem from "./models/baselinker-plan-item"
 import BaseLinkerProduct from "./models/baselinker-product"
+import BaseLinkerQuarantine from "./models/baselinker-quarantine"
+import BaseLinkerReturn from "./models/baselinker-return"
+import BaseLinkerSetting from "./models/baselinker-setting"
 import BaseLinkerStockChange from "./models/baselinker-stock-change"
 import BaseLinkerSyncRun from "./models/baselinker-sync-run"
 import { missingOptions, resolveOptions, type BaseLinkerPluginOptions, type ResolvedBaseLinkerOptions } from "./lib/options"
@@ -12,8 +18,8 @@ type InjectedDependencies = {
 }
 
 /**
- * BaseLinker module service: generated CRUD for the four tables plus the
- * resolved options and masking. Nothing else.
+ * BaseLinker module service: generated CRUD for the tables plus the resolved
+ * options and masking. Nothing else.
  *
  * THE SERVICE STAYS THIN ON PURPOSE. The work (reading the catalog, the
  * outbox, the status read, the stock plan) lives in `src/workflows/baselinker`
@@ -30,6 +36,12 @@ class BaseLinkerModuleService extends MedusaService({
   BaseLinkerOrder,
   BaseLinkerStockChange,
   BaseLinkerSyncRun,
+  BaseLinkerSetting,
+  BaseLinkerPlanItem,
+  BaseLinkerQuarantine,
+  BaseLinkerImport,
+  BaseLinkerReturn,
+  BaseLinkerInvoice,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedBaseLinkerOptions

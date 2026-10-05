@@ -1,17 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
+  ArmResponse,
   CardFilter,
   CardsResponse,
   CheckResponse,
+  ImportDto,
+  ImportFilter,
+  ImportsResponse,
+  InvoiceDto,
+  InvoiceRowStatus,
+  InvoicesResponse,
   OrderByMedusaResponse,
   OrderFilter,
   OrdersResponse,
+  PlanFilter,
+  PlanKind,
+  PlansResponse,
   ProductCardsResponse,
+  ReleaseResponse,
+  ReturnsResponse,
   RunsResponse,
   SendResponse,
   StatusResponse,
   StockResponse,
   SyncResponse,
+  SyncWhat,
+  WriterKey,
 } from "../../modules/baselinker/lib/contract"
 
 declare const __BACKEND_URL__: string | undefined
@@ -70,6 +84,10 @@ export const baselinkerKeys = {
   runs: ["baselinker", "runs"] as const,
   order: (id: string) => ["baselinker", "order", id] as const,
   product: (id: string) => ["baselinker", "product", id] as const,
+  plans: (kind: PlanKind, filter: PlanFilter, q: string, offset: number, limit: number) => ["baselinker", "plans", kind, filter, q, offset, limit] as const,
+  imports: (filter: ImportFilter, q: string, offset: number, limit: number) => ["baselinker", "imports", filter, q, offset, limit] as const,
+  returns: (q: string, offset: number, limit: number) => ["baselinker", "returns", q, offset, limit] as const,
+  invoices: (filter: string, offset: number, limit: number) => ["baselinker", "invoices", filter, offset, limit] as const,
 }
 
 /** Status of the page. Polls while a job runs or right after an action. */
@@ -153,9 +171,90 @@ export function useBaseLinkerProductCards(productId: string) {
 
 export function useBaseLinkerSync() {
   const client = useQueryClient()
-  return useMutation<SyncResponse, Error, SyncResponse["what"]>({
+  return useMutation<SyncResponse, Error, SyncWhat>({
     mutationFn: (what) => baselinkerFetch<SyncResponse>("/admin/baselinker/sync", { method: "POST", body: { what } }),
     onSuccess: () => client.invalidateQueries({ queryKey: baselinkerKeys.status }),
+  })
+}
+
+/* ---- 0.2 ------------------------------------------------------------ */
+
+export function useBaseLinkerPlans(kind: PlanKind, filter: PlanFilter, q: string, offset: number, limit: number, enabled = true) {
+  return useQuery<PlansResponse>({
+    queryKey: baselinkerKeys.plans(kind, filter, q, offset, limit),
+    queryFn: () => baselinkerFetch<PlansResponse>(`/admin/baselinker/plans?${params({ kind, filter, q, offset, limit })}`),
+    placeholderData: (previous) => previous,
+    enabled,
+  })
+}
+
+export function useBaseLinkerImports(filter: ImportFilter, q: string, offset: number, limit: number, poll: boolean) {
+  return useQuery<ImportsResponse>({
+    queryKey: baselinkerKeys.imports(filter, q, offset, limit),
+    queryFn: () => baselinkerFetch<ImportsResponse>(`/admin/baselinker/imports?${params({ filter, q, offset, limit })}`),
+    placeholderData: (previous) => previous,
+    refetchInterval: poll ? 4_000 : 30_000,
+  })
+}
+
+export function useBaseLinkerReturns(q: string, offset: number, limit: number) {
+  return useQuery<ReturnsResponse>({
+    queryKey: baselinkerKeys.returns(q, offset, limit),
+    queryFn: () => baselinkerFetch<ReturnsResponse>(`/admin/baselinker/returns?${params({ q, offset, limit })}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useBaseLinkerInvoices(filter: InvoiceRowStatus | "all", offset: number, limit: number) {
+  return useQuery<InvoicesResponse>({
+    queryKey: baselinkerKeys.invoices(filter, offset, limit),
+    queryFn: () => baselinkerFetch<InvoicesResponse>(`/admin/baselinker/invoices?${params({ filter, offset, limit })}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+/** Arm or disarm one writer; the answer carries the whole status, so the page updates at once. */
+export function useBaseLinkerArm() {
+  const client = useQueryClient()
+  return useMutation<ArmResponse, Error, { key: WriterKey; armed: boolean }>({
+    mutationFn: ({ key, armed }) => baselinkerFetch<ArmResponse>(`/admin/baselinker/writers/${key}`, { method: "POST", body: { armed } }),
+    onSuccess: (data) => {
+      client.setQueryData(baselinkerKeys.status, data.status)
+      void client.invalidateQueries({ queryKey: baselinkerKeys.all, predicate: (q) => q.queryKey[1] !== "status" })
+    },
+  })
+}
+
+/** Demo mode only: look at the other direction of the simulation. */
+export function useBaseLinkerDirections() {
+  const client = useQueryClient()
+  return useMutation<StatusResponse, Error, { catalog?: "medusa" | "baselinker"; stock?: "baselinker" | "medusa" }>({
+    mutationFn: (body) => baselinkerFetch<StatusResponse>("/admin/baselinker/directions", { method: "POST", body }),
+    onSuccess: (data) => client.setQueryData(baselinkerKeys.status, data),
+  })
+}
+
+export function useBaseLinkerRelease() {
+  const client = useQueryClient()
+  return useMutation<ReleaseResponse, Error, string>({
+    mutationFn: (id) => baselinkerFetch<ReleaseResponse>(`/admin/baselinker/quarantine/${encodeURIComponent(id)}/release`, { method: "POST", body: {} }),
+    onSuccess: () => client.invalidateQueries({ queryKey: baselinkerKeys.all }),
+  })
+}
+
+export function useBaseLinkerImportNow() {
+  const client = useQueryClient()
+  return useMutation<{ import: ImportDto }, Error, string>({
+    mutationFn: (id) => baselinkerFetch<{ import: ImportDto }>(`/admin/baselinker/imports/${encodeURIComponent(id)}/import`, { method: "POST", body: {} }),
+    onSuccess: () => client.invalidateQueries({ queryKey: baselinkerKeys.all }),
+  })
+}
+
+export function useBaseLinkerInvoiceRetry() {
+  const client = useQueryClient()
+  return useMutation<{ invoice: InvoiceDto }, Error, string>({
+    mutationFn: (id) => baselinkerFetch<{ invoice: InvoiceDto }>(`/admin/baselinker/invoices/${encodeURIComponent(id)}/retry`, { method: "POST", body: {} }),
+    onSuccess: () => client.invalidateQueries({ queryKey: baselinkerKeys.all }),
   })
 }
 

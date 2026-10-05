@@ -162,3 +162,82 @@ test("addOrder: blocked by the barrier when export is off, after a read-only sca
     ["getOrders"],
   )
 })
+
+/* ---- 0.2 ------------------------------------------------------------ */
+
+test("writes need the permit of their writer: forWriter adds one, call() never writes", async () => {
+  const { calls, fetchImpl } = fakeBaseLinker([json({ status: "SUCCESS", counter: 1, warnings: { "12": "Bundle stock cannot be set" } })])
+  const { c } = client(fetchImpl)
+  await assert.rejects(c.updateInventoryProductsStock(1, { "11": { bl_1: 2 } }), BaseLinkerWriteBlockedError)
+  await assert.rejects(c.forWriter("prices").updateInventoryProductsStock(1, { "11": { bl_1: 2 } }), BaseLinkerWriteBlockedError)
+  await assert.rejects(c.forWriter("stockToBaseLinker").call("updateInventoryProductsStock", {}), BaseLinkerWriteBlockedError)
+  assert.equal(calls.length, 0)
+  const res = await c.forWriter("stockToBaseLinker").updateInventoryProductsStock(1, { "11": { bl_1: 2 }, "12": { bl_1: 1 } })
+  assert.deepEqual(res, { counter: 1, warnings: { "12": "Bundle stock cannot be set" } })
+  assert.deepEqual(calls[0].params, { inventory_id: 1, products: { "11": { bl_1: 2 }, "12": { bl_1: 1 } } })
+})
+
+test("a card is created at most once: a SKU already there is adopted, an unclear answer is settled by a second lookup", async () => {
+  const lookupEmpty = json({ status: "SUCCESS", products: {} })
+  const found = json({ status: "SUCCESS", products: { "701": { id: 701, sku: "op-1 ", name: "Opona" } } })
+  {
+    const { calls, fetchImpl } = fakeBaseLinker([found])
+    const { c } = client(fetchImpl)
+    const res = await c.forWriter("cards").createCardOnce(9, { inventory_id: 9, sku: "OP-1" }, "OP-1", null)
+    assert.deepEqual(res, { productId: "701", adopted: true })
+    assert.deepEqual(
+      calls.map((x) => x.method),
+      ["getInventoryProductsList"],
+    )
+    assert.equal(calls[0].params.filter_sku, "OP-1")
+  }
+  {
+    const { calls, fetchImpl } = fakeBaseLinker([lookupEmpty, () => new TypeError("fetch failed"), found])
+    const { c, sleeps } = client(fetchImpl)
+    const res = await c.forWriter("cards").createCardOnce(9, { inventory_id: 9, sku: "OP-1" }, "OP-1", null)
+    assert.deepEqual(res, { productId: "701", adopted: true })
+    assert.deepEqual(
+      calls.map((x) => x.method),
+      ["getInventoryProductsList", "addInventoryProduct", "getInventoryProductsList"],
+      "never a second addInventoryProduct",
+    )
+    assert.deepEqual(sleeps, [3000])
+  }
+  {
+    const two = json({ status: "SUCCESS", products: { "1": { id: 1, sku: "OP-1" }, "2": { id: 2, sku: "op-1" } } })
+    const { calls, fetchImpl } = fakeBaseLinker([two])
+    const { c } = client(fetchImpl)
+    await assert.rejects(c.forWriter("cards").createCardOnce(9, {}, "OP-1", null), (err: unknown) => err instanceof BaseLinkerApiError && err.code === "DUPLICATE_SKU")
+    assert.equal(calls.length, 1)
+  }
+})
+
+test("the invoice number goes into one order field and nothing else", async () => {
+  const { calls, fetchImpl } = fakeBaseLinker([json({ status: "SUCCESS" })])
+  const { c } = client(fetchImpl)
+  const w = c.forWriter("invoiceNumbers")
+  await w.setOrderField(55, "extra_field_1", "FV 12/10/2026")
+  await w.setOrderField(55, "custom:135", "FV 13/10/2026")
+  assert.deepEqual(calls[0].params, { order_id: 55, extra_field_1: "FV 12/10/2026" })
+  assert.deepEqual(calls[1].params, { order_id: 55, custom_extra_fields: { "135": "FV 13/10/2026" } })
+  await assert.rejects(w.setOrderField(55, "admin_comments", "x"), BaseLinkerWriteBlockedError)
+})
+
+test("reads of 0.2: variants in the list, details in batches of 100, sources and price groups parsed", async () => {
+  const ids = Array.from({ length: 150 }, (_, i) => String(i + 1))
+  const { calls, fetchImpl } = fakeBaseLinker([
+    json({ status: "SUCCESS", products: {} }),
+    json({ status: "SUCCESS", products: {} }),
+    json({ status: "SUCCESS", sources: { personal: { "0": "Telefon" }, allegro: { "1455": "koda" }, order_return: ["Zwrot"] } }),
+    json({ status: "SUCCESS", price_groups: [{ price_group_id: 105, name: "Detal", currency: "pln", is_default: true, source_price_group_id: 0 }] }),
+  ])
+  const { c } = client(fetchImpl)
+  await c.getInventoryProductsData(9, ids)
+  assert.equal((calls[0].params.products as number[]).length, 100)
+  assert.equal((calls[1].params.products as number[]).length, 50)
+  assert.deepEqual(await c.getOrderSources(), [
+    { type: "allegro", id: 1455, name: "koda" },
+    { type: "personal", id: 0, name: "Telefon" },
+  ])
+  assert.deepEqual(await c.getInventoryPriceGroups(), [{ id: 105, name: "Detal", currency: "PLN", isDefault: true, derived: false }])
+})
