@@ -1,0 +1,9 @@
+node_modules
+.medusa
+.yalc
+yalc.lock
+.env
+.env.*
+*.tgz
+.DS_Store
+*.log

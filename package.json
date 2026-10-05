@@ -1,0 +1,17 @@
+{
+  "name": "@koda-plus/medusa-integrations",
+  "private": true,
+  "description": "Polish commerce integrations for Medusa v2 by Koda Plus: OLX, Allegro, BaseLinker and Subiekt nexo. Every package is published to npm on its own.",
+  "license": "MIT",
+  "scripts": {
+    "install:all": "node scripts/each.mjs npm ci",
+    "test": "node scripts/each.mjs npm test",
+    "typecheck": "node scripts/each.mjs npm run typecheck",
+    "build": "node scripts/each.mjs npm run build",
+    "check": "node scripts/each.mjs npm test && node scripts/each.mjs npm run typecheck",
+    "vendor": "node scripts/vendor-into-app.mjs ../koda-plus-demo/medusa-backend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
