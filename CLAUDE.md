@@ -1,6 +1,6 @@
 # CLAUDE.md — medusa-integrations
 
-Monorepo integracji Koda Plus dla Medusy v2 (`Koda-Plus/medusa-integrations`). Cztery paczki npm, każda publikowana i listowana na medusajs.com/integrations osobno:
+Monorepo integracji Koda Plus dla Medusy v2 (`Koda-Plus/medusa-integrations`). Pięć paczek npm, każda publikowana i listowana na medusajs.com/integrations osobno:
 
 | Paczka | Namespace | Moduł (klucz kontenera) | Kategoria w katalogu |
 | --- | --- | --- | --- |
@@ -8,12 +8,14 @@ Monorepo integracji Koda Plus dla Medusy v2 (`Koda-Plus/medusa-integrations`). C
 | `packages/medusa-plugin-allegro` | `allegro` | `allegro` | Other |
 | `packages/medusa-plugin-baselinker` | `baselinker` | `baselinker` | ERP |
 | `packages/medusa-plugin-subiekt-nexo` | `subiekt` | `subiekt_nexo` | ERP |
+| `packages/medusa-plugin-fakturownia` | `fakturownia` | `fakturownia` | Other |
 
 Mostek Subiekta (.NET 8, Sfera) to OSOBNE, komercyjne repo `Koda-Plus/subiekt-nexo-bridge` (lokalnie `Desktop/koda/subiekt-nexo-bridge`). Kontrakt `packages/medusa-plugin-subiekt-nexo/contract/` jest źródłem prawdy, mostek trzyma jego kopię.
 
 ## Skąd to się wzięło
 
 - OLX, Allegro, BaseLinker: uogólnione z integracji klienta OponyKola (Moto M5, `clients/oponykola/apps/backend`). Allegro i OLX tam tylko czytają; BaseLinker tam jest hubem (zamówienia do BL dokładnie raz, statusy i numery przesyłek z powrotem, stany z BL na planie).
+- Fakturownia: uogólnione z produkcyjnej integracji Crème Bar (`Desktop/cremebar/cremebar/apps/backend/src/modules/fakturownia`), z poprawkami: stan we własnych tabelach zamiast `order.metadata`, unikalny wiersz na zamówienie i rodzaj dokumentu, atomowe przejęcie wiersza, wyszukiwanie po `?oid=` przed każdym wystawieniem, stawki VAT z linii podatkowych Medusy. Notatki o API (zweryfikowane w dokumentacji): `packages/medusa-plugin-fakturownia/docs/fakturownia-api-notes.md`.
 - Subiekt nexo: uogólnione z produkcyjnego mostka Crème Bar (`Desktop/cremebar/NexoMedusaBridge`, v1.2.3), z odwróconą architekturą (Medusa ciągnie zdarzenia i stany, mostek nie ma klucza admina).
 - Historia OLX i Subiekta przeniesiona przez `git subtree` (stare `koda-plus-demo/packages/medusa-plugin-olx` i repo `Koda-Plus/medusa-plugin-subiekt-nexo` są zastąpione tym monorepo).
 
