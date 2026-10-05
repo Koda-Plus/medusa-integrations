@@ -5,19 +5,24 @@ import type { AdminProduct, DetailWidgetProps } from "@medusajs/framework/types"
 import { ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Container, Heading, Text } from "@medusajs/ui"
 import { useOlxProductAdverts } from "../lib/olx-api"
-import { AdvertStatus, fmtPrice } from "../lib/olx-ui"
+import { AdvertStatus, AlertBadge, ProblemList, PublicationStateBadge, fmtNumber, fmtPrice } from "../lib/olx-ui"
 import { OlxIcon } from "../lib/olx-icon"
 
 /**
  * Product page, side column: the OLX adverts linked to this product's
- * variants, primary first. When there is none, the widget says how to link one.
+ * variants (primary first, with statistics and unread messages), the alerts
+ * the product raises and its publish plan. When there is no advert, the
+ * widget says how to link one.
  */
 const OlxProductAdvertsWidget = ({ data }: DetailWidgetProps<AdminProduct>) => {
   const { t, i18n } = useTranslation("olx")
   const lang = i18n.language || "en"
   const q = useOlxProductAdverts(data.id)
   const adverts = q.data?.adverts ?? []
-  const firstSku = data.variants?.find((v) => v.sku)?.sku ?? "SKU"
+  const alerts = q.data?.alerts ?? []
+  const publications = (q.data?.publications ?? []).filter((p) => p.state !== "published")
+  const firstSku =
+    data.variants?.find((v) => v.sku)?.sku ?? alerts.find((a) => a.sku)?.sku ?? q.data?.publications.find((p) => p.sku)?.sku ?? "SKU"
 
   return (
     <Container className="divide-y p-0">
@@ -35,6 +40,20 @@ const OlxProductAdvertsWidget = ({ data }: DetailWidgetProps<AdminProduct>) => {
           {t("widget.more")}
         </Link>
       </div>
+
+      {alerts.length > 0 ? (
+        <div className="flex flex-col gap-y-2 px-6 py-3">
+          {alerts.map((a) => (
+            <div key={a.id} className="flex flex-col items-start gap-y-1">
+              <AlertBadge kind={a.kind} />
+              <Text size="xsmall" className="text-ui-fg-subtle">
+                {t(`alerts.hint.${a.kind}`)}
+              </Text>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {q.isLoading ? null : adverts.length === 0 ? (
         <div className="flex flex-col gap-y-1 px-6 py-4">
           <Text size="small" className="text-ui-fg-subtle">
@@ -46,35 +65,70 @@ const OlxProductAdvertsWidget = ({ data }: DetailWidgetProps<AdminProduct>) => {
         </div>
       ) : (
         adverts.slice(0, 6).map((a) => (
-          <div key={a.id} className="flex items-start justify-between gap-x-3 px-6 py-3">
-            <div className="flex min-w-0 flex-col gap-y-1">
-              <a
-                href={a.url}
-                target="_blank"
-                rel="noreferrer"
-                className="txt-compact-small-plus inline-flex items-center gap-x-1 text-ui-fg-base hover:text-ui-fg-interactive"
-              >
-                <span className="truncate">{a.title}</span>
-                <ArrowUpRightOnBox className="shrink-0 text-ui-fg-muted" />
-              </a>
-              <span className="flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{a.sku}</span>
-                {a.isPrimary ? (
-                  <Badge size="2xsmall" color="green">
-                    {t("adverts.primary")}
-                  </Badge>
-                ) : null}
-              </span>
+          <div key={a.id} className="flex flex-col gap-y-1.5 px-6 py-3">
+            <div className="flex items-start justify-between gap-x-3">
+              <div className="flex min-w-0 flex-col gap-y-1">
+                <a
+                  href={a.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="txt-compact-small-plus inline-flex items-center gap-x-1 text-ui-fg-base hover:text-ui-fg-interactive"
+                >
+                  <span className="truncate">{a.title}</span>
+                  <ArrowUpRightOnBox className="shrink-0 text-ui-fg-muted" />
+                </a>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{a.sku}</span>
+                  {a.isPrimary ? (
+                    <Badge size="2xsmall" color="green">
+                      {t("adverts.primary")}
+                    </Badge>
+                  ) : null}
+                  {a.unread > 0 ? (
+                    <a href={q.data?.chatUrl} target="_blank" rel="noreferrer">
+                      <Badge size="2xsmall" color="blue">
+                        {t("adverts.unread", { count: a.unread })}
+                      </Badge>
+                    </a>
+                  ) : null}
+                </span>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-y-1">
+                <AdvertStatus advert={a} />
+                <Text size="xsmall" className="tabular-nums text-ui-fg-subtle">
+                  {fmtPrice(a.price, lang)}
+                </Text>
+              </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-y-1">
-              <AdvertStatus advert={a} />
-              <Text size="xsmall" className="tabular-nums text-ui-fg-subtle">
-                {fmtPrice(a.price, lang)}
+            {a.stats ? (
+              <Text size="xsmall" className="tabular-nums text-ui-fg-muted">
+                {t("widget.stats", {
+                  views: fmtNumber(a.stats.views ?? 0, lang),
+                  phone: fmtNumber(a.stats.phoneViews ?? 0, lang),
+                  observers: fmtNumber(a.stats.observers ?? 0, lang),
+                })}
               </Text>
-            </div>
+            ) : null}
           </div>
         ))
       )}
+
+      {publications.length > 0 ? (
+        <div className="flex flex-col gap-y-2 px-6 py-3">
+          <Text size="xsmall" weight="plus" className="text-ui-fg-subtle">
+            {t("widget.publication")}
+          </Text>
+          {publications.map((p) => (
+            <div key={p.id} className="flex flex-col items-start gap-y-1">
+              <span className="flex items-center gap-x-2">
+                <PublicationStateBadge state={p.state} />
+                <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{p.sku}</span>
+              </span>
+              <ProblemList problems={p.missing} />
+            </div>
+          ))}
+        </div>
+      ) : null}
     </Container>
   )
 }

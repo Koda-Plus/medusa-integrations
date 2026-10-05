@@ -3,6 +3,7 @@ import { cancelConnecting, completeConnecting, getConnectionRow } from "../../..
 import { OLX_MODULE } from "../../../modules/olx/lib/constants"
 import type OlxModuleService from "../../../modules/olx/service"
 import { syncOlxAdvertsWorkflow } from "../../../workflows/olx/sync-olx-adverts"
+import { runOlxCycleWorkflow } from "../../../workflows/olx/workflows"
 
 /**
  * GET /olx/callback?code=...&state=...
@@ -28,7 +29,7 @@ const TEXT = {
     refusedTitle: "Zgoda nie została udzielona",
     refusedBody: "Sklep nie dostał dostępu do konta OLX. Jeśli to pomyłka, zacznij od nowa w panelu sklepu.",
     okTitle: "Konto OLX połączone",
-    okBody: "Sklep może już czytać listę ogłoszeń. Tę kartę można zamknąć.",
+    okBody: "Sklep ma już dostęp do konta OLX. Tę kartę można zamknąć.",
     failTitle: "Nie udało się połączyć konta OLX",
   },
   en: {
@@ -39,7 +40,7 @@ const TEXT = {
     refusedTitle: "Consent was not granted",
     refusedBody: "The store did not get access to the OLX account. If this was a mistake, start again from the store admin.",
     okTitle: "OLX account connected",
-    okBody: "The store can now read the list of adverts. You can close this tab.",
+    okBody: "The store now has access to the OLX account. You can close this tab.",
     failTitle: "Could not connect the OLX account",
   },
 }
@@ -77,6 +78,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     /* First snapshot right away, so the admin shows adverts within a minute. */
     void syncOlxAdvertsWorkflow(req.scope)
       .run({ input: { trigger: "auto" } })
+      .then(() => runOlxCycleWorkflow(req.scope).run({ input: { trigger: "auto" } }))
       .catch((err: unknown) => svc.getLogger().error(`[olx] first sync: ${svc.mask(String(err))}`))
     page(res, 200, lang, t.okTitle, t.okBody)
   } catch (err) {

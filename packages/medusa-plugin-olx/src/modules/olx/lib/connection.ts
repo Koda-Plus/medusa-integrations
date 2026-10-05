@@ -16,9 +16,21 @@
 import { randomBytes } from "node:crypto"
 import type OlxModuleService from "../service"
 import { advertsFromPartnerApi, compilePatterns, type OlxAdvertInput } from "./adverts"
+import { noteIpBlock } from "./block"
 import { OlxApiError, OlxClient, type TokenPair } from "./client"
-import { CONNECTION_ID, MAX_PAGES, PAGE_SIZE, REFRESH_MARGIN_MS, STATE_TTL_MS, olxUrls } from "./constants"
+import {
+  BLOCK_PAUSE_MS,
+  CONNECTION_ID,
+  MAX_PAGES,
+  OAUTH_SCOPE_READ,
+  OAUTH_SCOPE_WRITE,
+  PAGE_SIZE,
+  REFRESH_MARGIN_MS,
+  STATE_TTL_MS,
+  olxUrls,
+} from "./constants"
 import { OlxCryptoError, decrypt, encrypt, keyFromBase64 } from "./crypto"
+import { wantsWriteScope } from "./options"
 import { verifyState } from "./security"
 
 export interface ConnectionRow {
@@ -73,6 +85,15 @@ function enqueue<T>(work: () => Promise<T>): Promise<T> {
     () => undefined,
   )
   return step
+}
+
+/**
+ * The scope the consent asks for: `read v2`, plus `write` when any writer is
+ * allowed in the options. A token issued before a writer was allowed carries
+ * no `write`; the admin then asks for connecting the account again.
+ */
+export function scopeFor(svc: OlxModuleService): string {
+  return wantsWriteScope(svc.getOptions()) ? OAUTH_SCOPE_WRITE : OAUTH_SCOPE_READ
 }
 
 const clients = new WeakMap<object, OlxClient>()
@@ -134,7 +155,7 @@ export function activeConnecting(
   if (!row?.state || !row.state_expires_at) return null
   const expires = new Date(row.state_expires_at)
   if (expires.getTime() <= Date.now()) return null
-  return { url: clientFor(svc).authorizeUrl(row.state), expiresAt: expires.toISOString() }
+  return { url: clientFor(svc).authorizeUrl(row.state, scopeFor(svc)), expiresAt: expires.toISOString() }
 }
 
 /* ------------------------------------------------------------------ */
@@ -153,7 +174,7 @@ export async function startConnecting(svc: OlxModuleService): Promise<{ url: str
   await enqueue(() =>
     save(svc, { state, state_expires_at: expiresAt, last_error: null, last_error_at: null }),
   )
-  return { url: clientFor(svc).authorizeUrl(state), expiresAt: expiresAt.toISOString() }
+  return { url: clientFor(svc).authorizeUrl(state, scopeFor(svc)), expiresAt: expiresAt.toISOString() }
 }
 
 /**
@@ -175,7 +196,7 @@ export function completeConnecting(svc: OlxModuleService, code: string, state: s
       throw new Error("OLX sent the consent without a code.")
     }
     try {
-      const pair = await clientFor(svc).exchangeCode(code.trim())
+      const pair = await clientFor(svc).exchangeCode(code.trim(), scopeFor(svc))
       await savePair(svc, pair, { connected_at: new Date(), disconnected_at: null, state: null, state_expires_at: null })
       svc.getLogger().info(`[olx] Account connected, scope: ${pair.scope || "(none)"}`)
     } catch (err) {
@@ -228,12 +249,12 @@ async function savePair(svc: OlxModuleService, pair: TokenPair, rest: Partial<Co
 
 /**
  * A valid access token, refreshed ahead of time (two hours before the end of
- * its 24 hours). The refresh token lives 30 days from the last refresh and the
+ * its 24 hours). The refresh token lives a month from the last refresh and the
  * hourly sync refreshes daily, so in normal operation it never expires.
  *
  * @param force Refresh despite validity; used after a 401 from the API.
  */
-function accessToken(svc: OlxModuleService, force = false): Promise<string> {
+export function accessToken(svc: OlxModuleService, force = false): Promise<string> {
   return enqueue(async () => {
     const row = await getConnectionRow(svc)
     if (!row?.refresh_token_enc) throw new OlxApiError(0, "The OLX account is not connected.", false)
@@ -311,6 +332,7 @@ export async function readAllAdverts(svc: OlxModuleService): Promise<AdvertsRead
   const incomplete = (err: unknown): AdvertsRead => {
     const reason = svc.mask(err instanceof Error ? err.message : String(err))
     if (err instanceof OlxCryptoError) svc.getLogger().error(`[olx] ${reason}`)
+    if (err instanceof OlxApiError && err.blocked) noteIpBlock(Date.now(), BLOCK_PAUSE_MS)
     return { adverts: [...collected.values()], statuses, complete: false, pages, reason }
   }
 

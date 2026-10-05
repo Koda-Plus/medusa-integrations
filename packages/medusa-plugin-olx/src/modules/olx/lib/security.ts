@@ -1,37 +1,78 @@
 /**
- * WRITE BARRIER, SECRET MASKING AND THE `state` CHECK. Zero imports, so the
- * unit tests load it without a build.
+ * WRITE BARRIER, SECRET MASKING AND THE `state` CHECK. Pure functions: the
+ * unit tests load them without a build.
  *
- * The plugin is READ-ONLY towards OLX and the HTTP verb decides it: the
- * Partner API only ever sees GET and HEAD. The single POST the plugin sends
- * goes to the OAuth token endpoint (code exchange and refresh), so it is
- * allowed by exact URL, not by verb. A bug in our code ends with an exception
- * here, never with a changed advert on the seller's account.
+ * READS ARE FREE, WRITES ARE A SHORT LIST. The Partner API sees GET and HEAD
+ * at any time. The only POST that needs no writer is the OAuth token
+ * exchange. Everything else must be one of three writes, and only while the
+ * writer that owns it is armed for the call:
+ *
+ *   lifecycle   POST /adverts/{id}/commands  with command activate, deactivate or finish
+ *   price       PUT  /adverts/{id}           (the whole advert, price changed)
+ *   publish     POST /adverts                (a new advert)
+ *
+ * Deleting adverts, buying packets or paid features, the `extend` command,
+ * thread commands and messages are not on the list, so a bug in our code ends
+ * with an exception here, never with money spent or an advert deleted.
  */
+
+import { OlxWriteBlockedError } from "./errors"
+
+export { OlxWriteBlockedError }
 
 export type Verdict = { ok: true } | { ok: false; reason: string }
 
+export type WriteKind = "lifecycle" | "price" | "publish"
+
+/** Commands the lifecycle writer may send. `extend` is left out on purpose. */
+export const LIFECYCLE_COMMANDS: readonly string[] = ["activate", "deactivate", "finish"]
+
 const READ_METHODS = new Set(["GET", "HEAD"])
 
-export function isRequestAllowed(args: { method: string; url: string; tokenUrl: string }): Verdict {
+export interface BarrierArgs {
+  method: string
+  url: string
+  tokenUrl: string
+  /** Partner API base, e.g. `https://www.olx.pl/api/partner`. Without it nothing but reads passes. */
+  apiBase?: string
+  /** Body of the request, checked for commands. */
+  body?: unknown
+  /** Writers armed for this very call. Empty or missing: read-only. */
+  allow?: readonly WriteKind[]
+}
+
+/** Which writer a request belongs to, or null when it is not one of the three writes. */
+export function writeKindOf(method: string, url: string, apiBase: string | undefined, body?: unknown): WriteKind | null {
+  if (!apiBase) return null
+  const m = method.trim().toUpperCase()
+  const base = apiBase.replace(/\/+$/, "")
+  if (!url.startsWith(`${base}/`)) return null
+  const path = url.slice(base.length)
+  if (path.includes("?") || path.includes("#")) return null
+  if (m === "POST" && /^\/adverts\/\d+\/commands$/.test(path)) {
+    const command = body && typeof body === "object" ? (body as Record<string, unknown>).command : undefined
+    return typeof command === "string" && LIFECYCLE_COMMANDS.includes(command) ? "lifecycle" : null
+  }
+  if (m === "PUT" && /^\/adverts\/\d+$/.test(path)) return "price"
+  if (m === "POST" && path === "/adverts") return "publish"
+  return null
+}
+
+export function isRequestAllowed(args: BarrierArgs): Verdict {
   const method = args.method.trim().toUpperCase()
   if (READ_METHODS.has(method)) return { ok: true }
   if (method === "POST" && args.url === args.tokenUrl) return { ok: true }
-  return {
-    ok: false,
-    reason: `${method} ${args.url}: the OLX plugin is read-only; the only allowed POST is the token exchange at ${args.tokenUrl}.`,
+  const kind = writeKindOf(method, args.url, args.apiBase, args.body)
+  if (!kind) {
+    return {
+      ok: false,
+      reason: `${method} ${args.url}: not one of the writes this plugin may send (advert commands activate, deactivate and finish, an advert update, a new advert).`,
+    }
   }
-}
-
-export class OlxWriteBlockedError extends Error {
-  readonly method: string
-  readonly url: string
-  constructor(method: string, url: string, reason: string) {
-    super(reason)
-    this.name = "OlxWriteBlockedError"
-    this.method = method
-    this.url = url
+  if (!(args.allow ?? []).includes(kind)) {
+    return { ok: false, reason: `${method} ${args.url}: the ${kind} writer is not armed for this call.` }
   }
+  return { ok: true }
 }
 
 /**
@@ -75,4 +116,12 @@ export function verifyState(args: {
   }
   if (saved !== received) return { ok: false, reason: "The state parameter does not match the connection attempt." }
   return { ok: true }
+}
+
+/** Whether a granted OAuth scope string carries `write`. OLX returns it space separated, e.g. "v2 read write". */
+export function hasWriteScope(scope: string | null | undefined): boolean {
+  return String(scope ?? "")
+    .split(/[\s,+]+/)
+    .map((s) => s.trim().toLowerCase())
+    .includes("write")
 }
