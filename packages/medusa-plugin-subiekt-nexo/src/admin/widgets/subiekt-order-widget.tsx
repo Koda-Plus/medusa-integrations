@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { ArchiveBox } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, Text, toast } from "@medusajs/ui"
 import { errorMessage, useSubiektOrder, useSubiektRetry, useSubiektSendOrder } from "../lib/subiekt-api"
 import { DocumentStatusBadge, TaskStatusBadge, fmtDateTime } from "../lib/subiekt-ui"
+import { SubiektIcon } from "../lib/subiekt-icon"
 
 /**
  * Order page, side column: the Subiekt documents of this order (ZK, WZ) and
@@ -46,7 +46,7 @@ const SubiektOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
     <Container className="divide-y p-0">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-x-2">
-          <ArchiveBox className="text-ui-fg-subtle" />
+          <SubiektIcon width={18} height={18} className="shrink-0" />
           <Heading level="h2">{t("widget.title")}</Heading>
           {q.data?.mode === "demo" ? (
             <Badge size="2xsmall" color="purple">

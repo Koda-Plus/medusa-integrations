@@ -15,7 +15,7 @@ import type AllegroModuleService from "../../modules/allegro/service"
 import { isConnected, readOrdersSince, type OrdersRead } from "../../modules/allegro/lib/connection"
 import { ALLEGRO_MODULE, ORDERS_FIRST_READ_DAYS, ORDERS_KEEP_DAYS, ORDERS_OVERLAP_MS } from "../../modules/allegro/lib/constants"
 import { buildDemoRawOrders } from "../../modules/allegro/lib/demo"
-import { toRunDto, type OrderRow, type RunRow } from "../../modules/allegro/lib/dto"
+import { sameJson, toRunDto, type OrderRow, type RunRow } from "../../modules/allegro/lib/dto"
 import { normalizeKey } from "../../modules/allegro/lib/matching"
 import { linkLines, ordersFromApi, type AllegroOrderInput, type LineVariant } from "../../modules/allegro/lib/orders"
 import { loadCatalog, type QueryLike } from "./catalog"
@@ -73,8 +73,8 @@ function sameRow(row: OrderRow, want: OrderData): boolean {
     Boolean(row.demo) === want.demo &&
     t(row.bought_at) === t(want.bought_at) &&
     t(row.allegro_updated_at) === t(want.allegro_updated_at) &&
-    JSON.stringify(row.total ?? null) === JSON.stringify(want.total ?? null) &&
-    JSON.stringify(row.lines ?? null) === JSON.stringify(want.lines ?? null)
+    sameJson(row.total, want.total) &&
+    sameJson(row.lines, want.lines)
   )
 }
 

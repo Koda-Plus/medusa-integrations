@@ -8,13 +8,14 @@
     "url": "https://koda.plus"
   },
   "license": "MIT",
-  "homepage": "https://github.com/Koda-Plus/medusa-plugin-olx#readme",
+  "homepage": "https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-olx#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Koda-Plus/medusa-plugin-olx.git"
+    "url": "git+https://github.com/Koda-Plus/medusa-integrations.git",
+    "directory": "packages/medusa-plugin-olx"
   },
   "bugs": {
-    "url": "https://github.com/Koda-Plus/medusa-plugin-olx/issues"
+    "url": "https://github.com/Koda-Plus/medusa-integrations/issues"
   },
   "keywords": [
     "medusa-v2",

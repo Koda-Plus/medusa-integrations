@@ -2,7 +2,9 @@
 
 Connect Medusa to **Subiekt nexo PRO** (InsERT), the most common ERP of Polish shops. Orders become ZK documents in Subiekt seconds after checkout, the WZ the warehouse issues comes back to the order, and stock flows from Subiekt to Medusa inventory. Your team keeps working in Subiekt; Medusa stays the storefront.
 
-![Subiekt nexo page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-plugin-subiekt-nexo/main/docs/admin-subiekt.png)
+![Subiekt nexo page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-subiekt-nexo/docs/admin-subiekt.png)
+
+**Live demo:** Medusa admin [medusa.koda.plus/app/subiekt](https://medusa.koda.plus/app/subiekt?demo=en), signed in to a public demo account by the link itself. The demo runs the plugin with its simulated bridge, so every screen has data.
 
 ## How it works
 
@@ -104,7 +106,7 @@ Missing options never break the boot: the module registers, the admin lists what
 3. The warehouse issues the WZ from the ZK in Subiekt. The bridge watcher announces it in the event feed (and nudges Medusa through `POST /hooks/subiekt`); the plugin writes `subiekt_wz_number` and, with `fulfillOnWz`, fulfills the order.
 4. `order.canceled`: if the ZK was never attempted, the queued create is simply canceled; otherwise the bridge cancels the ZK, or refuses with `document_locked` once a WZ exists.
 
-![The order page widget: ZK and WZ of the order](https://raw.githubusercontent.com/Koda-Plus/medusa-plugin-subiekt-nexo/main/docs/admin-order-widget.png)
+![The order page widget: ZK and WZ of the order](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-subiekt-nexo/docs/admin-order-widget.png)
 
 There is deliberately **no compensation that deletes a ZK**. The ERP recipe compensates a remote create by deleting the remote record; here the bridge is idempotent per order, so a retry after a local failure gets the same ZK back, while a deleted ZK would leave a hole in the number series and might already be on the warehouse's desk.
 
@@ -122,7 +124,7 @@ Koda Plus provides a production bridge for Subiekt nexo PRO: a Windows service o
 4. A duplicated EAN in Subiekt, or one inventory item matched to two products with different stock, is a conflict: reported in the admin, never written.
 5. Only matched items are written, through Medusa's `batchInventoryItemLevelsWorkflow`. Negative Subiekt stock becomes 0.
 
-![Stock plan: changes, products only in Subiekt, conflicts](https://raw.githubusercontent.com/Koda-Plus/medusa-plugin-subiekt-nexo/main/docs/admin-subiekt-stock.png)
+![Stock plan: changes, products only in Subiekt, conflicts](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-subiekt-nexo/docs/admin-subiekt-stock.png)
 
 ## Admin API
 

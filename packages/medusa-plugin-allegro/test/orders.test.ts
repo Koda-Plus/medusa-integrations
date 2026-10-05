@@ -69,3 +69,12 @@ test("orders: groups for the filters", () => {
   assert.equal(orderGroup("READY_FOR_PROCESSING", "RETURNED"), "cancelled")
   assert.equal(orderFromApi({ status: "BOUGHT" }), null)
 })
+
+test("orders: a json column read back with reordered keys is not a change", async () => {
+  const { sameJson } = await import("../src/modules/allegro/lib/dto.ts")
+  const fresh = [{ offerId: "1", offerName: "A", externalId: null, quantity: 1, price: { value: 9.99, currency: "PLN" }, variantId: "v", productId: "p", sku: "S", productTitle: "T" }]
+  const stored = [{ sku: "S", price: { currency: "PLN", value: 9.99 }, offerId: "1", quantity: 1, offerName: "A", productId: "p", variantId: "v", externalId: null, productTitle: "T" }]
+  assert.equal(sameJson(stored, fresh), true)
+  assert.equal(sameJson(stored, [{ ...fresh[0], quantity: 2 }]), false)
+  assert.equal(sameJson(null, undefined), true)
+})
