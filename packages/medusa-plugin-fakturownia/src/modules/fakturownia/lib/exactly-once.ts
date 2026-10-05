@@ -51,6 +51,17 @@ export interface RemoteDocument {
   govId: string | null
   govErrors: string | null
   fromInvoiceId: string | null
+  /* 0.2.0 */
+  /** `invoice_id`: the corrected invoice of a correction. */
+  invoiceId: string | null
+  /** `internal_note`: the private note (not printed) where a correction carries its marker. */
+  internalNote: string | null
+  /** `gov_error_messages` as a list. */
+  govErrorList: string[]
+  govSendDate: string | null
+  govVerificationLink: string | null
+  govLink: string | null
+  govCorrectedNumber: string | null
 }
 
 function text(v: unknown): string | null {
@@ -66,6 +77,8 @@ export function toRemoteDocument(raw: unknown): RemoteDocument | null {
   const id = text(r.id)
   if (!id || !/^\d+$/.test(id)) return null
   const errors = r.gov_error_messages
+  const errorList = Array.isArray(errors) ? errors.map((e) => String(e).trim()).filter(Boolean) : text(errors) ? [String(errors).trim()] : []
+  const sendDate = text(r.gov_send_date)
   return {
     id,
     number: text(r.number),
@@ -80,6 +93,24 @@ export function toRemoteDocument(raw: unknown): RemoteDocument | null {
     govId: text(r.gov_id),
     govErrors: Array.isArray(errors) ? errors.map((e) => String(e)).join("; ") || null : text(errors),
     fromInvoiceId: text(r.from_invoice_id),
+    invoiceId: text(r.invoice_id),
+    internalNote: text(r.internal_note),
+    govErrorList: errorList,
+    govSendDate: sendDate && Number.isFinite(Date.parse(sendDate)) ? new Date(sendDate).toISOString() : null,
+    govVerificationLink: httpsLink(r.gov_verification_link),
+    govLink: httpsLink(r.gov_link),
+    govCorrectedNumber: text(r.gov_corrected_invoice_number),
+  }
+}
+
+/** A link from Fakturownia, kept only when it is an https address (it reaches the admin as a link). */
+function httpsLink(v: unknown): string | null {
+  const s = text(v)
+  if (!s) return null
+  try {
+    return new URL(s).protocol === "https:" ? s : null
+  } catch {
+    return null
   }
 }
 

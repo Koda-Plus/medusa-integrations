@@ -26,6 +26,7 @@
 import { randomUUID } from "node:crypto"
 import type FakturowniaModuleService from "../../modules/fakturownia/service"
 import {
+  CORRECTIONS_PER_PASS,
   DEMO_BACKFILL_ORDERS,
   DOCUMENTS_PER_PASS,
   ISSUE_LEASE_MS,
@@ -38,7 +39,8 @@ import {
 import type { RunTrigger } from "../../modules/fakturownia/lib/contract"
 import { buildFinalFromProforma } from "../../modules/fakturownia/lib/conversion"
 import { addDays, warsawDate } from "../../modules/fakturownia/lib/dates"
-import { DEMO_FAILURE, demoFailingOrder, demoGovId, demoGovStatus, demoNumber, demoPaid, nextDemoId } from "../../modules/fakturownia/lib/demo"
+import { DEMO_FAILURE, demoFailingOrder, demoGovId, demoGovStatus, demoNumber, demoPaid, encodeDemoId } from "../../modules/fakturownia/lib/demo"
+import { documentEvent } from "../../modules/fakturownia/lib/events"
 import { mapBuyer } from "../../modules/fakturownia/lib/buyer"
 import {
   apiKind,
@@ -69,9 +71,13 @@ import type { FakturowniaClient } from "../../modules/fakturownia/lib/client"
 import { money, toNumberOrNull } from "../../modules/fakturownia/lib/numbers"
 import { canIssue, type ResolvedFakturowniaOptions } from "../../modules/fakturownia/lib/options"
 import { planAfterFailure } from "../../modules/fakturownia/lib/outbox"
+import { goesToKsef } from "../../modules/fakturownia/lib/status"
 import type { DocumentPatch } from "../../modules/fakturownia/lib/store"
 import { applyCancelRule, sendEmailFor } from "./followups"
+import { correctionLookup, onCorrectionIssued, prepareCorrection } from "./corrections"
+import { recordKsefEvent } from "./ksef"
 import {
+  ActionError,
   clientFor,
   documentsOfOrder,
   emitEvent,
@@ -79,6 +85,7 @@ import {
   fakturowniaService,
   getDocument,
   inBackground,
+  isArmed,
   isRunning,
   listDocuments,
   loadOrder,
@@ -107,7 +114,7 @@ export function orderFacts(order: OrderRecord, o: ResolvedFakturowniaOptions): O
     canceled: order.status === "canceled",
     capturedInFull: payment.captured,
     fulfilled: isFulfilled(order),
-    finalKind: finalKind(o, mapBuyer(order, o.taxIdMetadataKeys).type),
+    finalKind: finalKind(o, mapBuyer(order, o.nipSources).type),
   }
 }
 
@@ -167,6 +174,7 @@ type Prepared = { built: BuiltDocument; wait?: undefined } | { built?: undefined
 
 /** The document of a row: from the order, or (a final document after a proforma) from the proforma. */
 async function prepareDocument(scope: Scope, row: DocumentRow, order: OrderRecord): Promise<Prepared> {
+  if (row.kind === "correction") return prepareCorrection(scope, row)
   const svc = fakturowniaService(scope)
   const o = svc.getOptions()
   const today = warsawDate(new Date())
@@ -211,6 +219,8 @@ function summaryPatch(s: DocumentSummary): DocumentPatch {
     positions: s.positions,
     buyer_type: s.buyerType,
     from_fakturownia_id: s.fromInvoiceId,
+    order_version: s.orderVersion,
+    buyer_warning: s.buyerWarning,
   }
 }
 
@@ -262,14 +272,16 @@ function storedSummary(row: DocumentRow, o: ResolvedFakturowniaOptions): LookupS
 
 async function demoCreate(svc: FakturowniaModuleService, row: DocumentRow, order: OrderRecord, built: BuiltDocument, now: Date): Promise<RemoteDocument> {
   const given = await listDocuments(svc, { demo: true, fakturownia_id: { $ne: null } }, { take: null, select: ["fakturownia_id", "kind", "issue_date"] })
-  const highest = given.reduce((max, r) => Math.max(max, Number(r.fakturownia_id) || 0), 0)
+  const taken = new Set(given.map((r) => String(r.fakturownia_id)))
   const s = built.summary
   const month = s.issueDate.slice(0, 7)
-  const sequence = 1 + given.filter((r) => r.kind === row.kind && (r.issue_date ?? "").startsWith(month)).length
-  const paid = demoPaid(order.id, s.paid)
+  let sequence = 1 + given.filter((r) => r.kind === row.kind && (r.issue_date ?? "").startsWith(month)).length
+  /* The id carries the kind, the month and the sequence (`encodeDemoId`); a racing twin takes the next one. */
+  while (taken.has(encodeDemoId(row.kind, s.issueDate, sequence))) sequence += 1
+  const paid = row.kind === "correction" ? false : demoPaid(order.id, s.paid)
   const gov = demoGovStatus({ kind: row.kind, orderId: order.id, issuedAt: now, now })
   return {
-    id: String(nextDemoId(highest || null)),
+    id: encodeDemoId(row.kind, s.issueDate, sequence),
     number: demoNumber(row.kind, sequence, s.issueDate),
     kind: s.apiKind,
     oid: s.oid,
@@ -279,9 +291,16 @@ async function demoCreate(svc: FakturowniaModuleService, row: DocumentRow, order
     paid: paid ? s.totalGross : 0,
     status: paid ? "paid" : "issued",
     govStatus: gov,
-    govId: gov === "ok" ? demoGovId(order.id, s.issueDate) : null,
+    govId: gov === "ok" ? demoGovId(row.kind === "correction" ? `${order.id}#${row.id}` : order.id, s.issueDate) : null,
     govErrors: null,
     fromInvoiceId: s.fromInvoiceId,
+    invoiceId: row.kind === "correction" ? s.fromInvoiceId : null,
+    internalNote: null,
+    govErrorList: [],
+    govSendDate: gov === "processing" || gov === "ok" ? now.toISOString() : null,
+    govVerificationLink: null,
+    govLink: null,
+    govCorrectedNumber: null,
   }
 }
 
@@ -313,6 +332,11 @@ function issuedPatch(args: {
     gov_status: doc.govStatus,
     gov_id: doc.govId,
     gov_error: doc.govErrors ? args.mask(doc.govErrors).slice(0, 1000) : null,
+    gov_errors: doc.govErrorList.length > 0 ? doc.govErrorList.map((e) => args.mask(e).slice(0, 500)) : null,
+    gov_send_date: doc.govSendDate ? new Date(doc.govSendDate) : null,
+    gov_verification_link: doc.govVerificationLink,
+    gov_link: doc.govLink,
+    gov_corrected_number: doc.govCorrectedNumber,
     gov_checked_at: now,
     issued_at: now,
     next_attempt_at: null,
@@ -322,12 +346,15 @@ function issuedPatch(args: {
   }
 }
 
-/** E-mail, event and a cancellation that arrived while the document was on its way. Never throws. */
-async function afterIssued(scope: Scope, rowId: string, adopted: boolean): Promise<void> {
-  const svc = fakturowniaService(scope)
-  try {
-    const row = await getDocument(svc, rowId)
-    if (!row || row.status !== "issued") return
+/**
+ * The events of a row that just became issued: the contract event
+ * (`fakturownia.document.issued`, or `.corrected` for a correction) and the
+ * 0.1.0 event `fakturownia.document_issued` (not for corrections, which 0.1.0
+ * did not know). Called once per row: only by the caller whose atomic write
+ * moved the row to `issued`.
+ */
+export async function announceIssued(scope: Scope, row: DocumentRow, adopted: boolean): Promise<void> {
+  if (row.kind !== "correction") {
     await emitEvent(scope, PLUGIN_EVENTS.documentIssued, {
       order_id: row.order_id,
       display_id: row.display_id,
@@ -339,6 +366,27 @@ async function afterIssued(scope: Scope, rowId: string, adopted: boolean): Promi
       paid: Boolean(row.paid),
       demo: Boolean(row.demo),
     })
+  }
+  const event = documentEvent(row)
+  if (event) await emitEvent(scope, event.name, { ...event.data })
+}
+
+/** E-mail, event and a cancellation that arrived while the document was on its way. Never throws. */
+async function afterIssued(scope: Scope, rowId: string, adopted: boolean): Promise<void> {
+  const svc = fakturowniaService(scope)
+  try {
+    const row = await getDocument(svc, rowId)
+    if (!row || row.status !== "issued") return
+    await announceIssued(scope, row, adopted)
+    if (goesToKsef(row.kind) && row.gov_status) {
+      const errors = Array.isArray(row.gov_errors) ? (row.gov_errors as unknown[]).map(String) : null
+      await recordKsefEvent(scope, row, { source: "issue", govStatus: row.gov_status, govId: row.gov_id, errors })
+    }
+    if (row.kind === "correction") {
+      await onCorrectionIssued(scope, row)
+      if (row.email_status === "pending") await sendEmailFor(scope, row)
+      return
+    }
     const order = row.cancel_requested_at ? null : await loadOrder(scope, row.order_id)
     if (row.cancel_requested_at || order?.status === "canceled") {
       await applyCancelRule(scope, row)
@@ -384,7 +432,7 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
   try {
     const order = await loadOrder(scope, claimed.order_id)
     if (!order) throw new PayloadError("order_not_found", `Order ${claimed.order_id} does not exist in Medusa.`)
-    if (order.status === "canceled" || claimed.cancel_requested_at) {
+    if (claimed.kind !== "correction" && (order.status === "canceled" || claimed.cancel_requested_at)) {
       /* A pending row never has a document in Fakturownia (a lost answer goes to unknown, not here). */
       await store.finish(claimed.id, token, {
         status: "canceled",
@@ -402,9 +450,9 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
         attempts: Math.max(0, claimed.attempts - 1),
         next_attempt_at: new Date(now.getTime() + 60_000),
         error: prepared.wait,
-        error_code: "waiting_for_proforma",
+        error_code: claimed.kind === "correction" ? "waiting_for_writer" : "waiting_for_proforma",
       })
-      return { ...base, status: "waiting", code: "waiting_for_proforma", message: prepared.wait }
+      return { ...base, status: "waiting", code: claimed.kind === "correction" ? "waiting_for_writer" : "waiting_for_proforma", message: prepared.wait }
     }
     const current = prepared.built
     built = current
@@ -422,8 +470,12 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
     } else {
       const client = clientFor(svc)
       const plan = lookupPlan(claimed, current.summary, now)
+      const lookup =
+        claimed.kind === "correction"
+          ? await correctionLookup(scope, { ...claimed, from_fakturownia_id: current.summary.fromInvoiceId, oid: current.summary.oid }, current.summary.totalGross, current.summary.currency)
+          : () => lookupExisting(lookupDeps(client), plan.spec, plan.window)
       const result = await createOnce({
-        lookup: () => lookupExisting(lookupDeps(client), plan.spec, plan.window),
+        lookup,
         create: async () => {
           const created = toRemoteDocument(await client.createInvoice(current.invoice))
           if (!created) throw new FakturowniaUnknownResultError("create", new Error("an unreadable answer"))
@@ -437,7 +489,7 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
     const written = await store.finish(
       claimed.id,
       token,
-      issuedPatch({ doc, summary: current.summary, adopted, sendByEmail: o.sendByEmail, mask: (t) => svc.mask(t), now: new Date() }),
+      issuedPatch({ doc, summary: current.summary, adopted, sendByEmail: o.sendByEmail && o.writers.emails !== false, mask: (t) => svc.mask(t), now: new Date() }),
     )
     if (!written) {
       /* The lease ran out while we waited; the row is unknown now and its lookup will adopt this document. */
@@ -518,7 +570,11 @@ export async function reconcileRow(scope: Scope, row: DocumentRow): Promise<{ ou
   const plan = lookupPlan(row, summary, now)
   const lastAttemptAt = toDate(row.claimed_at) ?? toDate(row.updated_at)
   try {
-    const verdict = await reconcile({ lookup: () => lookupExisting(lookupDeps(client), plan.spec, plan.window), lastAttemptAt, now })
+    const lookup =
+      row.kind === "correction"
+        ? await correctionLookup(scope, row, summary.totalGross, summary.currency)
+        : () => lookupExisting(lookupDeps(client), plan.spec, plan.window)
+    const verdict = await reconcile({ lookup, lastAttemptAt, now })
     if (verdict.action === "adopt") {
       const moved = await store.transition(
         row.id,
@@ -527,7 +583,7 @@ export async function reconcileRow(scope: Scope, row: DocumentRow): Promise<{ ou
           doc: verdict.doc,
           summary: { issueDate: row.issue_date, totalGross: summary.totalGross, paid: Boolean(row.paid) },
           adopted: true,
-          sendByEmail: o.sendByEmail,
+          sendByEmail: o.sendByEmail && o.writers.emails !== false,
           mask: (t) => svc.mask(t),
           now,
         }),
@@ -557,7 +613,7 @@ export async function reconcileRow(scope: Scope, row: DocumentRow): Promise<{ ou
     }
     /* Certainly not in Fakturownia. */
     const order = await loadOrder(scope, row.order_id)
-    if (!order || order.status === "canceled" || row.cancel_requested_at) {
+    if (row.kind !== "correction" && (!order || order.status === "canceled" || row.cancel_requested_at)) {
       await store.transition(row.id, ["unknown"], {
         status: "canceled",
         next_attempt_at: null,
@@ -632,10 +688,19 @@ export async function issueDue(scope: Scope, trigger: RunTrigger): Promise<Issue
       if (r.outcome === "adopted") stats.adopted += 1
     }
 
-    const due = await listDocuments(svc, { status: "pending", demo: o.demo, next_attempt_at: { $lte: new Date() } }, {
+    const due = await listDocuments(svc, { status: "pending", demo: o.demo, kind: { $ne: "correction" }, next_attempt_at: { $lte: new Date() } }, {
       take: DOCUMENTS_PER_PASS,
       order: { next_attempt_at: "ASC" },
     })
+    /* Approved corrections: only while the corrections writer is armed, at most CORRECTIONS_PER_PASS per pass. */
+    if (await isArmed(svc, "corrections")) {
+      due.push(
+        ...(await listDocuments(svc, { status: "pending", demo: o.demo, kind: "correction", next_attempt_at: { $lte: new Date() } }, {
+          take: CORRECTIONS_PER_PASS,
+          order: { next_attempt_at: "ASC" },
+        })),
+      )
+    }
     for (const row of due) {
       const outcome = await issueRow(scope, row)
       if (outcome.status === "busy") {
@@ -718,14 +783,8 @@ export async function checkDocument(scope: Scope, id: string): Promise<{ outcome
   return { ...result, row: await getDocument(svc, id) }
 }
 
-export class ActionError extends Error {
-  readonly status: number
-  constructor(status: number, message: string) {
-    super(message)
-    this.name = "ActionError"
-    this.status = status
-  }
-}
+/* ActionError lives in runtime.ts (shared with the correction flows); re-exported here for 0.1.0 imports. */
+export { ActionError }
 
 /**
  * "Mark as issued": a person found (or issued) the document in Fakturownia.
@@ -770,6 +829,9 @@ export async function markIssued(scope: Scope, id: string, input: { number: stri
   }
   const moved = await storeFor(scope).transition(id, ["unknown", "failed"], patch)
   if (!moved) throw new ActionError(409, "Only a document that failed or whose result is unknown can be marked as issued.")
+  /* With its Fakturownia id the document is as good as issued by the plugin: other plugins hear of it (once: the transition above happens once). */
+  if (moved.fakturownia_id) await announceIssued(scope, moved, true)
+  if (moved.kind === "correction") await onCorrectionIssued(scope, moved)
   return moved
 }
 

@@ -23,13 +23,51 @@
  *     with a readable Fakturownia error, so the admin shows that state too.
  */
 
-/** Fakturownia ids of simulated documents start above this number. */
+/** Fakturownia ids of simulated documents of version 0.1.0 start above this number. */
 export const DEMO_ID_BASE = 700_000_000
 
 /** A clearly fake seller NIP for simulated KSeF numbers. */
 export const DEMO_SELLER_NIP = "0000000000"
 
-const PREFIX: Record<string, string> = { vat: "FV", proforma: "PRO", receipt: "PAR" }
+const PREFIX: Record<string, string> = { vat: "FV", proforma: "PRO", receipt: "PAR", correction: "KOR" }
+
+/**
+ * SIMULATED IDS THAT CARRY THEIR NUMBER (since 0.2.0). A simulated document
+ * id is `7`, a digit for the kind, the year and month of issue and a five
+ * digit sequence: 7 1 202610 00012 is "FV 12/10/2026". So anything that only
+ * knows the id (another plugin calling `downloadPdf({ externalId, demo })`,
+ * which must not read the database) can still print the number. Ids of
+ * version 0.1.0 (700000001 and up) stay valid and simply carry no number.
+ */
+const KIND_DIGIT: Record<string, string> = { vat: "1", proforma: "2", receipt: "3", correction: "4" }
+const DIGIT_KIND: Record<string, string> = { "1": "vat", "2": "proforma", "3": "receipt", "4": "correction" }
+
+export function encodeDemoId(kind: string, issueDate: string, sequence: number): string {
+  const digit = KIND_DIGIT[kind] ?? "9"
+  const yyyymm = `${issueDate.slice(0, 4)}${issueDate.slice(5, 7)}`
+  const seq = String(Math.min(99_999, Math.max(1, Math.floor(sequence)))).padStart(5, "0")
+  return `7${digit}${yyyymm}${seq}`
+}
+
+export interface DecodedDemoId {
+  kind: string
+  /** `YYYY-MM-01`: the month of issue. */
+  month: string
+  sequence: number
+  number: string
+}
+
+/** The kind and number of an id from `encodeDemoId`, or null (an id of 0.1.0, or not a demo id). */
+export function decodeDemoId(id: string | number): DecodedDemoId | null {
+  const m = /^7([1-4])(\d{4})(\d{2})(\d{5})$/.exec(String(id ?? "").trim())
+  if (!m) return null
+  const month = Number(m[3])
+  if (month < 1 || month > 12) return null
+  const kind = DIGIT_KIND[m[1]]
+  const sequence = Number(m[4])
+  const date = `${m[2]}-${m[3]}-01`
+  return { kind, month: date, sequence, number: demoNumber(kind, sequence, date) }
+}
 
 /** FNV-1a, 32 bit. Stable across processes, so demo data does not jump on a restart. */
 export function hash32(text: string): number {
@@ -64,7 +102,7 @@ export function demoKsefMinutes(orderId: string): number {
 
 /** The simulated `gov_status` of a document now. */
 export function demoGovStatus(args: { kind: string; orderId: string; issuedAt: Date; now: Date }): string {
-  if (args.kind !== "vat") return "not_applicable"
+  if (args.kind !== "vat" && args.kind !== "correction") return "not_applicable"
   const ready = args.issuedAt.getTime() + demoKsefMinutes(args.orderId) * 60_000
   return args.now.getTime() >= ready ? "ok" : "processing"
 }
@@ -82,10 +120,24 @@ export function demoFailingOrder(orderIds: readonly string[]): string | null {
   return [...orderIds].sort((a, b) => hash32(`${a}#fail`) - hash32(`${b}#fail`))[0]
 }
 
-/** The readable refusal of the failing demo document, shaped like a real Fakturownia 422. */
+/**
+ * The KSeF rejection of the demo, word for word the example of the KSeF guide
+ * of the Fakturownia API (KSeF.md, "Sprawdzanie błędów walidacji").
+ */
+export const DEMO_KSEF_REJECTION = "Telefon klienta - pole jest za długie (maksymalna ilość znaków: 16)"
+
+/** Days back the demo seed moves a few unpaid documents, so reminders and the monthly summary have something to show. */
+export const DEMO_BACKDATE_DAYS: readonly number[] = [9, 16, 38]
+
+/**
+ * The readable refusal of the failing demo document, shaped like a real
+ * Fakturownia 422: the example of the KSeF guide of the API (a line with the
+ * zw rate without the basis of the exemption on a KSeF account). A wrong NIP
+ * no longer reaches Fakturownia since 0.2.0, so it is not the demo's example.
+ */
 export const DEMO_FAILURE = {
   code: "HTTP_422",
   status: 422,
   detail:
-    "buyer_tax_no: nieprawidłowy numer NIP. Demo: this is how a refused document waits for a person; after the order data is corrected, Retry sends it again.",
+    "exempt_tax_kind: nie może być puste. Demo: this is how a refused document waits for a person; after the data is corrected, Retry sends it again.",
 } as const

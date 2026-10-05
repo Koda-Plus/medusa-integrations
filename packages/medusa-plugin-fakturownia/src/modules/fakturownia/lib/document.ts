@@ -32,13 +32,13 @@
  */
 
 import { addDays } from "./dates"
-import { mapBuyer, type BuyerSource, type BuyerType } from "./buyer"
+import { mapBuyer, type BuyerSource, type BuyerType, type BuyerWarning } from "./buyer"
 import { COD_PAYMENT_TYPE, DEFAULT_PAYMENT_TYPE } from "./constants"
 import { amountText, money, toNumberOrNull } from "./numbers"
-import type { DocumentFlow, IssueTrigger, ResolvedFakturowniaOptions } from "./options"
+import { departmentFor, type DocumentFlow, type IssueTrigger, type ResolvedFakturowniaOptions } from "./options"
 import { buildPositions, type Position, type PositionsSource } from "./positions"
 
-export type DocumentKind = "vat" | "proforma" | "receipt"
+export type DocumentKind = "vat" | "proforma" | "receipt" | "correction"
 export type FinalKind = "vat" | "receipt"
 
 /**
@@ -73,6 +73,13 @@ export const ORDER_FIELDS: readonly string[] = [
   "payment_collections.payments.captures.*",
   "fulfillments.id",
   "fulfillments.canceled_at",
+  /* 0.2.0: the customer (storefront access, a company module), the sales channel (its department),
+     the version (what changed since issue) and the refunds (corrections). */
+  "customer_id",
+  "sales_channel_id",
+  "version",
+  "canceled_at",
+  "payment_collections.payments.refunds.*",
 ]
 
 /* ------------------------------------------------------------------ */
@@ -100,6 +107,10 @@ export interface OrderRecord extends BuyerSource, PositionsSource {
   total?: unknown
   payment_collections?: PaymentCollectionRecord[] | null
   fulfillments?: Array<{ id?: string; canceled_at?: string | Date | null }> | null
+  customer_id?: string | null
+  sales_channel_id?: string | null
+  /** Medusa's order version: grows with every confirmed change (an edit, a return). */
+  version?: number | null
 }
 
 /* ------------------------------------------------------------------ */
@@ -214,6 +225,9 @@ export interface StoredPosition {
   unit: string
   gross: number
   tax: string
+  /** A correction's position: the state before and after (quantity and gross carry the change). */
+  before?: { quantity: number; gross: number }
+  after?: { quantity: number; gross: number }
 }
 
 export interface DocumentSummary {
@@ -228,6 +242,10 @@ export interface DocumentSummary {
   paid: boolean
   paymentType: string
   fromInvoiceId: string | null
+  /** Why a buyer that looks like a company got a consumer document (an invalid or missing NIP). */
+  buyerWarning: BuyerWarning | null
+  /** The order version the document was built from; null when it was copied from a proforma. */
+  orderVersion: number | null
 }
 
 export interface BuiltDocument {
@@ -257,10 +275,14 @@ export function storedPositions(positions: ReadonlyArray<PositionLike | Position
 }
 
 /** Seller, language and category fields shared by every document. */
-export function accountFields(o: Pick<ResolvedFakturowniaOptions, "issuePlace" | "departmentId" | "categoryId" | "lang">): Record<string, unknown> {
+export function accountFields(
+  o: Pick<ResolvedFakturowniaOptions, "issuePlace" | "departmentId" | "categoryId" | "lang" | "departmentsBySalesChannel">,
+  salesChannelId: string | null = null,
+): Record<string, unknown> {
+  const department = departmentFor(o, salesChannelId)
   return {
     ...(o.issuePlace ? { place: o.issuePlace } : {}),
-    ...(o.departmentId !== null ? { department_id: o.departmentId } : {}),
+    ...(department !== null ? { department_id: department } : {}),
     ...(o.categoryId !== null ? { category_id: o.categoryId } : {}),
     lang: o.lang,
   }
@@ -282,7 +304,7 @@ export interface BuildArgs {
 
 export function buildDocument(order: OrderRecord, o: ResolvedFakturowniaOptions, args: BuildArgs): BuiltDocument {
   const { positions, totalGross, currency } = buildPositions(order, o)
-  const buyer = mapBuyer(order, o.taxIdMetadataKeys)
+  const buyer = mapBuyer(order, o.nipSources)
   /* "Captured in full" compares with what the customer had to pay: the order total. */
   const payment = paymentFacts(order.payment_collections ?? [], toNumberOrNull(order.total) ?? totalGross, o.codProviders)
   const paymentType = paymentTypeFor(payment.providerId, payment.cod, o.paymentTypes)
@@ -293,7 +315,7 @@ export function buildDocument(order: OrderRecord, o: ResolvedFakturowniaOptions,
     kind,
     issue_date: args.today,
     sell_date: args.today,
-    ...accountFields(o),
+    ...accountFields(o, order.sales_channel_id ?? null),
     currency,
     ...(oid ? { oid } : {}),
     ...(oid && args.oidUnique ? { oid_unique: "yes" } : {}),
@@ -317,6 +339,8 @@ export function buildDocument(order: OrderRecord, o: ResolvedFakturowniaOptions,
       paid: payment.captured,
       paymentType,
       fromInvoiceId: null,
+      buyerWarning: buyer.warning,
+      orderVersion: typeof order.version === "number" ? order.version : null,
     },
   }
 }

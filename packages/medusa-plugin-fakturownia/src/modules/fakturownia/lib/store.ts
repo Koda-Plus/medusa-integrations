@@ -53,6 +53,15 @@ export type DocumentPatch = Partial<
     | "email_status"
     | "emailed_at"
     | "email_error"
+    | "order_version"
+    | "buyer_warning"
+    | "gov_send_date"
+    | "gov_verification_link"
+    | "gov_link"
+    | "gov_corrected_number"
+    | "gov_errors"
+    | "ksef_resend_at"
+    | "corrections_checked_at"
   >
 >
 
@@ -63,6 +72,10 @@ export interface NewDocument {
   demo: boolean
   next_attempt_at: Date | null
   pay_requested_at?: Date | null
+  /** Corrections: the business key, the corrected row and the approved plan. */
+  source_key?: string | null
+  corrects_document_id?: string | null
+  plan_id?: string | null
 }
 
 export interface DocumentStore {
@@ -115,9 +128,18 @@ export const PATCHABLE_COLUMNS: readonly string[] = [
   "email_status",
   "emailed_at",
   "email_error",
+  "order_version",
+  "buyer_warning",
+  "gov_send_date",
+  "gov_verification_link",
+  "gov_link",
+  "gov_corrected_number",
+  "gov_errors",
+  "ksef_resend_at",
+  "corrections_checked_at",
 ]
 
-const JSON_COLUMNS: ReadonlySet<string> = new Set(["positions"])
+const JSON_COLUMNS: ReadonlySet<string> = new Set(["positions", "buyer_warning", "gov_errors"])
 
 export function setClause(patch: DocumentPatch): { sql: string; bindings: unknown[] } {
   const parts: string[] = []
@@ -148,11 +170,23 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: () => string }): D
   return {
     async insertIgnore(doc) {
       const result = await sql.raw(
-        `insert into "${TABLE}" ("id", "order_id", "display_id", "kind", "status", "demo", "attempts", "next_attempt_at", "pay_requested_at", "paid", "created_at", "updated_at")
-         values (?, ?, ?, ?, 'pending', ?, 0, ?, ?, false, now(), now())
+        `insert into "${TABLE}" ("id", "order_id", "display_id", "kind", "status", "demo", "attempts", "next_attempt_at", "pay_requested_at", "paid",
+                                  "source_key", "corrects_document_id", "plan_id", "created_at", "updated_at")
+         values (?, ?, ?, ?, 'pending', ?, 0, ?, ?, false, ?, ?, ?, now(), now())
          on conflict do nothing
          returning *`,
-        [newId(), doc.order_id, doc.display_id, doc.kind, doc.demo, doc.next_attempt_at, doc.pay_requested_at ?? null],
+        [
+          newId(),
+          doc.order_id,
+          doc.display_id,
+          doc.kind,
+          doc.demo,
+          doc.next_attempt_at,
+          doc.pay_requested_at ?? null,
+          doc.source_key ?? null,
+          doc.corrects_document_id ?? null,
+          doc.plan_id ?? null,
+        ],
       )
       return rowsOf(result)[0] ?? null
     },

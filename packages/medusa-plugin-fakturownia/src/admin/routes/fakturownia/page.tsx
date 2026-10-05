@@ -14,8 +14,14 @@ import {
   useFakturowniaStatus,
   useFakturowniaSync,
 } from "../../lib/fakturownia-api"
+import { CorrectionsSection } from "../../lib/fakturownia-corrections"
+import { DocumentDrawer } from "../../lib/fakturownia-document"
+import { References, ViewSwitch, usePageView } from "../../lib/fakturownia-guide"
+import { GuideView } from "../../lib/fakturownia-guide-view"
 import { FakturowniaIcon } from "../../lib/fakturownia-icon"
+import { MailboxSection, SummarySection, UnpaidSection, WritersSection } from "../../lib/fakturownia-panels"
 import {
+  BuyerWarningText,
   DocumentActions,
   DocumentLinks,
   DocumentStatusBadge,
@@ -32,13 +38,16 @@ import {
   fmtDuration,
   fmtMoney,
   fmtNumber,
+  referencesFor,
   runSummary,
+  sinceMonth,
 } from "../../lib/fakturownia-ui"
 
 /**
- * Fakturownia by Koda Plus: the connection, the documents of the orders
- * (with their payment and KSeF status, and what a person can do about the
- * ones that need attention) and the history of background runs.
+ * Fakturownia by Koda Plus: the Panel (the connection, the writers, the
+ * corrections, the documents with their KSeF and e-mail history, the unpaid
+ * documents, the e-mails, the monthly summary, the background runs) and the
+ * Setup guide, switched in the header and kept in `?view=guide`.
  */
 const PAGE_SIZE = 15
 
@@ -46,11 +55,13 @@ const FakturowniaPage = () => {
   const { t, i18n } = useTranslation("fakturownia")
   const lang = i18n.language || "en"
   const client = useQueryClient()
+  const [view, setView] = usePageView()
   const [pollUntil, setPollUntil] = useState(0)
   const status = useFakturowniaStatus(pollUntil)
   const s = status.data
   const polling = (s?.running.length ?? 0) > 0 || Date.now() < pollUntil
   const [filter, setFilter] = useState<DocumentFilter>("all")
+  const [openDocument, setOpenDocument] = useState<string | null>(null)
 
   /* A finished run refreshes the tables below. */
   const runKey = JSON.stringify(Object.values(s?.lastRuns ?? {}).map((r) => r?.id ?? ""))
@@ -67,7 +78,7 @@ const FakturowniaPage = () => {
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} onAction={poll} />
+        <Header status={s} view={view} onView={setView} onAction={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -80,6 +91,7 @@ const FakturowniaPage = () => {
             <InlineTip variant="info" label={t("demo.label")}>
               <span className="flex flex-col gap-y-1">
                 <span>{t("demo.text")}</span>
+                <span>{t("demo.new")}</span>
                 {s.demoReason === "no_token" ? <span>{t("demo.noToken")}</span> : null}
               </span>
             </InlineTip>
@@ -92,8 +104,8 @@ const FakturowniaPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-5">
+        {s && view === "panel" ? (
+          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
             <StatTile label={t("stats.issued24h")} value={fmtNumber(s.counts.issued24h, lang)} tone="green" active={filter === "issued"} onClick={() => setFilter("issued")} />
             <StatTile
               label={t("stats.pending")}
@@ -104,8 +116,8 @@ const FakturowniaPage = () => {
             />
             <StatTile
               label={t("stats.attention")}
-              value={fmtNumber(s.counts.unknown + s.counts.failed, lang)}
-              tone={s.counts.unknown + s.counts.failed > 0 ? "red" : "default"}
+              value={fmtNumber(s.counts.attention, lang)}
+              tone={s.counts.attention > 0 ? "red" : "default"}
               active={filter === "attention"}
               onClick={() => setFilter("attention")}
             />
@@ -116,27 +128,49 @@ const FakturowniaPage = () => {
               active={filter === "unpaid"}
               onClick={() => setFilter("unpaid")}
             />
+            <StatTile label={t("stats.ksefAccepted")} value={fmtNumber(s.counts.ksefAccepted, lang)} tone="green" />
+            <StatTile label={t("stats.ksefProcessing")} value={fmtNumber(s.counts.ksefProcessing, lang)} tone={s.counts.ksefProcessing > 0 ? "orange" : "default"} />
             <StatTile
-              label={t("stats.ksef")}
+              label={t("stats.ksefRejected")}
               value={fmtNumber(s.counts.ksefProblems, lang)}
               tone={s.counts.ksefProblems > 0 ? "red" : "default"}
               active={filter === "ksef"}
               onClick={() => setFilter("ksef")}
             />
+            <StatTile label={t("stats.corrections")} value={fmtNumber(s.counts.correctionsOpen, lang)} tone={s.counts.correctionsOpen > 0 ? "orange" : "default"} />
           </div>
         ) : null}
       </Container>
 
-      {s ? <ConnectionSection status={s} lang={lang} /> : null}
-      {s ? <DocumentsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} onAction={poll} /> : null}
-      <RunsSection lang={lang} poll={polling} />
+      {s && view === "guide" ? <GuideView status={s} /> : null}
+
+      {s && view === "panel" ? (
+        <>
+          <References
+            items={referencesFor(s.references, lang)}
+            title={t("references.title")}
+            subtitle={t("references.subtitle")}
+            openLabel={t("references.open")}
+            sinceLabel={(since) => t("references.since", { date: sinceMonth(since, lang) })}
+          />
+          <WritersSection status={s} lang={lang} />
+          <ConnectionSection status={s} lang={lang} />
+          <CorrectionsSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
+          <DocumentsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} onAction={poll} onOpen={setOpenDocument} />
+          <UnpaidSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
+          <MailboxSection status={s} lang={lang} />
+          <SummarySection lang={lang} />
+          <RunsSection lang={lang} poll={polling} />
+        </>
+      ) : null}
+      {openDocument ? <DocumentDrawer documentId={openDocument} onClose={() => setOpenDocument(null)} /> : null}
     </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
-function Header({ status, onAction }: { status: StatusResponse | undefined; onAction: () => void }) {
+function Header({ status, view, onView, onAction }: { status: StatusResponse | undefined; view: "panel" | "guide"; onView: (v: "panel" | "guide") => void; onAction: () => void }) {
   const { t } = useTranslation("fakturownia")
   const sync = useFakturowniaSync()
   const running = new Set(status?.running ?? [])
@@ -168,20 +202,19 @@ function Header({ status, onAction }: { status: StatusResponse | undefined; onAc
           {t("subtitle")}
         </Text>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button size="small" variant="secondary" disabled={!ready || running.has("statuses")} onClick={() => void start("statuses")}>
-          {running.has("statuses") ? t("actions.running") : t("actions.refreshStatuses")}
-        </Button>
-        <Button
-          size="small"
-          variant="primary"
-          isLoading={sync.isPending && sync.variables === "issue"}
-          disabled={!ready || running.has("issue")}
-          onClick={() => void start("issue")}
-        >
-          <ArrowPath />
-          {running.has("issue") ? t("actions.running") : t("actions.issuePending")}
-        </Button>
+      <div className="flex flex-col items-start gap-3 md:items-end">
+        <ViewSwitch value={view} onChange={onView} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+        {view === "panel" ? (
+          <div className="flex flex-wrap gap-2">
+            <Button size="small" variant="secondary" disabled={!ready || running.has("statuses")} onClick={() => void start("statuses")}>
+              {running.has("statuses") ? t("actions.running") : t("actions.refreshStatuses")}
+            </Button>
+            <Button size="small" variant="primary" isLoading={sync.isPending && sync.variables === "issue"} disabled={!ready || running.has("issue")} onClick={() => void start("issue")}>
+              <ArrowPath />
+              {running.has("issue") ? t("actions.running") : t("actions.issuePending")}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -207,6 +240,13 @@ function CheckLines({ result, configured }: { result: CheckResult; configured: S
       result.departmentFound
         ? { ok: true, text: t("connection.departmentFound", { id: configured.departmentId, name: result.departmentName ?? "" }) }
         : { ok: false, text: t("connection.departmentMissing", { id: configured.departmentId }) },
+    )
+  }
+  for (const c of result.channelDepartments ?? []) {
+    lines.push(
+      c.found
+        ? { ok: true, text: t("connection.channelFound", { channel: c.salesChannelId, id: c.departmentId, name: c.name ?? "" }) }
+        : { ok: false, text: t("connection.channelMissing", { channel: c.salesChannelId, id: c.departmentId }) },
     )
   }
   if (configured.categoryId !== null && result.categoryFound !== null) {
@@ -295,6 +335,11 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
           {o.departmentId ?? <span className="font-sans">{t("connection.accountDefault")}</span>}
           {result?.ok && result.departmentName ? <span className="font-sans text-ui-fg-subtle"> ({result.departmentName})</span> : null}
         </Fact>
+        {o.departmentsBySalesChannel.length > 0 ? (
+          <Fact label={t("connection.channelDepartments")} mono>
+            {o.departmentsBySalesChannel.map((c) => `${c.salesChannelId}: ${c.departmentId}`).join(", ")}
+          </Fact>
+        ) : null}
         <Fact label={t("connection.category")} mono>
           {o.categoryId ?? <span className="font-sans">{t("connection.notSet")}</span>}
           {result?.ok && result.categoryName ? <span className="font-sans text-ui-fg-subtle"> ({result.categoryName})</span> : null}
@@ -302,7 +347,13 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
         <Fact label={t("connection.paymentTerm")}>{t("connection.days", { count: o.paymentTermDays })}</Fact>
         <Fact label={t("connection.markPaid")}>{onOff(o.markPaidOnCapture)}</Fact>
         <Fact label={t("connection.email")}>{onOff(o.sendByEmail)}</Fact>
+        <Fact label={t("connection.emailPdf")}>{onOff(o.emailPdf)}</Fact>
         <Fact label={t("connection.cancel")}>{o.cancelOnOrderCanceled ? t("connection.cancelOn") : onOff(false)}</Fact>
+        <Fact label={t("connection.corrections")}>{o.corrections === "plan" ? t("connection.correctionsPlan") : onOff(false)}</Fact>
+        <Fact label={t("connection.reminders")}>{t("connection.days", { count: o.reminderAfterDays })}</Fact>
+        <Fact label={t("connection.nipSources")} mono>
+          <span className="txt-compact-xsmall">{o.nipSources.join(", ")}</span>
+        </Fact>
         {o.oidPrefix ? (
           <Fact label={t("connection.oidPrefix")} mono>
             {o.oidPrefix}
@@ -374,9 +425,9 @@ function EmptyRow({ cols, text }: { cols: number; text: string }) {
   )
 }
 
-const FILTERS: DocumentFilter[] = ["all", "pending", "issued", "attention", "unpaid", "ksef", "canceled"]
+const FILTERS: DocumentFilter[] = ["all", "pending", "issued", "attention", "unpaid", "ksef", "corrections", "canceled"]
 
-function filterCount(status: StatusResponse, f: DocumentFilter): number {
+function filterCount(status: StatusResponse, f: DocumentFilter): number | undefined {
   const c = status.counts
   switch (f) {
     case "all":
@@ -393,6 +444,8 @@ function filterCount(status: StatusResponse, f: DocumentFilter): number {
       return c.ksefProblems
     case "canceled":
       return c.canceled
+    case "corrections":
+      return undefined
   }
 }
 
@@ -403,6 +456,7 @@ function DocumentsSection({
   onFilter,
   poll,
   onAction,
+  onOpen,
 }: {
   status: StatusResponse
   lang: string
@@ -410,6 +464,7 @@ function DocumentsSection({
   onFilter: (f: DocumentFilter) => void
   poll: boolean
   onAction: () => void
+  onOpen: (id: string) => void
 }) {
   const { t } = useTranslation("fakturownia")
   const [search, setSearch] = useState("")
@@ -428,11 +483,7 @@ function DocumentsSection({
         </Text>
       </div>
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<DocumentFilter>
-          value={filter}
-          onChange={onFilter}
-          options={FILTERS.map((f) => ({ value: f, label: t(`documents.filter.${f}`), count: filterCount(status, f) }))}
-        />
+        <FilterPills<DocumentFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`documents.filter.${f}`), count: filterCount(status, f) }))} />
         <div className="w-full lg:w-72">
           <Input size="small" type="search" placeholder={t("documents.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -469,7 +520,7 @@ function DocumentsSection({
                           {t(d.buyerType === "company" ? "documents.company" : "documents.person")}
                         </Text>
                       ) : null}
-                      {d.fromFakturowniaId ? (
+                      {d.fromFakturowniaId && d.kind !== "correction" ? (
                         <Text size="xsmall" className="text-ui-fg-muted">
                           {t("documents.fromProforma")}
                         </Text>
@@ -477,11 +528,19 @@ function DocumentsSection({
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">
-                    <div className="flex flex-col gap-y-0.5">
-                      <span className="font-mono txt-compact-small">{d.number ?? ""}</span>
+                    <div className="flex flex-col items-start gap-y-0.5">
+                      {d.number ? (
+                        <button type="button" className="txt-compact-small font-mono text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => onOpen(d.id)}>
+                          {d.number}
+                        </button>
+                      ) : null}
                       {d.emailStatus ? (
                         <Text size="xsmall" className={d.emailStatus === "failed" ? "text-ui-tag-red-text" : "text-ui-fg-muted"} title={d.emailError ?? undefined}>
                           {t(`documents.email.${d.emailStatus}`, { time: fmtDateTime(d.emailedAt, lang) })}
+                        </Text>
+                      ) : d.emailedAt ? (
+                        <Text size="xsmall" className="text-ui-fg-muted">
+                          {t("documents.email.sent", { time: fmtDateTime(d.emailedAt, lang) })}
                         </Text>
                       ) : null}
                     </div>
@@ -500,6 +559,7 @@ function DocumentsSection({
                           {t("documents.adopted")}
                         </Text>
                       ) : null}
+                      <BuyerWarningText warning={d.buyerWarning} />
                       {d.status === "pending" && d.nextAttemptAt && d.attempts > 0 ? (
                         <Text size="xsmall" className="text-ui-fg-muted">
                           {t("documents.nextAttempt", { time: fmtDateTime(d.nextAttemptAt, lang) })}
@@ -508,7 +568,7 @@ function DocumentsSection({
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtMoney(d.totalGross, d.currency, lang)}</Table.Cell>
-                  <Table.Cell>{d.status === "issued" || d.status === "needs_correction" ? <PaidBadge paid={d.paid} /> : null}</Table.Cell>
+                  <Table.Cell>{(d.status === "issued" || d.status === "needs_correction") && d.kind !== "correction" ? <PaidBadge paid={d.paid} /> : null}</Table.Cell>
                   <Table.Cell>
                     <KsefBadge doc={d} />
                   </Table.Cell>
@@ -516,7 +576,12 @@ function DocumentsSection({
                   <Table.Cell className="text-right">
                     <div className="flex flex-col items-end gap-y-2">
                       <DocumentActions doc={d} onDone={onAction} />
-                      <DocumentLinks doc={d} />
+                      <span className="inline-flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                        <DocumentLinks doc={d} />
+                        <Button size="small" variant="transparent" onClick={() => onOpen(d.id)}>
+                          {t("documents.details")}
+                        </Button>
+                      </span>
                     </div>
                   </Table.Cell>
                 </Table.Row>
