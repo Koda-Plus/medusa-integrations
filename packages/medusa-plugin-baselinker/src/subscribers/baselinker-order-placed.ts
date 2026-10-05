@@ -1,0 +1,43 @@
+import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
+import { isSkipped } from "../modules/baselinker/lib/order-payload"
+import { canExportOrders } from "../modules/baselinker/lib/options"
+import { enqueueOrder, kickOrders, loadOrderHead } from "../workflows/baselinker/orders"
+import { baselinkerService } from "../workflows/baselinker/runtime"
+
+/**
+ * A new order becomes a row of the outbox, and the send starts right away in
+ * the background. It NEVER fails the order: BaseLinker being down only makes
+ * the queue longer.
+ *
+ * ORDER MATTERS: first the cheap write to our own table, then the attempt.
+ * The other way round, a crash before the write would lose the order without
+ * a trace (the local event bus only logs a failed subscriber).
+ *
+ * Without configuration nothing is queued, so a store that installs the
+ * plugin and configures it a week later does not flood BaseLinker with a
+ * week of old orders. An order with `metadata.baselinker_skip = true` (the
+ * key is configurable) gets a `skipped` row and never goes out: test orders.
+ */
+export default async function baselinkerOrderPlaced({ event: { data }, container }: SubscriberArgs<{ id: string }>): Promise<void> {
+  const svc = baselinkerService(container)
+  const o = svc.getOptions()
+  if (!data?.id || !canExportOrders(o)) return
+  try {
+    const order = await loadOrderHead(container, data.id)
+    if (!order || order.status === "canceled") return
+    const skip = isSkipped(order.metadata, o.skipOrderMetadataKey)
+    await enqueueOrder(container, {
+      orderId: data.id,
+      displayId: order.display_id ?? null,
+      skipReason: skip ? `order.metadata.${o.skipOrderMetadataKey} is true, so the order stays out of BaseLinker.` : null,
+    })
+    if (!skip) kickOrders(container, "auto")
+  } catch (err) {
+    svc.getLogger().error(`[baselinker] order.placed ${data.id}: ${svc.mask((err as Error)?.message ?? String(err))}`)
+  }
+}
+
+export const config: SubscriberConfig = {
+  event: "order.placed",
+  context: { subscriberId: "baselinker-order-placed" },
+}
