@@ -1,13 +1,12 @@
 import type { SVGProps } from "react"
 
 /**
- * A simple mark for the Subiekt nexo integration (blue square, white "S"),
- * drawn as a vector so it stays sharp at sidebar size. Shown next to the
- * other extensions in the admin sidebar, on the Subiekt page and in the
- * order widget.
+ * The Subiekt nexo program icon: a white "Su" on InsERT blue, as in the
+ * program window, redrawn as a vector so it stays sharp at sidebar size.
+ * Shown in the admin sidebar, on the Subiekt page and in the order widget.
  *
- * Subiekt nexo and InsERT are trademarks of InsERT S.A., named here only to
- * identify the ERP this integration connects to. This mark is not their logo.
+ * Subiekt nexo, InsERT and their logos are trademarks of InsERT S.A., used
+ * here only to identify the ERP this integration connects to.
  */
 export function SubiektIcon({ width = 15, height = 15, ...props }: SVGProps<SVGSVGElement>) {
   return (
@@ -20,12 +19,10 @@ export function SubiektIcon({ width = 15, height = 15, ...props }: SVGProps<SVGS
       aria-hidden="true"
       {...props}
     >
-      <rect width="192" height="192" rx="40" fill="#1F5FBF" />
+      <rect width="192" height="192" rx="40" fill="#0071B8" />
       <path
-        d="M131 66C121 53 107 48 93 48C73 48 58 59 58 75C58 111 134 92 134 122C134 138 118 146 98 146C82 146 67 140 58 128"
-        stroke="#FFFFFF"
-        strokeWidth="19"
-        strokeLinecap="round"
+        fill="#FFFFFF"
+        d="M38.4 134.71L38.4 123.08Q40.4 124.84 43.19 126.25 45.98 127.66 49.06 128.63 52.15 129.6 55.26 130.13 58.37 130.66 61.02 130.66 70.12 130.66 74.62 127.28 79.11 123.9 79.11 117.56 79.11 114.15 77.61 111.63 76.12 109.1 73.47 107.02 70.83 104.93 67.21 103.02 63.6 101.11 59.43 99 55.03 96.76 51.21 94.47 47.39 92.18 44.57 89.42 41.75 86.66 40.13 83.16 38.52 79.67 38.52 74.97 38.52 69.21 41.04 64.95 43.57 60.69 47.68 57.93 51.79 55.17 57.05 53.82 62.31 52.47 67.77 52.47 80.23 52.47 85.93 55.47L85.93 66.57Q78.46 61.4 66.77 61.4 63.54 61.4 60.31 62.07 57.08 62.75 54.56 64.28 52.03 65.8 50.44 68.21 48.86 70.62 48.86 74.09 48.86 77.32 50.06 79.67 51.27 82.02 53.62 83.96 55.97 85.9 59.34 87.72 62.72 89.54 67.13 91.71 71.65 93.94 75.7 96.41 79.76 98.88 82.81 101.87 85.87 104.87 87.66 108.51 89.45 112.15 89.45 116.85 89.45 123.08 87.01 127.4 84.57 131.72 80.43 134.42 76.29 137.12 70.89 138.33 65.48 139.53 59.49 139.53 57.49 139.53 54.56 139.21 51.62 138.88 48.56 138.27 45.51 137.65 42.78 136.74 40.04 135.83 38.4 134.71M153.6 77.96L153.6 138.12 143.97 138.12 143.97 128.6 143.73 128.6Q137.74 139.53 125.17 139.53 103.67 139.53 103.67 113.92L103.67 77.96 113.24 77.96 113.24 112.39Q113.24 131.42 127.81 131.42 134.86 131.42 139.41 126.22 143.97 121.03 143.97 112.63L143.97 77.96"
       />
     </svg>
   )
