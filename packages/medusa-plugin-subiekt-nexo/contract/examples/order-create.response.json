@@ -1,0 +1,14 @@
+{
+  "order_id": "order_01JDEMO0000000000000000001",
+  "created": true,
+  "document": {
+    "kind": "ZK",
+    "number": "ZK 128/MAG/2026",
+    "id": "48211",
+    "issued_at": "2026-10-04T09:15:06.000Z",
+    "status": "open",
+    "warehouse": "MAG",
+    "related": []
+  },
+  "warnings": []
+}
