@@ -1,0 +1,612 @@
+openapi: 3.1.0
+info:
+  title: Subiekt nexo bridge API
+  version: 1.0.0
+  summary: The HTTP contract between Medusa and a bridge next to Subiekt nexo PRO.
+  description: |
+    The Medusa plugin `@koda-plus/medusa-plugin-subiekt-nexo` talks to a bridge
+    that runs on a Windows machine next to Subiekt nexo PRO (InsERT) and calls
+    the Sfera SDK. This document is the whole contract between them. Any bridge
+    that implements it works with the plugin.
+
+    Directions:
+
+    - Medusa to bridge: every `/v1/*` request below. Medusa creates order
+      documents (ZK), cancels them, asks for a WZ, reads stock and reads the
+      event feed.
+    - Bridge to Medusa: one optional webhook, `POST /hooks/subiekt`, that only
+      says "new events are waiting". Medusa then reads `GET /v1/events`. The
+      feed, not the webhook, is the source of truth, so a lost webhook only
+      delays an update until the next scheduled read.
+
+    ## Signing
+
+    Every request in both directions carries
+
+        X-Koda-Signature: t=<unix seconds>,v1=<hex>
+
+    where `<hex>` is the lowercase hex HMAC-SHA256, keyed with the shared
+    secret, of the UTF-8 string
+
+        <t>.<METHOD>.<path and query>.<raw body>
+
+    - `METHOD` is uppercase (`GET`, `POST`).
+    - `path and query` is exactly what the receiver sees, for example
+      `/v1/events?after=12&limit=100`. Proxies in between must not rewrite it.
+    - `raw body` is the exact bytes sent, an empty string for GET.
+
+    The receiver recomputes the HMAC, compares in constant time and rejects a
+    timestamp more than 300 seconds away from its clock. Test vectors:
+    `contract/examples/signature-vectors.json`.
+
+    Optional: when the bridge sits behind Cloudflare Access, Medusa also sends
+    `CF-Access-Client-Id` and `CF-Access-Client-Secret` of a service token.
+
+    ## Idempotency
+
+    `POST /v1/orders` is idempotent per `order_id`: the second call returns the
+    document created by the first one (`200`, `created: false`) instead of a
+    second ZK. Cancel and fulfillment calls are idempotent too. Medusa retries
+    with backoff, so a bridge must never create a document twice for one order.
+
+    ## Money
+
+    Amounts are JSON numbers in major units of `currency_code` (PLN, not
+    grosze), gross (VAT included), already after discounts. Tax rates are
+    percentages (`23` means 23 %).
+
+    ## Versioning
+
+    `1.x` only adds optional fields and new event types. Receivers ignore
+    unknown fields and unknown event types. A breaking change becomes `/v2`.
+  license:
+    name: MIT
+    identifier: MIT
+  contact:
+    name: Koda Plus
+    url: https://koda.plus
+    email: kontakt@koda.plus
+servers:
+  - url: https://subiekt-bridge.example.com
+    description: A bridge exposed through a tunnel, for example Cloudflare Tunnel.
+security:
+  - kodaSignature: []
+tags:
+  - name: health
+  - name: orders
+  - name: stock
+  - name: events
+  - name: webhooks
+paths:
+  /v1/health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Bridge and Subiekt status.
+      description: |
+        Checks the connection to Subiekt (Sfera login included). Cheap enough
+        to call every few minutes. `status: degraded` means the bridge answers
+        but Subiekt does not.
+      responses:
+        "200":
+          description: The bridge answers. Read `status` for Subiekt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              examples:
+                ok: { externalValue: "./examples/health.json" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/orders:
+    post:
+      tags: [orders]
+      operationId: createOrder
+      summary: Create the ZK (zamowienie od klienta) for a Medusa order.
+      description: |
+        Matches every line to a Subiekt product (EAN first, then SKU against
+        the product symbol), creates the ZK in the configured warehouse and
+        returns its number. Idempotent per `order_id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Order" }
+            examples:
+              order: { externalValue: "./examples/order-create.request.json" }
+      responses:
+        "201":
+          description: ZK created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderResult" }
+              examples:
+                created: { externalValue: "./examples/order-create.response.json" }
+        "200":
+          description: The order already had a ZK. Nothing new was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderResult" }
+        "400": { $ref: "#/components/responses/InvalidPayload" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422":
+          description: |
+            `unmatched_lines`: at least one line has no product in Subiekt.
+            Not retryable: fix the EAN or SKU, then send again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                unmatched: { externalValue: "./examples/error.unmatched-lines.json" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/orders/{orderId}:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: Documents of one order.
+      responses:
+        "200":
+          description: Documents known for the order, oldest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/orders/{orderId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [orders]
+      operationId: cancelOrder
+      summary: Cancel the ZK of a canceled Medusa order.
+      description: |
+        Sfera cannot set every ZK status programmatically. A bridge does what
+        the SDK allows (for example a visible mark in the notes and a custom
+        flag) and says so in `manual_action_required`, so the admin can tell
+        the warehouse to finish the job by hand.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CancelRequest" }
+      responses:
+        "200":
+          description: Canceled, already canceled, or nothing to cancel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CancelResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: "`document_locked`: goods were already released (WZ exists). Handle it as a return."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/orders/{orderId}/fulfillments:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [orders]
+      operationId: createFulfillment
+      summary: Issue the WZ (wydanie zewnetrzne) from the order's ZK.
+      description: |
+        Used when the fulfillment starts in Medusa. When the warehouse issues
+        the WZ in Subiekt, nothing calls this endpoint: the bridge publishes a
+        `document.issued` event instead. Version 1 releases the whole ZK;
+        `items` is accepted for forward compatibility.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FulfillmentRequest" }
+      responses:
+        "201":
+          description: WZ created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FulfillmentResult" }
+        "200":
+          description: The order already had a WZ.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FulfillmentResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/stock:
+    get:
+      tags: [stock]
+      operationId: listStock
+      summary: Stock of the configured warehouses, paginated.
+      description: |
+        The bridge reads one snapshot and serves it page by page; `cursor`
+        points into that snapshot, so pages never mix two readings.
+        `quantity` is the physical stock (the "Stan" column in Subiekt).
+        `available` subtracts reservations made by ZK documents. Medusa keeps
+        its own reservations, so the plugin uses `quantity` by default.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        "200":
+          description: One page of the snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StockPage" }
+              examples:
+                page: { externalValue: "./examples/stock.response.json" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/events:
+    get:
+      tags: [events]
+      operationId: listEvents
+      summary: Event feed, oldest first.
+      description: |
+        Ids grow monotonically. Medusa stores the last id it processed and
+        asks for `after=<that id>`. Events are kept for at least 30 days.
+        A bridge that lost its database starts ids again from 1; `head_id`
+        lets the reader notice and start over.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Events with `id > after`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventsPage" }
+              examples:
+                page: { externalValue: "./examples/events.response.json" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /hooks/subiekt:
+    post:
+      tags: [webhooks]
+      operationId: eventsAvailable
+      summary: "Bridge to Medusa: new events are waiting."
+      description: |
+        Served by the Medusa plugin, called by the bridge. Signed like every
+        other request. Medusa answers `202` and reads `GET /v1/events`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookNudge" }
+      responses:
+        "202": { description: Accepted. Medusa reads the feed in the background. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+components:
+  securitySchemes:
+    kodaSignature:
+      type: apiKey
+      in: header
+      name: X-Koda-Signature
+      description: "`t=<unix seconds>,v1=<hex HMAC-SHA256>`, see Signing above."
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      description: Medusa order id, for example `order_01JABCDEF...`.
+      schema: { type: string, minLength: 1, maxLength: 64 }
+  responses:
+    Unauthorized:
+      description: "`invalid_signature` or `stale_timestamp`. Not retryable until the secret or the clock is fixed."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: "`order_not_found`: the bridge has no document for this order."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InvalidPayload:
+      description: "`invalid_payload`: the body does not match this contract."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: "`subiekt_unavailable` or `busy`. Retryable: Medusa tries again later."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code:
+              type: string
+              description: |
+                Known codes: `invalid_signature`, `stale_timestamp`,
+                `invalid_payload`, `order_not_found`, `unmatched_lines`,
+                `document_locked`, `subiekt_rejected`, `subiekt_unavailable`,
+                `busy`, `internal`. Receivers treat unknown codes by
+                `retryable`.
+            message: { type: string }
+            retryable: { type: boolean }
+            details: { type: object, additionalProperties: true }
+    Health:
+      type: object
+      required: [status, bridge, subiekt, time]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        bridge:
+          type: object
+          required: [name, version, contract, mode]
+          properties:
+            name: { type: string }
+            version: { type: string }
+            contract: { type: string, description: Contract version, for example `1.0.0`. }
+            mode: { type: string, enum: [sfera, fake] }
+        subiekt:
+          type: object
+          required: [connected]
+          properties:
+            connected: { type: boolean }
+            product: { type: [string, "null"] }
+            version: { type: [string, "null"] }
+            database: { type: [string, "null"] }
+            company: { type: [string, "null"] }
+            warehouse: { type: [string, "null"], description: Warehouse symbol used for new ZK documents. }
+            checked_at: { type: [string, "null"], format: date-time }
+            error: { type: [string, "null"] }
+        time: { type: string, format: date-time }
+    Address:
+      type: object
+      properties:
+        first_name: { type: [string, "null"] }
+        last_name: { type: [string, "null"] }
+        company: { type: [string, "null"] }
+        address_1: { type: [string, "null"] }
+        address_2: { type: [string, "null"] }
+        postal_code: { type: [string, "null"] }
+        city: { type: [string, "null"] }
+        province: { type: [string, "null"] }
+        country_code: { type: [string, "null"], description: ISO 3166-1 alpha-2, lowercase. }
+        phone: { type: [string, "null"] }
+    Order:
+      type: object
+      required: [order_id, display_id, currency_code, placed_at, lines, payment, totals]
+      properties:
+        order_id: { type: string }
+        display_id: { type: integer }
+        currency_code: { type: string, description: ISO 4217, lowercase. }
+        placed_at: { type: string, format: date-time }
+        email: { type: [string, "null"] }
+        customer:
+          type: [object, "null"]
+          properties:
+            id: { type: [string, "null"] }
+            first_name: { type: [string, "null"] }
+            last_name: { type: [string, "null"] }
+            company_name: { type: [string, "null"] }
+            phone: { type: [string, "null"] }
+        billing_address: { oneOf: [{ $ref: "#/components/schemas/Address" }, { type: "null" }] }
+        shipping_address: { oneOf: [{ $ref: "#/components/schemas/Address" }, { type: "null" }] }
+        invoice:
+          type: object
+          description: What the buyer asked for. The bridge may ignore it when Subiekt is not the invoicing system.
+          properties:
+            requested: { type: boolean }
+            tax_id: { type: [string, "null"], description: NIP or EU VAT id as typed. }
+            company_name: { type: [string, "null"] }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/Line" }
+        shipping:
+          type: [object, "null"]
+          properties:
+            name: { type: [string, "null"] }
+            option_id: { type: [string, "null"] }
+            price_gross: { type: number }
+            tax_rate: { type: [number, "null"] }
+            pickup_point:
+              type: [object, "null"]
+              properties:
+                id: { type: string }
+                name: { type: [string, "null"] }
+                address: { type: [string, "null"] }
+        payment:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [captured, authorized, awaiting, cash_on_delivery, not_required]
+            provider_id: { type: [string, "null"], description: "Medusa payment provider, for example `pp_stripe_stripe`." }
+            method: { type: [string, "null"], description: Human readable, for example `Card (Stripe)` or `Bank transfer, 14 days`. }
+            amount_paid: { type: number }
+            captured_at: { type: [string, "null"], format: date-time }
+            due_days: { type: [integer, "null"], description: Payment term in days for trade credit. }
+        totals:
+          type: object
+          required: [items_gross, shipping_gross, discount_gross, total_gross]
+          properties:
+            items_gross: { type: number }
+            shipping_gross: { type: number }
+            discount_gross: { type: number }
+            tax_total: { type: [number, "null"] }
+            total_gross: { type: number }
+        note: { type: [string, "null"], description: Customer note from checkout. }
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Order metadata keys the merchant chose to forward (plugin option `forwardMetadataKeys`).
+    Line:
+      type: object
+      required: [line_id, quantity, unit_price_gross, total_gross]
+      properties:
+        line_id: { type: string }
+        sku: { type: [string, "null"] }
+        ean: { type: [string, "null"], description: "EAN or other barcode, digits only." }
+        title: { type: [string, "null"] }
+        product_title: { type: [string, "null"] }
+        variant_title: { type: [string, "null"] }
+        quantity: { type: integer, minimum: 1 }
+        unit_price_gross:
+          type: number
+          description: Gross unit price after discounts, rounded to 4 decimals. `total_gross / quantity`.
+        total_gross: { type: number }
+        discount_gross: { type: number }
+        tax_rate: { type: [number, "null"] }
+    OrderResult:
+      type: object
+      required: [order_id, created, document]
+      properties:
+        order_id: { type: string }
+        created: { type: boolean, description: "`false` when the ZK already existed." }
+        document: { $ref: "#/components/schemas/Document" }
+        warnings:
+          type: array
+          items: { type: string }
+          description: Non-fatal remarks, for example a header field Subiekt refused and the bridge left empty.
+    Document:
+      type: object
+      required: [kind, number, issued_at]
+      properties:
+        kind:
+          type: string
+          description: "Subiekt document type: `ZK`, `WZ`, `FS`, `PA` and so on. Open list."
+        number: { type: string, description: "Full signature, for example `ZK 12/MAG/2026`." }
+        id: { type: [string, "null"], description: Subiekt internal id, opaque. }
+        issued_at: { type: string, format: date-time }
+        status: { type: string, enum: [open, canceled, completed], default: open }
+        warehouse: { type: [string, "null"] }
+        related:
+          type: array
+          items:
+            type: object
+            required: [kind, number]
+            properties:
+              kind: { type: string }
+              number: { type: string }
+    OrderStatus:
+      type: object
+      required: [order_id, documents]
+      properties:
+        order_id: { type: string }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/Document" }
+    CancelRequest:
+      type: object
+      properties:
+        reason: { type: [string, "null"] }
+    CancelResult:
+      type: object
+      required: [order_id, status, manual_action_required]
+      properties:
+        order_id: { type: string }
+        status: { type: string, enum: [canceled, already_canceled, not_found] }
+        manual_action_required: { type: boolean }
+        message: { type: [string, "null"] }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/Document" }
+    FulfillmentRequest:
+      type: object
+      required: [fulfillment_id]
+      properties:
+        fulfillment_id: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            required: [line_id, quantity]
+            properties:
+              line_id: { type: string }
+              quantity: { type: integer, minimum: 1 }
+        note: { type: [string, "null"] }
+    FulfillmentResult:
+      type: object
+      required: [order_id, created, document]
+      properties:
+        order_id: { type: string }
+        created: { type: boolean }
+        document: { $ref: "#/components/schemas/Document" }
+    StockItem:
+      type: object
+      required: [symbol, quantity, available]
+      properties:
+        symbol: { type: string, description: Product symbol in Subiekt. Matched to the variant SKU. }
+        ean: { type: [string, "null"] }
+        name: { type: [string, "null"] }
+        quantity: { type: number, description: Physical stock in the configured warehouses. }
+        available: { type: number, description: "`quantity` minus ZK reservations." }
+        unit: { type: [string, "null"] }
+    StockPage:
+      type: object
+      required: [snapshot_at, items, next_cursor, total]
+      properties:
+        snapshot_at: { type: string, format: date-time }
+        warehouses:
+          type: array
+          items: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/StockItem" }
+        next_cursor: { type: [string, "null"] }
+        total: { type: integer }
+    Event:
+      type: object
+      required: [id, type, occurred_at, data]
+      properties:
+        id: { type: integer, minimum: 1 }
+        type:
+          type: string
+          description: |
+            `document.issued`: a document appeared for an order (the bridge
+            created a ZK, or the warehouse issued a WZ in Subiekt).
+            `document.canceled`: a document was canceled.
+            `stock.changed`: stock moved; read `/v1/stock` soon. Optional.
+        occurred_at: { type: string, format: date-time }
+        data:
+          type: object
+          additionalProperties: true
+          properties:
+            order_id: { type: [string, "null"] }
+            document: { $ref: "#/components/schemas/Document" }
+            source: { type: string, enum: [bridge, subiekt] }
+            symbols:
+              type: array
+              items: { type: string }
+    EventsPage:
+      type: object
+      required: [events, last_id, has_more]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/Event" }
+        last_id: { type: integer, description: "Highest id in this page, or `after` when the page is empty." }
+        has_more: { type: boolean }
+        head_id:
+          type: integer
+          description: |
+            Optional. The newest event id the bridge holds. Lower than `after`
+            means the feed was reset (a new bridge database): the reader starts
+            again from 0, which is safe because applying an event is idempotent.
+    WebhookNudge:
+      type: object
+      required: [type, last_id]
+      properties:
+        type: { type: string, enum: [events.available] }
+        last_id: { type: integer }
+        sent_at: { type: string, format: date-time }
