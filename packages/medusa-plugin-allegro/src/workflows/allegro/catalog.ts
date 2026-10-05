@@ -1,9 +1,12 @@
 /**
- * THE MEDUSA SIDE: variants with a SKU, their available quantity and, for the
- * demo, a price. Read through Query, 500 variants per page.
+ * THE MEDUSA SIDE: variants with a SKU, their available quantity, their
+ * prices and price bounds, their EAN and inventory, and the stock locations
+ * of a sales channel. Read through Query.
  */
 
 import type { CatalogVariant } from "../../modules/allegro/lib/matching"
+import { boundValue, type PriceBounds } from "../../modules/allegro/lib/price-plan"
+import type { VariantInventory } from "../../modules/allegro/lib/reservations"
 import { availableFor, type VariantStockRecord } from "../../modules/allegro/lib/stock"
 
 export interface QueryLike {
@@ -24,12 +27,18 @@ interface LevelRecord {
 interface VariantRecord {
   id: string
   sku?: string | null
+  title?: string | null
+  ean?: string | null
+  barcode?: string | null
   product_id?: string | null
   manage_inventory?: boolean | null
-  product?: { title?: string | null } | null
+  allow_backorder?: boolean | null
+  metadata?: Record<string, unknown> | null
+  product?: { title?: string | null; metadata?: Record<string, unknown> | null } | null
   inventory_items?: Array<{
+    inventory_item_id?: string | null
     required_quantity?: number | string | null
-    inventory?: { location_levels?: LevelRecord[] | null } | null
+    inventory?: { id?: string | null; location_levels?: LevelRecord[] | null } | null
   } | null> | null
 }
 
@@ -50,7 +59,7 @@ function stockRecord(raw: VariantRecord): VariantStockRecord {
   }
 }
 
-/** Every variant with a SKU and its available quantity. */
+/** Every variant with a SKU and its available quantity. Throws when a page fails: the caller treats that as an incomplete read. */
 export async function loadCatalog(query: QueryLike, locationIds: readonly string[]): Promise<StockedVariant[]> {
   const out: StockedVariant[] = []
   const take = 500
@@ -107,4 +116,150 @@ export async function demoPrices(query: QueryLike, ids: string[]): Promise<Map<s
     /* Prices are decoration in demo mode. */
   }
   return out
+}
+
+/** Stock locations that exist, to catch a mistyped `stockLocationIds` before it reads as zero stock. */
+export async function unknownLocations(query: QueryLike, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return []
+  const { data } = await query.graph({ entity: "stock_location", fields: ["id"], filters: { id: [...ids] } })
+  const found = new Set((data as Array<{ id: string }>).map((l) => l.id))
+  return ids.filter((id) => !found.has(id))
+}
+
+/** How many stock locations the store has at all. */
+export async function locationCount(query: QueryLike): Promise<number> {
+  const { data } = await query.graph({ entity: "stock_location", fields: ["id"], pagination: { take: 50 } })
+  return data.length
+}
+
+interface PriceRecord {
+  amount?: number | string | null
+  currency_code?: string | null
+  price_list_id?: string | null
+  min_quantity?: number | string | null
+  max_quantity?: number | string | null
+  rules_count?: number | string | null
+}
+
+/**
+ * Medusa prices per variant and currency: the default price (no price list,
+ * no rules, no quantity tier), or the price of the given price list.
+ */
+export async function loadVariantPrices(query: QueryLike, ids: readonly string[], priceListId: string | null): Promise<Map<string, Map<string, number>>> {
+  const out = new Map<string, Map<string, number>>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    const { data } = await query.graph({
+      entity: "product_variant",
+      fields: ["id", "prices.amount", "prices.currency_code", "prices.price_list_id", "prices.min_quantity", "prices.max_quantity", "prices.rules_count"],
+      filters: { id: [...chunk] },
+    })
+    for (const raw of data as Array<{ id: string; prices?: PriceRecord[] | null }>) {
+      const byCurrency = new Map<string, number>()
+      for (const p of raw.prices ?? []) {
+        if (!p || p.amount === null || p.amount === undefined || !p.currency_code) continue
+        const list = p.price_list_id ?? null
+        if (priceListId ? list !== priceListId : list !== null) continue
+        if (!priceListId && (Number(p.rules_count ?? 0) > 0 || (p.min_quantity !== null && p.min_quantity !== undefined && Number(p.min_quantity) > 1))) continue
+        const value = Number(p.amount)
+        if (!Number.isFinite(value)) continue
+        const currency = String(p.currency_code).toUpperCase()
+        if (!byCurrency.has(currency)) byCurrency.set(currency, value)
+      }
+      out.set(raw.id, byCurrency)
+    }
+  }
+  return out
+}
+
+/** Price bounds from variant metadata, then product metadata. */
+export async function loadVariantBounds(query: QueryLike, ids: readonly string[], minKey: string, maxKey: string): Promise<Map<string, PriceBounds>> {
+  const out = new Map<string, PriceBounds>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    const { data } = await query.graph({ entity: "product_variant", fields: ["id", "metadata", "product.metadata"], filters: { id: [...chunk] } })
+    for (const raw of data as VariantRecord[]) {
+      const v = raw.metadata ?? {}
+      const p = raw.product?.metadata ?? {}
+      out.set(raw.id, { min: boundValue(v[minKey]) ?? boundValue(p[minKey]), max: boundValue(v[maxKey]) ?? boundValue(p[maxKey]) })
+    }
+  }
+  return out
+}
+
+export interface PublishCandidate {
+  id: string
+  sku: string
+  productId: string
+  title: string
+  ean: string | null
+}
+
+/** Variants with a SKU, with their EAN (or barcode) and title, for publish by EAN. */
+export async function loadPublishCandidates(query: QueryLike): Promise<PublishCandidate[]> {
+  const out: PublishCandidate[] = []
+  const take = 500
+  for (let skip = 0; skip < 200_000; skip += take) {
+    const { data } = await query.graph({
+      entity: "product_variant",
+      fields: ["id", "sku", "ean", "barcode", "title", "product_id", "product.title"],
+      pagination: { skip, take, order: { id: "ASC" } },
+    })
+    for (const raw of data as VariantRecord[]) {
+      const sku = String(raw.sku ?? "").trim()
+      if (!sku || !raw.product_id) continue
+      const title = [raw.product?.title, raw.title && raw.title !== "Default variant" ? raw.title : null].filter(Boolean).join(" ")
+      out.push({ id: raw.id, sku, productId: raw.product_id, title: title || sku, ean: (raw.ean || raw.barcode || null) as string | null })
+    }
+    if (data.length < take) break
+  }
+  return out
+}
+
+/** Inventory of the given variants, for reservations. */
+export async function loadVariantInventory(query: QueryLike, ids: readonly string[]): Promise<Map<string, VariantInventory>> {
+  const out = new Map<string, VariantInventory>()
+  if (ids.length === 0) return out
+  const { data } = await query.graph({
+    entity: "product_variant",
+    fields: [
+      "id",
+      "sku",
+      "manage_inventory",
+      "allow_backorder",
+      "inventory_items.inventory_item_id",
+      "inventory_items.required_quantity",
+      "inventory_items.inventory.location_levels.location_id",
+      "inventory_items.inventory.location_levels.stocked_quantity",
+      "inventory_items.inventory.location_levels.reserved_quantity",
+    ],
+    filters: { id: [...ids] },
+  })
+  for (const raw of data as VariantRecord[]) {
+    out.set(raw.id, {
+      variantId: raw.id,
+      sku: raw.sku ?? null,
+      manageInventory: raw.manage_inventory !== false,
+      allowBackorder: raw.allow_backorder === true,
+      items: (raw.inventory_items ?? [])
+        .filter((i): i is NonNullable<typeof i> => Boolean(i?.inventory_item_id))
+        .map((i) => ({
+          inventoryItemId: String(i.inventory_item_id),
+          requiredQuantity: Number(i.required_quantity ?? 1) || 1,
+          levels: (i.inventory?.location_levels ?? []).map((l) => ({
+            locationId: String(l.location_id ?? ""),
+            stocked: Number(l.stocked_quantity ?? 0) || 0,
+            reserved: Number(l.reserved_quantity ?? 0) || 0,
+          })),
+        })),
+    })
+  }
+  return out
+}
+
+/** Stock locations linked to a sales channel. */
+export async function channelLocationIds(query: QueryLike, salesChannelId: string): Promise<string[]> {
+  const { data } = await query.graph({ entity: "sales_channel", fields: ["id", "stock_locations.id"], filters: { id: salesChannelId } })
+  const channel = (data as Array<{ stock_locations?: Array<{ id?: string | null } | null> | null }>)[0]
+  return (channel?.stock_locations ?? []).map((l) => String(l?.id ?? "")).filter(Boolean)
 }

@@ -16,12 +16,13 @@ import type AllegroModuleService from "../../modules/allegro/service"
 import { activeConnecting, getConnectionRow, isConnected, pollConnecting, readAllOffers, type OffersRead } from "../../modules/allegro/lib/connection"
 import { ALLEGRO_MODULE, RUNS_TO_KEEP } from "../../modules/allegro/lib/constants"
 import type { AllegroRunDto } from "../../modules/allegro/lib/contract"
-import { buildDemoRawOffers } from "../../modules/allegro/lib/demo"
 import { sameJson, toRunDto, type OfferRow, type RunRow } from "../../modules/allegro/lib/dto"
 import { matchOffers, type MatchSummary, type OfferMatch } from "../../modules/allegro/lib/matching"
 import { offersFromApi, type AllegroOfferInput } from "../../modules/allegro/lib/offers"
 import { isStockIssue, stockState } from "../../modules/allegro/lib/stock"
-import { demoPrices, loadCatalog, type QueryLike, type StockedVariant } from "./catalog"
+import { loadCatalog, type QueryLike, type StockedVariant } from "./catalog"
+import { demoDay, demoOffersRaw, loadOverlay } from "./demo-sim"
+import { allegroOf } from "./runtime"
 
 export type SyncTrigger = "schedule" | "manual" | "auto"
 
@@ -53,27 +54,11 @@ function setRunning(value: boolean): void {
 /* Demo                                                                */
 /* ------------------------------------------------------------------ */
 
-/** Midnight UTC: the demo then changes nothing within a day and still looks fresh every day. */
-export function demoDay(): Date {
-  const today = new Date()
-  today.setUTCHours(0, 0, 0, 0)
-  return today
-}
+export { demoDay, demoOffersRaw }
 
-export async function demoOffersRaw(query: QueryLike, variants: StockedVariant[]): Promise<Record<string, unknown>[]> {
-  const picked = [...variants].sort((a, b) => (a.sku < b.sku ? -1 : a.sku > b.sku ? 1 : 0)).slice(0, 12)
-  const prices = await demoPrices(
-    query,
-    picked.map((v) => v.id),
-  )
-  return buildDemoRawOffers(
-    picked.map((v) => ({ sku: v.sku, productTitle: v.productTitle ?? v.sku, price: prices.get(v.id) ?? null, available: v.available })),
-    demoDay(),
-  )
-}
-
-async function demoRead(query: QueryLike, variants: StockedVariant[]): Promise<OffersRead> {
-  const parsed = offersFromApi(await demoOffersRaw(query, variants))
+async function demoRead(svc: AllegroModuleService, query: QueryLike, variants: StockedVariant[]): Promise<OffersRead> {
+  const overlay = await loadOverlay(svc)
+  const parsed = offersFromApi(await demoOffersRaw(query, variants, overlay))
   return { offers: parsed.offers, statuses: parsed.statuses, complete: true, totalCount: parsed.offers.length, pages: 1, reason: null }
 }
 
@@ -242,7 +227,7 @@ export async function pruneRuns(svc: AllegroModuleService, kind: string): Promis
 export async function runAllegroOffersSync(container: MedusaContainer, input: SyncInput = {}): Promise<SyncResult> {
   if (isOffersSyncRunning()) return { run: null, skipped: "running" }
   setRunning(true)
-  const svc = container.resolve<AllegroModuleService>(ALLEGRO_MODULE)
+  const svc = allegroOf(container)
   const o = svc.getOptions()
   const trigger: SyncTrigger = input.trigger ?? "manual"
   const source = o.demo ? "demo" : "api"
@@ -257,7 +242,7 @@ export async function runAllegroOffersSync(container: MedusaContainer, input: Sy
     }
     const query = container.resolve(ContainerRegistrationKeys.QUERY) as unknown as QueryLike
     const variants = await loadCatalog(query, o.stockLocationIds)
-    const read = o.demo ? await demoRead(query, variants) : await readAllOffers(svc)
+    const read = o.demo ? await demoRead(svc, query, variants) : await readAllOffers(svc)
     const applied = await applyRead(svc, read, variants, o.demo)
     const status = read.complete ? "ok" : read.pages === 0 ? "error" : "partial"
     const finishedAt = new Date()

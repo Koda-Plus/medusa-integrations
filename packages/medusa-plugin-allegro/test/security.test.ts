@@ -31,6 +31,51 @@ test("write barrier: every write to the REST API is blocked, whatever the verb",
   assert.equal(isRequestAllowed({ method: "POST", url: "https://evil.example/auth/oauth/token", oauthUrls }).ok, false)
 })
 
+const uuid = "0f8b4c56-7e1a-4c3e-9a51-0123456789ab"
+const allow = (method: string, path: string, writer: string | null, armed: string[], body?: unknown) =>
+  isRequestAllowed({ method, url: `${urls.api}${path}`, oauthUrls, apiBase: urls.api, writer, armed: new Set(armed), body }).ok
+
+test("allowlist: an armed writer may call exactly its own paths", () => {
+  assert.equal(allow("PUT", `/sale/offer-quantity-change-commands/${uuid}`, "stock", ["stock"], { modification: { changeType: "FIXED", value: 3 } }), true)
+  assert.equal(allow("PUT", `/sale/offer-publication-commands/${uuid}`, "stock", ["stock"], { publication: { action: "END" } }), true)
+  assert.equal(allow("PUT", `/sale/offer-price-change-commands/${uuid}`, "prices", ["prices"], { modification: { type: "FIXED_PRICE" } }), true)
+  assert.equal(allow("POST", `/order/checkout-forms/${uuid}/shipments`, "shipping", ["shipping"]), true)
+  assert.equal(allow("PUT", `/order/checkout-forms/${uuid}/fulfillment`, "shipping", ["shipping"], { status: "SENT" }), true)
+  assert.equal(allow("POST", `/order/${uuid}/billing-documents/files`, "invoices", ["invoices"]), true)
+  assert.equal(allow("POST", "/sale/product-offers", "publish", ["publish"], { publication: { status: "INACTIVE" } }), true)
+})
+
+test("allowlist: a disarmed writer, another writer's path or no writer at all is blocked", () => {
+  assert.equal(allow("PUT", `/sale/offer-quantity-change-commands/${uuid}`, "stock", [], { modification: { changeType: "FIXED", value: 3 } }), false)
+  assert.equal(allow("PUT", `/sale/offer-quantity-change-commands/${uuid}`, "prices", ["prices", "stock"], { modification: { changeType: "FIXED", value: 3 } }), false)
+  assert.equal(allow("POST", `/order/checkout-forms/${uuid}/shipments`, null, ["shipping"]), false)
+  assert.equal(allow("POST", `/order/checkout-forms/${uuid}/shipments`, "orders", ["orders"]), false)
+  assert.equal(allow("DELETE", `/order/checkout-forms/${uuid}/shipments`, "shipping", ["shipping"]), false)
+  assert.equal(allow("PATCH", `/sale/product-offers/123`, "publish", ["publish"], { publication: { status: "INACTIVE" } }), false)
+})
+
+test("allowlist: the body rules close what a path cannot", () => {
+  /* Never ACTIVATE an offer, never a quantity of zero or a relative change. */
+  assert.equal(allow("PUT", `/sale/offer-publication-commands/${uuid}`, "stock", ["stock"], { publication: { action: "ACTIVATE" } }), false)
+  assert.equal(allow("PUT", `/sale/offer-quantity-change-commands/${uuid}`, "stock", ["stock"], { modification: { changeType: "FIXED", value: 0 } }), false)
+  assert.equal(allow("PUT", `/sale/offer-quantity-change-commands/${uuid}`, "stock", ["stock"], { modification: { changeType: "GAIN", value: 5 } }), false)
+  /* A new offer is a draft or nothing. */
+  assert.equal(allow("POST", "/sale/product-offers", "publish", ["publish"], { publication: { status: "ACTIVE" } }), false)
+  assert.equal(allow("POST", "/sale/product-offers", "publish", ["publish"], {}), false)
+  /* The shipping writer sets only the two forward statuses. */
+  assert.equal(allow("PUT", `/order/checkout-forms/${uuid}/fulfillment`, "shipping", ["shipping"], { status: "CANCELLED" }), false)
+})
+
+test("allowlist: another host, a path suffix or a query string is blocked", () => {
+  const evil = isRequestAllowed({ method: "POST", url: `https://api.evil.example/order/checkout-forms/${uuid}/shipments`, oauthUrls, apiBase: urls.api, writer: "shipping", armed: new Set(["shipping"]) })
+  assert.equal(evil.ok, false)
+  assert.equal(allow("POST", `/order/checkout-forms/${uuid}/shipments/extra`, "shipping", ["shipping"]), false)
+  assert.equal(allow("POST", `/order/checkout-forms/${uuid}/shipments?x=1`, "shipping", ["shipping"]), false)
+  assert.equal(allow("PUT", `/order/checkout-forms/${uuid}/fulfillment?checkoutForm.revision=819b5836`, "shipping", ["shipping"], { status: "SENT" }), true)
+  assert.equal(allow("PUT", `/order/checkout-forms/${uuid}/fulfillment?checkoutForm.revision=819b5836&x=1`, "shipping", ["shipping"], { status: "SENT" }), false)
+  assert.equal(allow("PUT", `/sale/offer-quantity-change-commands/not-a-uuid`, "stock", ["stock"], { modification: { changeType: "FIXED", value: 1 } }), false)
+})
+
 test("sandbox and production have separate OAuth and API hosts", () => {
   const sandbox = allegroUrls("sandbox")
   assert.notEqual(sandbox.token, urls.token)

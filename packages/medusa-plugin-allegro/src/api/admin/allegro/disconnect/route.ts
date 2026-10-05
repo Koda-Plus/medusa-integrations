@@ -16,5 +16,5 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
   await disconnect(svc)
-  res.json(await buildStatus(svc))
+  res.json(await buildStatus(req.scope))
 }

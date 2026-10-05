@@ -4,16 +4,26 @@
  *
  * Every call goes through the same order: write barrier, rate limiter, fetch
  * with a timeout. OAuth runs through dedicated methods against the two OAuth
- * endpoints, the only POSTs the barrier lets through.
+ * endpoints.
  *
- * ERROR POLICY
+ * READ ERROR POLICY
  *   network, timeout, HTTP 5xx   up to 3 attempts, pauses of 1 s and 4 s
- *   HTTP 429                     one 60 s wait and one more attempt
+ *   HTTP 429                     one 60 s wait and one more attempt (Allegro
+ *                                blocks the client id for a minute)
  *   HTTP 401 and 403             NOT retried here; the caller refreshes the
- *                                token and calls once more (the Allegro
- *                                swagger documents an invalid token as 403,
- *                                the tutorials as 401)
+ *                                token and calls once more
  *   other 4xx                    permanent, thrown right away
+ *
+ * WRITE ERROR POLICY (`send`)
+ *   idempotent writes (PUT of a command with our own UUID, PUT of a seller
+ *   status) are retried like reads on network errors and 5xx: Allegro
+ *   answers 409 "Command id was already used" to a repeat, which proves the
+ *   first one arrived;
+ *   NON-idempotent writes (a parcel, an invoice, a new offer) are NEVER
+ *   retried here. A network error, a timeout or a 5xx is UNCLEAR: it may have
+ *   reached Allegro. It becomes `AllegroUnclearError`, and the caller looks
+ *   the item up on Allegro before it sends anything again;
+ *   429 is transient: the caller stops the run and tries later.
  *
  * THE REFRESH HAS ITS OWN RETRY. After a refresh Allegro rotates the pair and
  * the old refresh token keeps working for 60 seconds only: when the new pair
@@ -22,13 +32,6 @@
  * on network errors, timeouts and 5xx; a 4xx (`invalid_grant`) is final.
  *
  * Tokens come IN as arguments, they never live in this file.
- *
- * Device flow (developer.allegro.pl, RFC 8628): `POST /auth/oauth/device`
- * with HTTP Basic and the scope gives a `user_code` for a person and a
- * `device_code` for us; the person types the code at allegro.pl/skojarz-aplikacje
- * and we poll `POST /auth/oauth/token` with the device code grant. The REST
- * API wants `Accept: application/vnd.allegro.public.v1+json`. Rate limit:
- * 9 000 requests per minute per client id; the plugin limits itself to 300.
  */
 
 import type { Logger } from "@medusajs/framework/types"
@@ -38,11 +41,27 @@ import { AllegroWriteBlockedError, isRequestAllowed, maskSecrets } from "./secur
 export class AllegroApiError extends Error {
   readonly status: number
   readonly transient: boolean
-  constructor(status: number, message: string, transient: boolean) {
+  /** Allegro's own error code (`errors[0].code`), when it sent one. */
+  readonly code: string | null
+  constructor(status: number, message: string, transient: boolean, code: string | null = null) {
     super(message)
     this.name = "AllegroApiError"
     this.status = status
     this.transient = transient
+    this.code = code
+  }
+}
+
+/**
+ * A non-idempotent write whose outcome we cannot know: the request may or
+ * may not have reached Allegro. Never retried blindly.
+ */
+export class AllegroUnclearError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = "AllegroUnclearError"
+    this.status = status
   }
 }
 
@@ -69,6 +88,27 @@ export type DevicePoll =
   | { state: "pending"; intervalS: number }
   | { state: "denied" }
   | { state: "expired" }
+
+export interface WriteRequest {
+  method: "PUT" | "POST"
+  path: string
+  query?: Record<string, string>
+  /** JSON body (Content-Type: the public media type). */
+  json?: unknown
+  /** Multipart body (the invoice upload). */
+  form?: FormData
+  /** True when repeating the request cannot change anything twice. */
+  idempotent: boolean
+  writer: string
+  armed: ReadonlySet<string>
+  accept?: string
+}
+
+export interface WriteResponse<T> {
+  status: number
+  data: T | null
+  location: string | null
+}
 
 /* ------------------------------------------------------------------ */
 /* Rate limiter: one per process, shared by every client instance      */
@@ -124,6 +164,22 @@ function globalLimiter(perMinute: number): Limiter {
   const holder = globalThis as typeof globalThis & { [LIMITER_KEY]?: Limiter }
   if (!holder[LIMITER_KEY]) holder[LIMITER_KEY] = buildLimiter(Math.max(1, perMinute))
   return holder[LIMITER_KEY] as Limiter
+}
+
+/** Allegro error bodies: `{"errors": [{"code", "message", "userMessage", "path"}]}`. */
+export function describeErrorBody(text: string): { code: string | null; message: string } {
+  try {
+    const json = JSON.parse(text) as { errors?: Array<{ code?: unknown; message?: unknown; userMessage?: unknown; path?: unknown }> }
+    const first = Array.isArray(json.errors) ? json.errors[0] : null
+    if (first) {
+      const parts = [first.userMessage, first.message].filter((x) => typeof x === "string" && x.trim()) as string[]
+      const path = typeof first.path === "string" && first.path ? ` (${first.path})` : ""
+      return { code: typeof first.code === "string" ? first.code : null, message: `${parts[0] ?? "error"}${path}` }
+    }
+  } catch {
+    /* not JSON */
+  }
+  return { code: null, message: text.slice(0, 300) }
 }
 
 /* ------------------------------------------------------------------ */
@@ -278,17 +334,23 @@ export class AllegroClient {
     }
   }
 
-  /* ---- REST API: read only ----------------------------------------- */
-
-  /**
-   * GET with an access token. Retries only what is transient. 401 and 403 go
-   * up without a retry: the caller refreshes the token and calls once more.
-   */
-  async get<T>(path: string, query: Record<string, string | string[]>, accessToken: string): Promise<T> {
+  private url(path: string, query: Record<string, string | string[]> = {}): URL {
     const url = new URL(`${this.o.urls.api}${path}`)
     for (const [k, v] of Object.entries(query)) {
       for (const one of Array.isArray(v) ? v : [v]) url.searchParams.append(k, one)
     }
+    return url
+  }
+
+  /* ---- REST API: reads ----------------------------------------------- */
+
+  /**
+   * GET with an access token. Retries only what is transient. 401 and 403 go
+   * up without a retry: the caller refreshes the token and calls once more.
+   * `accept` picks the media type (beta resources answer only the beta one).
+   */
+  async get<T>(path: string, query: Record<string, string | string[]>, accessToken: string, accept: string = MEDIA_TYPE): Promise<T> {
+    const url = this.url(path, query)
     const verdict = isRequestAllowed({ method: "GET", url: url.toString(), oauthUrls: [] })
     if (!verdict.ok) throw new AllegroWriteBlockedError("GET", url.toString(), verdict.reason)
 
@@ -302,29 +364,30 @@ export class AllegroClient {
           method: "GET",
           headers: {
             Authorization: `Bearer ${accessToken}`,
-            Accept: MEDIA_TYPE,
+            Accept: accept,
             "Accept-Language": "en-US",
             "User-Agent": this.o.userAgent,
           },
           signal: AbortSignal.timeout(this.o.timeoutMs),
         })
         if (res.ok) return (await res.json()) as T
-        const text = this.mask((await res.text()).slice(0, 300), [accessToken])
+        const raw = this.mask((await res.text()).slice(0, 600), [accessToken])
+        const described = describeErrorBody(raw)
         if (res.status === 429) {
-          /* The docs do not describe Retry-After, so we wait the whole window. */
+          /* The docs do not describe Retry-After; the block lasts a minute. */
           if (attempt === 0) {
             this.o.logger.warn(`[allegro] 429 on ${path}, waiting 60 s.`)
             await sleep(60_000)
-            last = new AllegroApiError(429, `Allegro 429 on ${path}: ${text}`, true)
+            last = new AllegroApiError(429, `Allegro 429 on ${path}: ${described.message}`, true, described.code)
             continue
           }
-          throw new AllegroApiError(429, `Allegro 429 on ${path} after waiting a minute: ${text}`, false)
+          throw new AllegroApiError(429, `Allegro 429 on ${path} after waiting a minute: ${described.message}`, false, described.code)
         }
         if (res.status >= 500) {
-          last = new AllegroApiError(res.status, `Allegro ${res.status} on ${path}: ${text}`, true)
+          last = new AllegroApiError(res.status, `Allegro ${res.status} on ${path}: ${described.message}`, true, described.code)
           continue
         }
-        throw new AllegroApiError(res.status, `Allegro ${res.status} on ${path}: ${text}`, false)
+        throw new AllegroApiError(res.status, `Allegro ${res.status} on ${path}: ${described.message}`, false, described.code)
       } catch (err) {
         if (err instanceof AllegroApiError) {
           if (!err.transient) throw err
@@ -335,5 +398,73 @@ export class AllegroClient {
       }
     }
     throw last instanceof Error ? last : new AllegroApiError(0, `Allegro ${path}: unknown error`, true)
+  }
+
+  /* ---- REST API: writes, behind the allowlist --------------------------- */
+
+  async send<T>(req: WriteRequest, accessToken: string): Promise<WriteResponse<T>> {
+    const url = this.url(req.path, req.query ?? {})
+    const verdict = isRequestAllowed({
+      method: req.method,
+      url: url.toString(),
+      oauthUrls: [],
+      apiBase: this.o.urls.api,
+      writer: req.writer,
+      armed: req.armed,
+      body: req.json,
+    })
+    if (!verdict.ok) throw new AllegroWriteBlockedError(req.method, url.toString(), verdict.reason)
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: req.accept ?? MEDIA_TYPE,
+      "Accept-Language": "en-US",
+      "User-Agent": this.o.userAgent,
+    }
+    let body: string | FormData | undefined
+    if (req.form) {
+      body = req.form
+    } else if (req.json !== undefined) {
+      headers["Content-Type"] = MEDIA_TYPE
+      body = JSON.stringify(req.json)
+    }
+
+    const PAUSES_MS = req.idempotent ? [0, 1000, 4000] : [0]
+    let last: Error | null = null
+    for (let attempt = 0; attempt < PAUSES_MS.length; attempt += 1) {
+      if (PAUSES_MS[attempt] > 0) await sleep(PAUSES_MS[attempt])
+      await this.limiter.pass()
+      let res: Response
+      try {
+        res = await fetch(url, { method: req.method, headers, body, signal: AbortSignal.timeout(this.o.timeoutMs) })
+      } catch (err) {
+        const message = `Allegro ${req.method} ${req.path}: ${this.mask(String(err), [accessToken])}`
+        if (!req.idempotent) throw new AllegroUnclearError(0, `${message} (no answer, the request may have reached Allegro)`)
+        last = new AllegroApiError(0, message, true)
+        continue
+      }
+      const text = await res.text()
+      if (res.ok) {
+        let data: T | null = null
+        if (text) {
+          try {
+            data = JSON.parse(text) as T
+          } catch {
+            data = null
+          }
+        }
+        return { status: res.status, data, location: res.headers.get("location") }
+      }
+      const described = describeErrorBody(this.mask(text.slice(0, 600), [accessToken]))
+      const message = `Allegro ${res.status} on ${req.method} ${req.path}: ${described.message}`
+      if (res.status === 429) throw new AllegroApiError(429, message, true, described.code)
+      if (res.status >= 500) {
+        if (!req.idempotent) throw new AllegroUnclearError(res.status, `${message} (the request may have reached Allegro)`)
+        last = new AllegroApiError(res.status, message, true, described.code)
+        continue
+      }
+      throw new AllegroApiError(res.status, message, false, described.code)
+    }
+    throw last ?? new AllegroApiError(0, `Allegro ${req.method} ${req.path}: unknown error`, true)
   }
 }

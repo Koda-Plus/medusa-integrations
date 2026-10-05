@@ -1,7 +1,7 @@
 import { model } from "@medusajs/framework/utils"
 
 /**
- * One run of the offer sync or the order journal: where the data came from,
+ * One run of a sync, a plan or a writer: where the data came from,
  * whether the read was complete and what changed. The admin shows the latest
  * runs; older ones are pruned.
  *
@@ -16,6 +16,7 @@ const AllegroSyncRun = model.define("allegro_sync_run", {
   trigger: model.text(),
   status: model.text(),
   complete: model.boolean().default(false),
+  dry_run: model.boolean().default(false),
   pages: model.number().default(0),
   items: model.number().default(0),
   statuses: model.json().nullable(),
@@ -27,6 +28,7 @@ const AllegroSyncRun = model.define("allegro_sync_run", {
   updated_count: model.number().default(0),
   removed_count: model.number().default(0),
   message: model.text().nullable(),
+  details: model.json().nullable(),
   duration_ms: model.number().default(0),
   started_at: model.dateTime(),
   finished_at: model.dateTime().nullable(),
