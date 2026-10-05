@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { buildOrderPayload, normalizeEan, normalizeSku, pickupPoint, PayloadError, type OrderRecord } from "../src/modules/subiekt/lib/order-payload.ts"
 import { paymentState } from "../src/modules/subiekt/lib/payment.ts"
-import { DEFAULT_COD_PROVIDERS, DEFAULT_PREPAID_PROVIDERS, TAX_ID_METADATA_KEYS } from "../src/modules/subiekt/lib/constants.ts"
+import { DEFAULT_COD_PROVIDERS, DEFAULT_NIP_SOURCES, DEFAULT_PREPAID_PROVIDERS, TAX_ID_METADATA_KEYS } from "../src/modules/subiekt/lib/constants.ts"
 
 const example = JSON.parse(readFileSync(new URL("../contract/examples/order-create.request.json", import.meta.url), "utf8"))
 
@@ -99,6 +99,29 @@ test("a buyer with a NIP in metadata asks for an invoice", () => {
     options,
   )
   assert.deepEqual(payload.invoice, { requested: true, tax_id: "PL 123-456-32-18", company_name: "Salon Ania" })
+})
+
+test("a valid NIP sends the buyer block, an invalid one sends a warning and the retail buyer", () => {
+  const b2b = buildOrderPayload(
+    { ...order, metadata: {}, billing_address: { ...address, company: "Salon Ania sp. z o.o., NIP 123-456-32-18" } },
+    captured,
+    { ...options, nipSources: DEFAULT_NIP_SOURCES, createContractors: true },
+  )
+  assert.equal(b2b.buyerNip, "1234563218")
+  assert.deepEqual(b2b.warnings, [])
+  assert.equal(b2b.payload.buyer?.nip, "1234563218")
+  assert.equal(b2b.payload.buyer?.company_name, "Salon Ania sp. z o.o.")
+  assert.equal(b2b.payload.buyer?.address?.address_1, "ul. Przykładowa 12/3")
+  assert.equal(b2b.payload.buyer?.email, "anna.nowak@example.com")
+  assert.equal(b2b.payload.buyer?.create_if_missing, true)
+
+  const wrong = buildOrderPayload({ ...order, metadata: { nip: "123-456-32-19" } }, captured, { ...options, nipSources: DEFAULT_NIP_SOURCES })
+  assert.equal(wrong.payload.buyer, null)
+  assert.equal(wrong.buyerNip, null)
+  assert.match(wrong.warnings[0], /123-456-32-19.*not a valid NIP/)
+
+  const off = buildOrderPayload({ ...order, metadata: { nip: "1234563218" } }, captured, { ...options, nipSources: [] })
+  assert.equal(off.payload.buyer, null)
 })
 
 test("forwarded metadata keys pass through, others stay home", () => {

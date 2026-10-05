@@ -2,7 +2,11 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { SIGNATURE_HEADER, SIGNATURE_TOLERANCE_SECONDS } from "../../../modules/subiekt/lib/constants"
 import { verifySignature } from "../../../modules/subiekt/lib/signature"
 import { pullEvents } from "../../../workflows/subiekt/events"
+import { patchDiagnostics } from "../../../workflows/subiekt/health"
 import { subiektService } from "../../../workflows/subiekt/runtime"
+
+/** Rejections are public traffic: they reach the diagnostics at most once a minute. */
+let lastRejectionNoted = 0
 
 /**
  * POST /hooks/subiekt
@@ -40,6 +44,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   })
   if (!verdict.ok) {
     svc.getLogger().warn(`[subiekt] Webhook rejected: ${verdict.reason}.`)
+    // For the admin: a stale timestamp means the clocks drift, a mismatch means two different secrets.
+    if (Date.now() - lastRejectionNoted > 60_000) {
+      lastRejectionNoted = Date.now()
+      await patchDiagnostics(req.scope, { webhookRejectedAt: new Date().toISOString(), webhookRejectReason: verdict.reason }).catch(() => undefined)
+    }
     res.status(401).json({
       error: {
         code: verdict.reason === "stale" ? "stale_timestamp" : "invalid_signature",
@@ -50,6 +59,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
 
+  await patchDiagnostics(req.scope, { webhookAt: new Date().toISOString() }).catch(() => undefined)
   setImmediate(() => {
     pullEvents(req.scope, "webhook").catch((err: unknown) => {
       svc.getLogger().error(`[subiekt] Event read after webhook failed: ${svc.mask((err as Error)?.message ?? String(err))}`)

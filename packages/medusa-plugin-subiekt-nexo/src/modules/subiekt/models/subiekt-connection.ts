@@ -18,6 +18,11 @@ const SubiektConnection = model.define("subiekt_connection", {
   consecutive_failures: model.number().default(0),
   events_cursor: model.text().nullable(),
   events_read_at: model.dateTime().nullable(),
+  /** Since 0.2.0: round trip of the last health check, and the bridge clock minus ours. */
+  latency_ms: model.number().nullable(),
+  clock_skew_ms: model.number().nullable(),
+  /** Since 0.2.0: signature verdict and webhook bookkeeping for the admin. */
+  diagnostics: model.json().nullable(),
 })
 
 export default SubiektConnection

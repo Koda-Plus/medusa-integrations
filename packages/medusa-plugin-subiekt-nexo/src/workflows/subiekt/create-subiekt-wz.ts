@@ -3,6 +3,7 @@ import type { DocumentDto } from "../../modules/subiekt/lib/contract"
 import { toDocumentDto } from "../../modules/subiekt/lib/dto"
 import { recordDocument } from "./orders"
 import { bridgeFor, markReachable, subiektService } from "./runtime"
+import { queueSalesDocument } from "./sales-documents"
 
 export interface CreateWzInput {
   order_id: string
@@ -18,8 +19,9 @@ export interface CreateWzResult {
 /** Issues the WZ from the order's ZK and stores it. Never creates a Medusa fulfillment: one already exists. */
 export const createSubiektWzStep = createStep("subiekt-create-wz", async (input: CreateWzInput, { container }) => {
   const result = await bridgeFor(container).createFulfillment(input.order_id, { fulfillment_id: input.fulfillment_id })
-  const { row } = await recordDocument(container, { orderId: input.order_id, document: result.document, source: "bridge", allowFulfillment: false })
+  const { row, fresh } = await recordDocument(container, { orderId: input.order_id, document: result.document, source: "bridge", allowFulfillment: false })
   await markReachable(subiektService(container))
+  if (fresh) await queueSalesDocument(container, input.order_id, "wz")
   return new StepResponse<CreateWzResult>({ order_id: input.order_id, created: result.created, document: toDocumentDto(row) })
 })
 

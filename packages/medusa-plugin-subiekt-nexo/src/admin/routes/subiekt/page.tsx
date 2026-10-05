@@ -16,7 +16,10 @@ import {
   useSubiektSync,
   useSubiektTasks,
 } from "../../lib/subiekt-api"
+import { References, ViewSwitch, usePageView, type PageView } from "../../lib/subiekt-guide"
+import { GuideView } from "../../lib/subiekt-guide-view"
 import { SubiektIcon } from "../../lib/subiekt-icon"
+import { BridgeSection, ProductsSection, WritersSection } from "../../lib/subiekt-panels"
 import {
   DocumentStatusBadge,
   Field,
@@ -25,17 +28,21 @@ import {
   OrderLink,
   Pager,
   RunStatusBadge,
+  SampleList,
   StatTile,
   TaskStatusBadge,
   fmtDateTime,
   fmtDuration,
   fmtNumber,
+  monthYear,
+  referencesFor,
   runSummary,
 } from "../../lib/subiekt-ui"
 
 /**
- * Subiekt nexo by Koda Plus: the connection to the bridge, the queue of
- * calls towards Subiekt, the documents it issued and the stock sync.
+ * Subiekt nexo by Koda Plus. Two views in the header switch, kept in the URL
+ * (`?view=guide`): the panel (connection, bridge diagnostics, writers, stock,
+ * products and prices, the queue, documents, history) and the setup guide.
  */
 const PAGE_SIZE = 15
 
@@ -43,6 +50,7 @@ const SubiektPage = () => {
   const { t, i18n } = useTranslation("subiekt")
   const lang = i18n.language || "en"
   const client = useQueryClient()
+  const [view, setView] = usePageView()
   const [pollUntil, setPollUntil] = useState(0)
   const status = useSubiektStatus(pollUntil)
   const s = status.data
@@ -59,11 +67,12 @@ const SubiektPage = () => {
   }, [runKey, client])
 
   const poll = () => setPollUntil(Date.now() + 30_000)
+  const references = s ? referencesFor(s.references, lang) : []
 
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} onAction={poll} />
+        <Header status={s} view={view} onView={setView} onAction={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -71,7 +80,7 @@ const SubiektPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s?.mode === "demo" ? (
+        {s?.mode === "demo" && view === "panel" ? (
           <div className="px-6 py-4">
             <InlineTip variant="info" label={t("demo.label")}>
               {t("demo.text")}
@@ -85,34 +94,72 @@ const SubiektPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s ? (
-          <div className="grid grid-cols-2 divide-x divide-y md:grid-cols-3 md:divide-y-0 xl:grid-cols-6">
+        {s && s.optionWarnings.length > 0
+          ? s.optionWarnings.map((w) => (
+              <div key={w} className="px-6 py-4">
+                <InlineTip variant="warning" label={t("optionWarnings.label")}>
+                  {t(`optionWarnings.${w}`, { defaultValue: w })}
+                </InlineTip>
+              </div>
+            ))
+          : null}
+        {s && view === "panel" ? (
+          <div className="grid grid-cols-2 divide-x divide-y md:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
             <StatTile label={t("stats.sent24h")} value={fmtNumber(s.counts.succeeded24h, lang)} />
             <StatTile label={t("stats.waiting")} value={fmtNumber(s.counts.waiting, lang)} tone={s.counts.waiting ? undefined : "muted"} />
-            <StatTile label={t("stats.queue")} value={fmtNumber(s.counts.pending + s.counts.running, lang)} tone={s.counts.pending + s.counts.running ? undefined : "muted"} />
+            <StatTile
+              label={t("stats.queue")}
+              value={fmtNumber(s.counts.pending + s.counts.running + s.counts.unknown, lang)}
+              tone={s.counts.pending + s.counts.running + s.counts.unknown ? undefined : "muted"}
+            />
             <StatTile label={t("stats.attention")} value={fmtNumber(s.counts.failed, lang)} tone={s.counts.failed ? "attention" : "muted"} />
             <StatTile label={t("stats.zk")} value={fmtNumber(s.counts.zk, lang)} />
             <StatTile label={t("stats.wz")} value={fmtNumber(s.counts.wz, lang)} />
+            <StatTile label={t("stats.sales")} value={fmtNumber(s.counts.fs + s.counts.pa, lang)} tone={s.counts.fs + s.counts.pa ? undefined : "muted"} />
           </div>
         ) : null}
       </Container>
 
-      {s ? (
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          <ConnectionSection status={s} lang={lang} />
-          <StockSection run={s.lastRuns.stock ?? null} lang={lang} />
-        </div>
-      ) : null}
-      {s ? <TasksSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
-      <DocumentsSection lang={lang} poll={polling} />
-      <RunsSection lang={lang} poll={polling} />
+      {view === "guide" ? (
+        s ? (
+          <GuideView status={s} lang={lang} />
+        ) : null
+      ) : (
+        <>
+          {s ? (
+            <References
+              items={references}
+              title={t("references.title")}
+              subtitle={t("references.subtitle")}
+              openLabel={t("references.open")}
+              sinceLabel={(since) => t("references.since", { date: monthYear(since, lang) })}
+            />
+          ) : null}
+          {s ? (
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <ConnectionSection status={s} lang={lang} />
+              <BridgeSection status={s} lang={lang} />
+            </div>
+          ) : null}
+          {s ? (
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <WritersSection status={s} lang={lang} />
+              <StockSection run={s.lastRuns.stock ?? null} lang={lang} />
+            </div>
+          ) : null}
+          {s ? <ProductsSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
+          {s ? <TasksSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
+          <DocumentsSection lang={lang} poll={polling} />
+          <RunsSection lang={lang} poll={polling} />
+        </>
+      )}
     </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
-function Header({ status, onAction }: { status: SubiektStatusResponse | undefined; onAction: () => void }) {
+function Header({ status, view, onView, onAction }: { status: SubiektStatusResponse | undefined; view: PageView; onView: (v: PageView) => void; onAction: () => void }) {
   const { t } = useTranslation("subiekt")
   const sync = useSubiektSync()
   const check = useSubiektCheck()
@@ -151,21 +198,28 @@ function Header({ status, onAction }: { status: SubiektStatusResponse | undefine
           </Text>
           <ModeBadge status={status} />
         </div>
-        <Text size="small" className="text-ui-fg-subtle max-w-2xl">
+        <Text size="small" className="max-w-2xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button size="small" variant="secondary" disabled={!ready} isLoading={check.isPending} onClick={onCheck}>
-          {t("actions.check")}
-        </Button>
-        <Button size="small" variant="secondary" disabled={!ready || running.has("events")} onClick={() => start("events")}>
-          {running.has("events") ? t("actions.running") : t("actions.events")}
-        </Button>
-        <Button size="small" variant="primary" disabled={!ready || running.has("stock")} onClick={() => start("stock")}>
-          <ArrowPath />
-          {running.has("stock") ? t("actions.running") : t("actions.stock")}
-        </Button>
+      <div className="flex flex-col items-start gap-3 md:items-end">
+        <ViewSwitch value={view} onChange={onView} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+        <div className="flex flex-wrap gap-2">
+          <Button size="small" variant="secondary" disabled={!ready} isLoading={check.isPending} onClick={onCheck}>
+            {t("actions.check")}
+          </Button>
+          {view === "panel" ? (
+            <>
+              <Button size="small" variant="secondary" disabled={!ready || running.has("events")} onClick={() => start("events")}>
+                {running.has("events") ? t("actions.running") : t("actions.events")}
+              </Button>
+              <Button size="small" variant="primary" disabled={!ready || running.has("stock")} onClick={() => start("stock")}>
+                <ArrowPath />
+                {running.has("stock") ? t("actions.running") : t("actions.stock")}
+              </Button>
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -325,26 +379,51 @@ function StockSection({ run, lang }: { run: RunDto | null; lang: string }) {
   )
 }
 
-function SampleList({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div className="flex flex-col gap-y-1">
-      <Text size="xsmall" className="text-ui-fg-subtle">
-        {label}
-      </Text>
-      <div className="flex flex-wrap gap-1">
-        {items.map((item) => (
-          <Badge key={item} size="2xsmall" className="font-mono">
-            {item}
-          </Badge>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 /* ------------------------------------------------------------------ */
 
 type TaskFilter = "attention" | "open" | "done" | "all"
+
+function TaskDetails({ task, lang }: { task: TaskDto; lang: string }) {
+  const { t } = useTranslation("subiekt")
+  const buyer = task.buyer
+  return (
+    <div className="flex flex-col gap-y-0.5">
+      {task.lastError ? (
+        <Text size="small" className={task.status === "failed" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}>
+          {task.lastErrorCode ? <span className="font-mono">[{task.lastErrorCode}] </span> : null}
+          {task.lastError}
+        </Text>
+      ) : null}
+      {task.status === "unknown" ? (
+        <Text size="xsmall" className="text-ui-tag-orange-text">
+          {t("tasks.unknownHint")}
+        </Text>
+      ) : null}
+      {task.manualAction ? (
+        <Text size="small" className="text-ui-tag-orange-text">
+          {t("tasks.manual")}
+        </Text>
+      ) : null}
+      {buyer ? (
+        <Text size="xsmall" className="text-ui-fg-subtle">
+          {buyer.source === "retail"
+            ? t("tasks.buyer.retail")
+            : t(`tasks.buyer.${buyer.source}`, { name: buyer.name ?? buyer.symbol ?? "?", nip: buyer.nip ?? "?" })}
+        </Text>
+      ) : null}
+      {task.warnings.map((w) => (
+        <Text key={w} size="xsmall" className="text-ui-tag-orange-text">
+          {w}
+        </Text>
+      ))}
+      {(task.status === "pending" || task.status === "unknown") && task.nextAttemptAt && task.attempts > 0 ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("tasks.nextAttempt", { time: fmtDateTime(task.nextAttemptAt, lang) })}
+        </Text>
+      ) : null}
+    </div>
+  )
+}
 
 function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusResponse; lang: string; poll: boolean; onAction: () => void }) {
   const { t } = useTranslation("subiekt")
@@ -352,7 +431,8 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
   const [search, setSearch] = useState("")
   const [offset, setOffset] = useState(0)
   const q = search.trim()
-  const tasks = useSubiektTasks(filter, q, offset, PAGE_SIZE, poll || status.counts.pending + status.counts.running > 0)
+  const open = status.counts.waiting + status.counts.pending + status.counts.running + status.counts.unknown
+  const tasks = useSubiektTasks(filter, q, offset, PAGE_SIZE, poll || status.counts.pending + status.counts.running + status.counts.unknown > 0)
   const retry = useSubiektRetry()
   const rows = tasks.data?.tasks ?? []
 
@@ -387,7 +467,7 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
           onChange={setFilter}
           options={[
             { value: "attention", label: t("tasks.filters.attention"), count: status.counts.failed },
-            { value: "open", label: t("tasks.filters.open"), count: status.counts.waiting + status.counts.pending + status.counts.running },
+            { value: "open", label: t("tasks.filters.open"), count: open },
             { value: "done", label: t("tasks.filters.done") },
             { value: "all", label: t("tasks.filters.all") },
           ]}
@@ -416,46 +496,33 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
                 </td>
               </Table.Row>
             ) : (
-              rows.map((task) => {
-                return (
-                  <Table.Row key={task.id} className="[&_td]:py-2.5">
-                    <Table.Cell>
-                      <OrderLink orderId={task.orderId} displayId={task.displayId} />
-                    </Table.Cell>
-                    <Table.Cell className="whitespace-nowrap">{t(`tasks.kinds.${task.kind}`)}</Table.Cell>
-                    <Table.Cell>
-                      <TaskStatusBadge status={task.status} />
-                    </Table.Cell>
-                    <Table.Cell className="text-right tabular-nums">{task.attempts}</Table.Cell>
-                    <Table.Cell className="whitespace-nowrap font-mono text-xs">{task.documentNumber ?? ""}</Table.Cell>
-                    <Table.Cell className="max-w-md">
-                      {task.lastError ? (
-                        <Text size="small" className={task.status === "failed" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}>
-                          {task.lastErrorCode ? <span className="font-mono">[{task.lastErrorCode}] </span> : null}
-                          {task.lastError}
-                        </Text>
-                      ) : null}
-                      {task.manualAction ? (
-                        <Text size="small" className="text-ui-tag-orange-text">
-                          {t("tasks.manual")}
-                        </Text>
-                      ) : null}
-                      {task.status === "pending" && task.nextAttemptAt && task.attempts > 0 ? (
-                        <Text size="xsmall" className="text-ui-fg-muted">
-                          {t("tasks.nextAttempt", { time: fmtDateTime(task.nextAttemptAt, lang) })}
-                        </Text>
-                      ) : null}
-                    </Table.Cell>
-                    <Table.Cell className="text-right">
-                      {task.status === "failed" || (task.status === "pending" && task.attempts > 0) || task.status === "waiting" ? (
-                        <Button size="small" variant="secondary" isLoading={retry.isPending && retry.variables === task.id} onClick={() => onRetry(task)}>
-                          {task.status === "waiting" ? t("actions.send") : t("actions.retry")}
-                        </Button>
-                      ) : null}
-                    </Table.Cell>
-                  </Table.Row>
-                )
-              })
+              rows.map((task) => (
+                <Table.Row key={task.id} className="[&_td]:py-2.5">
+                  <Table.Cell>
+                    <OrderLink orderId={task.orderId} displayId={task.displayId} />
+                  </Table.Cell>
+                  <Table.Cell className="whitespace-nowrap">
+                    {task.kind === "order.document" && (task.documentKind === "fs" || task.documentKind === "pa")
+                      ? t(`tasks.documentKinds.${task.documentKind}`)
+                      : t(`tasks.kinds.${task.kind}`)}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <TaskStatusBadge status={task.status} />
+                  </Table.Cell>
+                  <Table.Cell className="text-right tabular-nums">{task.attempts}</Table.Cell>
+                  <Table.Cell className="whitespace-nowrap font-mono text-xs">{task.documentNumber ?? ""}</Table.Cell>
+                  <Table.Cell className="max-w-md">
+                    <TaskDetails task={task} lang={lang} />
+                  </Table.Cell>
+                  <Table.Cell className="text-right">
+                    {task.status === "failed" || task.status === "unknown" || (task.status === "pending" && task.attempts > 0) || task.status === "waiting" ? (
+                      <Button size="small" variant="secondary" isLoading={retry.isPending && retry.variables === task.id} onClick={() => onRetry(task)}>
+                        {task.status === "waiting" ? t("actions.send") : t("actions.retry")}
+                      </Button>
+                    ) : null}
+                  </Table.Cell>
+                </Table.Row>
+              ))
             )}
           </Table.Body>
         </Table>
@@ -467,7 +534,7 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
 
 /* ------------------------------------------------------------------ */
 
-type DocFilter = "all" | "ZK" | "WZ"
+type DocFilter = "all" | "ZK" | "WZ" | "FS" | "PA"
 
 function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
   const { t } = useTranslation("subiekt")
@@ -489,11 +556,7 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
         <FilterPills<DocFilter>
           value={kind}
           onChange={setKind}
-          options={[
-            { value: "all", label: t("documents.filters.all") },
-            { value: "ZK", label: t("documents.filters.ZK") },
-            { value: "WZ", label: t("documents.filters.WZ") },
-          ]}
+          options={(["all", "ZK", "WZ", "FS", "PA"] as const).map((k) => ({ value: k, label: t(`documents.filters.${k}`) }))}
         />
       </div>
       <div className="overflow-x-auto">
@@ -504,13 +567,14 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
               <Table.HeaderCell>{t("documents.columns.order")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.issued")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.source")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("documents.columns.ksef")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.status")}</Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
               <Table.Row>
-                <td colSpan={5} className="px-6 py-6 text-center">
+                <td colSpan={6} className="px-6 py-6 text-center">
                   <Text size="small" className="text-ui-fg-muted">
                     {docs.isLoading ? "" : t("documents.empty")}
                   </Text>
@@ -528,6 +592,9 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDateTime(d.issuedAt, lang)}</Table.Cell>
                   <Table.Cell>{t(`documents.sources.${d.source}`, { defaultValue: d.source })}</Table.Cell>
+                  <Table.Cell className="whitespace-nowrap font-mono text-xs">
+                    {d.ksefNumber ? d.ksefNumber : d.kind === "FS" && d.status !== "canceled" ? <span className="font-sans text-ui-fg-muted">{t("documents.ksefWaiting")}</span> : ""}
+                  </Table.Cell>
                   <Table.Cell>
                     <DocumentStatusBadge status={d.status} />
                   </Table.Cell>

@@ -6,7 +6,7 @@ import { intParam, strParam, subiektService } from "../helpers"
 const GROUPS: Record<string, string[] | null> = {
   all: null,
   attention: ["failed"],
-  open: ["waiting", "pending", "running"],
+  open: ["waiting", "pending", "running", "unknown"],
   done: ["succeeded", "canceled"],
 }
 

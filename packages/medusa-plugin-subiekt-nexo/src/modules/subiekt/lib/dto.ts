@@ -3,7 +3,7 @@
  * Dates leave as ISO strings; secrets never get here (no table stores one).
  */
 
-import type { DocumentDto, RunDto, RunKind, RunStatus, RunTrigger, TaskDto, TaskKind, TaskStatus } from "./contract"
+import type { BuyerResult, DocumentDto, RunDto, RunKind, RunStatus, RunTrigger, TaskDto, TaskKind, TaskStatus } from "./contract"
 
 export interface ConnectionRow {
   id: string
@@ -15,6 +15,11 @@ export interface ConnectionRow {
   consecutive_failures: number
   events_cursor: string | null
   events_read_at: Date | string | null
+  /** Since 0.2.0: the last health check measured. */
+  latency_ms?: number | null
+  clock_skew_ms?: number | null
+  /** Since 0.2.0: signature verdict, webhook bookkeeping. */
+  diagnostics?: Record<string, unknown> | null
 }
 
 export interface TaskRow {
@@ -32,6 +37,8 @@ export interface TaskRow {
   last_error: string | null
   last_error_code: string | null
   result: Record<string, unknown> | null
+  /** Since 0.2.0: input frozen when the task was queued, for example `{ kind: "fs" }`. */
+  detail?: Record<string, unknown> | null
   demo?: boolean
   created_at?: Date | string | null
   updated_at?: Date | string | null
@@ -51,6 +58,8 @@ export interface DocumentRow {
   related: Array<{ kind: string; number: string }> | null
   event_id: string | null
   applied_at: Date | string | null
+  /** Since 0.2.0. */
+  ksef_number?: string | null
   demo: boolean
   created_at?: Date | string | null
 }
@@ -75,8 +84,25 @@ export function iso(value: Date | string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
 
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : []
+}
+
+function buyerOf(value: unknown): BuyerResult | null {
+  if (!value || typeof value !== "object") return null
+  const b = value as Record<string, unknown>
+  if (b.source !== "existing" && b.source !== "created" && b.source !== "retail") return null
+  return {
+    source: b.source,
+    nip: typeof b.nip === "string" ? b.nip : null,
+    symbol: typeof b.symbol === "string" ? b.symbol : null,
+    name: typeof b.name === "string" ? b.name : null,
+  }
+}
+
 export function toTaskDto(r: TaskRow): TaskDto {
   const number = r.result && typeof r.result.number === "string" ? r.result.number : null
+  const kind = r.detail && typeof r.detail.kind === "string" ? r.detail.kind : r.result && typeof r.result.kind === "string" ? String(r.result.kind).toLowerCase() : null
   return {
     id: r.id,
     kind: r.kind as TaskKind,
@@ -91,6 +117,9 @@ export function toTaskDto(r: TaskRow): TaskDto {
     reference: r.reference ?? null,
     documentNumber: number,
     manualAction: Boolean(r.result && r.result.manual_action_required === true),
+    warnings: strings(r.result?.warnings),
+    buyer: buyerOf(r.result?.buyer),
+    documentKind: r.kind === "order.document" ? kind : null,
     createdAt: iso(r.created_at),
     updatedAt: iso(r.updated_at),
     succeededAt: iso(r.succeeded_at),
@@ -108,6 +137,7 @@ export function toDocumentDto(r: DocumentRow): DocumentDto {
     issuedAt: iso(r.issued_at),
     source: r.source,
     warehouse: r.warehouse ?? null,
+    ksefNumber: r.ksef_number ?? null,
     related: Array.isArray(r.related) ? r.related : [],
     createdAt: iso(r.created_at),
   }

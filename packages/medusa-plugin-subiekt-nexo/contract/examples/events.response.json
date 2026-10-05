@@ -40,9 +40,57 @@
           ]
         }
       }
+    },
+    {
+      "id": 43,
+      "type": "document.issued",
+      "occurred_at": "2026-10-04T13:05:12.000Z",
+      "data": {
+        "order_id": "order_01JDEMO0000000000000000001",
+        "source": "bridge",
+        "document": {
+          "kind": "FS",
+          "number": "FS 87/MAG/2026",
+          "id": "48402",
+          "issued_at": "2026-10-04T13:05:12.000Z",
+          "status": "open",
+          "warehouse": "MAG",
+          "ksef_number": null,
+          "related": [
+            {
+              "kind": "WZ",
+              "number": "WZ 311/MAG/2026"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 44,
+      "type": "document.updated",
+      "occurred_at": "2026-10-04T13:20:05.000Z",
+      "data": {
+        "order_id": "order_01JDEMO0000000000000000001",
+        "source": "subiekt",
+        "document": {
+          "kind": "FS",
+          "number": "FS 87/MAG/2026",
+          "id": "48402",
+          "issued_at": "2026-10-04T13:05:12.000Z",
+          "status": "open",
+          "warehouse": "MAG",
+          "ksef_number": "5265877635-20261004-0A1B2C3D4E5F-7A",
+          "related": [
+            {
+              "kind": "WZ",
+              "number": "WZ 311/MAG/2026"
+            }
+          ]
+        }
+      }
     }
   ],
-  "last_id": 42,
+  "last_id": 44,
   "has_more": false,
-  "head_id": 42
+  "head_id": 44
 }

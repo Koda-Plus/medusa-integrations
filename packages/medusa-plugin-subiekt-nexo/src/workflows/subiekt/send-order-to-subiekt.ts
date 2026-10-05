@@ -1,8 +1,9 @@
 import { createStep, createWorkflow, StepResponse, WorkflowResponse } from "@medusajs/framework/workflows-sdk"
-import type { DocumentDto, OrderResult } from "../../modules/subiekt/lib/contract"
+import type { BuyerResult, DocumentDto, OrderResult } from "../../modules/subiekt/lib/contract"
 import { toDocumentDto } from "../../modules/subiekt/lib/dto"
 import { buildSubmission, recordDocument, type OrderSubmission } from "./orders"
 import { bridgeFor, markReachable, subiektService } from "./runtime"
+import { queueSalesDocument } from "./sales-documents"
 
 export interface SendOrderInput {
   order_id: string
@@ -15,6 +16,10 @@ export interface SendOrderResult {
   document: DocumentDto | null
   warnings: string[]
   omitted: Array<{ line_id: string; title: string | null }>
+  /** Since 0.2.0: which contractor got the ZK (contract 1.1 bridges say so). */
+  buyer: BuyerResult | null
+  /** Since 0.2.0: a sales document was queued right after the ZK (`salesDocumentAfter: "zk"`). */
+  documentQueued: boolean
 }
 
 /** Reads the order and builds the contract payload (prices, codes, payment). */
@@ -48,19 +53,24 @@ export const recordSubiektOrderStep = createStep(
         skipped: submission.skip,
         created: false,
         document: null,
-        warnings: [],
+        warnings: submission.warnings,
         omitted: submission.omitted,
+        buyer: null,
+        documentQueued: false,
       })
     }
-    const { row } = await recordDocument(container, { orderId: submission.orderId, document: result.document, source: "bridge", allowFulfillment: false })
+    const { row, fresh } = await recordDocument(container, { orderId: submission.orderId, document: result.document, source: "bridge", allowFulfillment: false })
     await markReachable(subiektService(container))
+    const documentQueued = fresh && row.status !== "canceled" ? await queueSalesDocument(container, submission.orderId, "zk") : false
     return new StepResponse<SendOrderResult>({
       order_id: submission.orderId,
       skipped: null,
       created: result.created,
       document: toDocumentDto(row),
-      warnings: result.warnings ?? [],
+      warnings: [...submission.warnings, ...(result.warnings ?? [])],
       omitted: submission.omitted,
+      buyer: result.buyer ?? null,
+      documentQueued,
     })
   },
 )

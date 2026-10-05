@@ -1,7 +1,8 @@
 import type { ReactNode } from "react"
 import { Badge, Button, StatusBadge, Text, clx } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
-import type { RunDto, RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
+import type { CatalogChangeStatus, ReferenceDto, RunDto, RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
+import type { Reference } from "./subiekt-guide"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -35,6 +36,7 @@ const TASK_TONE: Record<TaskStatus, Tone> = {
   waiting: "purple",
   pending: "blue",
   running: "blue",
+  unknown: "orange",
   succeeded: "green",
   failed: "red",
   canceled: "grey",
@@ -56,6 +58,58 @@ export function DocumentStatusBadge({ status }: { status: string }) {
   const { t } = useTranslation("subiekt")
   const tone: Tone = status === "canceled" ? "grey" : status === "completed" ? "green" : "blue"
   return <StatusBadge color={tone}>{t(`documents.statuses.${status}`, { defaultValue: status })}</StatusBadge>
+}
+
+const CATALOG_TONE: Record<CatalogChangeStatus, Tone> = {
+  planned: "blue",
+  applied: "green",
+  simulated: "purple",
+  over_cap: "grey",
+  stale: "orange",
+  failed: "red",
+  quarantined: "red",
+  skipped: "grey",
+}
+
+export function CatalogStatusBadge({ status }: { status: CatalogChangeStatus }) {
+  const { t } = useTranslation("subiekt")
+  return <StatusBadge color={CATALOG_TONE[status] ?? "grey"}>{t(`products.statuses.${status}`, { defaultValue: status })}</StatusBadge>
+}
+
+/** A labelled row of short codes: SKUs, symbols, conflicts. */
+export function SampleList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div className="flex flex-col gap-y-1">
+      <Text size="xsmall" className="text-ui-fg-subtle">
+        {label}
+      </Text>
+      <div className="flex flex-wrap gap-1">
+        {items.map((item) => (
+          <Badge key={item} size="2xsmall" className="font-mono">
+            {item}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Guide copy: `backticks` become inline code, nothing else is parsed. */
+export function RichText({ text }: { text: string }) {
+  const parts = text.split("`")
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <code key={i} className="txt-compact-xsmall rounded border border-ui-border-base bg-ui-bg-subtle px-1 font-mono text-ui-fg-base">
+            {part}
+          </code>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  )
 }
 
 /** One word for the whole connection: what a person needs to know first. */
@@ -170,7 +224,71 @@ export function runSummary(run: RunDto, t: Translate): string {
   }
   if (run.kind === "events") return num(s.read) > 0 ? t("runs.summary.events", { applied: num(s.applied) }) : t("runs.summary.eventsNone")
   if (run.kind === "health" && run.status === "success") return t("runs.summary.health")
+  if (run.kind === "products") {
+    const applied = num(s.applied) + num(s.simulated)
+    return t(run.dryRun ? "runs.summary.productsPlan" : "runs.summary.productsApplied", {
+      prices: num(s.priceChanges),
+      creates: num(s.toCreate),
+      applied,
+      failed: num(s.failed),
+    })
+  }
   return run.message ?? ""
+}
+
+export function fmtMoney(value: number | null | undefined, currency: string, lang: string): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "-"
+  try {
+    return new Intl.NumberFormat(lang, { style: "currency", currency: currency.toUpperCase() }).format(value)
+  } catch {
+    return `${value.toFixed(2)} ${currency.toUpperCase()}`
+  }
+}
+
+/** 1.2 s, 450 ms. */
+export function fmtMs(ms: number | null | undefined): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "-"
+  const abs = Math.abs(ms)
+  return abs < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(abs < 10_000 ? 1 : 0)} s`
+}
+
+type Localized = string | { en?: string; pl?: string } | undefined
+
+/** A reference text in the admin language, falling back to the other one. */
+export function resolveText(value: Localized, lang: string): string | undefined {
+  if (!value) return undefined
+  if (typeof value === "string") return value
+  const pl = lang.toLowerCase().startsWith("pl")
+  return (pl ? value.pl ?? value.en : value.en ?? value.pl) || undefined
+}
+
+/** Polish needs the genitive after "od": "od kwietnia 2026". */
+const PL_GENITIVE = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
+
+/** "April 2026" / "kwietnia 2026" for a YYYY-MM, ready for "Since {{date}}" / "Od {{date}}". */
+export function monthYear(since: string, lang: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(since)
+  if (!m) return since
+  const year = Number(m[1])
+  const month = Number(m[2])
+  if (lang.toLowerCase().startsWith("pl")) return `${PL_GENITIVE[month - 1] ?? m[2]} ${year}`
+  try {
+    return new Intl.DateTimeFormat(lang, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 15)))
+  } catch {
+    return since
+  }
+}
+
+/** The `references` option in the admin language, as the guide kit renders them. */
+export function referencesFor(list: ReferenceDto[] | undefined, lang: string): Reference[] {
+  return (list ?? []).map((r) => ({
+    name: r.name,
+    url: r.url,
+    description: resolveText(r.description, lang),
+    since: r.since,
+    metrics: r.metrics.map((m) => ({ label: resolveText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
+    links: r.links.map((l) => ({ label: resolveText(l.label, lang) ?? l.url, url: l.url })),
+  }))
 }
 
 /** Link to an order in the admin. A plain anchor: router links break inside some admin builds. */

@@ -18,7 +18,9 @@ import {
 } from "../../modules/subiekt/lib/order-payload"
 import { paymentState, readyForSubiekt, type PaymentCollectionRecord, type PaymentState } from "../../modules/subiekt/lib/payment"
 import { money } from "../../modules/subiekt/lib/numbers"
+import { findNip, type NipSourceRecord } from "../../modules/subiekt/lib/nip"
 import { queryOf, subiektService, type Scope } from "./runtime"
+import { writerActive } from "./writers"
 
 export type GraphOrder = OrderRecord & { payment_collections?: PaymentCollectionRecord[] | null }
 
@@ -55,6 +57,8 @@ export interface OrderSubmission {
   skip: null | "order_canceled"
   payload: ContractOrder | null
   omitted: Array<{ line_id: string; title: string | null }>
+  /** Since 0.2.0: remarks for the admin, for example an invalid NIP. */
+  warnings: string[]
 }
 
 /** The body of `POST /v1/orders` for one order, or a reason to skip it. */
@@ -62,16 +66,31 @@ export async function buildSubmission(scope: Scope, orderId: string): Promise<Or
   const order = await loadOrder(scope, orderId)
   if (!order) throw new PayloadError("order_not_found", `Order ${orderId} does not exist in Medusa.`)
   const displayId = typeof order.display_id === "number" ? order.display_id : null
-  if (order.status === "canceled") return { orderId, displayId, skip: "order_canceled", payload: null, omitted: [] }
+  if (order.status === "canceled") return { orderId, displayId, skip: "order_canceled", payload: null, omitted: [], warnings: [] }
 
   const o = subiektService(scope).getOptions()
-  const { payload, omitted } = buildOrderPayload(order, paymentOf(scope, order), {
+  const { payload, omitted, warnings } = buildOrderPayload(order, paymentOf(scope, order), {
     stripSkuSuffixes: o.stripSkuSuffixes,
     omitLinesWithoutCode: o.omitLinesWithoutCode,
     forwardMetadataKeys: o.forwardMetadataKeys,
     taxIdMetadataKeys: o.taxIdMetadataKeys,
+    nipSources: o.nipSources,
+    createContractors: await writerActive(scope, "contractors"),
   })
-  return { orderId, displayId, skip: null, payload, omitted }
+  return { orderId, displayId, skip: null, payload, omitted, warnings }
+}
+
+/** The order as the sales document decision needs it: its NIP (`nipSources`), number and status. */
+export async function buyerContext(scope: Scope, orderId: string): Promise<{ nip: string | null; displayId: number | null; canceled: boolean } | null> {
+  const { data } = await queryOf(scope).graph({
+    entity: "order",
+    fields: ["id", "display_id", "status", "metadata", "billing_address.*"],
+    filters: { id: orderId },
+  })
+  const order = data[0] as ({ display_id?: number | null; status?: string | null } & NipSourceRecord) | undefined
+  if (!order) return null
+  const nip = findNip(order, subiektService(scope).getOptions().nipSources).nip
+  return { nip, displayId: typeof order.display_id === "number" ? order.display_id : null, canceled: order.status === "canceled" }
 }
 
 /* ------------------------------------------------------------------ */
@@ -145,6 +164,7 @@ export async function recordDocument(scope: Scope, input: RecordDocumentInput): 
     if (row.status !== status) changes.status = status
     if (!row.order_id && input.orderId) changes.order_id = input.orderId
     if ((doc.related?.length ?? 0) > 0 && JSON.stringify(row.related ?? []) !== JSON.stringify(doc.related)) changes.related = doc.related
+    if (doc.ksef_number && row.ksef_number !== doc.ksef_number) changes.ksef_number = doc.ksef_number
     if (Object.keys(changes).length > 0) {
       row = (await svc.updateSubiektDocuments({ id: row.id, ...changes } as never)) as unknown as DocumentRow
     }
@@ -163,6 +183,7 @@ export async function recordDocument(scope: Scope, input: RecordDocumentInput): 
         warehouse: doc.warehouse ?? null,
         related: doc.related ?? [],
         event_id: input.eventId ?? null,
+        ksef_number: doc.ksef_number ?? null,
         demo,
       } as never)) as unknown as DocumentRow
     } catch {
@@ -185,6 +206,10 @@ export async function recordDocument(scope: Scope, input: RecordDocumentInput): 
       const current = await orders.retrieveOrder(input.orderId, { select: ["id", "metadata"] }).catch(() => null)
       meta[ORDER_METADATA.wzNumber] = joinNumbers((current?.metadata as Record<string, unknown> | null)?.[ORDER_METADATA.wzNumber], doc.number)
       meta[ORDER_METADATA.wzIssuedAt] = issuedAt.toISOString()
+    } else if (doc.kind === "FS" || doc.kind === "PA") {
+      meta[ORDER_METADATA.salesDocumentNumber] = doc.number
+      meta[ORDER_METADATA.salesDocumentKind] = doc.kind
+      if (doc.ksef_number) meta[ORDER_METADATA.ksefNumber] = doc.ksef_number
     }
     if (Object.keys(meta).length > 0) await patchOrderMetadata(scope, input.orderId, meta)
 
@@ -198,7 +223,7 @@ export async function recordDocument(scope: Scope, input: RecordDocumentInput): 
     const bus = (scope as { resolve<T>(k: string): T }).resolve<IEventBusModuleService>(Modules.EVENT_BUS)
     await bus.emit({
       name: PLUGIN_EVENTS.documentIssued,
-      data: { order_id: input.orderId, kind: doc.kind, number: doc.number, status, source: input.source, demo },
+      data: { order_id: input.orderId, kind: doc.kind, number: doc.number, status, source: input.source, ksef_number: doc.ksef_number ?? null, demo },
     })
   } catch (err) {
     svc.getLogger().warn(`[subiekt] Could not emit ${PLUGIN_EVENTS.documentIssued} for ${doc.number}: ${(err as Error).message}`)
@@ -206,6 +231,33 @@ export async function recordDocument(scope: Scope, input: RecordDocumentInput): 
 
   row = (await svc.updateSubiektDocuments({ id: row.id, applied_at: new Date() } as never)) as unknown as DocumentRow
   return { row, fresh: true, fulfillmentError }
+}
+
+/**
+ * A document of an order changed (`document.updated`, contract 1.1): today the
+ * KSeF number of an FS. Stored once, written to the order metadata once, and
+ * announced as `subiekt.document_updated`. A document we never saw is recorded
+ * as new, with its side effects.
+ */
+export async function applyDocumentUpdate(scope: Scope, orderId: string | null, doc: ContractDocument, eventId: string | null): Promise<boolean> {
+  const svc = subiektService(scope)
+  const demo = svc.isDemo()
+  const rows = (await svc.listSubiektDocuments({ kind: doc.kind, number: doc.number, demo, order_id: orderId } as never, { take: 1 } as never)) as unknown as DocumentRow[]
+  if (!rows[0]) return (await recordDocument(scope, { orderId, document: doc, source: "subiekt", eventId, allowFulfillment: false })).fresh
+  const row = rows[0]
+  if (!doc.ksef_number || row.ksef_number === doc.ksef_number) return false
+  await svc.updateSubiektDocuments({ id: row.id, ksef_number: doc.ksef_number } as never)
+  if (orderId) await patchOrderMetadata(scope, orderId, { [ORDER_METADATA.ksefNumber]: doc.ksef_number })
+  try {
+    const bus = (scope as { resolve<T>(k: string): T }).resolve<IEventBusModuleService>(Modules.EVENT_BUS)
+    await bus.emit({
+      name: PLUGIN_EVENTS.documentUpdated,
+      data: { order_id: orderId, kind: doc.kind, number: doc.number, ksef_number: doc.ksef_number, demo },
+    })
+  } catch (err) {
+    svc.getLogger().warn(`[subiekt] Could not emit ${PLUGIN_EVENTS.documentUpdated} for ${doc.number}: ${(err as Error).message}`)
+  }
+  return true
 }
 
 /** Fulfills every unfulfilled item of an order after a WZ. Returns an error text instead of throwing. */

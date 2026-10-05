@@ -3,10 +3,13 @@ import type {
   ActionResponse,
   DocumentsResponse,
   OrderSubiektResponse,
+  ProductsResponse,
   RunsResponse,
   SubiektStatusResponse,
   TaskDto,
   TasksResponse,
+  WriterDto,
+  WriterKey,
 } from "../../modules/subiekt/lib/contract"
 
 declare const __BACKEND_URL__: string | undefined
@@ -63,6 +66,7 @@ export const subiektKeys = {
   documents: (kind: string, q: string, offset: number, limit: number) => ["subiekt", "documents", kind, q, offset, limit] as const,
   runs: ["subiekt", "runs"] as const,
   order: (id: string) => ["subiekt", "order", id] as const,
+  products: (kind: string, status: string, q: string, offset: number, limit: number) => ["subiekt", "products", kind, status, q, offset, limit] as const,
 }
 
 /** Status of the page. Polls while a job runs or right after an action. */
@@ -113,14 +117,50 @@ export function useSubiektOrder(orderId: string) {
     queryFn: () => subiektFetch<OrderSubiektResponse>(`/admin/subiekt/orders/${encodeURIComponent(orderId)}`),
     refetchInterval: (query) => {
       const tasks = query.state.data?.tasks ?? []
-      return tasks.some((t) => t.status === "pending" || t.status === "running") ? 3000 : 30_000
+      return tasks.some((t) => t.status === "pending" || t.status === "running" || t.status === "unknown") ? 3000 : 30_000
     },
+  })
+}
+
+export function useSubiektProducts(kind: string, status: string, q: string, offset: number, limit: number, poll: boolean) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (kind && kind !== "all") params.set("kind", kind)
+  if (status && status !== "all") params.set("status", status)
+  if (q) params.set("q", q)
+  return useQuery<ProductsResponse>({
+    queryKey: subiektKeys.products(kind, status, q, offset, limit),
+    queryFn: () => subiektFetch<ProductsResponse>(`/admin/subiekt/products?${params.toString()}`),
+    refetchInterval: poll ? 3000 : 60_000,
+  })
+}
+
+export function useSubiektWriter() {
+  const client = useQueryClient()
+  return useMutation<{ writers: WriterDto[] }, Error, { writer: WriterKey; armed: boolean }>({
+    mutationFn: (body) => subiektFetch("/admin/subiekt/writers", { method: "POST", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: subiektKeys.all }),
+  })
+}
+
+export function useSubiektRelease() {
+  const client = useQueryClient()
+  return useMutation<{ released: boolean }, Error, string>({
+    mutationFn: (id) => subiektFetch("/admin/subiekt/products/release", { method: "POST", body: { id } }),
+    onSuccess: () => client.invalidateQueries({ queryKey: subiektKeys.all }),
+  })
+}
+
+export function useSubiektIssueDocument(orderId: string) {
+  const client = useQueryClient()
+  return useMutation<{ task: TaskDto }, Error, "fs" | "pa" | undefined>({
+    mutationFn: (kind) => subiektFetch(`/admin/subiekt/orders/${encodeURIComponent(orderId)}/documents`, { method: "POST", body: kind ? { kind } : {} }),
+    onSuccess: () => client.invalidateQueries({ queryKey: subiektKeys.order(orderId) }),
   })
 }
 
 export function useSubiektSync() {
   const client = useQueryClient()
-  return useMutation<ActionResponse, Error, "stock" | "events" | "tasks">({
+  return useMutation<ActionResponse, Error, "stock" | "events" | "tasks" | "products">({
     mutationFn: (what) => subiektFetch<ActionResponse>("/admin/subiekt/sync", { method: "POST", body: { what } }),
     onSuccess: () => client.invalidateQueries({ queryKey: subiektKeys.status }),
   })

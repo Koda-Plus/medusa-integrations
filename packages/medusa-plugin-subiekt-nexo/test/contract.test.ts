@@ -14,7 +14,7 @@ test("the plugin speaks the version the contract declares", () => {
 })
 
 test("every path the plugin calls is in the contract", () => {
-  for (const path of ["/v1/health", "/v1/orders", "/v1/orders/{orderId}", "/v1/orders/{orderId}/cancel", "/v1/orders/{orderId}/fulfillments", "/v1/stock", "/v1/events", "/hooks/subiekt"]) {
+  for (const path of ["/v1/health", "/v1/orders", "/v1/orders/{orderId}", "/v1/orders/{orderId}/cancel", "/v1/orders/{orderId}/fulfillments", "/v1/orders/{orderId}/documents", "/v1/stock", "/v1/products", "/v1/events", "/hooks/subiekt"]) {
     assert.ok(spec.includes(`\n  ${path}:\n`), path)
   }
 })

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-10-06)
+
+Needs no bridge update to keep working: every new feature is detected from the bridge `capabilities`. Bridge 0.2.0 (contract 1.1.0) unlocks them.
+
+- Contract 1.1.0, additive: `capabilities`, bridge and nexo SDK versions, database version, Sfera licence state, last event, queue sizes and server time in `GET /v1/health`; `GET /v1/products` (paged from one snapshot, price levels); the optional `buyer` block of `POST /v1/orders`; `POST /v1/orders/{orderId}/documents` (FS or PA, idempotent); `ksef_number` on documents; the `document.updated` event. New examples: `products.response.json`, `order-create-b2b.request.json`, `document-create.request.json`, `document-create.response.json`.
+- Products and prices from Subiekt, plan first: hourly job `subiekt-sync-products`, EAN then SKU matching (no suffix stripping), `priceLevel`, `priceType`, `priceCurrency`, `priceTarget` (variant prices or `priceListId`), `priceWriter` and `createMissingProducts` hard switches, `maxPriceChangesPerRun` (200) and `maxProductsPerRun` (20), re-read before every write, stale items skipped, quarantine after three failed runs with release in the admin. An incomplete read plans nothing.
+- Contractors by NIP: `nipSources` with checksum validation, `createContractors` hard switch; an invalid NIP sends the ZK to the retail buyer with a warning on the task.
+- Sales documents: `salesDocument` (`none` default, `fs`, `pa`, `auto`) and `salesDocumentAfter` (`wz` default, `zk`). Exactly once: one `order.document` task per order, atomic claim, `unknown` status for unclear answers, reconciled with `GET /v1/orders/{id}` before any new attempt. KSeF numbers in the order metadata (`subiekt_ksef_number`), the documents view and the order widget; `subiekt.document_updated` event.
+- Writers: `subiekt_writer` table, `POST /admin/subiekt/writers`; every new write needs its option and a person arming it, recorded with who and when.
+- Admin: "Panel" | "Setup guide" switch (`?view=guide`), bridge diagnostics (versions, licence, round trip, clock skew, signature result, last event, webhook, capabilities and what is missing with the reason), writers, products and prices plan, FS and PA with KSeF, "Answer unclear" tasks, buyer and warnings on tasks, issue FS or PA from the order widget, "Running in production" from the new `references` option.
+- Setup guide in English and Polish with live step states, a go-live checklist and troubleshooting; also `docs/guide-en.md` and `docs/guide-pl.md`. Verified facts in `docs/subiekt-nexo-api-notes.md`.
+- Demo bridge: products with two price levels and EAN conflicts from the store catalog, contractors by NIP, FS and PA numbers, KSeF numbers two minutes after an FS, health with every capability and a 1.4 s clock skew.
+- Migration `Migration20261006120000`: `subiekt_writer`, `subiekt_catalog_change`, `subiekt_catalog_quarantine`, new columns on connection, document and task.
+
 ## 0.1.0 (2026-10-05)
 
 First release, built on what Koda Plus learned running a Subiekt nexo bridge in production for a Polish cosmetics brand since 2026.

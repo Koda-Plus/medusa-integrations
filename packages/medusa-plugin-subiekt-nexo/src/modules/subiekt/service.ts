@@ -1,9 +1,12 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import type { Logger } from "@medusajs/framework/types"
+import SubiektCatalogChange from "./models/subiekt-catalog-change"
+import SubiektCatalogQuarantine from "./models/subiekt-catalog-quarantine"
 import SubiektConnection from "./models/subiekt-connection"
 import SubiektDocument from "./models/subiekt-document"
 import SubiektSyncRun from "./models/subiekt-sync-run"
 import SubiektTask from "./models/subiekt-task"
+import SubiektWriter from "./models/subiekt-writer"
 import { missingOptions, resolveOptions, type ResolvedSubiektOptions, type SubiektPluginOptions } from "./lib/options"
 
 type InjectedDependencies = {
@@ -11,7 +14,7 @@ type InjectedDependencies = {
 }
 
 /**
- * Subiekt nexo module service: generated CRUD for the four tables plus the
+ * Subiekt nexo module service: generated CRUD for the seven tables plus the
  * resolved options. The work (calling the bridge, the task queue, stock and
  * events) lives in `src/workflows/subiekt` and calls the generated methods
  * from the outside, so the service stays thin and every flow is reusable
@@ -25,6 +28,9 @@ class SubiektModuleService extends MedusaService({
   SubiektTask,
   SubiektDocument,
   SubiektSyncRun,
+  SubiektWriter,
+  SubiektCatalogChange,
+  SubiektCatalogQuarantine,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedSubiektOptions

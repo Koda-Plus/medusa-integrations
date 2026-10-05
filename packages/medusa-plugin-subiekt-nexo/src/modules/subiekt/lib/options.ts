@@ -1,8 +1,26 @@
-import { DEFAULT_COD_PROVIDERS, DEFAULT_PREPAID_PROVIDERS, DEFAULT_TIMEOUT_MS, TAX_ID_METADATA_KEYS } from "./constants"
+import {
+  DEFAULT_COD_PROVIDERS,
+  DEFAULT_MAX_PRICE_CHANGES_PER_RUN,
+  DEFAULT_MAX_PRODUCTS_PER_RUN,
+  DEFAULT_NIP_SOURCES,
+  DEFAULT_PREPAID_PROVIDERS,
+  DEFAULT_TIMEOUT_MS,
+  TAX_ID_METADATA_KEYS,
+} from "./constants"
+import { normalizeReferences, type ReferenceDto } from "./references"
+
+export type SalesDocumentOption = "none" | "fs" | "pa" | "auto"
+export type PriceTarget = "variant" | "price_list"
 
 /**
  * Plugin options, as written in `medusa-config.ts`. Every key is optional:
  * missing credentials never break the boot, the admin says what is missing.
+ *
+ * WRITES ARE OFF BY DEFAULT. Every write added in 0.2.0 (prices, new
+ * products, sales documents, new contractors) needs its option here AND a
+ * person arming its writer in the admin. An option set to false wins: the
+ * admin cannot override it. In demo mode the options default to on, because
+ * the writers only touch the simulation there.
  */
 export interface SubiektPluginOptions {
   /** Base URL of the bridge, for example `https://subiekt-bridge.example.com`. */
@@ -44,6 +62,39 @@ export interface SubiektPluginOptions {
   taxIdMetadataKeys?: string[]
   /** Timeout of one bridge request in ms. */
   timeoutMs?: number
+
+  /* ---------------------------- 0.2.0 ---------------------------- */
+
+  /** Read products and prices from the bridge every hour and plan price changes. Read only. Default true. */
+  productSyncEnabled?: boolean
+  /** Where planned prices go: the variant's own price (`variant`, default) or a price list (`price_list`). */
+  priceTarget?: PriceTarget
+  /** The price list for `priceTarget: "price_list"`, for example `plist_01J...`. */
+  priceListId?: string
+  /** Subiekt price level (symbol or name) the prices come from. Default: the first level the bridge publishes. */
+  priceLevel?: string
+  /** `gross` (default, VAT included, what Medusa usually stores) or `net`. */
+  priceType?: "gross" | "net"
+  /** Currency of the prices written, default `pln`. */
+  priceCurrency?: string
+  /** HARD SWITCH of the price writer. Default false (true in demo mode). */
+  priceWriter?: boolean
+  /** Price changes applied in one run at most. Default 200. */
+  maxPriceChangesPerRun?: number
+  /** HARD SWITCH of the product creator: Subiekt products marked for the online shop and missing in Medusa become draft products. Default false (true in demo mode). */
+  createMissingProducts?: boolean
+  /** Products created in one run at most. Default 20. */
+  maxProductsPerRun?: number
+  /** Where to look for the buyer's NIP: `metadata.<key>`, `billing_address.metadata.<key>`, `billing_address.<field>`. */
+  nipSources?: string[]
+  /** HARD SWITCH: ask the bridge to create a contractor that is missing in Subiekt. Default false (true in demo mode). */
+  createContractors?: boolean
+  /** Sales document of an order: `none` (default), `fs`, `pa`, or `auto` (FS with a valid NIP, PA otherwise). The hard switch of the document writer. */
+  salesDocument?: SalesDocumentOption
+  /** When the sales document is issued: after the WZ (`wz`, default: the goods left) or right after the ZK (`zk`). */
+  salesDocumentAfter?: "wz" | "zk"
+  /** Stores that run this integration in production, shown in the admin. See the README. */
+  references?: unknown[]
 }
 
 export interface ResolvedSubiektOptions {
@@ -67,6 +118,21 @@ export interface ResolvedSubiektOptions {
   forwardMetadataKeys: string[]
   taxIdMetadataKeys: string[]
   timeoutMs: number
+  productSyncEnabled: boolean
+  priceTarget: PriceTarget
+  priceListId: string
+  priceLevel: string
+  priceType: "gross" | "net"
+  priceCurrency: string
+  priceWriter: boolean
+  maxPriceChangesPerRun: number
+  createMissingProducts: boolean
+  maxProductsPerRun: number
+  nipSources: string[]
+  createContractors: boolean
+  salesDocument: SalesDocumentOption
+  salesDocumentAfter: "wz" | "zk"
+  references: ReferenceDto[]
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
@@ -86,16 +152,24 @@ const bool = (v: unknown, fallback: boolean): boolean => {
   return fallback
 }
 
+const count = (v: unknown, fallback: number, max: number): number => {
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 1 ? Math.min(Math.floor(n), max) : fallback
+}
+
 export function resolveOptions(o: SubiektPluginOptions | undefined | null): ResolvedSubiektOptions {
   const opts = o ?? {}
   const timeout = Number(opts.timeoutMs)
+  const demo = bool(opts.demo, false)
+  const taxIdMetadataKeys = list(opts.taxIdMetadataKeys, TAX_ID_METADATA_KEYS)
+  const salesDocument = (["none", "fs", "pa", "auto"] as const).find((k) => k === str(opts.salesDocument).toLowerCase())
   return {
     bridgeUrl: str(opts.bridgeUrl).replace(/\/+$/, ""),
     secret: str(opts.secret),
     previousSecret: str(opts.previousSecret),
     cfAccessClientId: str(opts.cfAccessClientId),
     cfAccessClientSecret: str(opts.cfAccessClientSecret),
-    demo: bool(opts.demo, false),
+    demo,
     prepaidProviders: list(opts.prepaidProviders, DEFAULT_PREPAID_PROVIDERS),
     codProviders: list(opts.codProviders, DEFAULT_COD_PROVIDERS),
     stockSyncEnabled: bool(opts.stockSyncEnabled, true),
@@ -108,8 +182,27 @@ export function resolveOptions(o: SubiektPluginOptions | undefined | null): Reso
     stripSkuSuffixes: list(opts.stripSkuSuffixes, []),
     omitLinesWithoutCode: bool(opts.omitLinesWithoutCode, false),
     forwardMetadataKeys: list(opts.forwardMetadataKeys, []),
-    taxIdMetadataKeys: list(opts.taxIdMetadataKeys, TAX_ID_METADATA_KEYS),
+    taxIdMetadataKeys,
     timeoutMs: Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 120_000) : DEFAULT_TIMEOUT_MS,
+    productSyncEnabled: bool(opts.productSyncEnabled, true),
+    priceTarget: opts.priceTarget === "price_list" ? "price_list" : "variant",
+    priceListId: str(opts.priceListId),
+    priceLevel: str(opts.priceLevel),
+    priceType: opts.priceType === "net" ? "net" : "gross",
+    priceCurrency: (str(opts.priceCurrency) || "pln").toLowerCase(),
+    priceWriter: bool(opts.priceWriter, demo),
+    maxPriceChangesPerRun: count(opts.maxPriceChangesPerRun, DEFAULT_MAX_PRICE_CHANGES_PER_RUN, 5000),
+    createMissingProducts: bool(opts.createMissingProducts, demo),
+    maxProductsPerRun: count(opts.maxProductsPerRun, DEFAULT_MAX_PRODUCTS_PER_RUN, 500),
+    nipSources: Array.isArray(opts.nipSources) || typeof opts.nipSources === "string"
+      ? list(opts.nipSources, [])
+      : opts.taxIdMetadataKeys !== undefined
+        ? [...taxIdMetadataKeys.map((k) => `metadata.${k}`), ...taxIdMetadataKeys.map((k) => `billing_address.metadata.${k}`), "billing_address.company"]
+        : [...DEFAULT_NIP_SOURCES],
+    createContractors: bool(opts.createContractors, demo),
+    salesDocument: salesDocument ?? (demo ? "auto" : "none"),
+    salesDocumentAfter: str(opts.salesDocumentAfter).toLowerCase() === "zk" ? "zk" : "wz",
+    references: normalizeReferences(opts.references),
   }
 }
 
@@ -120,6 +213,13 @@ export function missingOptions(o: ResolvedSubiektOptions): string[] {
   if (!/^https?:\/\/[^/\s]+/i.test(o.bridgeUrl)) missing.push("bridgeUrl")
   if (o.secret.length < 16) missing.push("secret")
   return missing
+}
+
+/** Option problems that do not stop the plugin but stop one feature, for the admin. */
+export function optionWarnings(o: ResolvedSubiektOptions): string[] {
+  const warnings: string[] = []
+  if (o.priceTarget === "price_list" && !/^plist_/.test(o.priceListId)) warnings.push("priceListId")
+  return warnings
 }
 
 /** Host of the bridge for the admin, never the full URL with a path or credentials. */

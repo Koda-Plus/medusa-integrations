@@ -1,20 +1,45 @@
 {
   "status": "ok",
+  "capabilities": [
+    "orders",
+    "fulfillments",
+    "stock",
+    "events",
+    "products",
+    "contractors",
+    "contractors.create",
+    "documents.fs",
+    "documents.pa",
+    "documents.ksef",
+    "webhook"
+  ],
   "bridge": {
     "name": "Subiekt nexo bridge by Koda Plus",
-    "version": "0.1.0",
-    "contract": "1.0.0",
-    "mode": "sfera"
+    "version": "0.2.0",
+    "contract": "1.1.0",
+    "mode": "sfera",
+    "sdk_version": "61.0.1.9371",
+    "started_at": "2026-10-04T06:02:11.000Z"
   },
   "subiekt": {
     "connected": true,
     "product": "Subiekt nexo PRO",
     "version": "61.0.1.9371",
     "database": "Nexo_Firma",
+    "database_version": "61.0.1.9371",
+    "licence": "ok",
     "company": "Sklep Przykładowy sp. z o.o.",
     "warehouse": "MAG",
-    "checked_at": "2026-10-04T09:14:30.000Z",
+    "checked_at": "2026-10-04T13:20:58.000Z",
     "error": null
   },
-  "time": "2026-10-04T09:14:31.000Z"
+  "events": {
+    "last_id": 44,
+    "last_at": "2026-10-04T13:20:05.000Z"
+  },
+  "queues": {
+    "sfera_pending": 0,
+    "webhook_pending": 0
+  },
+  "time": "2026-10-04T13:21:00.000Z"
 }
