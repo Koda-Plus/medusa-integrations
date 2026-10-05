@@ -81,7 +81,7 @@ const KIND_TONE: Record<DocumentKind, "blue" | "purple" | "grey"> = { vat: "blue
 export function KindBadge({ kind }: { kind: DocumentKind }) {
   const { t } = useTranslation("fakturownia")
   return (
-    <Badge size="2xsmall" color={KIND_TONE[kind] ?? "grey"}>
+    <Badge size="2xsmall" color={KIND_TONE[kind] ?? "grey"} className="whitespace-nowrap">
       {t(`documents.kinds.${kind}`)}
     </Badge>
   )
