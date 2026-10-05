@@ -148,6 +148,8 @@ export function buildFinalFromProforma(proforma: RemoteRecord, args: ConversionA
       paid,
       paymentType: present(invoice.payment_type) ? String(invoice.payment_type) : "transfer",
       fromInvoiceId: proformaId,
+      buyerWarning: null,
+      orderVersion: null,
     },
   }
 }

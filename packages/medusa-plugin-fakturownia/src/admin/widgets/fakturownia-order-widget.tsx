@@ -1,33 +1,50 @@
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
 import { Badge, Button, Container, Heading, Text, toast } from "@medusajs/ui"
 import type { DocumentDto } from "../../modules/fakturownia/lib/contract"
-import { errorMessage, useFakturowniaIssueOrder, useFakturowniaOrder } from "../lib/fakturownia-api"
+import { errorMessage, useFakturowniaCheckOrderCorrections, useFakturowniaIssueOrder, useFakturowniaOrder } from "../lib/fakturownia-api"
+import { PlanCard } from "../lib/fakturownia-corrections"
+import { DocumentDrawer } from "../lib/fakturownia-document"
 import { FakturowniaIcon } from "../lib/fakturownia-icon"
-import { DocumentActions, DocumentLinks, DocumentStatusBadge, KindBadge, KsefBadge, PaidBadge, fmtDateTime, fmtMoney } from "../lib/fakturownia-ui"
+import { BuyerWarningText, DocumentActions, DocumentLinks, DocumentStatusBadge, KindBadge, KsefBadge, PaidBadge, fmtDateTime, fmtMoney } from "../lib/fakturownia-ui"
 
 /**
  * Order page, side column: the Fakturownia documents of this order (kind,
- * number, status, payment, KSeF), the PDF (streamed by the backend, live mode
- * only), "Issue now" when the order has no document yet, and "Retry" or the
- * unknown-result actions when a document needs a person.
+ * number, status, payment, KSeF), their PDF (streamed by the backend,
+ * generated in demo mode), the details drawer (KSeF history, e-mails),
+ * "Issue now" when the order has no document yet, and the correction plans
+ * of the order with "Check for corrections".
  */
 const FakturowniaOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
   const { t, i18n } = useTranslation("fakturownia")
   const lang = i18n.language || "en"
   const q = useFakturowniaOrder(data.id)
   const issue = useFakturowniaIssueOrder()
+  const check = useFakturowniaCheckOrderCorrections()
+  const [open, setOpen] = useState<string | null>(null)
   const info = q.data
   const docs = info?.documents ?? []
+  const plans = info?.plans ?? []
   const canceled = data.status === "canceled"
+  const issued = docs.some((d) => (d.kind === "vat" || d.kind === "receipt") && (d.status === "issued" || d.status === "needs_correction"))
 
   const onIssue = async () => {
     try {
       const r = await issue.mutateAsync(data.id)
       toast.success(t("toast.issueQueued", { kinds: r.queued.map((k) => t(`documents.kinds.${k}`)).join(", ") }))
+      void q.refetch()
+    } catch (err) {
+      toast.error(t("toast.error", { error: errorMessage(err) }))
+    }
+  }
+
+  const onCheck = async () => {
+    try {
+      const r = await check.mutateAsync(data.id)
+      toast.info(t(`widget.checked.${r.outcome}`, { defaultValue: t("widget.checked.none") }))
       void q.refetch()
     } catch (err) {
       toast.error(t("toast.error", { error: errorMessage(err) }))
@@ -65,7 +82,7 @@ const FakturowniaOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
               ) : null}
             </div>
           ) : (
-            docs.map((d) => <DocumentBlock key={d.id} doc={d} lang={lang} onDone={() => void q.refetch()} />)
+            docs.map((d) => <DocumentBlock key={d.id} doc={d} lang={lang} onDone={() => void q.refetch()} onOpen={() => setOpen(d.id)} />)
           )}
 
           {info?.canIssue && !canceled ? (
@@ -80,8 +97,29 @@ const FakturowniaOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
               </Button>
             </div>
           ) : null}
+
+          {info && info.corrections === "plan" && (issued || plans.length > 0) ? (
+            <div className="flex flex-col gap-y-3 px-6 py-4">
+              <div className="flex items-center justify-between gap-2">
+                <Text size="small" weight="plus" className="text-ui-fg-base">
+                  {t("widget.corrections")}
+                </Text>
+                <Button size="small" variant="transparent" isLoading={check.isPending} onClick={() => void onCheck()}>
+                  {t("widget.checkCorrections")}
+                </Button>
+              </div>
+              {plans.length === 0 ? (
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  {t("widget.noCorrections")}
+                </Text>
+              ) : (
+                plans.map((p) => <PlanCard key={p.id} plan={p} lang={lang} writer={info.writers.corrections} onOpenDocument={setOpen} compact />)
+              )}
+            </div>
+          ) : null}
         </>
       )}
+      {open ? <DocumentDrawer documentId={open} onClose={() => setOpen(null)} /> : null}
     </Container>
   )
 }
@@ -97,7 +135,7 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function DocumentBlock({ doc, lang, onDone }: { doc: DocumentDto; lang: string; onDone: () => void }) {
+function DocumentBlock({ doc, lang, onDone, onOpen }: { doc: DocumentDto; lang: string; onDone: () => void; onOpen: () => void }) {
   const { t } = useTranslation("fakturownia")
   return (
     <div className="flex flex-col gap-y-3 px-6 py-4">
@@ -107,7 +145,9 @@ function DocumentBlock({ doc, lang, onDone }: { doc: DocumentDto; lang: string; 
       </div>
       {doc.number ? (
         <Line label={t("documents.col.number")}>
-          <span className="font-mono txt-compact-small-plus">{doc.number}</span>
+          <button type="button" className="txt-compact-small-plus font-mono text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={onOpen}>
+            {doc.number}
+          </button>
         </Line>
       ) : null}
       {doc.totalGross !== null ? (
@@ -115,12 +155,12 @@ function DocumentBlock({ doc, lang, onDone }: { doc: DocumentDto; lang: string; 
           <span className="tabular-nums txt-compact-small">{fmtMoney(doc.totalGross, doc.currency, lang)}</span>
         </Line>
       ) : null}
-      {doc.status === "issued" || doc.status === "needs_correction" ? (
+      {(doc.status === "issued" || doc.status === "needs_correction") && doc.kind !== "correction" ? (
         <Line label={t("documents.col.paid")}>
           <PaidBadge paid={doc.paid} />
         </Line>
       ) : null}
-      {doc.kind === "vat" && (doc.status === "issued" || doc.status === "needs_correction") ? (
+      {(doc.kind === "vat" || doc.kind === "correction") && (doc.status === "issued" || doc.status === "needs_correction") ? (
         <Line label={t("documents.col.ksef")}>
           <KsefBadge doc={doc} />
         </Line>
@@ -137,7 +177,7 @@ function DocumentBlock({ doc, lang, onDone }: { doc: DocumentDto; lang: string; 
       ) : null}
       {doc.status === "pending" && doc.attempts === 0 ? (
         <Text size="xsmall" className="text-ui-fg-muted">
-          {t("widget.queued")}
+          {doc.kind === "correction" ? t("widget.correctionQueued") : t("widget.queued")}
         </Text>
       ) : null}
       {doc.error && doc.errorCode !== "adopted" ? (
@@ -150,14 +190,14 @@ function DocumentBlock({ doc, lang, onDone }: { doc: DocumentDto; lang: string; 
           {t("documents.adopted")}
         </Text>
       ) : null}
+      <BuyerWarningText warning={doc.buyerWarning} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {doc.demo && doc.status === "issued" ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("widget.pdfDemo")}
-          </Text>
-        ) : (
+        <span className="inline-flex flex-wrap items-center gap-x-3">
           <DocumentLinks doc={doc} />
-        )}
+          <Button size="small" variant="transparent" onClick={onOpen}>
+            {t("documents.details")}
+          </Button>
+        </span>
         <DocumentActions doc={doc} onDone={onDone} />
       </div>
     </div>

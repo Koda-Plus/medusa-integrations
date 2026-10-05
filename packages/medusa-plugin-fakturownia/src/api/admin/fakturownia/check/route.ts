@@ -21,6 +21,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.status(409).json({ message: "A connection check is already running." })
     return
   }
-  const body: CheckResponse = { result, status: await buildStatus(svc) }
+  const body: CheckResponse = { result, status: await buildStatus(req.scope) }
   res.json(body)
 }

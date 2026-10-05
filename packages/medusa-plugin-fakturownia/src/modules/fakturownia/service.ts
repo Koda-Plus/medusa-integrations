@@ -2,6 +2,12 @@ import { MedusaService } from "@medusajs/framework/utils"
 import type { Logger } from "@medusajs/framework/types"
 import FakturowniaDocument from "./models/fakturownia-document"
 import FakturowniaSyncRun from "./models/fakturownia-sync-run"
+import FakturowniaCorrection from "./models/fakturownia-correction"
+import FakturowniaEmail from "./models/fakturownia-email"
+import FakturowniaKsefEvent from "./models/fakturownia-ksef-event"
+import FakturowniaSetting from "./models/fakturownia-setting"
+import { FakturowniaClient } from "./lib/client"
+import { fetchDocumentPdf, type PdfDownload } from "./lib/files"
 import { missingOptions, resolveOptions, type FakturowniaPluginOptions, type ResolvedFakturowniaOptions } from "./lib/options"
 import { maskSecrets } from "./lib/security"
 
@@ -10,8 +16,10 @@ type InjectedDependencies = {
 }
 
 /**
- * Fakturownia module service: generated CRUD for the two tables plus the
- * resolved options and masking. Nothing else.
+ * Fakturownia module service: generated CRUD for the six tables (the
+ * document outbox, the runs, the correction plans, the e-mail and KSeF
+ * histories, the settings) plus the resolved options, masking and
+ * `downloadPdf` (options and the API only). Nothing else.
  *
  * THE SERVICE STAYS THIN ON PURPOSE. The work (the outbox, the lookups, the
  * payments, the KSeF status) lives in `src/workflows/fakturownia` and calls
@@ -27,6 +35,10 @@ type InjectedDependencies = {
 class FakturowniaModuleService extends MedusaService({
   FakturowniaDocument,
   FakturowniaSyncRun,
+  FakturowniaCorrection,
+  FakturowniaEmail,
+  FakturowniaKsefEvent,
+  FakturowniaSetting,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedFakturowniaOptions
@@ -72,6 +84,45 @@ class FakturowniaModuleService extends MedusaService({
   /** Masks the API token and every token-like run of characters. */
   mask(text: string): string {
     return maskSecrets(text, [this.options_.apiToken])
+  }
+
+  private client_: FakturowniaClient | null = null
+
+  /**
+   * THE PDF OF A DOCUMENT, FOR OTHER PLUGINS. `externalId` is the Fakturownia
+   * invoice id (`external_id` of the `fakturownia.document.issued` and
+   * `.corrected` events), `demo` the event's `demo` flag. Reads only the
+   * options and calls Fakturownia (no table of this module is read, so it is
+   * safe to call from any workflow or subscriber):
+   *
+   *   demo: true   a small generated PDF of the simulated document, with its
+   *                number; no request leaves Medusa
+   *   demo: false  the document number, then the PDF, from Fakturownia
+   *
+   * Throws `FakturowniaApiError` (from this package; check `code`) with
+   * `PDF_NOT_READY` while Fakturownia has not rendered the PDF yet (a new
+   * document, or a KSeF number on its way: try again in a minute),
+   * `DEMO_MODE` when a live document is asked for in demo mode, `BAD_ID` for
+   * an id that is not a number, `HTTP_404` when the document is not there.
+   */
+  async downloadPdf(input: { externalId: string; demo: boolean }): Promise<PdfDownload> {
+    return fetchDocumentPdf({
+      options: this.options_,
+      client: () => {
+        if (!this.client_) {
+          this.client_ = new FakturowniaClient({
+            token: this.options_.apiToken,
+            account: this.options_.account,
+            requestsPerMinute: this.options_.requestsPerMinute,
+            timeoutMs: this.options_.timeoutMs,
+            logger: this.logger_,
+          })
+        }
+        return this.client_
+      },
+      externalId: String(input?.externalId ?? ""),
+      demo: input?.demo === true,
+    })
   }
 }
 

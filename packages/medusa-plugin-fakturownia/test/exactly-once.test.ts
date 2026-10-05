@@ -61,6 +61,13 @@ test("documents of the API answer: ids as text, amounts as numbers, KSeF errors 
     govId: null,
     govErrors: "Telefon klienta - pole jest za długie; x",
     fromInvoiceId: "501",
+    invoiceId: null,
+    internalNote: null,
+    govErrorList: ["Telefon klienta - pole jest za długie", "x"],
+    govSendDate: null,
+    govVerificationLink: null,
+    govLink: null,
+    govCorrectedNumber: null,
   })
   assert.equal(toRemoteDocument({ number: "x" }), null)
   assert.equal(toRemoteDocument(null), null)

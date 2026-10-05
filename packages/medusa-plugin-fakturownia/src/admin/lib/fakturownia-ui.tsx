@@ -3,7 +3,22 @@ import { Link } from "react-router-dom"
 import { Badge, Button, Drawer, Input, Label, StatusBadge, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import { ArrowUpRightOnBox } from "@medusajs/icons"
 import { useTranslation } from "react-i18next"
-import type { DocumentDto, DocumentKind, DocumentStatus, GovState, RunDto, RunStatus, StatusResponse } from "../../modules/fakturownia/lib/contract"
+import type {
+  BuyerWarningDto,
+  DocumentDto,
+  DocumentKind,
+  DocumentStatus,
+  GovState,
+  LocalizedTextDto,
+  MoneyDto,
+  PlanStatus,
+  ReferenceDto,
+  RunDto,
+  RunStatus,
+  StatusResponse,
+  WriterDto,
+} from "../../modules/fakturownia/lib/contract"
+import type { Reference } from "./fakturownia-guide"
 import { errorMessage, pdfUrl, useFakturowniaDocumentAction, useFakturowniaMarkIssued, type DocumentAction } from "./fakturownia-api"
 
 type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
@@ -76,7 +91,7 @@ export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
   return <StatusBadge color={STATUS_TONE[status] ?? "grey"}>{t(`documents.statuses.${status}`)}</StatusBadge>
 }
 
-const KIND_TONE: Record<DocumentKind, "blue" | "purple" | "grey"> = { vat: "blue", proforma: "purple", receipt: "grey" }
+const KIND_TONE: Record<DocumentKind, "blue" | "purple" | "grey" | "orange"> = { vat: "blue", proforma: "purple", receipt: "grey", correction: "orange" }
 
 export function KindBadge({ kind }: { kind: DocumentKind }) {
   const { t } = useTranslation("fakturownia")
@@ -89,10 +104,10 @@ export function KindBadge({ kind }: { kind: DocumentKind }) {
 
 const GOV_TONE: Record<GovState, Tone> = { none: "grey", processing: "blue", accepted: "green", problem: "red", not_applicable: "grey", offline: "orange" }
 
-/** The KSeF state of a VAT invoice; nothing for kinds KSeF does not take. */
+/** The KSeF state of a VAT invoice or a correction; nothing for kinds KSeF does not take. */
 export function KsefBadge({ doc }: { doc: Pick<DocumentDto, "kind" | "govState" | "govId" | "govError" | "status"> }) {
   const { t } = useTranslation("fakturownia")
-  if (doc.kind !== "vat" || doc.govState === "not_applicable" || (doc.status !== "issued" && doc.status !== "needs_correction")) return null
+  if ((doc.kind !== "vat" && doc.kind !== "correction") || doc.govState === "not_applicable" || (doc.status !== "issued" && doc.status !== "needs_correction")) return null
   return (
     <span title={doc.govId ?? doc.govError ?? undefined}>
       <StatusBadge color={GOV_TONE[doc.govState] ?? "grey"}>{t(`documents.ksefStates.${doc.govState}`)}</StatusBadge>
@@ -363,6 +378,117 @@ export function runSummary(run: RunDto, t: Translate): string {
     if (run.status === "partial" && Array.isArray(c.errors) && c.errors.length > 0) return run.message ?? ""
     return t("runs.summary.payments", { marked: num(c.marked), already: num(c.alreadyPaid), mismatched: num(c.mismatched) })
   }
+  if (run.kind === "corrections") {
+    return t("runs.summary.corrections", { checked: num(c.checked), created: num(c.created), updated: num(c.updated), obsolete: num(c.obsolete) })
+  }
   if (run.status === "partial" && run.message && num(c.read) === 0) return run.message
   return t("runs.summary.statuses", { read: num(c.read), accepted: num(c.accepted), emailed: num(c.emailsSent), finals: num(c.finalsQueued) })
+}
+
+/* ---- 0.2.0 ---------------------------------------------------------- */
+
+export function fmtDate(value: string | null | undefined, lang: string): string {
+  if (!value) return ""
+  const d = new Date(value.length === 10 ? `${value}T12:00:00Z` : value)
+  if (!Number.isFinite(d.getTime())) return ""
+  try {
+    return new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeZone: value.length === 10 ? "UTC" : undefined }).format(d)
+  } catch {
+    return d.toISOString().slice(0, 10)
+  }
+}
+
+/** Amounts in several currencies, never added together: "199,50 zł, 10,00 €". */
+export function fmtMoneyList(list: readonly MoneyDto[], lang: string): string {
+  if (list.length === 0) return fmtMoney(0, "PLN", lang)
+  return list.map((m) => fmtMoney(m.amount, m.currency, lang)).join(", ")
+}
+
+/** A signed amount for a change: "+40,00 zł", "-61,50 zł". */
+export function fmtDelta(value: number, currency: string | null | undefined, lang: string): string {
+  const text = fmtMoney(Math.abs(value), currency, lang)
+  if (Math.abs(value) < 0.005) return text
+  return `${value > 0 ? "+" : "-"}${text}`
+}
+
+export function fmtQuantity(value: number, lang: string): string {
+  return fmtNumber(Math.round(value * 10_000) / 10_000, lang)
+}
+
+/** The text of the admin language, or the other one. */
+export function pickText(text: LocalizedTextDto | null | undefined, lang: string): string | undefined {
+  if (!text) return undefined
+  const pl = /^pl/i.test(lang)
+  return (pl ? text.pl ?? text.en : text.en ?? text.pl) ?? undefined
+}
+
+/** Polish months in the genitive: "od kwietnia 2026". */
+const PL_MONTHS = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
+
+/** "2026-04" as the month and year of the admin language: "April 2026", "kwietnia 2026". */
+export function sinceMonth(since: string, lang: string): string {
+  const [y, m] = since.split("-").map((x) => Number(x))
+  if (!y || !m) return since
+  if (/^pl/i.test(lang)) return `${PL_MONTHS[m - 1] ?? ""} ${y}`.trim()
+  try {
+    return new Intl.DateTimeFormat(lang, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)))
+  } catch {
+    return since
+  }
+}
+
+/** The references of the options in the admin language, for the kit's `References`. */
+export function referencesFor(items: readonly ReferenceDto[], lang: string): Reference[] {
+  return items.map((r) => ({
+    name: r.name,
+    url: r.url,
+    description: pickText(r.description, lang),
+    since: r.since ?? undefined,
+    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
+    links: r.links.map((l) => ({ label: pickText(l.label, lang) ?? l.url, url: l.url })),
+  }))
+}
+
+const PLAN_TONE: Record<PlanStatus, Tone> = { draft: "orange", manual: "orange", approved: "blue", issued: "green", dismissed: "grey", done: "green", obsolete: "grey" }
+
+export function PlanStatusBadge({ status }: { status: PlanStatus }) {
+  const { t } = useTranslation("fakturownia")
+  return <StatusBadge color={PLAN_TONE[status] ?? "grey"}>{t(`corrections.statuses.${status}`)}</StatusBadge>
+}
+
+/** Whether a writer writes, is off, or cannot be turned on (the option). */
+export function WriterBadge({ writer }: { writer: WriterDto }) {
+  const { t } = useTranslation("fakturownia")
+  if (!writer.allowed) return <StatusBadge color="grey">{t("writers.blocked")}</StatusBadge>
+  return <StatusBadge color={writer.armed ? "green" : "orange"}>{writer.armed ? t("writers.armed") : t("writers.off")}</StatusBadge>
+}
+
+/** Why a buyer that looks like a company got a consumer document. */
+export function BuyerWarningText({ warning }: { warning: BuyerWarningDto | null }) {
+  const { t } = useTranslation("fakturownia")
+  if (!warning) return null
+  const text =
+    warning.code === "invalid_nip"
+      ? t("documents.buyerWarning.invalid", { reason: t(`documents.buyerWarning.reasons.${warning.reason ?? "checksum"}`), source: warning.source ?? "?" })
+      : t("documents.buyerWarning.companyWithoutNip")
+  return (
+    <Text size="xsmall" className="text-ui-tag-orange-text">
+      {text}
+    </Text>
+  )
+}
+
+/** A small framed block with a label, for the drawers. */
+export function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Text size="small" weight="plus" className="text-ui-fg-base">
+          {title}
+        </Text>
+        {aside}
+      </div>
+      {children}
+    </div>
+  )
 }

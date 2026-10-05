@@ -4,6 +4,7 @@ import {
   DEFAULT_PAYMENT_TERM_DAYS,
   DEFAULT_QUANTITY_UNIT,
   DEFAULT_RECEIPT_KIND,
+  DEFAULT_REMINDER_AFTER_DAYS,
   DEFAULT_REQUESTS_PER_MINUTE,
   DEFAULT_SHIPPING_POSITION_NAME,
   DEFAULT_TAX_ID_METADATA_KEYS,
@@ -12,6 +13,9 @@ import {
   FAKTUROWNIA_DOMAIN,
   MAX_REQUESTS_PER_MINUTE,
 } from "./constants"
+import { resolveNipSources, type NipSource } from "./nip"
+import { resolveReferences, type ReferenceOption, type ResolvedReference } from "./references"
+import { WRITERS, type WriterKey } from "./writers"
 
 /**
  * Options of `@koda-plus/medusa-plugin-fakturownia`, passed in `medusa-config.ts`:
@@ -80,6 +84,37 @@ export interface FakturowniaPluginOptions {
   requestsPerMinute?: number | string
   /** Timeout of one request in ms. Default 30000. */
   timeoutMs?: number | string
+  /**
+   * Correction invoices. "plan" (default): when an issued order changes (a
+   * return received, a refund, an order edit, a cancellation), a correction
+   * plan is computed for a person to approve. "off": no plans (a canceled
+   * order's invoice is only flagged, as in 0.1.0).
+   */
+  corrections?: "plan" | "off" | string
+  /**
+   * Hard switches of the writes added in 0.2.0. Each defaults to true: a
+   * person may turn the writer on in the admin (it starts off). `false` turns
+   * it off for good; the admin cannot override it.
+   */
+  writers?: { corrections?: boolean | string; emails?: boolean | string; ksef?: boolean | string }
+  /** Attach the PDF to the e-mails Fakturownia sends (`email_pdf`). Default false. */
+  emailPdf?: boolean | string
+  /** Unpaid proformas and VAT invoices older than this many days are listed for a reminder. Default 7. */
+  reminderAfterDays?: number | string
+  /**
+   * Where the buyer's NIP is looked for, in order: "order.metadata.<key>",
+   * "billing_address.metadata.<key>", "billing_address.tax_id",
+   * "billing_address.company" (a NIP typed into the company name), or a
+   * company module: { entity: "company", customerField: "customer_id",
+   * nipField: "nip", nameField: "name" }. Default: the keys of
+   * taxIdMetadataKeys in the order and billing address metadata, then
+   * billing_address.tax_id.
+   */
+  nipSources?: Array<string | { entity: string; customerField?: string; nipField?: string; nameField?: string | null }> | string
+  /** The seller department by sales channel id, like { "sc_01J...": 123 }. Others use departmentId. */
+  departmentsBySalesChannel?: Record<string, number | string>
+  /** Stores running the integration, shown in the admin ("Running in production"). */
+  references?: ReferenceOption[]
 }
 
 export interface ResolvedFakturowniaOptions {
@@ -110,6 +145,15 @@ export interface ResolvedFakturowniaOptions {
   oidPrefix: string
   requestsPerMinute: number
   timeoutMs: number
+  corrections: "plan" | "off"
+  /** true: a person may turn the writer on; false: off for good. */
+  writers: Record<WriterKey, boolean>
+  emailPdf: boolean
+  reminderAfterDays: number
+  nipSources: NipSource[]
+  /** [sales channel id, department id], in the order given. */
+  departmentsBySalesChannel: Array<[string, number]>
+  references: ResolvedReference[]
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : "")
@@ -202,6 +246,25 @@ function clipped(v: unknown, fallback: string, max: number): string {
   return (s || fallback).slice(0, max)
 }
 
+/** Hard switches: anything but an explicit "no" leaves the writer available to the admin. */
+function writerSwitches(v: unknown): Record<WriterKey, boolean> {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+  const out = {} as Record<WriterKey, boolean>
+  for (const key of WRITERS) out[key] = boolOrNull(o[key]) !== false
+  return out
+}
+
+/** Sales channel to department, valid pairs only. */
+function channelDepartments(v: unknown): Array<[string, number]> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return []
+  const out: Array<[string, number]> = []
+  for (const [channel, department] of Object.entries(v as Record<string, unknown>)) {
+    const id = positiveInt(department)
+    if (/^[A-Za-z0-9_-]{1,64}$/.test(channel.trim()) && id !== null) out.push([channel.trim(), id])
+  }
+  return out
+}
+
 export function resolveOptions(o: FakturowniaPluginOptions | undefined | null): ResolvedFakturowniaOptions {
   const opts = o ?? {}
   const apiToken = str(opts.apiToken)
@@ -210,6 +273,7 @@ export function resolveOptions(o: FakturowniaPluginOptions | undefined | null): 
   const flow = str(opts.documentFlow).toLowerCase()
   const trigger = str(opts.trigger).toLowerCase()
   const receiptKind = str(opts.receiptKind).toLowerCase()
+  const taxIdMetadataKeys = textList(opts.taxIdMetadataKeys, DEFAULT_TAX_ID_METADATA_KEYS)
   return {
     apiToken,
     account: normalizeAccount(opts.account),
@@ -232,11 +296,25 @@ export function resolveOptions(o: FakturowniaPluginOptions | undefined | null): 
     markPaidOnCapture: bool(opts.markPaidOnCapture, true),
     sendByEmail: bool(opts.sendByEmail, false),
     cancelOnOrderCanceled: bool(opts.cancelOnOrderCanceled, true),
-    taxIdMetadataKeys: textList(opts.taxIdMetadataKeys, DEFAULT_TAX_ID_METADATA_KEYS),
+    taxIdMetadataKeys,
     oidPrefix: str(opts.oidPrefix).replace(/\s+/g, "").slice(0, 20),
     requestsPerMinute: bounded(opts.requestsPerMinute, DEFAULT_REQUESTS_PER_MINUTE, 1, MAX_REQUESTS_PER_MINUTE),
     timeoutMs: bounded(opts.timeoutMs, DEFAULT_TIMEOUT_MS, 5000, 120_000),
+    corrections: str(opts.corrections).toLowerCase() === "off" ? "off" : "plan",
+    writers: writerSwitches(opts.writers),
+    emailPdf: bool(opts.emailPdf, false),
+    reminderAfterDays: bounded(opts.reminderAfterDays, DEFAULT_REMINDER_AFTER_DAYS, 0, 365),
+    nipSources: resolveNipSources(opts.nipSources, taxIdMetadataKeys),
+    departmentsBySalesChannel: channelDepartments(opts.departmentsBySalesChannel),
+    references: resolveReferences(opts.references),
   }
+}
+
+/** The seller department of an order: its sales channel's, or `departmentId`. */
+export function departmentFor(o: Pick<ResolvedFakturowniaOptions, "departmentId" | "departmentsBySalesChannel">, salesChannelId: string | null | undefined): number | null {
+  const channel = String(salesChannelId ?? "").trim()
+  if (channel) for (const [id, department] of o.departmentsBySalesChannel) if (id === channel) return department
+  return o.departmentId
 }
 
 /**

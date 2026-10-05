@@ -1,13 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
+  ActionResponse,
   CheckResponse,
+  CorrectionsResponse,
+  DocumentDetailResponse,
   DocumentFilter,
   DocumentResponse,
   DocumentsResponse,
+  EmailRequest,
+  EmailsResponse,
   OrderDocumentsResponse,
+  PlanFilter,
+  PlanResponse,
+  RemindersResponse,
   RunsResponse,
   StatusResponse,
+  SummaryResponse,
   SyncResponse,
+  WriterKey,
+  WritersDto,
 } from "../../modules/fakturownia/lib/contract"
 
 declare const __BACKEND_URL__: string | undefined
@@ -62,12 +73,22 @@ export function pdfUrl(documentId: string): string {
   return `${backendUrl()}/admin/fakturownia/documents/${encodeURIComponent(documentId)}/pdf`
 }
 
+/** The UPO or the KSeF XML of an accepted document, fetched by the backend. */
+export function ksefFileUrl(documentId: string, file: "upo" | "xml"): string {
+  return `${backendUrl()}/admin/fakturownia/documents/${encodeURIComponent(documentId)}/ksef-file?file=${file}`
+}
+
 export const fakturowniaKeys = {
   all: ["fakturownia"] as const,
   status: ["fakturownia", "status"] as const,
   documents: (filter: DocumentFilter, q: string, offset: number, limit: number) => ["fakturownia", "documents", filter, q, offset, limit] as const,
   runs: ["fakturownia", "runs"] as const,
   order: (id: string) => ["fakturownia", "order", id] as const,
+  document: (id: string) => ["fakturownia", "document", id] as const,
+  corrections: (filter: PlanFilter, q: string, offset: number) => ["fakturownia", "corrections", filter, q, offset] as const,
+  emails: (offset: number) => ["fakturownia", "emails", offset] as const,
+  reminders: ["fakturownia", "reminders"] as const,
+  summary: ["fakturownia", "summary"] as const,
 }
 
 /** Status of the page. Polls while a job runs or right after an action. */
@@ -169,6 +190,102 @@ export function useFakturowniaIssueOrder() {
   const client = useQueryClient()
   return useMutation<{ queued: string[] }, Error, string>({
     mutationFn: (orderId) => fakturowniaFetch<{ queued: string[] }>(`/admin/fakturownia/orders/${encodeURIComponent(orderId)}/issue`, { method: "POST", body: {} }),
+    onSuccess: () => client.invalidateQueries({ queryKey: fakturowniaKeys.all }),
+  })
+}
+
+/* ---- 0.2.0 ---------------------------------------------------------- */
+
+/** One document with its KSeF and e-mail history, corrections and plans (the drawer). */
+export function useFakturowniaDocument(id: string | null) {
+  return useQuery<DocumentDetailResponse>({
+    queryKey: fakturowniaKeys.document(id ?? ""),
+    queryFn: () => fakturowniaFetch<DocumentDetailResponse>(`/admin/fakturownia/documents/${encodeURIComponent(id ?? "")}`),
+    enabled: Boolean(id),
+    refetchInterval: (query) => (query.state.data?.document.govState === "processing" ? 10_000 : false),
+  })
+}
+
+export function useFakturowniaCorrections(filter: PlanFilter, q: string, offset: number, limit: number, poll: boolean) {
+  return useQuery<CorrectionsResponse>({
+    queryKey: fakturowniaKeys.corrections(filter, q, offset),
+    queryFn: () => fakturowniaFetch<CorrectionsResponse>(`/admin/fakturownia/corrections?${params({ filter, q, offset, limit })}`),
+    placeholderData: (previous) => previous,
+    refetchInterval: (query) => {
+      const busy = (query.state.data?.plans ?? []).some((p) => p.status === "approved")
+      return poll || busy ? 5_000 : 30_000
+    },
+  })
+}
+
+export function useFakturowniaEmails(offset: number, limit: number) {
+  return useQuery<EmailsResponse>({
+    queryKey: fakturowniaKeys.emails(offset),
+    queryFn: () => fakturowniaFetch<EmailsResponse>(`/admin/fakturownia/emails?${params({ offset, limit })}`),
+    placeholderData: (previous) => previous,
+    refetchInterval: 30_000,
+  })
+}
+
+export function useFakturowniaReminders() {
+  return useQuery<RemindersResponse>({
+    queryKey: fakturowniaKeys.reminders,
+    queryFn: () => fakturowniaFetch<RemindersResponse>("/admin/fakturownia/reminders"),
+    refetchInterval: 60_000,
+  })
+}
+
+export function useFakturowniaSummary() {
+  return useQuery<SummaryResponse>({
+    queryKey: fakturowniaKeys.summary,
+    queryFn: () => fakturowniaFetch<SummaryResponse>("/admin/fakturownia/summary"),
+    refetchInterval: 120_000,
+  })
+}
+
+/** Turns a writer on or off; the answer is every writer, with who flipped it. */
+export function useFakturowniaWriter() {
+  const client = useQueryClient()
+  return useMutation<{ writers: WritersDto }, Error, { writer: WriterKey; on: boolean }>({
+    mutationFn: (body) => fakturowniaFetch<{ writers: WritersDto }>("/admin/fakturownia/writers", { method: "POST", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: fakturowniaKeys.all }),
+  })
+}
+
+export type PlanAction = "approve" | "dismiss" | "done"
+
+/** Approve (with the revision seen and the reason), dismiss or mark done a correction plan. */
+export function useFakturowniaPlanAction() {
+  const client = useQueryClient()
+  return useMutation<PlanResponse, Error, { id: string; action: PlanAction; revision?: number; reason?: string; note?: string }>({
+    mutationFn: ({ id, action, ...body }) => fakturowniaFetch<PlanResponse>(`/admin/fakturownia/corrections/${encodeURIComponent(id)}/${action}`, { method: "POST", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: fakturowniaKeys.all }),
+  })
+}
+
+/** "Check for corrections" on the order page. */
+export function useFakturowniaCheckOrderCorrections() {
+  const client = useQueryClient()
+  return useMutation<{ outcome: string; reason: string | null }, Error, string>({
+    mutationFn: (orderId) => fakturowniaFetch<{ outcome: string; reason: string | null }>(`/admin/fakturownia/orders/${encodeURIComponent(orderId)}/corrections`, { method: "POST", body: {} }),
+    onSuccess: () => client.invalidateQueries({ queryKey: fakturowniaKeys.all }),
+  })
+}
+
+/** E-mail a document (or a reminder). */
+export function useFakturowniaEmail() {
+  const client = useQueryClient()
+  return useMutation<ActionResponse, Error, { id: string } & EmailRequest>({
+    mutationFn: ({ id, ...body }) => fakturowniaFetch<ActionResponse>(`/admin/fakturownia/documents/${encodeURIComponent(id)}/email`, { method: "POST", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: fakturowniaKeys.all }),
+  })
+}
+
+/** "Send to KSeF again". */
+export function useFakturowniaKsefResend() {
+  const client = useQueryClient()
+  return useMutation<ActionResponse, Error, string>({
+    mutationFn: (id) => fakturowniaFetch<ActionResponse>(`/admin/fakturownia/documents/${encodeURIComponent(id)}/ksef-resend`, { method: "POST", body: {} }),
     onSuccess: () => client.invalidateQueries({ queryKey: fakturowniaKeys.all }),
   })
 }

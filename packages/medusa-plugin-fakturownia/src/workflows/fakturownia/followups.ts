@@ -15,48 +15,24 @@
  * to "rejected" in Fakturownia (`change_status`): its number stays, nothing
  * can be paid against it, and unlike `cancel.json` this works also when it is
  * the last document of the numbering (measured in production). A VAT invoice
- * or a receipt is an accounting document: it only becomes `needs_correction`
- * for a person, who issues the correction in Fakturownia. The plugin never
- * corrects, deletes or cancels an accounting document.
+ * or a receipt is an accounting document: it becomes `needs_correction`, and
+ * with `corrections: "plan"` a correction to zero is planned for a person to
+ * approve (`corrections.ts`; a receipt gets a manual plan). The plugin never
+ * deletes or cancels an accounting document, and never corrects one without
+ * a person.
  */
 
 import { EMAIL_RETRY_DAYS, PLUGIN_EVENTS } from "../../modules/fakturownia/lib/constants"
-import { toDate, type DocumentRow } from "../../modules/fakturownia/lib/dto"
+import type { DocumentRow } from "../../modules/fakturownia/lib/dto"
 import { describeError, FakturowniaApiError } from "../../modules/fakturownia/lib/errors"
-import { isWaitingForKsef } from "../../modules/fakturownia/lib/status"
+import { sendAutoEmail, type AutoEmailOutcome } from "./emails"
 import { clientFor, emitEvent, fakturowniaService, patchDocument, storeFor, type Scope } from "./runtime"
 
-export type EmailOutcome = "sent" | "waiting" | "failed" | "skipped"
+export type EmailOutcome = AutoEmailOutcome
 
+/** The automatic e-mail after issue (`sendByEmail`), with its history: see `emails.ts`. */
 export async function sendEmailFor(scope: Scope, row: DocumentRow): Promise<EmailOutcome> {
-  const svc = fakturowniaService(scope)
-  if (row.email_status !== "pending" || row.status !== "issued" || !row.fakturownia_id) return "skipped"
-  const now = new Date()
-  if (svc.isDemo()) {
-    await patchDocument(svc, row.id, { email_status: "sent", emailed_at: now, email_error: null })
-    return "sent"
-  }
-  try {
-    await clientFor(svc).sendByEmail(row.fakturownia_id)
-    await patchDocument(svc, row.id, { email_status: "sent", emailed_at: now, email_error: null })
-    return "sent"
-  } catch (err) {
-    const d = describeError(err)
-    const message = svc.mask(d.message).slice(0, 1000)
-    const issuedAt = toDate(row.issued_at) ?? now
-    const tooOld = now.getTime() - issuedAt.getTime() > EMAIL_RETRY_DAYS * 24 * 3600 * 1000
-    const refusedTransient = err instanceof FakturowniaApiError && err.transient && err.refused
-    if ((isWaitingForKsef(message) || refusedTransient) && !tooOld) {
-      await patchDocument(svc, row.id, { email_error: message })
-      return "waiting"
-    }
-    const note =
-      err instanceof FakturowniaApiError && err.transient && !err.refused
-        ? `${message} The e-mail may have gone out; it is not sent again automatically. Check the document in Fakturownia.`
-        : message
-    await patchDocument(svc, row.id, { email_status: "failed", email_error: note.slice(0, 1000) })
-    return "failed"
-  }
+  return sendAutoEmail(scope, row, EMAIL_RETRY_DAYS)
 }
 
 /** Sets an issued proforma to "rejected" in Fakturownia, then cancels the row. */
@@ -103,13 +79,16 @@ export async function applyCancelRule(scope: Scope, row: DocumentRow): Promise<"
     if (!row.cancel_requested_at) await patchDocument(svc, row.id, { cancel_requested_at: new Date() })
     return (await rejectProforma(scope, { ...row, cancel_requested_at: row.cancel_requested_at ?? new Date() })) ? "rejected" : "none"
   }
+  const planned = o.corrections === "plan"
   const moved = await storeFor(scope).transition(row.id, ["issued"], {
     status: "needs_correction",
     cancel_requested_at: new Date(),
     error:
       row.kind === "receipt"
-        ? "The order was canceled after this receipt was issued. Record the return or issue the correction in Fakturownia; the plugin never changes accounting documents."
-        : "The order was canceled after this invoice was issued. Issue a correction invoice in Fakturownia; the plugin never changes accounting documents.",
+        ? "The order was canceled after this receipt was issued. Record the return in the register of returns; a receipt is not corrected with a correction invoice."
+        : planned
+          ? "The order was canceled after this invoice was issued. A correction to zero waits for your approval under Corrections."
+          : "The order was canceled after this invoice was issued. Issue a correction invoice in Fakturownia; the plugin never changes accounting documents.",
     error_code: "order_canceled",
   })
   if (!moved) return "none"

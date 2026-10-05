@@ -9,6 +9,7 @@
 
 import { enqueueDue, kickIssue } from "./documents"
 import { handleOrderCanceled } from "./cancel"
+import { onOrderChanged } from "./corrections"
 import { kickPayments, requestMarkPaid } from "./payments"
 import { fakturowniaService, queryOf, type Scope } from "./runtime"
 
@@ -64,12 +65,51 @@ export async function onOrderFulfilled(scope: Scope, orderId: string): Promise<v
   }
 }
 
-/** `order.canceled`: queued documents are canceled, issued ones follow `cancelOnOrderCanceled`. */
+/**
+ * `order.canceled`: queued documents are canceled, issued ones follow
+ * `cancelOnOrderCanceled`, and (with `corrections: "plan"`) an issued VAT
+ * invoice gets a correction to zero planned for a person to approve.
+ */
 export async function onOrderCanceled(scope: Scope, orderId: string): Promise<void> {
   try {
     if (!fakturowniaService(scope).isConfigured()) return
     await handleOrderCanceled(scope, orderId)
+    await onOrderChanged(scope, orderId, { type: "cancel", id: orderId, at: new Date().toISOString() })
   } catch (err) {
     logError(scope, `order.canceled ${orderId}`, err)
+  }
+}
+
+/** `order.return_received`: the returned goods may need a correction. Plans only; nothing goes to Fakturownia. */
+export async function onReturnReceived(scope: Scope, orderId: string, returnId: string | null): Promise<void> {
+  if (!fakturowniaService(scope).isConfigured()) return
+  await onOrderChanged(scope, orderId, { type: "return", id: returnId || `return_of_${orderId}`, at: new Date().toISOString() })
+}
+
+/** `order-edit.confirmed`: quantities or prices of the order changed. Plans only. */
+export async function onOrderEditConfirmed(scope: Scope, orderId: string, changeId: string | null): Promise<void> {
+  if (!fakturowniaService(scope).isConfigured()) return
+  await onOrderChanged(scope, orderId, { type: "edit", id: changeId || `edit_of_${orderId}`, at: new Date().toISOString() })
+}
+
+/** The newest refund of a payment and its order. Null for payments outside an order (claims, exchanges). */
+export async function refundOfPayment(scope: Scope, paymentId: string): Promise<{ orderId: string; refundId: string | null } | null> {
+  const orderId = await orderIdOfPayment(scope, paymentId)
+  if (!orderId) return null
+  const { data } = await queryOf(scope).graph({ entity: "payment", fields: ["id", "refunds.id", "refunds.created_at"], filters: { id: paymentId } })
+  const refunds = ((data[0] as { refunds?: Array<{ id?: string; created_at?: string | Date | null }> | null } | undefined)?.refunds ?? []).filter((r) => r?.id)
+  refunds.sort((a, b) => new Date(String(a.created_at ?? 0)).getTime() - new Date(String(b.created_at ?? 0)).getTime())
+  return { orderId, refundId: refunds.length > 0 ? String(refunds[refunds.length - 1].id) : null }
+}
+
+/** `payment.refunded` (`{ id }` is the payment): a refund may be a price reduction or pay back a return. Plans only. */
+export async function onPaymentRefunded(scope: Scope, paymentId: string): Promise<void> {
+  try {
+    if (!fakturowniaService(scope).isConfigured()) return
+    const found = await refundOfPayment(scope, paymentId)
+    if (!found) return
+    await onOrderChanged(scope, found.orderId, { type: "refund", id: found.refundId || `refund_of_${paymentId}`, at: new Date().toISOString() })
+  } catch (err) {
+    logError(scope, `payment.refunded ${paymentId}`, err)
   }
 }

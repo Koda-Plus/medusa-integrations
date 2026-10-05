@@ -48,9 +48,26 @@ export function isGovFinal(govStatus: string | null | undefined): boolean {
   return s === "ok" || s === "not_applicable"
 }
 
+/**
+ * Where "send to KSeF again" (`GET /invoices/{id}.json?send_to_ksef=yes`,
+ * KSeF.md) makes sense: never sent (the account sends only some documents
+ * automatically), a send error, a KSeF server error ("Fakturownia nie ponawia
+ * wysyłki"), an offline document, or a connection or permission problem a
+ * person fixed in Fakturownia. NOT for `status_check_error` (the invoice may
+ * be accepted already: check in Fakturownia first) or `duplicate_error`
+ * (KSeF holds an invoice with this number), where sending again cannot help.
+ */
+export const KSEF_RESEND_STATUSES: readonly string[] = ["send_error", "server_error", "offline", "offline_error", "not_connected", "blocked_403_error"]
+
+export function canResendKsef(govStatus: string | null | undefined): boolean {
+  const s = baseGovStatus(govStatus)
+  if (!s || s === "null") return true
+  return KSEF_RESEND_STATUSES.includes(s)
+}
+
 /** Kinds Fakturownia sends to KSeF, of those the plugin issues. */
 export function goesToKsef(kind: string): boolean {
-  return kind === "vat"
+  return kind === "vat" || kind === "correction"
 }
 
 /**

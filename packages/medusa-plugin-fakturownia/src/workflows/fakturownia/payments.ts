@@ -37,7 +37,7 @@ import { clientFor, documentsOfOrder, exclusive, fakturowniaService, inBackgroun
 export async function requestMarkPaid(scope: Scope, orderId: string): Promise<number> {
   const svc = fakturowniaService(scope)
   if (!svc.getOptions().markPaidOnCapture || !canIssue(svc.getOptions())) return 0
-  const rows = (await documentsOfOrder(svc, orderId)).filter((r) => !r.paid && ["pending", "issuing", "issued", "unknown"].includes(r.status))
+  const rows = (await documentsOfOrder(svc, orderId)).filter((r) => r.kind !== "correction" && !r.paid && ["pending", "issuing", "issued", "unknown"].includes(r.status))
   const now = new Date()
   for (const r of rows) await patchDocument(svc, r.id, { pay_requested_at: now })
   return rows.length

@@ -23,6 +23,13 @@ import { model } from "@medusajs/framework/utils"
  *
  * `total_gross` is `numeric(14,2)` in the migration (exact money), declared as
  * a float here; the DTO reads it with `Number()`.
+ *
+ * CORRECTIONS (0.2.0) are rows of kind `correction` in the same outbox, so
+ * they get the same claim, lookup and reconciliation. An order may have many,
+ * so the unique index on (order_id, kind, demo) leaves them out, and their
+ * own unique index is on (order_id, source_key, demo): the business key of
+ * the order's source events ("return:return_01J..."). `corrects_document_id`
+ * points at the corrected row and `plan_id` at the approved plan.
  */
 const FakturowniaDocument = model
   .define("fakturownia_document", {
@@ -60,9 +67,24 @@ const FakturowniaDocument = model
     email_status: model.text().nullable(),
     emailed_at: model.dateTime().nullable(),
     email_error: model.text().nullable(),
+    /* 0.2.0 */
+    source_key: model.text().nullable(),
+    corrects_document_id: model.text().nullable(),
+    plan_id: model.text().nullable(),
+    order_version: model.number().nullable(),
+    buyer_warning: model.json().nullable(),
+    gov_send_date: model.dateTime().nullable(),
+    gov_verification_link: model.text().nullable(),
+    gov_link: model.text().nullable(),
+    gov_corrected_number: model.text().nullable(),
+    gov_errors: model.json().nullable(),
+    ksef_resend_at: model.dateTime().nullable(),
+    corrections_checked_at: model.dateTime().nullable(),
   })
   .indexes([
-    { on: ["order_id", "kind", "demo"], unique: true, where: "deleted_at IS NULL" },
+    { on: ["order_id", "kind", "demo"], unique: true, where: "kind <> 'correction' AND deleted_at IS NULL" },
+    { on: ["order_id", "source_key", "demo"], unique: true, where: "kind = 'correction' AND deleted_at IS NULL" },
+    { on: ["corrects_document_id"], where: "deleted_at IS NULL" },
     { on: ["order_id", "demo"], unique: true, where: "kind IN ('vat', 'receipt') AND deleted_at IS NULL" },
     { on: ["status", "next_attempt_at"], where: "deleted_at IS NULL" },
     { on: ["fakturownia_id"], where: "deleted_at IS NULL" },

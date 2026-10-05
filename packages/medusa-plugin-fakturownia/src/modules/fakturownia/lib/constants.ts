@@ -14,7 +14,7 @@ export const FAKTUROWNIA_DOMAIN = "fakturownia.pl"
  * Document kinds the plugin issues. `receipt` leaves for the API as the
  * `receiptKind` option, `"receipt"` by default (verified: docs/fakturownia-api-notes.md).
  */
-export const DOCUMENT_KINDS = ["vat", "proforma", "receipt"] as const
+export const DOCUMENT_KINDS = ["vat", "proforma", "receipt", "correction"] as const
 
 /** Every state of an outbox row. See `lib/outbox.ts` for the transitions. */
 export const DOCUMENT_STATUSES = ["pending", "issuing", "issued", "failed", "unknown", "canceled", "needs_correction"] as const
@@ -125,8 +125,48 @@ export const AMOUNT_TOLERANCE = 0.02
 /** Demo mode, first visit: the newest orders get simulated documents. */
 export const DEMO_BACKFILL_ORDERS = 10
 
-/** Events the plugin emits on the Medusa event bus. */
+/* ---- 0.2.0 ---------------------------------------------------------- */
+
+/** Correction plans: the scan for changes the events missed, every 30 minutes. */
+export const CORRECTIONS_SCHEDULE = "*/30 * * * *"
+
+/** Approved corrections issued in one pass of the outbox (the per run cap of the corrections writer). */
+export const CORRECTIONS_PER_PASS = 10
+
+/** Issued documents checked for changes in one scan, the least recently checked first. */
+export const CORRECTIONS_SCAN_PER_PASS = 20
+
+/** Documents issued within this many days are scanned for changes. */
+export const CORRECTIONS_WINDOW_DAYS = 90
+
+/** Unpaid proformas and VAT invoices older than this many days are listed for a reminder. */
+export const DEFAULT_REMINDER_AFTER_DAYS = 7
+
+/** One payment reminder per document in this many hours at most. */
+export const REMINDER_MIN_INTERVAL_HOURS = 24
+
+/** One "send to KSeF again" per document in this many minutes at most. */
+export const KSEF_RESEND_MIN_INTERVAL_MS = 5 * 60 * 1000
+
+/** `email_to` takes up to five addresses (documented). */
+export const MAX_EMAIL_RECIPIENTS = 5
+
+/** Storefront routes of a logged-in customer: requests per minute per customer. */
+export const STORE_LIST_PER_MINUTE = 30
+export const STORE_PDF_PER_MINUTE = 10
+
+/** The monthly summary covers this many months and reads at most this many rows. */
+export const SUMMARY_MONTHS = 12
+export const SUMMARY_MAX_ROWS = 25_000
+
+/**
+ * Events the plugin emits on the Medusa event bus. `issued` and `corrected`
+ * are the contract other plugins build on (`lib/events.ts`); the three with an
+ * underscore are the events of 0.1.0, kept as they were.
+ */
 export const PLUGIN_EVENTS = {
+  issued: "fakturownia.document.issued",
+  corrected: "fakturownia.document.corrected",
   documentIssued: "fakturownia.document_issued",
   documentFailed: "fakturownia.document_failed",
   documentNeedsAttention: "fakturownia.document_needs_attention",

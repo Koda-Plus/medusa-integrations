@@ -19,7 +19,6 @@
 
 import { FINALS_PER_PASS, FINALS_WINDOW_DAYS, STATUS_WINDOW_DAYS, STATUSES_PER_PASS } from "../../modules/fakturownia/lib/constants"
 import type { RunTrigger } from "../../modules/fakturownia/lib/contract"
-import { demoGovId, demoGovStatus } from "../../modules/fakturownia/lib/demo"
 import { toDate, type DocumentRow } from "../../modules/fakturownia/lib/dto"
 import { describeError, FakturowniaApiError } from "../../modules/fakturownia/lib/errors"
 import { toRemoteDocument } from "../../modules/fakturownia/lib/exactly-once"
@@ -27,6 +26,7 @@ import { canIssue } from "../../modules/fakturownia/lib/options"
 import { goesToKsef, isGovFinal } from "../../modules/fakturownia/lib/status"
 import { enqueueDue, kickIssue } from "./documents"
 import { rejectProforma, sendEmailFor } from "./followups"
+import { demoKsefNext, govPatch, ksefChanged, recordKsefEvent } from "./ksef"
 import { clientFor, exclusive, fakturowniaService, listDocuments, patchDocument, queryOf, recordRun, type Scope } from "./runtime"
 
 export interface StatusesStats {
@@ -52,19 +52,34 @@ function ms(v: Date | string | null | undefined): number {
   return toDate(v)?.getTime() ?? 0
 }
 
-const GOV_FIELDS = ["id", "number", "kind", "price_gross", "paid", "status", "gov_status", "gov_id", "gov_error_messages"] as const
+/** What the status read asks for (KSeF.md, "Sprawdzanie statusu wysyłki"), and the payment on the way. */
+export const GOV_FIELDS = [
+  "id",
+  "number",
+  "kind",
+  "price_gross",
+  "paid",
+  "status",
+  "gov_status",
+  "gov_id",
+  "gov_send_date",
+  "gov_error_messages",
+  "gov_verification_link",
+  "gov_link",
+  "gov_corrected_invoice_number",
+] as const
 
-/** Reads the KSeF status of one document (simulated in demo mode) and stores what changed. */
+/** Reads the KSeF status of one document (simulated in demo mode), stores what changed and keeps it in the history. */
 async function refreshOne(scope: Scope, row: DocumentRow, stats: StatusesStats, now: Date): Promise<void> {
   const svc = fakturowniaService(scope)
   if (svc.isDemo()) {
-    const issuedAt = toDate(row.issued_at) ?? now
-    const gov = demoGovStatus({ kind: row.kind, orderId: row.order_id, issuedAt, now })
     stats.read += 1
-    if (gov !== row.gov_status) {
+    const next = demoKsefNext(row, now)
+    if (next) {
       stats.changed += 1
-      if (gov === "ok") stats.accepted += 1
-      await patchDocument(svc, row.id, { gov_status: gov, gov_id: gov === "ok" ? demoGovId(row.order_id, row.issue_date ?? now.toISOString().slice(0, 10)) : null, gov_checked_at: now })
+      if (next.govStatus === "ok") stats.accepted += 1
+      await patchDocument(svc, row.id, { gov_status: next.govStatus, gov_id: next.govId, gov_error: null, gov_errors: null, gov_checked_at: now })
+      await recordKsefEvent(scope, row, { source: "refresh", govStatus: next.govStatus, govId: next.govId })
     } else {
       await patchDocument(svc, row.id, { gov_checked_at: now })
     }
@@ -75,21 +90,19 @@ async function refreshOne(scope: Scope, row: DocumentRow, stats: StatusesStats, 
     const doc = toRemoteDocument(await clientFor(svc).getInvoice(row.fakturownia_id, GOV_FIELDS))
     stats.read += 1
     if (!doc) return
-    const govError = doc.govErrors ? svc.mask(doc.govErrors).slice(0, 1000) : null
+    const patch = govPatch(doc, (t) => svc.mask(t), now)
     const paidThere = doc.paid !== null && doc.gross !== null && doc.gross > 0 && doc.paid + 0.005 >= doc.gross
-    const changed = doc.govStatus !== row.gov_status || doc.govId !== row.gov_id || govError !== row.gov_error || (paidThere && !row.paid)
-    if (changed) {
+    const ksef = ksefChanged(row, { govStatus: doc.govStatus, govId: doc.govId, govError: patch.gov_error ?? null })
+    if (ksef || (paidThere && !row.paid)) {
       stats.changed += 1
       if (doc.govStatus === "ok" && row.gov_status !== "ok") stats.accepted += 1
     }
-    if (govError) stats.problems += 1
+    if (patch.gov_error) stats.problems += 1
     await patchDocument(svc, row.id, {
-      gov_status: doc.govStatus,
-      gov_id: doc.govId,
-      gov_error: govError,
-      gov_checked_at: now,
+      ...patch,
       ...(paidThere && !row.paid ? { paid: true, paid_at: now, pay_requested_at: null } : {}),
     })
+    if (ksef) await recordKsefEvent(scope, row, { source: "refresh", govStatus: doc.govStatus, govId: doc.govId, errors: doc.govErrorList })
   } catch (err) {
     if (err instanceof FakturowniaApiError && err.status === 404) {
       stats.missing += 1
@@ -139,7 +152,7 @@ export async function refreshStatuses(scope: Scope, trigger: RunTrigger): Promis
 
     /* KSeF */
     const since = new Date(now.getTime() - STATUS_WINDOW_DAYS * 24 * 3600 * 1000)
-    const recent = await listDocuments(svc, { demo: o.demo, status: ["issued", "needs_correction"], kind: "vat", issued_at: { $gte: since } }, { take: 500 })
+    const recent = await listDocuments(svc, { demo: o.demo, status: ["issued", "needs_correction"], kind: ["vat", "correction"], issued_at: { $gte: since } }, { take: 500 })
     const candidates = recent
       .filter((r) => goesToKsef(r.kind) && !isGovFinal(r.gov_status))
       .sort((a, b) => ms(a.gov_checked_at) - ms(b.gov_checked_at))

@@ -27,6 +27,8 @@ export async function handleOrderCanceled(scope: Scope, orderId: string): Promis
   const stats: CancelStats = { canceled: 0, remembered: 0, rejected: 0, needsCorrection: 0 }
   const rows = await documentsOfOrder(svc, orderId)
   for (const row of rows) {
+    /* A correction is not canceled with its order: it corrects a document that stays issued (a cancellation is planned as one more correction). */
+    if (row.kind === "correction") continue
     if (row.status === "pending" || row.status === "failed") {
       const moved = await store.transition(row.id, ["pending", "failed"], {
         status: "canceled",

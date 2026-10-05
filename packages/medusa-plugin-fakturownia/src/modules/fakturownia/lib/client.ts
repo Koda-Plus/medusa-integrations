@@ -21,6 +21,10 @@
  *                     other failure becomes `FakturowniaUnknownResultError`,
  *                     answered by a lookup, never by a blind retry
  *   send_by_email     one shot (a second call would send a second e-mail)
+ *   send_to_ksef      one shot (sending twice can end in duplicate_error)
+ *   attachment        the KSeF XML and the UPO: a read; the redirect to the
+ *                     file is followed by hand, without the token unless the
+ *                     file stays on the account host
  *
  * The create call is public but meant for `exactly-once.ts`, which looks the
  * document up before and after it.
@@ -32,7 +36,7 @@ import { FakturowniaApiError, FakturowniaUnknownResultError, interpretResponse, 
 import { isValidAccount } from "./options"
 import { maskSecrets } from "./security"
 
-const USER_AGENT = "KodaPlus-Medusa-Fakturownia/0.1 (+https://koda.plus)"
+const USER_AGENT = "KodaPlus-Medusa-Fakturownia/0.2 (+https://koda.plus)"
 
 export type RemoteRecord = Record<string, unknown>
 
@@ -387,12 +391,116 @@ export class FakturowniaClient {
 
   /**
    * `POST /invoices/{id}/send_by_email.json`: Fakturownia e-mails the document
-   * to its `buyer_email`. On a KSeF account a company document waits for its
-   * KSeF number; the refusal comes as HTTP 200 with `status: "error"`.
+   * to its `buyer_email`, or to `email_to` (up to five addresses), with copies
+   * to `email_cc` and the PDF attached with `email_pdf=true`. The parameters
+   * travel in the query string, as documented; the token stays in the header.
+   * On a KSeF account a company document waits for its KSeF number; the
+   * refusal comes as HTTP 200 with `status: "error"`. ONE shot: a second call
+   * would send a second e-mail.
    */
-  async sendByEmail(id: string | number): Promise<void> {
-    await this.request({ operation: "send_by_email", method: "POST", path: `/invoices/${assertDocumentId(id)}/send_by_email.json`, retry: "once" })
+  async sendByEmail(id: string | number, opts: { to?: readonly string[]; cc?: readonly string[]; pdf?: boolean } = {}): Promise<void> {
+    await this.request({
+      operation: "send_by_email",
+      method: "POST",
+      path: `/invoices/${assertDocumentId(id)}/send_by_email.json`,
+      query: {
+        email_to: opts.to && opts.to.length > 0 ? opts.to.join(",") : undefined,
+        email_cc: opts.cc && opts.cc.length > 0 ? opts.cc.join(",") : undefined,
+        email_pdf: opts.pdf ? "true" : undefined,
+      },
+      retry: "once",
+    })
   }
+
+  /**
+   * "Send to KSeF again": `GET /invoices/{id}.json?send_to_ksef=yes`
+   * (KSeF.md, "Ręczne wysłanie istniejącej faktury"). Answers the document,
+   * normally with `gov_status: "processing"`. ONE shot: sending twice can end
+   * in `duplicate_error`.
+   */
+  async sendToKsef(id: string | number): Promise<RemoteRecord> {
+    const data = await this.request({
+      operation: "send_to_ksef",
+      method: "GET",
+      path: `/invoices/${assertDocumentId(id)}.json`,
+      query: { send_to_ksef: "yes" },
+      retry: "once",
+    })
+    return asRecord(data, "send_to_ksef")
+  }
+
+  /**
+   * The KSeF XML (`kind=gov`) or the UPO, the official receipt of KSeF
+   * (`kind=gov_upo`), of an accepted document: `GET
+   * /invoices/{id}/attachment?kind=...` answers HTTP 302 to the file when it
+   * is ready and 404 when it is not (KSeF.md, "Pobranie XML faktury KSeF i
+   * UPO"). The redirect is followed by hand, to https only, and the
+   * Authorization header goes along only when the file stays on the account's
+   * own host: the token never travels anywhere else.
+   */
+  async getAttachment(id: string | number, kind: "gov" | "gov_upo"): Promise<{ bytes: Uint8Array; contentType: string }> {
+    const operation = "attachment"
+    if (!this.o.token.trim()) {
+      throw new FakturowniaApiError({ code: "NO_TOKEN", operation, message: "apiToken is not set in the plugin options.", transient: false, refused: true })
+    }
+    if (this.limiter) await this.limiter.pass()
+    const url = this.url(`/invoices/${assertDocumentId(id)}/attachment`, { kind })
+    const auth = { Authorization: `Bearer ${this.o.token}`, "User-Agent": USER_AGENT, Accept: "*/*" }
+    const get = async (target: string, withAuth: boolean): Promise<Response> => {
+      try {
+        return await this.doFetch(target, {
+          method: "GET",
+          headers: withAuth ? auth : { "User-Agent": USER_AGENT, Accept: "*/*" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(this.o.timeoutMs),
+        })
+      } catch (err) {
+        throw networkError(operation, err, (t) => this.mask(t))
+      }
+    }
+    let res = await get(url, true)
+    if (res.status >= 300 && res.status < 400) {
+      const target = safeRedirect(res.headers.get("location"), url)
+      if (!target) {
+        throw new FakturowniaApiError({ code: "BAD_REDIRECT", operation, message: "Fakturownia pointed to a file address that is not https.", transient: false, refused: true, status: res.status })
+      }
+      res = await get(target, new URL(target).host === new URL(url).host)
+    }
+    if (res.status === 404) {
+      throw new FakturowniaApiError({ code: "HTTP_404", operation, message: "the file is not there (yet): KSeF has not accepted the document, or the batch is still being processed.", transient: false, refused: true, status: 404 })
+    }
+    if (res.status !== 200) {
+      const text = await res.text().catch(() => "")
+      interpretResponse({ operation, httpStatus: res.status >= 300 && res.status < 400 ? 502 : res.status, text, mask: (t) => this.mask(t) })
+      throw new FakturowniaApiError({ code: `HTTP_${res.status}`, operation, message: "unexpected answer", transient: false, refused: true, status: res.status })
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    if (bytes.length > MAX_ATTACHMENT_BYTES) {
+      throw new FakturowniaApiError({ code: "TOO_LARGE", operation, message: "the file is larger than 5 MB.", transient: false, refused: true, status: 200 })
+    }
+    return { bytes, contentType: res.headers.get("content-type") ?? "application/xml" }
+  }
+}
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+
+/**
+ * A redirect target that is safe to follow: an https address (relative ones
+ * resolve against the request), not a bare IP and not a local name. Null
+ * otherwise.
+ */
+export function safeRedirect(location: string | null, base: string): string | null {
+  if (!location) return null
+  let target: URL
+  try {
+    target = new URL(location, base)
+  } catch {
+    return null
+  }
+  if (target.protocol !== "https:") return null
+  const host = target.hostname.toLowerCase()
+  if (!host.includes(".") || host === "localhost" || host.endsWith(".local") || /^[\d.]+$/.test(host) || host.includes(":")) return null
+  return target.toString()
 }
 
 function isPdf(bytes: Uint8Array): boolean {

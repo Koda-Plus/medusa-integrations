@@ -78,24 +78,37 @@ test("DTO: amounts from the numeric column, positions, the KSeF state, no claim 
   assert.equal(dto.issuedAt, "2026-10-05T10:00:00.000Z")
   assert.ok(!JSON.stringify(dto).includes("secret-claim"))
   assert.equal(dto.fakturowniaUrl, "https://mojafirma.fakturownia.pl/invoices/600000001")
-  assert.deepEqual(dto.actions, { retry: false, reconcile: false, issueAgain: false, markIssued: false, pdf: true })
+  assert.deepEqual(dto.actions, { retry: false, reconcile: false, issueAgain: false, markIssued: false, pdf: true, email: true, ksefResend: false, ksefFiles: false })
 })
 
-test("DTO: the panel link and the PDF only in live mode for a document that exists", () => {
+test("DTO: the panel link only in live mode; the PDF for every document that exists (demo ones are generated)", () => {
   assert.equal(toDocumentDto(row(), null).fakturowniaUrl, null, "demo mode has no account url")
-  assert.equal(toDocumentDto(row({ demo: true }), "https://mojafirma.fakturownia.pl").actions.pdf, false)
+  assert.equal(toDocumentDto(row({ demo: true }), "https://mojafirma.fakturownia.pl").actions.pdf, true)
+  assert.equal(toDocumentDto(row({ demo: true }), "https://mojafirma.fakturownia.pl").fakturowniaUrl, null)
   assert.equal(toDocumentDto(row({ status: "pending", fakturownia_id: null }), "https://mojafirma.fakturownia.pl").fakturowniaUrl, null)
   assert.equal(toDocumentDto(row({ fakturownia_id: "../x" }), "https://mojafirma.fakturownia.pl").fakturowniaUrl, null)
 })
 
 test("DTO: the actions follow the state; unknown values fall back safely", () => {
-  assert.deepEqual(toDocumentDto(row({ status: "failed", fakturownia_id: null }), null).actions, { retry: true, reconcile: false, issueAgain: false, markIssued: true, pdf: false })
+  assert.deepEqual(toDocumentDto(row({ status: "failed", fakturownia_id: null }), null).actions, {
+    retry: true,
+    reconcile: false,
+    issueAgain: false,
+    markIssued: true,
+    pdf: false,
+    email: false,
+    ksefResend: false,
+    ksefFiles: false,
+  })
   assert.deepEqual(toDocumentDto(row({ status: "unknown", fakturownia_id: null }), "https://x.fakturownia.pl").actions, {
     retry: false,
     reconcile: true,
     issueAgain: true,
     markIssued: true,
     pdf: false,
+    email: false,
+    ksefResend: false,
+    ksefFiles: false,
   })
   const odd = toDocumentDto(row({ status: "weird", kind: "weird", email_status: "weird", total_gross: null, positions: "not json" }), null)
   assert.deepEqual([odd.status, odd.kind, odd.emailStatus, odd.totalGross, odd.positions], ["pending", "vat", null, null, []])
