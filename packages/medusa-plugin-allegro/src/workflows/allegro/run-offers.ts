@@ -17,7 +17,7 @@ import { activeConnecting, getConnectionRow, isConnected, pollConnecting, readAl
 import { ALLEGRO_MODULE, RUNS_TO_KEEP } from "../../modules/allegro/lib/constants"
 import type { AllegroRunDto } from "../../modules/allegro/lib/contract"
 import { buildDemoRawOffers } from "../../modules/allegro/lib/demo"
-import { toRunDto, type OfferRow, type RunRow } from "../../modules/allegro/lib/dto"
+import { sameJson, toRunDto, type OfferRow, type RunRow } from "../../modules/allegro/lib/dto"
 import { matchOffers, type MatchSummary, type OfferMatch } from "../../modules/allegro/lib/matching"
 import { offersFromApi, type AllegroOfferInput } from "../../modules/allegro/lib/offers"
 import { isStockIssue, stockState } from "../../modules/allegro/lib/stock"
@@ -164,7 +164,7 @@ function changed(row: OfferRow, want: OfferData): boolean {
   for (const f of NUMBER_FIELDS) if ((row[f] ?? null) !== (want[f] ?? null)) return true
   if (Boolean(row.is_primary) !== want.is_primary) return true
   if (Boolean(row.demo) !== want.demo) return true
-  if (JSON.stringify(row.price ?? null) !== JSON.stringify(want.price ?? null)) return true
+  if (!sameJson(row.price, want.price)) return true
   if (ms(row.started_at) !== ms(want.started_at)) return true
   if (ms(row.ending_at) !== ms(want.ending_at)) return true
   return false

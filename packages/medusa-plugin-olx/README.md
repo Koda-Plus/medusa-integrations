@@ -4,9 +4,9 @@ Connect an OLX seller account to Medusa, import its adverts and link every adver
 
 Read-only by design: the plugin never creates, edits or ends anything on OLX.
 
-![OLX page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-plugin-olx/main/docs/admin-olx.png)
+![OLX page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-olx/docs/admin-olx.png)
 
-**Live demo:** storefront [demo.koda.plus](https://demo.koda.plus) and Medusa admin [medusa.koda.plus/app](https://medusa.koda.plus/app) (reviewer login on request: kontakt@koda.plus). The demo runs the plugin in demo mode, so every screen has data.
+**Live demo:** Medusa admin [medusa.koda.plus/app/olx](https://medusa.koda.plus/app/olx?demo=en), signed in to a public demo account by the link itself, and the storefront [demo.koda.plus](https://demo.koda.plus). The demo runs the plugin in demo mode, so every screen has data.
 
 ## What it syncs
 
@@ -26,7 +26,7 @@ Read-only by design: the plugin never creates, edits or ends anything on OLX.
 - **Admin in English and Polish** through the Medusa admin translations.
 - **Workflow included:** `syncOlxAdvertsWorkflow` runs from the scheduled job, the admin and your own code.
 
-![Adverts linked to products](https://raw.githubusercontent.com/Koda-Plus/medusa-plugin-olx/main/docs/admin-olx-adverts.png)
+![Adverts linked to products](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-olx/docs/admin-olx-adverts.png)
 
 ## Requirements
 
@@ -109,7 +109,7 @@ The access token lives 24 hours and the refresh token 30 days. Both refresh by t
 
 The snapshot stores only what the matching and the admin need. Contact data, locations and images of adverts are not stored.
 
-![OLX adverts on the product page](https://raw.githubusercontent.com/Koda-Plus/medusa-plugin-olx/main/docs/admin-olx-widget.png)
+![OLX adverts on the product page](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-olx/docs/admin-olx-widget.png)
 
 ## API routes
 

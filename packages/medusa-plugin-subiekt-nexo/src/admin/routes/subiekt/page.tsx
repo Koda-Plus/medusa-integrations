@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArchiveBox, ArrowPath } from "@medusajs/icons"
+import { ArrowPath } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
 import type { RunDto, SubiektStatusResponse, TaskDto } from "../../../modules/subiekt/lib/contract"
 import {
@@ -16,6 +16,7 @@ import {
   useSubiektSync,
   useSubiektTasks,
 } from "../../lib/subiekt-api"
+import { SubiektIcon } from "../../lib/subiekt-icon"
 import {
   DocumentStatusBadge,
   Field,
@@ -143,7 +144,7 @@ function Header({ status, onAction }: { status: SubiektStatusResponse | undefine
     <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-start md:justify-between">
       <div className="flex flex-col gap-y-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <ArchiveBox className="text-ui-fg-subtle" />
+          <SubiektIcon width={24} height={24} className="shrink-0" />
           <Heading level="h1">{t("title")}</Heading>
           <Text size="small" className="text-ui-fg-muted">
             {t("by")}
@@ -598,7 +599,7 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
 
 export const config = defineRouteConfig({
   label: "Subiekt nexo",
-  icon: ArchiveBox,
+  icon: SubiektIcon,
 })
 
 export default SubiektPage

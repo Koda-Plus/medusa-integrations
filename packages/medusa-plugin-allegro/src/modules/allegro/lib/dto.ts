@@ -77,6 +77,26 @@ export interface RunRow {
   finished_at: Date | string | null
 }
 
+/**
+ * JSON with keys sorted at every level. Postgres jsonb stores object keys in
+ * its own order (shorter keys first), so comparing a stored json column with
+ * a fresh object through JSON.stringify would see a change on every run.
+ */
+export function sameJson(a: unknown, b: unknown): boolean {
+  const canon = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(canon)
+    if (v && typeof v === "object" && !(v instanceof Date)) {
+      return Object.fromEntries(
+        Object.keys(v as Record<string, unknown>)
+          .sort()
+          .map((k) => [k, canon((v as Record<string, unknown>)[k])]),
+      )
+    }
+    return v ?? null
+  }
+  return JSON.stringify(canon(a ?? null)) === JSON.stringify(canon(b ?? null))
+}
+
 export function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null
   const d = value instanceof Date ? value : new Date(value)

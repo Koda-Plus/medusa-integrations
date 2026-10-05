@@ -4,19 +4,21 @@
   "description": "Subiekt nexo PRO (InsERT) for Medusa v2: orders become ZK documents, WZ issued in the warehouse come back to the order, stock flows from Subiekt to Medusa. Talks to a bridge over a signed, documented HTTP contract.",
   "author": "Koda Plus <kontakt@koda.plus> (https://koda.plus)",
   "license": "MIT",
-  "homepage": "https://github.com/Koda-Plus/medusa-plugin-subiekt-nexo#readme",
+  "homepage": "https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-subiekt-nexo#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Koda-Plus/medusa-plugin-subiekt-nexo.git"
+    "url": "git+https://github.com/Koda-Plus/medusa-integrations.git",
+    "directory": "packages/medusa-plugin-subiekt-nexo"
   },
   "bugs": {
-    "url": "https://github.com/Koda-Plus/medusa-plugin-subiekt-nexo/issues"
+    "url": "https://github.com/Koda-Plus/medusa-integrations/issues"
   },
   "keywords": [
     "medusa",
     "medusa-v2",
     "medusa-plugin",
     "medusa-plugin-integration",
+    "medusa-plugin-erp",
     "erp",
     "subiekt",
     "subiekt-nexo",
