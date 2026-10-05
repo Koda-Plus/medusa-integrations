@@ -1,7 +1,7 @@
 {
   "name": "@koda-plus/medusa-plugin-olx",
-  "version": "0.1.0",
-  "description": "OLX by Koda Plus: connect an OLX seller account to Medusa, import its adverts and link them to products by SKU. Read-only, encrypted tokens, demo mode.",
+  "version": "0.2.0",
+  "description": "OLX by Koda Plus: link OLX adverts to Medusa products by SKU, alerts when OLX and the store disagree, advert statistics and unread messages, and opt-in writers (end and bring back adverts by stock, update prices, publish products) with plans, dry runs and two switches. Demo mode.",
   "author": {
     "name": "Koda Plus",
     "email": "kontakt@koda.plus",
@@ -27,7 +27,9 @@
     "olx-partner-api",
     "marketplace",
     "classifieds",
-    "oauth2"
+    "oauth2",
+    "inventory-sync",
+    "stock-sync"
   ],
   "files": [
     ".medusa/server",
@@ -51,7 +53,7 @@
   "scripts": {
     "build": "medusa plugin:build",
     "dev": "medusa plugin:develop",
-    "test": "node --experimental-strip-types --test \"test/*.test.ts\"",
+    "test": "node --experimental-strip-types --no-warnings --import ./test/ts-resolve.mjs --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json",
     "prepublishOnly": "npm test && medusa plugin:build"
   },

@@ -1,25 +1,30 @@
 /**
- * ONE SYNC RUN: read the adverts (OLX Partner API, or sample adverts in demo
- * mode), match them to product variants by SKU and store the snapshot.
+ * ONE SYNC RUN: read the adverts (OLX Partner API, or the simulated account
+ * in demo mode), match them to product variants by SKU and store the snapshot.
  *
  * THE COMPLETE-READ RULE. An advert missing from an incomplete list looks
  * exactly like an ended one. So a complete read replaces the snapshot, while
  * an incomplete read only adds and updates: rows it did not see stay as they
  * were and keep their links. Positive evidence (the advert IS on the list and
  * OLX says it ended) is always applied, it is not a conclusion from absence.
+ *
+ * Plans, alerts and writers run after the sync (see `cycle.ts`), never inside
+ * it: a sync is a read and stays one.
  */
 
 import type { MedusaContainer } from "@medusajs/framework/types"
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import type OlxModuleService from "../../modules/olx/service"
 import { advertsFromPartnerApi, compilePatterns, type OlxAdvertInput } from "../../modules/olx/lib/adverts"
+import { ipBlockedUntil } from "../../modules/olx/lib/block"
 import { isConnected, readAllAdverts, type AdvertsRead } from "../../modules/olx/lib/connection"
-import { OLX_MODULE, RUNS_TO_KEEP, olxUrls } from "../../modules/olx/lib/constants"
+import { DEMO_GENERATOR_VERSION, RUNS_TO_KEEP, olxUrls } from "../../modules/olx/lib/constants"
 import type { OlxRunDto } from "../../modules/olx/lib/contract"
-import { buildDemoRawAdverts, type DemoVariant } from "../../modules/olx/lib/demo"
-import { toRunDto, type AdvertRow, type RunRow } from "../../modules/olx/lib/dto"
+import { applyDemoWrites, buildDemoRawAdverts, type DemoVariant, type DemoWrite } from "../../modules/olx/lib/demo"
+import { toRunDto, type AdvertRow, type PlanItemRow, type PublicationRow, type RunRow } from "../../modules/olx/lib/dto"
 import { matchAdverts, type AdvertMatch, type CatalogVariant, type MatchSummary } from "../../modules/olx/lib/matching"
 import type { ResolvedOlxOptions } from "../../modules/olx/lib/options"
+import { marketCurrency } from "./catalog"
+import { chunks, olxServiceOf, queryOf, setState, type QueryLike } from "./runtime"
 
 export type SyncTrigger = "schedule" | "manual" | "auto"
 
@@ -29,7 +34,7 @@ export interface SyncInput {
 
 export interface SyncResult {
   run: OlxRunDto | null
-  skipped: null | "running" | "not_configured" | "not_connected"
+  skipped: null | "running" | "not_configured" | "not_connected" | "ip_blocked"
 }
 
 /* ------------------------------------------------------------------ */
@@ -51,10 +56,6 @@ function setRunning(value: boolean): void {
 /* ------------------------------------------------------------------ */
 /* Catalog                                                             */
 /* ------------------------------------------------------------------ */
-
-interface QueryLike {
-  graph(args: Record<string, unknown>): Promise<{ data: unknown[] }>
-}
 
 interface VariantRecord {
   id: string
@@ -84,18 +85,8 @@ async function loadCatalog(query: QueryLike): Promise<CatalogVariant[]> {
   return out
 }
 
-const MARKET_CURRENCY: Record<string, string> = {
-  pl: "pln",
-  ro: "ron",
-  pt: "eur",
-  bg: "eur",
-  ua: "uah",
-  kz: "kzt",
-  uz: "uzs",
-}
-
-/** Prices of the few variants used by the demo. Optional: no prices, no problem. */
-async function demoPrices(query: QueryLike, ids: string[], market: string): Promise<Map<string, DemoVariant["price"]>> {
+/** Prices of the variants used by the demo. Optional: no prices, no problem. */
+async function demoPrices(query: QueryLike, ids: string[], o: ResolvedOlxOptions): Promise<Map<string, DemoVariant["price"]>> {
   const out = new Map<string, DemoVariant["price"]>()
   if (ids.length === 0) return out
   try {
@@ -104,7 +95,7 @@ async function demoPrices(query: QueryLike, ids: string[], market: string): Prom
       fields: ["id", "prices.amount", "prices.currency_code"],
       filters: { id: ids },
     })
-    const wanted = MARKET_CURRENCY[market] ?? "eur"
+    const wanted = marketCurrency(o.market)
     for (const raw of data as VariantRecord[]) {
       const prices = (raw.prices ?? []).filter((p) => p && p.amount != null && p.currency_code)
       const pick = prices.find((p) => String(p.currency_code).toLowerCase() === wanted) ?? prices[0]
@@ -118,21 +109,55 @@ async function demoPrices(query: QueryLike, ids: string[], market: string): Prom
   return out
 }
 
-async function demoRead(query: QueryLike, variants: CatalogVariant[], o: ResolvedOlxOptions): Promise<AdvertsRead> {
-  const picked = [...variants].sort((a, b) => (a.sku < b.sku ? -1 : a.sku > b.sku ? 1 : 0)).slice(0, 10)
+/** What the demo writers did, as writes to replay onto the simulated account. */
+async function demoWrites(svc: OlxModuleService): Promise<DemoWrite[]> {
+  const out: DemoWrite[] = []
+  const publications = (await svc.listOlxPublications({ demo: true, state: "published" } as never, { take: null })) as unknown as PublicationRow[]
+  for (const p of publications) {
+    if (!p.olx_id || !p.olx_url) continue
+    const payload = p.payload && typeof p.payload === "object" ? (p.payload as Record<string, unknown>) : {}
+    const price = payload.price && typeof payload.price === "object" ? (payload.price as Record<string, unknown>) : null
+    out.push({
+      kind: "publish",
+      olxId: p.olx_id,
+      title: p.title,
+      url: p.olx_url,
+      externalId: p.sku,
+      price: price && Number.isFinite(Number(price.value)) ? { value: Number(price.value), currency: String(price.currency ?? "PLN") } : null,
+      createdAt: p.published_at ? new Date(p.published_at) : new Date(),
+    })
+  }
+  const items = (await svc.listOlxPlanItems({ demo: true, state: "done" } as never, { take: null, order: { done_at: "ASC" } })) as unknown as PlanItemRow[]
+  for (const i of items) {
+    if (i.writer === "lifecycle" && (i.action === "deactivate" || i.action === "activate" || i.action === "finish")) {
+      out.push({ kind: "lifecycle", olxId: i.olx_id, command: i.action })
+    } else if (i.writer === "price" && i.to_value && typeof i.to_value === "object") {
+      const to = i.to_value as Record<string, unknown>
+      const value = Number(to.value)
+      if (Number.isFinite(value)) out.push({ kind: "price", olxId: i.olx_id, price: { value, currency: String(to.currency ?? "PLN") } })
+    }
+  }
+  return out
+}
+
+async function demoRead(svc: OlxModuleService, query: QueryLike, variants: CatalogVariant[], o: ResolvedOlxOptions): Promise<AdvertsRead> {
+  const sorted = [...variants].sort((a, b) => (a.sku < b.sku ? -1 : a.sku > b.sku ? 1 : 0))
+  const picked = sorted.slice(0, 13)
   const prices = await demoPrices(
     query,
     picked.map((v) => v.id),
-    o.market,
+    o,
   )
   /* Dates anchored to the start of the UTC day: the hourly run then changes
    * nothing, and the sample adverts still look fresh every day. */
   const today = new Date()
   today.setUTCHours(0, 0, 0, 0)
-  const raw = buildDemoRawAdverts(
+  const ctx = { market: o.market, host: olxUrls(o.market).host, now: today }
+  const baseline = buildDemoRawAdverts(
     picked.map((v) => ({ sku: v.sku, productTitle: v.productTitle ?? v.sku, price: prices.get(v.id) ?? null })),
-    { market: o.market, host: olxUrls(o.market).host, now: today },
+    ctx,
   )
+  const raw = applyDemoWrites(baseline, await demoWrites(svc), ctx)
   const parsed = advertsFromPartnerApi(raw, compilePatterns(o.skuPatterns))
   return { adverts: parsed.adverts, statuses: parsed.statuses, complete: true, pages: 1, reason: null }
 }
@@ -153,10 +178,11 @@ function rowToInput(r: AdvertRow): OlxAdvertInput {
     price: r.price ?? null,
     validTo: d(r.valid_to),
     createdAt: d(r.olx_created_at),
+    categoryId: r.category_id ?? null,
   }
 }
 
-type AdvertData = Omit<AdvertRow, "id" | "updated_at">
+type AdvertData = Omit<AdvertRow, "id" | "updated_at" | "stats_views" | "stats_phone_views" | "stats_observers" | "stats_at">
 
 function desiredRow(input: OlxAdvertInput, m: AdvertMatch | undefined, demo: boolean): AdvertData {
   return {
@@ -176,6 +202,7 @@ function desiredRow(input: OlxAdvertInput, m: AdvertMatch | undefined, demo: boo
     price: input.price,
     valid_to: input.validTo ? new Date(input.validTo) : null,
     olx_created_at: input.createdAt ? new Date(input.createdAt) : null,
+    category_id: input.categoryId,
     demo,
   }
 }
@@ -207,13 +234,8 @@ function changed(row: AdvertRow, want: AdvertData): boolean {
   if (JSON.stringify(row.price ?? null) !== JSON.stringify(want.price ?? null)) return true
   if (ms(row.valid_to) !== ms(want.valid_to)) return true
   if (ms(row.olx_created_at) !== ms(want.olx_created_at)) return true
+  if ((row.category_id ?? null) !== (want.category_id ?? null)) return true
   return false
-}
-
-function chunks<T>(list: T[], size: number): T[][] {
-  const out: T[][] = []
-  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size))
-  return out
 }
 
 async function applyRead(
@@ -279,7 +301,7 @@ async function pruneRuns(svc: OlxModuleService): Promise<void> {
 export async function runOlxSync(container: MedusaContainer, input: SyncInput = {}): Promise<SyncResult> {
   if (isSyncRunning()) return { run: null, skipped: "running" }
   setRunning(true)
-  const svc = container.resolve<OlxModuleService>(OLX_MODULE)
+  const svc = olxServiceOf(container)
   const o = svc.getOptions()
   const trigger: SyncTrigger = input.trigger ?? "manual"
   const source = o.demo ? "demo" : "api"
@@ -288,10 +310,11 @@ export async function runOlxSync(container: MedusaContainer, input: SyncInput = 
     if (!o.demo) {
       if (!svc.isConfigured()) return { run: null, skipped: "not_configured" }
       if (!(await isConnected(svc))) return { run: null, skipped: "not_connected" }
+      if (ipBlockedUntil(Date.now())) return { run: null, skipped: "ip_blocked" }
     }
-    const query = container.resolve(ContainerRegistrationKeys.QUERY) as unknown as QueryLike
+    const query = queryOf(container)
     const variants = await loadCatalog(query)
-    const read = o.demo ? await demoRead(query, variants, o) : await readAllAdverts(svc)
+    const read = o.demo ? await demoRead(svc, query, variants, o) : await readAllAdverts(svc)
     const applied = await applyRead(svc, read, variants, o.demo)
     const status = read.complete ? "ok" : read.pages === 0 ? "error" : "partial"
     const finishedAt = new Date()
@@ -315,6 +338,7 @@ export async function runOlxSync(container: MedusaContainer, input: SyncInput = 
       finished_at: finishedAt,
     } as never)) as unknown as RunRow
     await pruneRuns(svc)
+    if (o.demo) await setState(svc, "demo:generator", { version: DEMO_GENERATOR_VERSION })
     svc
       .getLogger()
       .info(

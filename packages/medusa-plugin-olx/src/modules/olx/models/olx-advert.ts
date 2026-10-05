@@ -9,6 +9,9 @@ import { model } from "@medusajs/framework/utils"
  * matching (denormalized, so the admin lists need no joins). `is_primary`
  * marks the advert that represents its variant (live beats limited beats
  * ended, then the newest id).
+ *
+ * `stats_*` are the advert's own counters from the statistics endpoint,
+ * refreshed by their own job; the sync never touches them.
  */
 const OlxAdvert = model
   .define("olx_advert", {
@@ -29,6 +32,11 @@ const OlxAdvert = model
     price: model.json().nullable(),
     valid_to: model.dateTime().nullable(),
     olx_created_at: model.dateTime().nullable(),
+    category_id: model.number().nullable(),
+    stats_views: model.number().nullable(),
+    stats_phone_views: model.number().nullable(),
+    stats_observers: model.number().nullable(),
+    stats_at: model.dateTime().nullable(),
     demo: model.boolean().default(false),
   })
   .indexes([

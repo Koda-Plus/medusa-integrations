@@ -33,6 +33,7 @@ test("Partner API items are parsed; items without id or url are counted but skip
         title: "Wkrętarka 18V",
         description: "<p>Kod produktu: KS-ELN-18V</p>",
         external_id: "",
+        category_id: 1559,
         price: { value: 349.99, currency: "pln", negotiable: false },
         created_at: "2026-09-01 10:00:00",
         valid_to: "2026-10-01 10:00:00",
@@ -50,6 +51,7 @@ test("Partner API items are parsed; items without id or url are counted but skip
   assert.equal(a.descriptionSku, "KS-ELN-18V")
   assert.deepEqual(a.price, { value: 349.99, currency: "PLN" })
   assert.equal(a.createdAt, "2026-09-01T10:00:00.000Z")
+  assert.equal(a.categoryId, 1559)
 })
 
 test("demo adverts are deterministic and exercise every bucket of the admin", () => {
@@ -69,7 +71,8 @@ test("demo adverts are deterministic and exercise every bucket of the admin", ()
   assert.deepEqual(first, second, "same catalog, same adverts")
 
   const { adverts } = advertsFromPartnerApi(first, patterns)
-  assert.equal(adverts.length, catalog.length + 4)
+  /* Five variants get an advert, three are kept back for publishing, plus four extra adverts. */
+  assert.equal(adverts.length, 5 + 4)
   assert.equal(new Set(adverts.map((a) => a.olxId)).size, adverts.length, "unique ids")
 
   const { summary } = matchAdverts(
@@ -79,6 +82,6 @@ test("demo adverts are deterministic and exercise every bucket of the admin", ()
   assert.equal(summary.unmatchedLive, 2)
   assert.equal(summary.noKey, 1)
   assert.ok(summary.bySource.external_id > 0 && summary.bySource.description > 0)
-  assert.equal(summary.linkedVariants, catalog.length)
-  assert.equal(summary.linkedLive, catalog.length - 2, "one limited and one ended among the catalog adverts")
+  assert.equal(summary.linkedVariants, 5)
+  assert.equal(summary.linkedLive, 3, "one over the limit and one removed among the five")
 })

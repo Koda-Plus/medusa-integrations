@@ -1,8 +1,14 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import type { Logger } from "@medusajs/framework/types"
 import OlxAdvert from "./models/olx-advert"
+import OlxAlert from "./models/olx-alert"
 import OlxConnection from "./models/olx-connection"
+import OlxPlanItem from "./models/olx-plan-item"
+import OlxPublication from "./models/olx-publication"
+import OlxState from "./models/olx-state"
 import OlxSyncRun from "./models/olx-sync-run"
+import OlxThread from "./models/olx-thread"
+import OlxWriterRun from "./models/olx-writer-run"
 import { missingOptions, resolveOptions, type OlxPluginOptions, type ResolvedOlxOptions } from "./lib/options"
 import { maskSecrets } from "./lib/security"
 
@@ -11,19 +17,25 @@ type InjectedDependencies = {
 }
 
 /**
- * OLX module service: generated CRUD for the three tables plus the resolved
- * options. The business logic (OAuth, token refresh, reading adverts) lives
- * in `lib/connection.ts` and the sync in `workflows/olx`, both calling the
- * generated methods from the outside. The service itself stays thin: no
- * custom method touches the database.
+ * OLX module service: generated CRUD for the tables plus the resolved
+ * options. The business logic (OAuth, the Partner API, plans, writers) lives
+ * in `lib/*` and `workflows/olx`, which call the generated methods from the
+ * outside. The service itself stays thin: no custom method touches the
+ * database.
  *
  * MISSING CREDENTIALS DO NOT BREAK THE BOOT. The module always registers;
- * without them the admin tells what is missing and the scheduled sync waits.
+ * without them the admin tells what is missing and the scheduled jobs wait.
  */
 class OlxModuleService extends MedusaService({
   OlxConnection,
   OlxAdvert,
   OlxSyncRun,
+  OlxAlert,
+  OlxPlanItem,
+  OlxPublication,
+  OlxWriterRun,
+  OlxThread,
+  OlxState,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedOlxOptions
@@ -34,7 +46,7 @@ class OlxModuleService extends MedusaService({
     this.logger_ = deps.logger
     this.options_ = resolveOptions(options)
     if (this.options_.demo) {
-      this.logger_.info("[olx] Demo mode: sample adverts from the catalog, no requests to OLX.")
+      this.logger_.info("[olx] Demo mode: a simulated OLX account from the catalog, no requests to OLX.")
     } else if (!this.isConfigured()) {
       this.logger_.info(`[olx] Waiting for configuration, missing: ${this.missingOptions().join(", ")}.`)
     }

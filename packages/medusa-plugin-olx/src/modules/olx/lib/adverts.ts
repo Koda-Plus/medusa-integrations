@@ -2,7 +2,7 @@
  * OLX ADVERTS AS THE PLUGIN SEES THEM. Zero imports (unit tests run it as is).
  *
  * We keep only what the matching and the admin need: id, URL, title, status,
- * price, `external_id`, the SKU found in the description and two dates.
+ * price, category, `external_id`, the SKU found in the description and two dates.
  * Contact data, locations and images of the advert are NOT stored.
  */
 
@@ -30,6 +30,8 @@ export interface OlxAdvertInput {
   price: OlxPrice | null
   validTo: string | null
   createdAt: string | null
+  /** OLX category id of the advert, when the list carries it. */
+  categoryId: number | null
 }
 
 export function compilePatterns(sources: readonly string[]): RegExp[] {
@@ -75,6 +77,7 @@ interface RawAdvert {
   price?: unknown
   valid_to?: unknown
   created_at?: unknown
+  category_id?: unknown
 }
 
 function parsePrice(raw: unknown): OlxPrice | null {
@@ -84,6 +87,11 @@ function parsePrice(raw: unknown): OlxPrice | null {
   const currency = typeof p.currency === "string" ? p.currency.trim().toUpperCase() : ""
   if (!Number.isFinite(value) || !currency) return null
   return { value, currency }
+}
+
+function parseCategoryId(raw: unknown): number | null {
+  const n = Number(raw)
+  return raw !== null && raw !== undefined && raw !== "" && Number.isInteger(n) && n > 0 ? n : null
 }
 
 /**
@@ -128,6 +136,7 @@ export function advertsFromPartnerApi(
       price: parsePrice(a.price),
       validTo: parseDate(a.valid_to),
       createdAt: parseDate(a.created_at),
+      categoryId: parseCategoryId(a.category_id),
     })
   }
   return { adverts, statuses }
