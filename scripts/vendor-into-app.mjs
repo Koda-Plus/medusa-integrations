@@ -37,6 +37,7 @@ const PLUGINS = [
   { name: "OLX by Koda Plus", dir: "medusa-plugin-olx", ns: "olx" },
   { name: "Allegro by Koda Plus", dir: "medusa-plugin-allegro", ns: "allegro" },
   { name: "BaseLinker by Koda Plus", dir: "medusa-plugin-baselinker", ns: "baselinker" },
+  { name: "Fakturownia by Koda Plus", dir: "medusa-plugin-fakturownia", ns: "fakturownia" },
   { name: "Subiekt nexo by Koda Plus", dir: "medusa-plugin-subiekt-nexo", ns: "subiekt" },
 ]
 

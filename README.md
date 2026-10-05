@@ -1,6 +1,6 @@
 # Medusa integrations by Koda Plus
 
-Polish commerce integrations for [Medusa](https://medusajs.com) v2: the marketplaces, the multichannel hub and the ERP a store in Poland has to talk to. Four independent plugins, one set of rules, all running in one public admin.
+Polish commerce integrations for [Medusa](https://medusajs.com) v2: the marketplaces, the multichannel hub, the ERP and the invoicing a store in Poland has to talk to. Five independent plugins, one set of rules, all running in one public admin.
 
 **Live demo:** [medusa.koda.plus/app](https://medusa.koda.plus/app/allegro?demo=en) signs you in to a public demo account by itself and opens the admin in English. Every integration runs there in demo mode, so every screen has data.
 
@@ -10,6 +10,7 @@ Polish commerce integrations for [Medusa](https://medusajs.com) v2: the marketpl
 - **[Allegro](packages/medusa-plugin-allegro)** (`@koda-plus/medusa-plugin-allegro`): device login to an Allegro seller account, offers linked by signature, a stock check of Allegro quantities against Medusa availability, a journal of Allegro orders without buyer data. Read-only. Library category: Other.
 - **[BaseLinker](packages/medusa-plugin-baselinker)** (`@koda-plus/medusa-plugin-baselinker`): for stores whose catalog lives in Medusa and whose warehouse and marketplaces run in BaseLinker. Links variants to existing cards, sends orders exactly once, brings status, tracking and stock back. Library category: ERP.
 - **[Subiekt nexo](packages/medusa-plugin-subiekt-nexo)** (`@koda-plus/medusa-plugin-subiekt-nexo`): orders become ZK documents in Subiekt nexo PRO, the WZ issued in the warehouse comes back to the order, stock flows into inventory levels. Talks to a bridge next to Subiekt over an open, signed contract. Library category: ERP.
+- **[Fakturownia](packages/medusa-plugin-fakturownia)** (`@koda-plus/medusa-plugin-fakturownia`): VAT invoices, proformas and receipts in Fakturownia for every order, exactly once (unique per order and kind, a lookup by order number before every create, never a blind retry). Paid on capture, KSeF status read back, the PDF streamed through the admin so the token stays on the server. Library category: Other.
 
 Each package installs, versions and publishes on its own; pick the ones your store needs.
 
@@ -20,7 +21,7 @@ Every package follows the same rules, so a merchant who installed one already kn
 - **Demo mode:** sample data built from your own catalog, through the same parsing and matching as real data. Evaluate without an account.
 - **An admin page under Extensions** with its own mark, counters, tables and the run history, plus a widget where the data belongs (product or order page).
 - **Admin in English and Polish**, one i18n namespace per package.
-- **Writes only what the merchant switched on.** OLX and Allegro never write to the marketplace; a write barrier in the HTTP client enforces it. BaseLinker writes orders, and stock only as an explicit option after a plan. Subiekt writes the documents it exists for.
+- **Writes only what the merchant switched on.** OLX and Allegro never write to the marketplace; a write barrier in the HTTP client enforces it. BaseLinker writes orders, and stock only as an explicit option after a plan. Subiekt and Fakturownia write the documents they exist for.
 - **The complete-read rule:** an incomplete read adds and updates, it never removes a link or zeroes a quantity.
 - **Secrets encrypted or signed, and masked** in logs, the database and the admin.
 - **No duplicates on retry:** idempotent requests, outboxes with backoff, markers searched before a write.
@@ -56,4 +57,4 @@ Subiekt nexo has no web API; its SDK (Sfera) is a Windows .NET library. The plug
 
 MIT, see the LICENSE file of each package. Built and maintained by [Koda Plus](https://koda.plus).
 
-OLX, Allegro, BaseLinker, Base, Subiekt nexo, nexo PRO, Sfera and InsERT are trademarks of their owners, used only to identify the systems these integrations connect to. These are independent integrations, not affiliated with or endorsed by them.
+OLX, Allegro, BaseLinker, Base, Subiekt nexo, nexo PRO, Sfera, InsERT and Fakturownia are trademarks of their owners, used only to identify the systems these integrations connect to. These are independent integrations, not affiliated with or endorsed by them.
