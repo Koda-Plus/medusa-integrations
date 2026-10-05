@@ -181,7 +181,7 @@ if (fs.existsSync(i18nDir)) {
     ...namespaces.flatMap((ns) => [`import ${camel(ns)}En from "./${ns}-en"`, `import ${camel(ns)}Pl from "./${ns}-pl"`]),
     "",
     "/**",
-    " * Admin translations, one namespace per integration so they never collide",
+    " * Admin translations, one namespace per integration or app module, so they never collide",
     " * with the dashboard or each other. Components read them with",
     ' * `useTranslation("<namespace>")`.',
     " */",
