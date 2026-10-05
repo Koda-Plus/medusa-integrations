@@ -7,8 +7,10 @@ import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import type SubiektModuleService from "../../modules/subiekt/service"
 import { HttpBridgeClient, type BridgeApi } from "../../modules/subiekt/lib/bridge-client"
-import { CONNECTION_ID, CONTRACT_VERSION, DEMO_CONNECTION_ID, RUNS_TO_KEEP, SUBIEKT_MODULE } from "../../modules/subiekt/lib/constants"
-import type { RunKind, RunStatus, RunTrigger } from "../../modules/subiekt/lib/contract"
+import { CONNECTION_ID, CONTRACT_VERSION, DEMO_CONNECTION_ID, PLUGIN_VERSION, RUNS_TO_KEEP, SUBIEKT_MODULE } from "../../modules/subiekt/lib/constants"
+import type { BridgeHealth, RunKind, RunStatus, RunTrigger } from "../../modules/subiekt/lib/contract"
+import { capabilitiesOf } from "../../modules/subiekt/lib/capabilities"
+import { toNumber } from "../../modules/subiekt/lib/numbers"
 import { DemoBridge, type DemoCatalogItem, type DemoStore } from "../../modules/subiekt/lib/demo"
 import type { ConnectionRow, DocumentRow, RunRow } from "../../modules/subiekt/lib/dto"
 
@@ -30,8 +32,6 @@ export function queryOf(scope: Scope): QueryLike {
 /* The bridge                                                          */
 /* ------------------------------------------------------------------ */
 
-const PLUGIN_VERSION = "0.1.0"
-
 /** Demo documents of the current database, for the simulated bridge. */
 function demoStore(svc: SubiektModuleService): DemoStore {
   return {
@@ -49,20 +49,43 @@ function demoStore(svc: SubiektModuleService): DemoStore {
   }
 }
 
-/** Every variant with a SKU, for demo stock. */
+interface DemoVariantRecord {
+  sku?: string | null
+  barcode?: string | null
+  ean?: string | null
+  title?: string | null
+  weight?: unknown
+  product?: { title?: string | null } | null
+  prices?: Array<{ amount?: unknown; currency_code?: string | null; price_list_id?: string | null; rules_count?: unknown }> | null
+}
+
+/**
+ * Every variant with a SKU, for the demo bridge: stock, products and prices
+ * are computed from the store's own catalog. Prices are whole relations
+ * (`prices.*`): amounts are BigNumbers and single columns come back empty.
+ */
 async function demoCatalog(scope: Scope): Promise<DemoCatalogItem[]> {
   const query = queryOf(scope)
+  const currency = subiektService(scope).getOptions().priceCurrency
   const out: DemoCatalogItem[] = []
   const take = 500
   for (let skip = 0; skip < 5000; skip += take) {
     const { data } = await query.graph({
       entity: "product_variant",
-      fields: ["id", "sku", "barcode", "ean", "title", "product.title"],
+      fields: ["id", "sku", "barcode", "ean", "title", "weight", "product.title", "prices.*"],
       pagination: { skip, take, order: { id: "ASC" } },
     })
-    for (const raw of data as Array<{ sku?: string | null; barcode?: string | null; ean?: string | null; title?: string | null; product?: { title?: string | null } | null }>) {
+    for (const raw of data as DemoVariantRecord[]) {
       if (!raw.sku) continue
-      out.push({ sku: raw.sku, ean: raw.ean ?? raw.barcode ?? null, title: [raw.product?.title, raw.title].filter(Boolean).join(" ") || null })
+      const base = (raw.prices ?? []).find((p) => (p.currency_code ?? "").toLowerCase() === currency && !p.price_list_id && !toNumber(p.rules_count))
+      const weight = toNumber(raw.weight)
+      out.push({
+        sku: raw.sku,
+        ean: raw.ean ?? raw.barcode ?? null,
+        title: [raw.product?.title, raw.title].filter(Boolean).join(" ") || null,
+        price: base ? toNumber(base.amount) : null,
+        weight: weight > 0 ? weight : null,
+      })
     }
     if (data.length < take) break
   }
@@ -104,6 +127,12 @@ export async function getConnection(svc: SubiektModuleService): Promise<Connecti
     const again = (await svc.listSubiektConnections({ id } as never, { take: 1 } as never)) as unknown as ConnectionRow[]
     return again[0]
   }
+}
+
+/** What the bridge can do, from the last stored health answer (1.0 set when it reports none). */
+export async function storedCapabilities(svc: SubiektModuleService): Promise<string[]> {
+  const conn = await getConnection(svc)
+  return capabilitiesOf((conn.health as unknown as BridgeHealth | null) ?? null)
 }
 
 export async function saveConnection(svc: SubiektModuleService, patch: Partial<Omit<ConnectionRow, "id">>): Promise<void> {

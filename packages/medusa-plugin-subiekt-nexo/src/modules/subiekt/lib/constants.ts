@@ -7,7 +7,10 @@
 export const SUBIEKT_MODULE = "subiekt_nexo"
 
 /** Version of `contract/openapi.yaml` this plugin speaks. */
-export const CONTRACT_VERSION = "1.0.0"
+export const CONTRACT_VERSION = "1.1.0"
+
+/** Version of this plugin, sent in the User-Agent and shown in the admin. */
+export const PLUGIN_VERSION = "0.2.0"
 
 /**
  * The row of `subiekt_connection`: one per mode, so switching between the demo
@@ -34,6 +37,9 @@ export const EVENTS_SCHEDULE = "*/2 * * * *"
 /** Stock from Subiekt: every 10 minutes. One page of 500 products is one request. */
 export const STOCK_SCHEDULE = "*/10 * * * *"
 
+/** Products and prices from Subiekt: once an hour. Prices change rarely and the bridge reads whole price lists. */
+export const PRODUCTS_SCHEDULE = "17 * * * *"
+
 /** Tasks taken from the queue in one pass. */
 export const TASKS_PER_PASS = 25
 
@@ -53,6 +59,25 @@ export const STOCK_PAGE_SIZE = 500
 export const STOCK_MAX_PAGES = 200
 export const EVENTS_PAGE_SIZE = 100
 export const EVENTS_MAX_PAGES = 20
+export const PRODUCTS_PAGE_SIZE = 500
+export const PRODUCTS_MAX_PAGES = 200
+
+/** Writers apply at most this many changes in one run; the rest waits for the next run. */
+export const DEFAULT_MAX_PRICE_CHANGES_PER_RUN = 200
+export const DEFAULT_MAX_PRODUCTS_PER_RUN = 20
+
+/** An item that failed this many runs in a row is quarantined until a person releases it. */
+export const QUARANTINE_AFTER_FAILURES = 3
+
+/**
+ * Clock skew. Signatures allow 300 seconds both ways; the admin warns from
+ * 60 seconds, so a drifting clock is fixed before every request starts failing.
+ */
+export const CLOCK_SKEW_WARN_SECONDS = 60
+export const CLOCK_SKEW_LIMIT_SECONDS = 300
+
+/** What a bridge without `capabilities` (contract 1.0) does. */
+export const LEGACY_CAPABILITIES: readonly string[] = ["orders", "fulfillments", "stock", "events"]
 
 /** Sync runs kept per kind. */
 export const RUNS_TO_KEEP = 60
@@ -82,16 +107,33 @@ export const ORDER_METADATA = {
   zkIssuedAt: "subiekt_zk_issued_at",
   wzNumber: "subiekt_wz_number",
   wzIssuedAt: "subiekt_wz_issued_at",
+  /** Since 0.2.0: the FS or PA of the order. */
+  salesDocumentNumber: "subiekt_sales_document_number",
+  salesDocumentKind: "subiekt_sales_document_kind",
+  ksefNumber: "subiekt_ksef_number",
 } as const
 
 /** Events the plugin emits on the Medusa event bus. */
 export const PLUGIN_EVENTS = {
   documentIssued: "subiekt.document_issued",
+  /** Since 0.2.0: a document changed, for example KSeF assigned the number of an FS. */
+  documentUpdated: "subiekt.document_updated",
   taskFailed: "subiekt.task_failed",
 } as const
 
 /** Order metadata keys searched for a tax id (NIP) when the buyer wants an invoice. */
 export const TAX_ID_METADATA_KEYS: readonly string[] = ["tax_id", "nip", "vat_id", "invoice_nip", "company_tax_id"]
+
+/**
+ * Where the plugin looks for the buyer's NIP (`nipSources`), in this order:
+ * order metadata, billing address metadata, then the billing company field,
+ * where many checkouts let the buyer type "Firma ABC, NIP 123-456-32-18".
+ */
+export const DEFAULT_NIP_SOURCES: readonly string[] = [
+  ...TAX_ID_METADATA_KEYS.map((k) => `metadata.${k}`),
+  ...TAX_ID_METADATA_KEYS.map((k) => `billing_address.metadata.${k}`),
+  "billing_address.company",
+]
 
 /** Demo: a ZK gets its WZ this long after it was created. */
 export const DEMO_WZ_AFTER_MS = 3 * 60 * 1000

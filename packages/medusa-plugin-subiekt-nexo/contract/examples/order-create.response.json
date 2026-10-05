@@ -10,5 +10,11 @@
     "warehouse": "MAG",
     "related": []
   },
+  "buyer": {
+    "source": "retail",
+    "nip": null,
+    "symbol": "DETAL",
+    "name": "Klient detaliczny"
+  },
   "warnings": []
 }

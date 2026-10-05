@@ -1,0 +1,53 @@
+{
+  "snapshot_at": "2026-10-04T09:10:00.000Z",
+  "price_levels": [
+    { "symbol": "DETAL", "name": "Detaliczna", "currency": "PLN" },
+    { "symbol": "HURT", "name": "Hurtowa", "currency": "PLN" }
+  ],
+  "items": [
+    {
+      "symbol": "KR-050",
+      "name": "Krem nawilżający 50 ml",
+      "ean": "5901234123457",
+      "unit": "szt.",
+      "vat_rate": 23,
+      "vat_symbol": "23",
+      "kind": "goods",
+      "active": true,
+      "weight_kg": 0.08,
+      "prices": [
+        { "level": "DETAL", "net": 73.09, "gross": 89.9, "currency": "PLN" },
+        { "level": "HURT", "net": 58.47, "gross": 71.92, "currency": "PLN" }
+      ]
+    },
+    {
+      "symbol": "TN-200",
+      "name": "Tonik łagodzący 200 ml",
+      "ean": "5901234123464",
+      "unit": "szt.",
+      "vat_rate": 23,
+      "vat_symbol": "23",
+      "kind": "goods",
+      "active": true,
+      "weight_kg": 0.23,
+      "prices": [
+        { "level": "DETAL", "net": 44.72, "gross": 55, "currency": "PLN" },
+        { "level": "HURT", "net": 35.77, "gross": 44, "currency": "PLN" }
+      ]
+    },
+    {
+      "symbol": "PROBKA-01",
+      "name": "Próbka kremu pod oczy",
+      "ean": null,
+      "unit": "szt.",
+      "vat_rate": 23,
+      "vat_symbol": "23",
+      "kind": "goods",
+      "active": false,
+      "weight_kg": null,
+      "prices": []
+    }
+  ],
+  "next_cursor": null,
+  "total": 3
+}

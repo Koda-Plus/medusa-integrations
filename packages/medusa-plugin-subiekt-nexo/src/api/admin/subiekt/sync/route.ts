@@ -3,13 +3,14 @@ import type { ActionResponse, RunKind } from "../../../../modules/subiekt/lib/co
 import { pullEvents } from "../../../../workflows/subiekt/events"
 import { isRunning } from "../../../../workflows/subiekt/runtime"
 import { runStockSync } from "../../../../workflows/subiekt/sync-subiekt-stock"
+import { runProductSync } from "../../../../workflows/subiekt/sync-subiekt-products"
 import { runDueTasks } from "../../../../workflows/subiekt/tasks"
 import { subiektService } from "../helpers"
 
-const ACTIONS: Record<string, RunKind> = { stock: "stock", events: "events", tasks: "tasks" }
+const ACTIONS: Record<string, RunKind> = { stock: "stock", events: "events", tasks: "tasks", products: "products" }
 
 /**
- * POST /admin/subiekt/sync  { "what": "stock" | "events" | "tasks" }
+ * POST /admin/subiekt/sync  { "what": "stock" | "events" | "tasks" | "products" }
  *
  * Runs the same code as the scheduled job, now. Answers 202 right away and
  * works in the background; the admin polls GET /admin/subiekt while the kind
@@ -21,7 +22,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   const what = String((req.body as { what?: unknown } | undefined)?.what ?? "")
   const kind = ACTIONS[what]
   if (!kind) {
-    res.status(400).json({ message: "`what` must be one of: stock, events, tasks." })
+    res.status(400).json({ message: "`what` must be one of: stock, events, tasks, products." })
     return
   }
   if (mode === "live" && !svc.isConfigured()) {
@@ -34,7 +35,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
 
-  const run = kind === "stock" ? () => runStockSync(req.scope, "manual") : kind === "events" ? () => pullEvents(req.scope, "manual") : () => runDueTasks(req.scope, "manual")
+  const runs: Record<RunKind, () => Promise<unknown>> = {
+    stock: () => runStockSync(req.scope, "manual"),
+    events: () => pullEvents(req.scope, "manual"),
+    tasks: () => runDueTasks(req.scope, "manual"),
+    products: () => runProductSync(req.scope, "manual"),
+    health: () => Promise.resolve(null),
+  }
+  const run = runs[kind]
   setImmediate(() => {
     run().catch((err: unknown) => {
       svc.getLogger().error(`[subiekt] Manual ${kind}: ${svc.mask((err as Error)?.message ?? String(err))}`)

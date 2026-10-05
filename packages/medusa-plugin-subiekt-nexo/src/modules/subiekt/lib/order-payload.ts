@@ -13,9 +13,10 @@
  * share one product in Subiekt, for example).
  */
 
-import type { ContractAddress, ContractLine, ContractOrder } from "./contract"
+import type { ContractAddress, ContractBuyer, ContractLine, ContractOrder } from "./contract"
 import type { PaymentState } from "./payment"
 import { money, round, toNumber } from "./numbers"
+import { companyWithoutNip, findNip, formatNip, type NipSourceRecord } from "./nip"
 
 /**
  * Fields `buildOrderPayload` reads, in `query.graph` syntax. Whole relations
@@ -135,12 +136,20 @@ export interface PayloadOptions {
   omitLinesWithoutCode: boolean
   forwardMetadataKeys: readonly string[]
   taxIdMetadataKeys: readonly string[]
+  /** Since 0.2.0: where to look for the buyer's NIP. Empty: no buyer block. */
+  nipSources?: readonly string[]
+  /** Since 0.2.0: ask the bridge to create a missing contractor (the contractors writer is active). */
+  createContractors?: boolean
 }
 
 export interface PayloadResult {
   payload: ContractOrder
   /** Lines left out because they have neither EAN nor SKU (`omitLinesWithoutCode`). */
   omitted: Array<{ line_id: string; title: string | null }>
+  /** Since 0.2.0: remarks for the admin, for example an invalid NIP. */
+  warnings: string[]
+  /** Since 0.2.0: the NIP that passed the checksum, if any (decides FS or PA in `auto`). */
+  buyerNip: string | null
 }
 
 export class PayloadError extends Error {
@@ -312,6 +321,8 @@ export function buildOrderPayload(order: OrderRecord, payment: PaymentState, opt
     note = [note, `Lines without a product code, not on this ZK: ${list}`].filter(Boolean).join("\n")
   }
 
+  const { buyer, warnings, nip } = buildBuyer(order, billing, shippingAddr, options)
+
   const payload: ContractOrder = {
     order_id: order.id,
     display_id: typeof order.display_id === "number" ? order.display_id : 0,
@@ -330,6 +341,7 @@ export function buildOrderPayload(order: OrderRecord, payment: PaymentState, opt
     billing_address: billing,
     shipping_address: shippingAddr,
     invoice: { requested: Boolean(taxId || companyName), tax_id: taxId, company_name: companyName },
+    buyer,
     lines,
     shipping: method
       ? {
@@ -359,7 +371,48 @@ export function buildOrderPayload(order: OrderRecord, payment: PaymentState, opt
     metadata: forwarded,
   }
 
-  return { payload, omitted }
+  return { payload, omitted, warnings, buyerNip: nip }
+}
+
+/**
+ * The 1.1 `buyer` block: sent only with a NIP that passed the checksum (see
+ * `nip.ts` and the `nipSources` option). An invalid NIP sends no block and a
+ * warning instead, so the ZK goes to the retail buyer and the admin says why.
+ */
+function buildBuyer(
+  order: OrderRecord,
+  billing: ContractAddress | null,
+  shipping: ContractAddress | null,
+  options: PayloadOptions,
+): { buyer: ContractBuyer | null; warnings: string[]; nip: string | null } {
+  const sources = options.nipSources ?? []
+  if (sources.length === 0) return { buyer: null, warnings: [], nip: null }
+  const found = findNip(order as unknown as NipSourceRecord, sources)
+  if (!found.nip) {
+    const warnings = found.invalid
+      ? [`"${found.invalid.value}" (${found.invalid.source}) is not a valid NIP, so the order goes to the retail buyer in Subiekt.`]
+      : []
+    return { buyer: null, warnings, nip: null }
+  }
+  const company =
+    companyWithoutNip(order.billing_address?.company) ?? text(order.customer?.company_name) ?? null
+  return {
+    buyer: {
+      nip: found.nip,
+      company_name: company,
+      address: billing ?? shipping,
+      email: text(order.email),
+      phone: billing?.phone ?? text(order.customer?.phone),
+      create_if_missing: Boolean(options.createContractors),
+    },
+    warnings: [],
+    nip: found.nip,
+  }
+}
+
+/** For logs and the admin: the NIP the order would be issued to, formatted. */
+export function describeBuyerNip(nip: string | null): string | null {
+  return nip ? formatNip(nip) : null
 }
 
 /** Payment term in days from order metadata (trade credit), when the storefront records one. */

@@ -5,6 +5,9 @@
  * applying an event is idempotent (documents are unique, side effects run
  * once).
  *
+ * Since 0.2.0: `document.updated` carries the KSeF number of an FS, and a
+ * fresh ZK or WZ may queue the sales document of its order.
+ *
  * The bridge may also call `POST /hooks/subiekt` when something new waits.
  * That webhook only starts this read earlier; the feed stays the source of
  * truth, so a lost webhook costs two minutes, not a missing WZ.
@@ -13,8 +16,10 @@
 import { EVENTS_MAX_PAGES, EVENTS_PAGE_SIZE } from "../../modules/subiekt/lib/constants"
 import type { BridgeEvent, RunTrigger } from "../../modules/subiekt/lib/contract"
 import { describeError } from "../../modules/subiekt/lib/bridge-client"
-import { recordDocument } from "./orders"
+import { applyDocumentUpdate, recordDocument } from "./orders"
 import { bridgeFor, exclusive, getConnection, markReachable, markUnreachable, recordRun, saveConnection, subiektService, type Scope } from "./runtime"
+import { queueSalesDocument } from "./sales-documents"
+import { kickTasks } from "./tasks"
 
 export interface PullStats {
   read: number
@@ -23,11 +28,22 @@ export interface PullStats {
   ignored: number
   fulfillmentErrors: string[]
   stockChanged: boolean
+  /** Since 0.2.0. */
+  ksefNumbers: number
+  documentsQueued: number
   cursor: string
 }
 
 async function applyEvent(scope: Scope, event: BridgeEvent, stats: PullStats): Promise<void> {
   const doc = event.data?.document
+  const orderId = typeof event.data?.order_id === "string" ? event.data.order_id : null
+  if (event.type === "document.updated" && doc?.kind && doc.number) {
+    const changed = await applyDocumentUpdate(scope, orderId, doc, String(event.id))
+    if (changed) stats.applied += 1
+    else stats.duplicates += 1
+    if (changed && doc.ksef_number) stats.ksefNumbers += 1
+    return
+  }
   if ((event.type === "document.issued" || event.type === "document.canceled") && doc?.kind && doc.number) {
     const document = event.type === "document.canceled" ? { ...doc, status: "canceled" as const } : doc
     const res = await recordDocument(scope, {
@@ -39,6 +55,9 @@ async function applyEvent(scope: Scope, event: BridgeEvent, stats: PullStats): P
     })
     if (res.fresh) stats.applied += 1
     else stats.duplicates += 1
+    if (res.fresh && orderId && event.type === "document.issued" && (doc.kind === "ZK" || doc.kind === "WZ")) {
+      if (await queueSalesDocument(scope, orderId, doc.kind === "ZK" ? "zk" : "wz")) stats.documentsQueued += 1
+    }
     if (res.fulfillmentError && stats.fulfillmentErrors.length < 10) stats.fulfillmentErrors.push(`${doc.number}: ${res.fulfillmentError}`)
     return
   }
@@ -57,7 +76,7 @@ export async function pullEvents(scope: Scope, trigger: RunTrigger): Promise<Pul
     const o = svc.getOptions()
     const conn = await getConnection(svc)
     const startCursor = Number(conn.events_cursor ?? 0) || 0
-    const stats: PullStats = { read: 0, applied: 0, duplicates: 0, ignored: 0, fulfillmentErrors: [], stockChanged: false, cursor: String(startCursor) }
+    const stats: PullStats = { read: 0, applied: 0, duplicates: 0, ignored: 0, fulfillmentErrors: [], stockChanged: false, ksefNumbers: 0, documentsQueued: 0, cursor: String(startCursor) }
     if (!o.eventsEnabled || (!o.demo && !svc.isConfigured())) return stats
 
     const startedAt = new Date()
@@ -88,6 +107,7 @@ export async function pullEvents(scope: Scope, trigger: RunTrigger): Promise<Pul
       }
       stats.cursor = String(cursor)
       await markReachable(svc, { events_read_at: new Date() })
+      if (stats.documentsQueued > 0) kickTasks(scope, "event")
       if (stats.read > 0 || trigger === "manual") {
         await recordRun(svc, {
           kind: "events",

@@ -40,6 +40,7 @@
     "tax_id": null,
     "company_name": null
   },
+  "buyer": null,
   "lines": [
     {
       "line_id": "ordli_01JDEMO0000000000000000001",

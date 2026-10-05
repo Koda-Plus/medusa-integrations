@@ -25,6 +25,9 @@ import type {
   FulfillmentResult,
   OrderResult,
   OrderStatusResult,
+  ProductsPage,
+  SalesDocumentRequest,
+  SalesDocumentResult,
   StockPage,
 } from "./contract"
 import { signatureHeader } from "./signature"
@@ -38,6 +41,10 @@ export interface BridgeApi {
   createFulfillment(orderId: string, request: FulfillmentRequest): Promise<FulfillmentResult>
   listStock(cursor: string | null, limit: number): Promise<StockPage>
   listEvents(after: number, limit: number): Promise<EventsPage>
+  /** Since contract 1.1 (capability `products`). */
+  listProducts(cursor: string | null, limit: number): Promise<ProductsPage>
+  /** Since contract 1.1 (capability `documents.fs` or `documents.pa`). */
+  issueDocument(orderId: string, request: SalesDocumentRequest): Promise<SalesDocumentResult>
 }
 
 export class BridgeError extends Error {
@@ -235,6 +242,17 @@ export class HttpBridgeClient implements BridgeApi {
   async listEvents(after: number, limit: number): Promise<EventsPage> {
     const q = new URLSearchParams({ after: String(after), limit: String(limit) })
     return (await this.request<EventsPage>("GET", `/v1/events?${q.toString()}`)).body
+  }
+
+  async listProducts(cursor: string | null, limit: number): Promise<ProductsPage> {
+    const q = new URLSearchParams({ limit: String(limit) })
+    if (cursor) q.set("cursor", cursor)
+    return (await this.request<ProductsPage>("GET", `/v1/products?${q.toString()}`)).body
+  }
+
+  async issueDocument(orderId: string, request: SalesDocumentRequest): Promise<SalesDocumentResult> {
+    const { status, body } = await this.request<SalesDocumentResult>("POST", `/v1/orders/${encodeURIComponent(orderId)}/documents`, request)
+    return { ...body, created: typeof body.created === "boolean" ? body.created : status === 201 }
   }
 }
 

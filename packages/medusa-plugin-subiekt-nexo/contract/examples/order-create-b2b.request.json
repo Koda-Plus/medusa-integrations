@@ -1,0 +1,101 @@
+{
+  "order_id": "order_01JDEMO0000000000000000002",
+  "display_id": 1043,
+  "currency_code": "pln",
+  "placed_at": "2026-10-04T10:02:00.000Z",
+  "email": "zamowienia@salon-ania.example.com",
+  "customer": {
+    "id": "cus_01JDEMO0000000000000000002",
+    "first_name": "Anna",
+    "last_name": "Kowalska",
+    "company_name": "Salon Ania sp. z o.o.",
+    "phone": "+48 601 000 000"
+  },
+  "billing_address": {
+    "first_name": "Anna",
+    "last_name": "Kowalska",
+    "company": "Salon Ania sp. z o.o.",
+    "address_1": "ul. Długa 5/2",
+    "address_2": null,
+    "postal_code": "61-001",
+    "city": "Poznań",
+    "province": null,
+    "country_code": "pl",
+    "phone": "+48 601 000 000"
+  },
+  "shipping_address": {
+    "first_name": "Anna",
+    "last_name": "Kowalska",
+    "company": "Salon Ania sp. z o.o.",
+    "address_1": "ul. Długa 5/2",
+    "address_2": null,
+    "postal_code": "61-001",
+    "city": "Poznań",
+    "province": null,
+    "country_code": "pl",
+    "phone": "+48 601 000 000"
+  },
+  "invoice": {
+    "requested": true,
+    "tax_id": "PL 123-456-32-18",
+    "company_name": "Salon Ania sp. z o.o."
+  },
+  "buyer": {
+    "nip": "1234563218",
+    "company_name": "Salon Ania sp. z o.o.",
+    "address": {
+      "first_name": "Anna",
+      "last_name": "Kowalska",
+      "company": "Salon Ania sp. z o.o.",
+      "address_1": "ul. Długa 5/2",
+      "address_2": null,
+      "postal_code": "61-001",
+      "city": "Poznań",
+      "province": null,
+      "country_code": "pl",
+      "phone": "+48 601 000 000"
+    },
+    "email": "zamowienia@salon-ania.example.com",
+    "phone": "+48 601 000 000",
+    "create_if_missing": true
+  },
+  "lines": [
+    {
+      "line_id": "ordli_01JDEMO0000000000000000003",
+      "sku": "KR-050",
+      "ean": "5901234123457",
+      "title": "Krem nawilżający",
+      "product_title": "Krem nawilżający",
+      "variant_title": "50 ml",
+      "quantity": 10,
+      "unit_price_gross": 71.92,
+      "total_gross": 719.2,
+      "discount_gross": 179.8,
+      "tax_rate": 23
+    }
+  ],
+  "shipping": {
+    "name": "Kurier DPD",
+    "option_id": "so_01JDEMO0000000000000000002",
+    "price_gross": 0,
+    "tax_rate": 23,
+    "pickup_point": null
+  },
+  "payment": {
+    "status": "awaiting",
+    "provider_id": "pp_system_default",
+    "method": "Bank transfer, 14 days",
+    "amount_paid": 0,
+    "captured_at": null,
+    "due_days": 14
+  },
+  "totals": {
+    "items_gross": 719.2,
+    "shipping_gross": 0,
+    "discount_gross": 179.8,
+    "tax_total": 134.49,
+    "total_gross": 719.2
+  },
+  "note": null,
+  "metadata": {}
+}

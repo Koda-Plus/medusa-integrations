@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Subiekt nexo bridge API
-  version: 1.0.0
+  version: 1.1.0
   summary: The HTTP contract between Medusa and a bridge next to Subiekt nexo PRO.
   description: |
     The Medusa plugin `@koda-plus/medusa-plugin-subiekt-nexo` talks to a bridge
@@ -12,8 +12,8 @@ info:
     Directions:
 
     - Medusa to bridge: every `/v1/*` request below. Medusa creates order
-      documents (ZK), cancels them, asks for a WZ, reads stock and reads the
-      event feed.
+      documents (ZK), cancels them, asks for a WZ, issues the sales document
+      (FS or PA), reads stock, products with prices and the event feed.
     - Bridge to Medusa: one optional webhook, `POST /hooks/subiekt`, that only
       says "new events are waiting". Medusa then reads `GET /v1/events`. The
       feed, not the webhook, is the source of truth, so a lost webhook only
@@ -57,8 +57,42 @@ info:
 
     ## Versioning
 
-    `1.x` only adds optional fields and new event types. Receivers ignore
-    unknown fields and unknown event types. A breaking change becomes `/v2`.
+    `1.x` only adds optional fields, new endpoints and new event types.
+    Receivers ignore unknown fields and unknown event types. A breaking change
+    becomes `/v2`.
+
+    ## Capabilities (1.1)
+
+    `GET /v1/health` lists what this bridge does in `capabilities`. A reader
+    uses only what is listed and hides the rest, so a 1.1 plugin works with a
+    1.0 bridge. A bridge without the field speaks 1.0: `orders`,
+    `fulfillments`, `stock`, `events`. Names in 1.1:
+
+    - `orders`: ZK create, read and cancel (1.0).
+    - `fulfillments`: WZ from a Medusa fulfillment (1.0).
+    - `stock`: `GET /v1/stock` (1.0).
+    - `events`: `GET /v1/events` (1.0).
+    - `products`: `GET /v1/products`, products with price levels.
+    - `contractors`: the `buyer` block of an order is honoured, the ZK goes
+      to the contractor with that NIP when it exists.
+    - `contractors.create`: a missing contractor is created when the order
+      asks for it (`buyer.create_if_missing`).
+    - `documents.fs`, `documents.pa`: `POST /v1/orders/{orderId}/documents`
+      for a faktura sprzedaży or a paragon.
+    - `documents.ksef`: the KSeF number of a sales document is reported, in
+      the answer when Subiekt already has it and later as `document.updated`.
+    - `webhook`: the bridge nudges Medusa through `POST /hooks/subiekt`.
+
+    ## What 1.1 adds
+
+    - `GET /v1/products`, paged from one snapshot like `/v1/stock`.
+    - `Order.buyer`: the company buying (NIP, name, address) for B2B orders.
+    - `POST /v1/orders/{orderId}/documents`: FS or PA from the WZ of the
+      order when it has one, from its ZK otherwise. Exactly once per order.
+    - `Document.ksef_number` and the event type `document.updated`.
+    - Health: `capabilities`, the nexo SDK and database versions, the Sfera
+      licence state, the last event, queue sizes. `time` was there in 1.0
+      and lets Medusa show the clock skew that breaks signatures.
   license:
     name: MIT
     identifier: MIT
@@ -74,7 +108,9 @@ security:
 tags:
   - name: health
   - name: orders
+  - name: documents
   - name: stock
+  - name: products
   - name: events
   - name: webhooks
 paths:
@@ -100,7 +136,7 @@ paths:
     post:
       tags: [orders]
       operationId: createOrder
-      summary: Create the ZK (zamowienie od klienta) for a Medusa order.
+      summary: Create the ZK (zamówienie od klienta) for a Medusa order.
       description: |
         Matches every line to a Subiekt product (EAN first, then SKU against
         the product symbol), creates the ZK in the configured warehouse and
@@ -112,6 +148,7 @@ paths:
             schema: { $ref: "#/components/schemas/Order" }
             examples:
               order: { externalValue: "./examples/order-create.request.json" }
+              b2b: { externalValue: "./examples/order-create-b2b.request.json" }
       responses:
         "201":
           description: ZK created.
@@ -188,7 +225,7 @@ paths:
     post:
       tags: [orders]
       operationId: createFulfillment
-      summary: Issue the WZ (wydanie zewnetrzne) from the order's ZK.
+      summary: Issue the WZ (wydanie zewnętrzne) from the order's ZK.
       description: |
         Used when the fulfillment starts in Medusa. When the warehouse issues
         the WZ in Subiekt, nothing calls this endpoint: the bridge publishes a
@@ -212,6 +249,67 @@ paths:
               schema: { $ref: "#/components/schemas/FulfillmentResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/orders/{orderId}/documents:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [documents]
+      operationId: issueSalesDocument
+      summary: Issue the faktura sprzedaży (FS) or the paragon (PA) of an order. Since 1.1.
+      description: |
+        Needs the capability `documents.fs` or `documents.pa`. The document
+        realizes the WZ of the order when it has one (the goods already left,
+        so the sales document must not move stock again), the ZK otherwise.
+
+        EXACTLY ONCE PER ORDER. An order gets one sales document, whatever
+        `kind` later requests ask for: the bridge looks for a sales document
+        carrying the order tag before it creates one, under the order lock and
+        again under the Sfera lock, and answers `200` with the existing one
+        (with a warning when its kind differs from the request).
+
+        The KSeF number comes back in `document.ksef_number` when Subiekt
+        already has it. Usually it is assigned later, after Subiekt sends the
+        e-invoice to KSeF; the bridge then publishes `document.updated`.
+        A paragon is fiscalized on the fiscal printer in Subiekt, never by the
+        bridge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SalesDocumentRequest" }
+            examples:
+              fs: { externalValue: "./examples/document-create.request.json" }
+      responses:
+        "201":
+          description: Sales document created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesDocumentResult" }
+              examples:
+                created: { externalValue: "./examples/document-create.response.json" }
+        "200":
+          description: The order already had a sales document. Nothing new was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesDocumentResult" }
+        "400": { $ref: "#/components/responses/InvalidPayload" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`order_not_found`: no open ZK carries this order yet. Retryable: the ZK may still be on its way."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: "`not_enabled`: this bridge does not issue this kind of document (its configuration). Not retryable."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: "`subiekt_rejected`: Subiekt refused the document, the message says why. Not retryable."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "503": { $ref: "#/components/responses/Unavailable" }
   /v1/stock:
     get:
@@ -242,6 +340,42 @@ paths:
               examples:
                 page: { externalValue: "./examples/stock.response.json" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/CursorExpired" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/products:
+    get:
+      tags: [products]
+      operationId: listProducts
+      summary: Products with their prices in the configured price levels, paginated. Since 1.1.
+      description: |
+        Needs the capability `products`. Like `/v1/stock`, the bridge reads
+        one snapshot and serves it page by page, so the pages of one read
+        never mix two readings.
+
+        Prices come from the approved base price list (cennik bazowy) of each
+        price level the bridge is configured to publish, both net and gross,
+        in the currency of the level. A product without a price in a level has
+        no entry for that level. `active` is the "Sklep internetowy" flag of
+        the product card: the product is meant for the online shop.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        "200":
+          description: One page of the snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductsPage" }
+              examples:
+                page: { externalValue: "./examples/products.response.json" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/CursorExpired" }
         "503": { $ref: "#/components/responses/Unavailable" }
   /v1/events:
     get:
@@ -322,6 +456,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    CursorExpired:
+      description: "`cursor_expired`: the snapshot behind the cursor is gone. Retryable: start again from the first page."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
   schemas:
     Error:
       type: object
@@ -337,8 +476,9 @@ components:
                 Known codes: `invalid_signature`, `stale_timestamp`,
                 `invalid_payload`, `order_not_found`, `unmatched_lines`,
                 `document_locked`, `subiekt_rejected`, `subiekt_unavailable`,
-                `busy`, `internal`. Receivers treat unknown codes by
-                `retryable`.
+                `busy`, `internal`, `not_configured`; since 1.1
+                `cursor_expired` (documented) and `not_enabled`. Receivers
+                treat unknown codes by `retryable`.
             message: { type: string }
             retryable: { type: boolean }
             details: { type: object, additionalProperties: true }
@@ -347,14 +487,24 @@ components:
       required: [status, bridge, subiekt, time]
       properties:
         status: { type: string, enum: [ok, degraded] }
+        capabilities:
+          type: array
+          items: { type: string }
+          description: |
+            Since 1.1. What this bridge does, see "Capabilities" above. Absent:
+            a 1.0 bridge, read it as `orders`, `fulfillments`, `stock`, `events`.
         bridge:
           type: object
           required: [name, version, contract, mode]
           properties:
             name: { type: string }
             version: { type: string }
-            contract: { type: string, description: Contract version, for example `1.0.0`. }
+            contract: { type: string, description: "Contract version, for example `1.1.0`." }
             mode: { type: string, enum: [sfera, fake] }
+            sdk_version:
+              type: [string, "null"]
+              description: Since 1.1. The nexo SDK the bridge runs on, for example `61.0.1.9371`. Null in fake mode.
+            started_at: { type: [string, "null"], format: date-time, description: Since 1.1. When the bridge process started. }
         subiekt:
           type: object
           required: [connected]
@@ -363,11 +513,40 @@ components:
             product: { type: [string, "null"] }
             version: { type: [string, "null"] }
             database: { type: [string, "null"] }
+            database_version:
+              type: [string, "null"]
+              description: |
+                Since 1.1. Version of the nexo database. Sfera refuses a
+                database of another version than the SDK, so when `connected`
+                is true it equals `bridge.sdk_version`; null when unknown.
+            licence:
+              type: [string, "null"]
+              enum: [ok, refused, unknown, null]
+              description: |
+                Since 1.1. State of the nexo licence as the last Sfera login saw
+                it: `ok` (logged in), `refused` (the licence refused work, for
+                example a used up trial), `unknown` (not tried yet, or another
+                error).
             company: { type: [string, "null"] }
             warehouse: { type: [string, "null"], description: Warehouse symbol used for new ZK documents. }
             checked_at: { type: [string, "null"], format: date-time }
             error: { type: [string, "null"] }
-        time: { type: string, format: date-time }
+        events:
+          type: [object, "null"]
+          description: Since 1.1. The newest event of the feed.
+          properties:
+            last_id: { type: integer }
+            last_at: { type: [string, "null"], format: date-time }
+        queues:
+          type: [object, "null"]
+          description: Since 1.1. Work waiting inside the bridge.
+          properties:
+            sfera_pending: { type: integer, description: Operations waiting for or holding the single Sfera session. }
+            webhook_pending: { type: integer, description: Webhook nudges waiting to be sent to Medusa. }
+        time:
+          type: string
+          format: date-time
+          description: The bridge clock. Medusa compares it with its own to show the clock skew; more than 300 seconds breaks every signature.
     Address:
       type: object
       properties:
@@ -379,7 +558,7 @@ components:
         postal_code: { type: [string, "null"] }
         city: { type: [string, "null"] }
         province: { type: [string, "null"] }
-        country_code: { type: [string, "null"], description: ISO 3166-1 alpha-2, lowercase. }
+        country_code: { type: [string, "null"], description: "ISO 3166-1 alpha-2, lowercase." }
         phone: { type: [string, "null"] }
     Order:
       type: object
@@ -387,7 +566,7 @@ components:
       properties:
         order_id: { type: string }
         display_id: { type: integer }
-        currency_code: { type: string, description: ISO 4217, lowercase. }
+        currency_code: { type: string, description: "ISO 4217, lowercase." }
         placed_at: { type: string, format: date-time }
         email: { type: [string, "null"] }
         customer:
@@ -407,6 +586,15 @@ components:
             requested: { type: boolean }
             tax_id: { type: [string, "null"], description: NIP or EU VAT id as typed. }
             company_name: { type: [string, "null"] }
+        buyer:
+          description: |
+            Since 1.1. The company buying, sent only when the order carries a
+            NIP that passed the checksum. A bridge with the capability
+            `contractors` issues the ZK to the contractor with this NIP; without
+            it the bridge keeps its configured buyer and may ignore the block.
+          oneOf:
+            - { $ref: "#/components/schemas/Buyer" }
+            - { type: "null" }
         lines:
           type: array
           minItems: 1
@@ -432,7 +620,7 @@ components:
               type: string
               enum: [captured, authorized, awaiting, cash_on_delivery, not_required]
             provider_id: { type: [string, "null"], description: "Medusa payment provider, for example `pp_stripe_stripe`." }
-            method: { type: [string, "null"], description: Human readable, for example `Card (Stripe)` or `Bank transfer, 14 days`. }
+            method: { type: [string, "null"], description: "Human readable, for example `Card (Stripe)` or `Bank transfer, 14 days`." }
             amount_paid: { type: number }
             captured_at: { type: [string, "null"], format: date-time }
             due_days: { type: [integer, "null"], description: Payment term in days for trade credit. }
@@ -467,6 +655,35 @@ components:
         total_gross: { type: number }
         discount_gross: { type: number }
         tax_rate: { type: [number, "null"] }
+    Buyer:
+      type: object
+      required: [nip]
+      properties:
+        nip: { type: string, description: "10 digits, no prefix, no separators, checksum already verified by the sender." }
+        company_name: { type: [string, "null"] }
+        address: { oneOf: [{ $ref: "#/components/schemas/Address" }, { type: "null" }] }
+        email: { type: [string, "null"] }
+        phone: { type: [string, "null"] }
+        create_if_missing:
+          type: boolean
+          default: false
+          description: |
+            Create the contractor when no contractor in Subiekt has this NIP.
+            Honoured only with the capability `contractors.create`. The bridge
+            searches by NIP under the Sfera lock first, so it never creates a
+            second contractor for one NIP.
+    BuyerResult:
+      type: object
+      required: [source]
+      description: Since 1.1. Which contractor the ZK went to.
+      properties:
+        source:
+          type: string
+          enum: [existing, created, retail]
+          description: "`existing`: found by NIP. `created`: created for this order. `retail`: the configured buyer of the bridge."
+        nip: { type: [string, "null"] }
+        symbol: { type: [string, "null"], description: Contractor symbol in Subiekt. }
+        name: { type: [string, "null"] }
     OrderResult:
       type: object
       required: [order_id, created, document]
@@ -474,10 +691,14 @@ components:
         order_id: { type: string }
         created: { type: boolean, description: "`false` when the ZK already existed." }
         document: { $ref: "#/components/schemas/Document" }
+        buyer:
+          oneOf:
+            - { $ref: "#/components/schemas/BuyerResult" }
+            - { type: "null" }
         warnings:
           type: array
           items: { type: string }
-          description: Non-fatal remarks, for example a header field Subiekt refused and the bridge left empty.
+          description: Non-fatal remarks, for example a header field Subiekt refused and the bridge left empty, or a contractor that could not be found.
     Document:
       type: object
       required: [kind, number, issued_at]
@@ -486,10 +707,17 @@ components:
           type: string
           description: "Subiekt document type: `ZK`, `WZ`, `FS`, `PA` and so on. Open list."
         number: { type: string, description: "Full signature, for example `ZK 12/MAG/2026`." }
-        id: { type: [string, "null"], description: Subiekt internal id, opaque. }
+        id: { type: [string, "null"], description: "Subiekt internal id, opaque." }
         issued_at: { type: string, format: date-time }
         status: { type: string, enum: [open, canceled, completed], default: open }
         warehouse: { type: [string, "null"] }
+        ksef_number:
+          type: [string, "null"]
+          description: |
+            Since 1.1. The number KSeF assigned to the e-invoice of a sales
+            document (FS), for example `5265877635-20261005-0A1B2C3D4E5F-7A`.
+            Opaque to the reader. Null while KSeF has not assigned one, and
+            always null for documents that never go to KSeF (ZK, WZ, PA).
         related:
           type: array
           items:
@@ -542,6 +770,28 @@ components:
         order_id: { type: string }
         created: { type: boolean }
         document: { $ref: "#/components/schemas/Document" }
+    SalesDocumentRequest:
+      type: object
+      required: [kind]
+      description: Since 1.1.
+      properties:
+        kind:
+          type: string
+          enum: [fs, pa]
+          description: "`fs`: faktura sprzedaży (VAT invoice). `pa`: paragon (receipt)."
+        display_id: { type: [integer, "null"], description: "The order number customers see, for the document notes (\"Zamówienie internetowe #1042\")." }
+        note: { type: [string, "null"], description: Extra text for the document notes. }
+    SalesDocumentResult:
+      type: object
+      required: [order_id, created, document]
+      description: Since 1.1.
+      properties:
+        order_id: { type: string }
+        created: { type: boolean, description: "`false` when the order already had a sales document." }
+        document: { $ref: "#/components/schemas/Document" }
+        warnings:
+          type: array
+          items: { type: string }
     StockItem:
       type: object
       required: [symbol, quantity, available]
@@ -565,6 +815,53 @@ components:
           items: { $ref: "#/components/schemas/StockItem" }
         next_cursor: { type: [string, "null"] }
         total: { type: integer }
+    PriceLevel:
+      type: object
+      required: [symbol]
+      description: Since 1.1. A price level (poziom cen) of Subiekt.
+      properties:
+        symbol: { type: string, description: The key prices refer to. }
+        name: { type: [string, "null"] }
+        currency: { type: [string, "null"], description: "ISO 4217, uppercase, for example `PLN`." }
+    ProductPrice:
+      type: object
+      required: [level, net, gross]
+      properties:
+        level: { type: string, description: "`symbol` of a price level of the page." }
+        net: { type: number }
+        gross: { type: number }
+        currency: { type: [string, "null"] }
+    ProductItem:
+      type: object
+      required: [symbol, prices, active]
+      description: Since 1.1. One product (asortyment) of Subiekt.
+      properties:
+        symbol: { type: string, description: Product symbol. Matched to the variant SKU. }
+        name: { type: [string, "null"] }
+        ean: { type: [string, "null"], description: Main barcode of the base unit. }
+        unit: { type: [string, "null"], description: "Sales unit, for example `szt.`." }
+        vat_rate: { type: [number, "null"], description: "Sales VAT rate in percent, `23` means 23 %. Null when exempt or not taxed." }
+        vat_symbol: { type: [string, "null"], description: "Subiekt VAT symbol, for example `23`, `8`, `zw`." }
+        kind: { type: [string, "null"], enum: [goods, service, kit, null] }
+        active: { type: boolean, description: "The \"Sklep internetowy\" flag: the product is meant for the online shop." }
+        weight_kg: { type: [number, "null"], description: Gross weight of one sales unit in kilograms. }
+        prices:
+          type: array
+          items: { $ref: "#/components/schemas/ProductPrice" }
+    ProductsPage:
+      type: object
+      required: [snapshot_at, price_levels, items, next_cursor, total]
+      description: Since 1.1.
+      properties:
+        snapshot_at: { type: string, format: date-time }
+        price_levels:
+          type: array
+          items: { $ref: "#/components/schemas/PriceLevel" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProductItem" }
+        next_cursor: { type: [string, "null"] }
+        total: { type: integer }
     Event:
       type: object
       required: [id, type, occurred_at, data]
@@ -574,8 +871,11 @@ components:
           type: string
           description: |
             `document.issued`: a document appeared for an order (the bridge
-            created a ZK, or the warehouse issued a WZ in Subiekt).
+            created a ZK, an FS or a PA, or the warehouse issued a WZ in
+            Subiekt). `data.document.kind` says which.
             `document.canceled`: a document was canceled.
+            `document.updated` (1.1): a document of an order changed, for
+            example KSeF assigned its number (`data.document.ksef_number`).
             `stock.changed`: stock moved; read `/v1/stock` soon. Optional.
         occurred_at: { type: string, format: date-time }
         data:
