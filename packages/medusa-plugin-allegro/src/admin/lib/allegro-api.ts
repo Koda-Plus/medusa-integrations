@@ -1,14 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
+  AllegroActionResponse,
   AllegroConnectPollResponse,
+  AllegroImportFilter,
+  AllegroImportRunResponse,
+  AllegroImportWindowResponse,
+  AllegroImportsResponse,
+  AllegroIssueFilter,
+  AllegroIssuesResponse,
   AllegroOfferFilter,
   AllegroOffersResponse,
   AllegroOrderFilter,
   AllegroOrdersResponse,
+  AllegroOutboxResponse,
+  AllegroPlanKind,
+  AllegroPlanResponse,
+  AllegroPlanRunResponse,
   AllegroProductOffersResponse,
   AllegroRunsResponse,
   AllegroStatusResponse,
   AllegroSyncResponse,
+  AllegroWriterKey,
+  AllegroWriterToggleResponse,
 } from "../../modules/allegro/lib/contract"
 
 declare const __BACKEND_URL__: string | undefined
@@ -62,24 +75,26 @@ export function errorMessage(err: unknown): string {
 export const allegroKeys = {
   all: ["allegro"] as const,
   status: ["allegro", "status"] as const,
-  offers: (filter: AllegroOfferFilter, q: string, offset: number, limit: number) =>
-    ["allegro", "offers", filter, q, offset, limit] as const,
-  orders: (filter: AllegroOrderFilter, q: string, offset: number, limit: number) =>
-    ["allegro", "orders", filter, q, offset, limit] as const,
+  offers: (filter: AllegroOfferFilter, q: string, offset: number, limit: number) => ["allegro", "offers", filter, q, offset, limit] as const,
+  orders: (filter: AllegroOrderFilter, q: string, offset: number, limit: number) => ["allegro", "orders", filter, q, offset, limit] as const,
   runs: ["allegro", "runs"] as const,
   product: (id: string) => ["allegro", "product", id] as const,
+  plan: (kind: AllegroPlanKind, filter: string, q: string, offset: number, limit: number) => ["allegro", "plan", kind, filter, q, offset, limit] as const,
+  imports: (filter: AllegroImportFilter, q: string, offset: number, limit: number) => ["allegro", "imports", filter, q, offset, limit] as const,
+  outbox: (writer: "shipping" | "invoices", status: string, offset: number, limit: number) => ["allegro", "outbox", writer, status, offset, limit] as const,
+  issues: (filter: AllegroIssueFilter, offset: number, limit: number) => ["allegro", "issues", filter, offset, limit] as const,
 }
 
-/** Status of the Allegro page. Polls while a sync runs. */
+function anyRunning(data: AllegroStatusResponse | undefined): boolean {
+  return Boolean(data && Object.values(data.running).some(Boolean))
+}
+
+/** Status of the Allegro page. Polls while something runs, and for a while after a click. */
 export function useAllegroStatus(pollUntil: number) {
   return useQuery<AllegroStatusResponse>({
     queryKey: allegroKeys.status,
     queryFn: () => allegroFetch<AllegroStatusResponse>("/admin/allegro"),
-    refetchInterval: (query) => {
-      const data = query.state.data
-      if (data?.running.offers || data?.running.orders || Date.now() < pollUntil) return 2_000
-      return false
-    },
+    refetchInterval: (query) => (anyRunning(query.state.data) || Date.now() < pollUntil ? 2_000 : false),
   })
 }
 
@@ -106,7 +121,7 @@ export function useAllegroOrders(filter: AllegroOrderFilter, q: string, offset: 
 export function useAllegroRuns() {
   return useQuery<AllegroRunsResponse>({
     queryKey: allegroKeys.runs,
-    queryFn: () => allegroFetch<AllegroRunsResponse>("/admin/allegro/runs?limit=10"),
+    queryFn: () => allegroFetch<AllegroRunsResponse>("/admin/allegro/runs?limit=15"),
   })
 }
 
@@ -144,4 +159,142 @@ export const useAllegroDisconnect = () => usePost<AllegroStatusResponse>("/admin
 /** One poll of the device login; the page decides when to call it again. */
 export function pollAllegroConnect(): Promise<AllegroConnectPollResponse> {
   return allegroFetch<AllegroConnectPollResponse>("/admin/allegro/connect/poll", { method: "POST", body: {} })
+}
+
+/* ---- writers ------------------------------------------------------------ */
+
+export function useAllegroWriterToggle() {
+  const client = useQueryClient()
+  return useMutation<AllegroWriterToggleResponse, unknown, { key: AllegroWriterKey; armed: boolean }>({
+    mutationFn: ({ key, armed }) => allegroFetch<AllegroWriterToggleResponse>(`/admin/allegro/writers/${key}`, { method: "POST", body: { armed } }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+/* ---- plans -------------------------------------------------------------- */
+
+export function useAllegroPlan(kind: AllegroPlanKind, filter: string, q: string, offset: number, limit: number) {
+  const params = new URLSearchParams({ kind, filter, limit: String(limit), offset: String(offset) })
+  if (q) params.set("q", q)
+  return useQuery<AllegroPlanResponse>({
+    queryKey: allegroKeys.plan(kind, filter, q, offset, limit),
+    queryFn: () => allegroFetch<AllegroPlanResponse>(`/admin/allegro/plans?${params.toString()}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useAllegroPlanRun() {
+  const client = useQueryClient()
+  return useMutation<AllegroPlanRunResponse, unknown, { kind: AllegroPlanKind; mode: "plan" | "apply" }>({
+    mutationFn: (body) => allegroFetch<AllegroPlanRunResponse>("/admin/allegro/plans", { method: "POST", body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+export function useAllegroPlanRelease() {
+  const client = useQueryClient()
+  return useMutation<AllegroActionResponse, unknown, string>({
+    mutationFn: (id) => allegroFetch<AllegroActionResponse>(`/admin/allegro/plans/${encodeURIComponent(id)}/release`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+/* ---- imports ------------------------------------------------------------ */
+
+export function useAllegroImports(filter: AllegroImportFilter, q: string, offset: number, limit: number) {
+  const params = new URLSearchParams({ filter, limit: String(limit), offset: String(offset) })
+  if (q) params.set("q", q)
+  return useQuery<AllegroImportsResponse>({
+    queryKey: allegroKeys.imports(filter, q, offset, limit),
+    queryFn: () => allegroFetch<AllegroImportsResponse>(`/admin/allegro/imports?${params.toString()}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useAllegroImportRun() {
+  const client = useQueryClient()
+  return useMutation<AllegroImportRunResponse, unknown, "plan" | "apply">({
+    mutationFn: (mode) => allegroFetch<AllegroImportRunResponse>("/admin/allegro/imports", { method: "POST", body: { mode } }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+export function useAllegroImportWindow() {
+  const client = useQueryClient()
+  return useMutation<AllegroImportWindowResponse, unknown, { from: string; to: string }>({
+    mutationFn: (body) => allegroFetch<AllegroImportWindowResponse>("/admin/allegro/imports/window", { method: "POST", body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+export function useAllegroImportRetry() {
+  const client = useQueryClient()
+  return useMutation<AllegroActionResponse, unknown, string>({
+    mutationFn: (id) => allegroFetch<AllegroActionResponse>(`/admin/allegro/imports/${encodeURIComponent(id)}/retry`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+/* ---- outbox ------------------------------------------------------------- */
+
+export function useAllegroOutbox(writer: "shipping" | "invoices", status: string, offset: number, limit: number) {
+  const params = new URLSearchParams({ writer, status, limit: String(limit), offset: String(offset) })
+  return useQuery<AllegroOutboxResponse>({
+    queryKey: allegroKeys.outbox(writer, status, offset, limit),
+    queryFn: () => allegroFetch<AllegroOutboxResponse>(`/admin/allegro/outbox?${params.toString()}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useAllegroOutboxRun() {
+  const client = useQueryClient()
+  return useMutation<AllegroActionResponse, unknown, "shipping" | "invoices">({
+    mutationFn: (writer) => allegroFetch<AllegroActionResponse>("/admin/allegro/outbox", { method: "POST", body: { writer } }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+export function useAllegroOutboxRetry() {
+  const client = useQueryClient()
+  return useMutation<AllegroActionResponse, unknown, string>({
+    mutationFn: (id) => allegroFetch<AllegroActionResponse>(`/admin/allegro/outbox/${encodeURIComponent(id)}/retry`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+/* ---- customer issues ---------------------------------------------------- */
+
+export function useAllegroIssues(filter: AllegroIssueFilter, offset: number, limit: number) {
+  const params = new URLSearchParams({ filter, limit: String(limit), offset: String(offset) })
+  return useQuery<AllegroIssuesResponse>({
+    queryKey: allegroKeys.issues(filter, offset, limit),
+    queryFn: () => allegroFetch<AllegroIssuesResponse>(`/admin/allegro/issues?${params.toString()}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useAllegroIssuesSync() {
+  const client = useQueryClient()
+  return useMutation<AllegroActionResponse, unknown, void>({
+    mutationFn: () => allegroFetch<AllegroActionResponse>("/admin/allegro/issues", { method: "POST", body: {} }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.status })
+    },
+  })
 }

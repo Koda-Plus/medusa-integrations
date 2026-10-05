@@ -1,9 +1,15 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import type { Logger } from "@medusajs/framework/types"
 import AllegroConnection from "./models/allegro-connection"
+import AllegroIssue from "./models/allegro-issue"
 import AllegroOffer from "./models/allegro-offer"
 import AllegroOrder from "./models/allegro-order"
+import AllegroOrderImport from "./models/allegro-order-import"
+import AllegroOutbox from "./models/allegro-outbox"
+import AllegroPlanItem from "./models/allegro-plan-item"
+import AllegroState from "./models/allegro-state"
 import AllegroSyncRun from "./models/allegro-sync-run"
+import AllegroWriter from "./models/allegro-writer"
 import { missingOptions, resolveOptions, type AllegroPluginOptions, type ResolvedAllegroOptions } from "./lib/options"
 import { maskSecrets } from "./lib/security"
 
@@ -12,11 +18,12 @@ type InjectedDependencies = {
 }
 
 /**
- * Allegro module service: generated CRUD for the four tables plus the
- * resolved options. The business logic (device login, token refresh, reading
- * offers and orders) lives in `lib/connection.ts` and the syncs in
- * `workflows/allegro`, all calling the generated methods from the outside.
- * The service itself stays thin: no custom method touches the database.
+ * Allegro module service: generated CRUD for the tables plus the resolved
+ * options and masking. The business logic (device login, tokens, reads,
+ * plans, writers, imports) lives in `lib/*` and `workflows/allegro`, all
+ * calling the generated methods from the outside. The service itself stays
+ * thin: no custom method touches the database (a custom method that calls
+ * `this.listX()` loses its database manager on some setups).
  *
  * MISSING CREDENTIALS DO NOT BREAK THE BOOT. The module always registers;
  * without them the admin tells what is missing and the scheduled jobs wait.
@@ -26,6 +33,12 @@ class AllegroModuleService extends MedusaService({
   AllegroOffer,
   AllegroOrder,
   AllegroSyncRun,
+  AllegroWriter,
+  AllegroPlanItem,
+  AllegroOrderImport,
+  AllegroOutbox,
+  AllegroIssue,
+  AllegroState,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedAllegroOptions
@@ -36,7 +49,7 @@ class AllegroModuleService extends MedusaService({
     this.logger_ = deps.logger
     this.options_ = resolveOptions(options)
     if (this.options_.demo) {
-      this.logger_.info("[allegro] Demo mode: sample offers and orders from the catalog, no requests to Allegro.")
+      this.logger_.info("[allegro] Demo mode: a simulated Allegro account built from the catalog, no requests to Allegro.")
     } else if (!this.isConfigured()) {
       this.logger_.info(`[allegro] Waiting for configuration, missing: ${this.missingOptions().join(", ")}.`)
     }

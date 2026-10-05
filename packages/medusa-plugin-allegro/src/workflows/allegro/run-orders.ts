@@ -19,7 +19,9 @@ import { sameJson, toRunDto, type OrderRow, type RunRow } from "../../modules/al
 import { normalizeKey } from "../../modules/allegro/lib/matching"
 import { linkLines, ordersFromApi, type AllegroOrderInput, type LineVariant } from "../../modules/allegro/lib/orders"
 import { loadCatalog, type QueryLike } from "./catalog"
-import { chunks, demoDay, demoOffersRaw, pruneRuns, type SyncInput, type SyncResult, type SyncTrigger } from "./run-offers"
+import { chunks, pruneRuns, type SyncInput, type SyncResult, type SyncTrigger } from "./run-offers"
+import { demoDay, demoFormFromStream, demoOffersRaw, demoStream, loadOverlay } from "./demo-sim"
+import { allegroOf } from "./runtime"
 
 const RUNNING_KEY = Symbol.for("koda.allegro.ordersRunning")
 type Holder = typeof globalThis & { [RUNNING_KEY]?: boolean }
@@ -97,7 +99,7 @@ async function linkMaps(svc: AllegroModuleService, query: QueryLike, demo: boole
 export async function runAllegroOrdersSync(container: MedusaContainer, input: SyncInput = {}): Promise<SyncResult> {
   if (isOrdersSyncRunning()) return { run: null, skipped: "running" }
   setRunning(true)
-  const svc = container.resolve<AllegroModuleService>(ALLEGRO_MODULE)
+  const svc = allegroOf(container)
   const o = svc.getOptions()
   const trigger: SyncTrigger = input.trigger ?? "manual"
   const source = o.demo ? "demo" : "api"
@@ -112,7 +114,14 @@ export async function runAllegroOrdersSync(container: MedusaContainer, input: Sy
 
     let read: OrdersRead
     if (o.demo) {
-      const raw = buildDemoRawOrders(await demoOffersRaw(query, await loadCatalog(query, o.stockLocationIds)), demoDay())
+      const variants = await loadCatalog(query, o.stockLocationIds)
+      const raw = buildDemoRawOrders(await demoOffersRaw(query, variants, await loadOverlay(svc)), demoDay())
+      /* The simulated purchases of yesterday and today, the ones the order import turns into Medusa orders. */
+      const stream = await demoStream(svc, query, variants)
+      for (const seed of stream.seeds) {
+        const form = demoFormFromStream(stream, seed.id)
+        if (form) raw.push(form)
+      }
       read = { orders: ordersFromApi(raw), complete: true, pages: 1, reason: null }
     } else {
       read = await readOrdersSince(svc, await cursor(svc))

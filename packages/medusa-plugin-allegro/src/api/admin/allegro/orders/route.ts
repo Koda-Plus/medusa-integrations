@@ -1,29 +1,31 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { AllegroOrderFilter, AllegroOrdersResponse } from "../../../../modules/allegro/lib/contract"
-import { toOrderDto, type OrderRow } from "../../../../modules/allegro/lib/dto"
+import { toOrderDto, type ImportRow, type OrderRow } from "../../../../modules/allegro/lib/dto"
 import { allegroService, intParam, like, strParam } from "../helpers"
 
-const FILTERS: readonly AllegroOrderFilter[] = ["all", "open", "sent", "cancelled", "unmatched"]
+const FILTERS: readonly AllegroOrderFilter[] = ["all", "open", "sent", "cancelled", "unmatched", "imported", "held"]
 const SENT = ["SENT", "PICKED_UP", "READY_FOR_PICKUP"]
 const CANCELLED = ["CANCELLED", "RETURNED"]
 
 /**
  * GET /admin/allegro/orders?filter=&q=&limit=&offset=
  *
- * The read-only order journal, newest purchase first. `filter`: all, open,
- * sent, cancelled, unmatched (at least one line without a product). `q`
+ * The order journal, newest purchase first, with the import of every order
+ * into Medusa when there is one. `filter`: all, open, sent, cancelled,
+ * unmatched (at least one line without a product), imported, held. `q`
  * searches the order id and the delivery method; there is no buyer data to
  * search, by design.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = allegroService(req.scope)
+  const demo = svc.isDemo()
   const limit = intParam(req.query.limit, 10, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 1_000_000)
   const rawFilter = strParam(req.query.filter) as AllegroOrderFilter
   const filter: AllegroOrderFilter = FILTERS.includes(rawFilter) ? rawFilter : "all"
   const q = strParam(req.query.q).slice(0, 80)
 
-  const where: Record<string, unknown> = { demo: svc.isDemo() }
+  const where: Record<string, unknown> = { demo }
   switch (filter) {
     case "open":
       where.status = { $ne: "CANCELLED" }
@@ -38,6 +40,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     case "unmatched":
       where.unmatched_lines = { $gt: 0 }
       break
+    case "imported":
+    case "held": {
+      const rows = (await svc.listAllegroOrderImports({ status: filter, demo } as never, { take: 5000, select: ["checkout_form_id"] })) as unknown as Array<{
+        checkout_form_id: string
+      }>
+      where.allegro_id = rows.map((r) => r.checkout_form_id)
+      break
+    }
   }
   if (q) {
     const pattern = like(q)
@@ -56,7 +66,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     order: { bought_at: "DESC" },
   })) as unknown as [OrderRow[], number]
 
+  const imports = rows.length
+    ? ((await svc.listAllegroOrderImports({ checkout_form_id: rows.map((r) => r.allegro_id) } as never, { take: rows.length })) as unknown as ImportRow[])
+    : []
+  const byForm = new Map(imports.map((i) => [i.checkout_form_id, i]))
   const env = svc.getOptions().environment
-  const body: AllegroOrdersResponse = { orders: rows.map((r) => toOrderDto(r, env)), count, limit, offset }
+  const body: AllegroOrdersResponse = { orders: rows.map((r) => toOrderDto(r, env, byForm.get(r.allegro_id) ?? null)), count, limit, offset }
   res.json(body)
 }

@@ -25,5 +25,5 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.status(502).json({ message: svc.mask(err instanceof Error ? err.message : String(err)) })
     return
   }
-  res.json(await buildStatus(svc))
+  res.json(await buildStatus(req.scope))
 }

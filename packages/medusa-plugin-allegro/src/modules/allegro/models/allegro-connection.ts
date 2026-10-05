@@ -13,8 +13,10 @@ import { model } from "@medusajs/framework/utils"
  * from sandbox to production, sandbox tokens must not pass for a production
  * connection, so a row from the other environment counts as not connected.
  *
- * `version` counts writes for diagnosis; it is NOT a lock. Parallel refreshes
- * are prevented by the token queue in `lib/connection.ts`.
+ * `version` counts writes; a process that waited for another one's refresh
+ * reads the new token when the version moved. Parallel refreshes are
+ * prevented by the token queue inside a process and by the refresh lease
+ * (`refresh_lease_until`, `refresh_lease_owner`) across processes.
  */
 const AllegroConnection = model.define("allegro_connection", {
   id: model.id().primaryKey(),
@@ -32,6 +34,8 @@ const AllegroConnection = model.define("allegro_connection", {
   device_interval_s: model.number().nullable(),
   last_error: model.text().nullable(),
   last_error_at: model.dateTime().nullable(),
+  refresh_lease_until: model.dateTime().nullable(),
+  refresh_lease_owner: model.text().nullable(),
   version: model.number().default(0),
 })
 
