@@ -5,7 +5,7 @@ import { Migration } from "@medusajs/framework/mikro-orm/migrations"
  * imported marketplace orders, returns and invoice numbers. Idempotent
  * (`if not exists`), so a re-run on a database that has them is a no-op.
  */
-export class Migration20261006090000 extends Migration {
+export class Migration20261006091000 extends Migration {
   async up(): Promise<void> {
     this.addSql(`
       create table if not exists "baselinker_setting" (
