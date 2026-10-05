@@ -24,7 +24,7 @@ const pl: typeof en = {
   },
   demo: {
     label: "Tryb demo",
-    text: "Symulowane konto BaseLinkera powstaje z Twojego katalogu: karty dla większości wariantów, zdublowane SKU, karta bez SKU i kilka brakujących wariantów. Zamówienia dostają numer BaseLinkera w kilka sekund, a mniej więcej trzy minuty później przechodzą na „Wysłane” z numerem przesyłki InPost. Nic nie wychodzi poza Medusę, a stany są tylko planowane. Aby podłączyć prawdziwe konto, ustaw w opcjach wtyczki apiToken, inventoryId, warehouseId i orderStatusId.",
+    text: "Symulowane konto BaseLinkera powstaje z Twojego katalogu: karty dla większości wariantów, zdublowane SKU, karta bez SKU i kilka brakujących wariantów. Zamówienia dostają numer BaseLinkera w kilka sekund, a po kilku minutach przechodzą na „Wysłane” z numerem przesyłki InPost, jedne szybciej, inne wolniej, jak w prawdziwym magazynie. Nic nie wychodzi poza Medusę, a stany są tylko planowane. Aby podłączyć prawdziwe konto, ustaw w opcjach wtyczki apiToken, inventoryId, warehouseId i orderStatusId.",
   },
   missing: {
     label: "Konfiguracja",

@@ -48,9 +48,20 @@ export const DEMO_STATUSES: ReadonlyArray<{ id: number; name: string }> = [
   { id: 100005, name: "Anulowane" },
 ]
 
-/** When the simulated warehouse moves an order on, after it was sent. */
+/** When the simulated warehouse moves an order on, after it was sent (at the fastest pace). */
 export const DEMO_IN_PROGRESS_AFTER_MS = 60 * 1000
 export const DEMO_SHIPPED_AFTER_MS = 3 * 60 * 1000
+/** A shipped order is delivered this long after it shipped. */
+export const DEMO_DELIVERED_AFTER_MS = 6 * 60 * 60 * 1000
+
+/**
+ * The simulated warehouse is not equally fast for every order, so a list of
+ * orders sent at once does not move in lockstep: the fastest ship after about
+ * three minutes, the slowest after about 24.
+ */
+export function demoPace(orderId: string): number {
+  return [1, 1, 2, 4, 8][hash32(`${orderId}#pace`) % 5]
+}
 
 /** FNV-1a, 32 bit. Stable across processes, so demo data does not jump on a restart. */
 export function hash32(text: string): number {
@@ -167,8 +178,17 @@ export function demoOrder(args: { blOrderId: string; orderId: string; sentAt: Da
   delivery_package_module: string
 } {
   const elapsed = args.now.getTime() - args.sentAt.getTime()
-  const shipped = elapsed >= DEMO_SHIPPED_AFTER_MS
-  const status = shipped ? DEMO_STATUSES[2] : elapsed >= DEMO_IN_PROGRESS_AFTER_MS ? DEMO_STATUSES[1] : DEMO_STATUSES[0]
+  const pace = demoPace(args.orderId)
+  const shipAfter = DEMO_SHIPPED_AFTER_MS * pace
+  const shipped = elapsed >= shipAfter
+  const status =
+    elapsed >= shipAfter + DEMO_DELIVERED_AFTER_MS
+      ? DEMO_STATUSES[3]
+      : shipped
+        ? DEMO_STATUSES[2]
+        : elapsed >= DEMO_IN_PROGRESS_AFTER_MS * pace
+          ? DEMO_STATUSES[1]
+          : DEMO_STATUSES[0]
   return {
     order_id: args.blOrderId,
     order_status_id: status.id,

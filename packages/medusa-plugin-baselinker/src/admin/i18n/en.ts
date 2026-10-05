@@ -22,7 +22,7 @@ const en = {
   },
   demo: {
     label: "Demo mode",
-    text: "A simulated BaseLinker account is built from your own catalog: cards for most variants, a duplicated SKU, a card without a SKU, a few variants missing. Orders get BaseLinker ids in seconds and move to \"Wysłane\" with an InPost number about three minutes later. Nothing leaves Medusa and stock is only planned. To connect a real account, set apiToken, inventoryId, warehouseId and orderStatusId in the plugin options.",
+    text: "A simulated BaseLinker account is built from your own catalog: cards for most variants, a duplicated SKU, a card without a SKU, a few variants missing. Orders get BaseLinker ids in seconds and move to \"Wysłane\" with an InPost number a few minutes later, some faster than others, like a real warehouse. Nothing leaves Medusa and stock is only planned. To connect a real account, set apiToken, inventoryId, warehouseId and orderStatusId in the plugin options.",
   },
   missing: {
     label: "Configuration",

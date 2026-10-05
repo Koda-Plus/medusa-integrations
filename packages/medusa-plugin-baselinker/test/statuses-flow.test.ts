@@ -9,6 +9,7 @@ import assert from "node:assert/strict"
 import { resolveOptions, type BaseLinkerPluginOptions } from "../src/modules/baselinker/lib/options.ts"
 import { maskSecrets } from "../src/modules/baselinker/lib/security.ts"
 import { syncStatuses } from "../src/workflows/baselinker/statuses.ts"
+import { demoPace } from "../src/modules/baselinker/lib/demo.ts"
 
 type Row = Record<string, any>
 
@@ -144,8 +145,8 @@ test("live: with a custom order source, one batched read covers the orders", asy
   assert.equal(s.orders[0].carrier, "InPost")
 })
 
-test("demo: the simulated warehouse ships an order sent four minutes ago", async () => {
-  const s = setup({ demo: true }, [{ order_id: "order_9", display_id: 9, bl_order_id: "9100001", bl_status_id: null, sent_at: new Date(Date.now() - 4 * 60 * 1000) }])
+test("demo: the simulated warehouse ships an order sent four minutes ago (at its pace)", async () => {
+  const s = setup({ demo: true }, [{ order_id: "order_9", display_id: 9, bl_order_id: "9100001", bl_status_id: null, sent_at: new Date(Date.now() - 4 * 60 * 1000 * demoPace("order_9")) }])
   const stats = await syncStatuses(s.container, "auto")
   assert.equal(stats?.changed, 1)
   assert.equal(s.orders[0].bl_status_name, "Wysłane")
