@@ -171,3 +171,236 @@ export function parseStatusList(raw: unknown): Map<number, string> {
   }
   return out
 }
+
+/* ------------------------------------------------------------------ */
+/* 0.2: variants, details and the account's dictionaries               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ids of main products that have variants on the list. With
+ * `include_variants` the list carries both; such a main product is a
+ * container (the variants are what is sold), so it is never linked itself.
+ */
+export function containerIds(cards: ReadonlyArray<{ blProductId: string; parentId: string | null }>): Set<string> {
+  const out = new Set<string>()
+  for (const c of cards) if (c.parentId) out.add(c.parentId)
+  return out
+}
+
+/** One sellable unit of a BaseLinker product: the product itself, or one of its variants. */
+export interface DetailsVariant {
+  blProductId: string
+  name: string
+  sku: string | null
+  ean: string | null
+  prices: Record<string, number> | null
+  stock: Record<string, number> | null
+}
+
+/** A main product of `getInventoryProductsData`, with what the catalog import needs. */
+export interface ProductDetails {
+  blProductId: string
+  parentId: string | null
+  isBundle: boolean
+  sku: string | null
+  ean: string | null
+  /** `text_fields.name` of the catalog language. */
+  name: string
+  description: string | null
+  taxRate: number | null
+  /** Kilograms, as BaseLinker keeps it. */
+  weightKg: number | null
+  categoryId: number | null
+  manufacturerId: number | null
+  /** Image addresses in gallery order (BaseLinker positions 1 to 16). */
+  images: string[]
+  prices: Record<string, number> | null
+  stock: Record<string, number> | null
+  variants: DetailsVariant[]
+}
+
+function num(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN
+  return Number.isFinite(n) ? n : null
+}
+
+function positiveId(value: unknown): number | null {
+  const id = idOf(value)
+  return id ? Number(id) : null
+}
+
+/** Gallery URLs in position order; channel-specific keys (`3|amazon_0`) are left out. */
+function imageList(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return []
+  const entries: Array<[number, string]> = []
+  if (Array.isArray(raw)) {
+    raw.forEach((v, i) => {
+      const url = text(v)
+      if (url) entries.push([i, url])
+    })
+  } else {
+    for (const [key, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (!/^\d+$/.test(key)) continue
+      const url = text(v)
+      if (url && /^https?:\/\//i.test(url)) entries.push([Number(key), url])
+    }
+  }
+  return entries.sort((a, b) => a[0] - b[0]).map(([, url]) => url).slice(0, 16)
+}
+
+/** `text_fields` value for a plain key (`name`, `description`), never a channel variant of it. */
+function textField(fields: unknown, key: string): string | null {
+  if (!fields || typeof fields !== "object" || Array.isArray(fields)) return null
+  return text((fields as Record<string, unknown>)[key])
+}
+
+/** `products` of a `getInventoryProductsData` answer into details. */
+export function parseProductsData(raw: unknown): ProductDetails[] {
+  const out: ProductDetails[] = []
+  for (const [key, p] of entriesOf(raw)) {
+    const blProductId = idOf(p.id) ?? idOf(p.product_id) ?? idOf(key)
+    if (!blProductId) continue
+    const variants: DetailsVariant[] = []
+    for (const [vKey, v] of entriesOf(p.variants)) {
+      const id = idOf(v.id) ?? idOf(v.variant_id) ?? idOf(vKey)
+      if (!id) continue
+      variants.push({
+        blProductId: id,
+        name: text(v.name) ?? "",
+        sku: text(v.sku),
+        ean: text(v.ean),
+        prices: numberMap(v.prices),
+        stock: numberMap(v.stock),
+      })
+    }
+    const name = textField(p.text_fields, "name") ?? text(p.name) ?? ""
+    out.push({
+      blProductId,
+      parentId: idOf(p.parent_id),
+      isBundle: p.is_bundle === true || p.is_bundle === 1 || p.is_bundle === "1",
+      sku: text(p.sku),
+      ean: text(p.ean),
+      name,
+      description: textField(p.text_fields, "description"),
+      taxRate: num(p.tax_rate),
+      weightKg: num(p.weight),
+      categoryId: positiveId(p.category_id),
+      manufacturerId: positiveId(p.manufacturer_id),
+      images: imageList(p.images),
+      prices: numberMap(p.prices),
+      stock: numberMap(p.stock),
+      variants: variants.sort((a, b) => Number(a.blProductId) - Number(b.blProductId)),
+    })
+  }
+  return out
+}
+
+export interface PriceGroupInfo {
+  id: number
+  name: string
+  currency: string
+  isDefault: boolean
+  /** Computed by BaseLinker from another group: writing into it is pointless. */
+  derived: boolean
+}
+
+export function parsePriceGroups(raw: unknown): PriceGroupInfo[] {
+  const out: PriceGroupInfo[] = []
+  for (const [key, g] of entriesOf(raw)) {
+    const id = positiveId(g.price_group_id) ?? positiveId(key)
+    if (!id) continue
+    out.push({
+      id,
+      name: text(g.name) ?? `#${id}`,
+      currency: (text(g.currency) ?? "").toUpperCase(),
+      isDefault: g.is_default === true || g.is_default === 1,
+      derived: (positiveId(g.source_price_group_id) ?? 0) > 0,
+    })
+  }
+  return out
+}
+
+export interface WarehouseInfo {
+  /** `bl_205`, `shop_2334`: the key stock maps use. */
+  key: string
+  type: string
+  id: number
+  name: string
+  /** Manual stock editing permitted (`stock_edition`). */
+  editable: boolean
+  isDefault: boolean
+}
+
+export function parseWarehouses(raw: unknown): WarehouseInfo[] {
+  const out: WarehouseInfo[] = []
+  for (const [, w] of entriesOf(raw)) {
+    const type = (text(w.warehouse_type) ?? "").toLowerCase()
+    const id = positiveId(w.warehouse_id)
+    if (!type || !id) continue
+    out.push({
+      key: `${type}_${id}`,
+      type,
+      id,
+      name: text(w.name) ?? `${type}_${id}`,
+      editable: w.stock_edition === true || w.stock_edition === 1,
+      isDefault: w.is_default === true || w.is_default === 1,
+    })
+  }
+  return out
+}
+
+/** Categories of `getInventoryCategories`: id to name (and parent). */
+export function parseCategories(raw: unknown): Map<number, { name: string; parentId: number | null }> {
+  const out = new Map<number, { name: string; parentId: number | null }>()
+  for (const [key, c] of entriesOf(raw)) {
+    const id = positiveId(c.category_id) ?? positiveId(key)
+    const name = text(c.name)
+    if (id && name) out.set(id, { name, parentId: positiveId(c.parent_id) })
+  }
+  return out
+}
+
+/** Manufacturers of `getInventoryManufacturers`: id to name. */
+export function parseManufacturers(raw: unknown): Map<number, string> {
+  const out = new Map<number, string>()
+  for (const [key, m] of entriesOf(raw)) {
+    const id = positiveId(m.manufacturer_id) ?? positiveId(key)
+    const name = text(m.name) ?? text(m.manufacturer_name)
+    if (id && name) out.set(id, name)
+  }
+  return out
+}
+
+export interface OrderSourceInfo {
+  type: string
+  id: number
+  name: string
+}
+
+/**
+ * `sources` of `getOrderSources`: a map of type to a map of id to name. The
+ * `order_return` type comes as a plain list and is not an order source to
+ * import, so it is left out.
+ */
+export function parseOrderSources(raw: unknown): OrderSourceInfo[] {
+  const out: OrderSourceInfo[] = []
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out
+  for (const [type, accounts] of Object.entries(raw as Record<string, unknown>)) {
+    if (type === "order_return" || !accounts || typeof accounts !== "object" || Array.isArray(accounts)) continue
+    for (const [id, name] of Object.entries(accounts as Record<string, unknown>)) {
+      if (!/^\d+$/.test(id)) continue
+      out.push({ type: type.toLowerCase(), id: Number(id), name: text(name) ?? `${type} ${id}` })
+    }
+  }
+  return out.sort((a, b) => (a.type === b.type ? a.id - b.id : a.type < b.type ? -1 : 1))
+}
+
+/** Custom order fields of `getOrderExtraFields`. */
+export function parseExtraFields(raw: unknown): Array<{ id: number; name: string; type: string }> {
+  const out: Array<{ id: number; name: string; type: string }> = []
+  for (const [key, f] of entriesOf(raw)) {
+    const id = positiveId(f.extra_field_id) ?? positiveId(key)
+    if (id) out.push({ id, name: text(f.name) ?? `#${id}`, type: text(f.editor_type) ?? "text" })
+  }
+  return out
+}

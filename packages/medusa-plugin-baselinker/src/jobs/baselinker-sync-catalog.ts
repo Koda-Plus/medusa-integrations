@@ -5,11 +5,14 @@ import { baselinkerService } from "../workflows/baselinker/runtime"
 import { syncBaseLinkerCatalogWorkflow } from "../workflows/baselinker/sync-baselinker-catalog"
 
 /**
- * CARDS AND THE STOCK PLAN, ONCE AN HOUR (at :15).
+ * CARDS AND EVERY PLAN, ONCE AN HOUR (at :15).
  *
  * One page of `getInventoryProductsList` is 1 000 cards, so an 11 000 card
  * catalog costs 13 requests an hour out of the 6 000 BaseLinker allows. The
- * stock plan comes from the same read at no extra cost.
+ * plans of the directions in force (stock either way, the catalog import or
+ * the card plan, the price push) come from the same read; only the catalog
+ * import and the price push of net prices read product details on top, 100
+ * cards per request.
  *
  * Quiet when there is nothing to do: `catalogSyncEnabled: false` or missing
  * options simply return. The workflow records every run.

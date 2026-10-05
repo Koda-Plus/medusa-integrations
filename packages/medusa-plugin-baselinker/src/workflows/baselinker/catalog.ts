@@ -1,30 +1,45 @@
 /**
  * ONE CATALOG RUN: read the BaseLinker cards (the API, or the simulated
  * account in demo mode), link them to Medusa variants, store the snapshot,
- * then plan the stock.
+ * then run the plans of the directions in force:
+ *
+ *   stock      BaseLinker to Medusa (the 0.1 plan), or Medusa to the
+ *              BaseLinker warehouse (`stockSource: "medusa"`)
+ *   catalog    BaseLinker products into Medusa (`catalogSource:
+ *              "baselinker"`), or Medusa variants into BaseLinker cards
+ *   prices     Medusa prices into the BaseLinker price group (when the
+ *              catalog lives in Medusa)
+ *
+ * Every plan is stored for the admin; only an armed writer applies it.
  *
  * THE COMPLETE-READ RULE (the same as the OLX plugin). A card missing from an
  * incomplete list looks exactly like a deleted one. So a complete read
  * replaces the snapshot, while an incomplete read only adds and updates: rows
- * it did not see stay as they were and keep their links, and no stock is
- * planned from it. Positive evidence (the card IS on the list with a new
- * SKU) is always applied.
+ * it did not see stay as they were and keep their links, and no plan is made
+ * from it. Positive evidence (the card IS on the list with a new SKU) is
+ * always applied.
  *
- * Read only towards BaseLinker, and the Medusa catalog is never changed:
- * cards are linked to the variants that exist, nothing is imported.
+ * VARIANTS (since 0.2). The list is read with `include_variants`. A main
+ * product that has variants is a container: it is stored (so the admin can
+ * show it) but never linked; its variants are what is sold and linked.
  */
 
 import type BaseLinkerModuleService from "../../modules/baselinker/service"
-import { parseProductsList, type CardInput, type CatalogRead } from "../../modules/baselinker/lib/catalog"
+import { containerIds, parseProductsList, type CardInput, type CatalogRead } from "../../modules/baselinker/lib/catalog"
 import type { RunDto, RunTrigger } from "../../modules/baselinker/lib/contract"
-import { buildDemoProducts, DEMO_WAREHOUSE_ID, type DemoVariant } from "../../modules/baselinker/lib/demo"
+import { buildDemoProducts, DEMO_WAREHOUSE_ID, type DemoOverlay, type DemoVariant } from "../../modules/baselinker/lib/demo"
 import type { ProductRow } from "../../modules/baselinker/lib/dto"
 import { matchCards, normalizeEan, type CardMatch, type CatalogVariant, type MatchSummary } from "../../modules/baselinker/lib/matching"
 import { toNumber } from "../../modules/baselinker/lib/numbers"
-import { canPlanStock, canReadCatalog, isValidWarehouseId } from "../../modules/baselinker/lib/options"
+import { canPlanStock, canPushPrices, canPushStock, canReadCatalog, isValidWarehouseId } from "../../modules/baselinker/lib/options"
 import type { StockCard, StockLevel, StockVariant } from "../../modules/baselinker/lib/stock"
+import { runCardsPlan } from "./cards"
+import { runCatalogImportPlan } from "./catalog-import"
+import { runPricePushPlan } from "./prices"
 import { baselinkerService, clientFor, exclusive, queryOf, recordRun, type QueryLike, type Scope } from "./runtime"
+import { loadDemoState, loadDirections } from "./settings"
 import { loadLevels, resolveLocation, runStockPlan, type LocationChoice } from "./stock"
+import { runStockPushPlan } from "./stock-push"
 
 export type CatalogTrigger = RunTrigger
 
@@ -36,7 +51,12 @@ export interface CatalogSyncResult {
   run: RunDto | null
   stockRun: RunDto | null
   skipped: null | "running" | "not_configured"
+  /** 0.2: the runs of the direction plans made after this read. */
+  planRuns?: RunDto[]
 }
+
+/** `match_source` of a main card that has variants: stored, never linked. */
+export const CONTAINER_SOURCE = "parent"
 
 /* ------------------------------------------------------------------ */
 /* Medusa variants                                                     */
@@ -51,7 +71,7 @@ interface VariantRecord {
   upc?: string | null
   product_id?: string | null
   manage_inventory?: boolean | null
-  product?: { title?: string | null } | null
+  product?: { title?: string | null; description?: string | null; thumbnail?: string | null; categories?: Array<{ name?: string | null }> | null } | null
   inventory_items?: Array<{ inventory_item_id?: string | null; required_quantity?: unknown }> | null
 }
 
@@ -59,11 +79,15 @@ export interface LoadedVariants {
   catalog: CatalogVariant[]
   stock: StockVariant[]
   titles: Map<string, string>
+  /** What the demo account needs to look like a real one. */
+  info: Map<string, { productTitle: string | null; variantTitle: string | null; description: string | null; image: string | null; category: string | null }>
 }
+
+const DEFAULT_TITLES = new Set(["default variant", "default", "domyślny", "domyślny wariant"])
 
 /** Every variant, 500 per query, with what the matching and the stock plan need. */
 export async function loadVariants(query: QueryLike): Promise<LoadedVariants> {
-  const out: LoadedVariants = { catalog: [], stock: [], titles: new Map() }
+  const out: LoadedVariants = { catalog: [], stock: [], titles: new Map(), info: new Map() }
   const take = 500
   for (let skip = 0; skip < 1_000_000; skip += take) {
     const { data } = await query.graph({
@@ -78,6 +102,9 @@ export async function loadVariants(query: QueryLike): Promise<LoadedVariants> {
         "product_id",
         "manage_inventory",
         "product.title",
+        "product.description",
+        "product.thumbnail",
+        "product.categories.name",
         "inventory_items.inventory_item_id",
         "inventory_items.required_quantity",
       ],
@@ -96,8 +123,16 @@ export async function loadVariants(query: QueryLike): Promise<LoadedVariants> {
           .filter((ii) => ii?.inventory_item_id)
           .map((ii) => ({ inventoryItemId: ii.inventory_item_id as string, requiredQuantity: toNumber(ii.required_quantity) || 1 })),
       })
-      const title = [productTitle, v.title && v.title !== "Default variant" ? v.title : null].filter(Boolean).join(" ")
+      const variantTitle = v.title && !DEFAULT_TITLES.has(v.title.trim().toLowerCase()) && v.title !== productTitle ? v.title : null
+      const title = [productTitle, variantTitle].filter(Boolean).join(" ")
       if (title) out.titles.set(v.id, title)
+      out.info.set(v.id, {
+        productTitle,
+        variantTitle,
+        description: v.product?.description ?? null,
+        image: v.product?.thumbnail ?? null,
+        category: (v.product?.categories ?? []).map((c) => c?.name ?? "").find(Boolean) ?? null,
+      })
     }
     if (data.length < take) break
   }
@@ -131,8 +166,14 @@ async function demoPrices(query: QueryLike, ids: string[]): Promise<Map<string, 
   return out
 }
 
-/** The simulated account: built from the store's own variants, read through the real parser. */
-async function demoRead(query: QueryLike, variants: LoadedVariants, levels: StockLevel[]): Promise<CatalogRead> {
+export interface DemoRead {
+  read: CatalogRead
+  list: Record<string, Record<string, unknown>>
+  variants: DemoVariant[]
+}
+
+/** The simulated account: built from the store's own variants and what the simulated writers did, read through the real parser. */
+export async function demoRead(svc: BaseLinkerModuleService, query: QueryLike, variants: LoadedVariants, levels: StockLevel[]): Promise<DemoRead> {
   const available = new Map(levels.map((l) => [l.inventoryItemId, Math.max(0, l.stockedQuantity - l.reservedQuantity)]))
   const withSku = variants.stock.filter((v) => v.sku && v.sku.trim())
   const prices = await demoPrices(
@@ -144,16 +185,26 @@ async function demoRead(query: QueryLike, variants: LoadedVariants, levels: Stoc
     const single = v.manageInventory && v.inventoryItems.length === 1 ? v.inventoryItems[0].inventoryItemId : null
     const codes = catalogById.get(v.id)?.codes ?? []
     const ean = codes.map((c) => normalizeEan(c)).find((c): c is string => Boolean(c)) ?? null
+    const info = variants.info.get(v.id)
     return {
       sku: (v.sku as string).trim(),
       ean,
       title: variants.titles.get(v.id) ?? (v.sku as string),
       available: single !== null ? available.get(single) ?? 0 : null,
       price: prices.get(v.id) ?? null,
+      productId: v.productId,
+      productTitle: info?.productTitle ?? null,
+      variantTitle: info?.variantTitle ?? null,
+      description: info?.description ?? null,
+      image: info?.image ?? null,
+      category: info?.category ?? null,
     }
   })
-  const page = parseProductsList(buildDemoProducts(demoVariants), DEMO_WAREHOUSE_ID)
-  return { cards: page.cards, complete: true, pages: 1, reason: null }
+  const state = await loadDemoState(svc)
+  const overlay: DemoOverlay = { cards: state.cards, cardUpdates: state.cardUpdates, stock: state.stock, prices: state.prices }
+  const list = buildDemoProducts(demoVariants, overlay)
+  const page = parseProductsList(list, DEMO_WAREHOUSE_ID)
+  return { read: { cards: page.cards, complete: true, pages: 1, reason: null }, list, variants: demoVariants }
 }
 
 /* ------------------------------------------------------------------ */
@@ -174,7 +225,7 @@ function rowToCard(r: ProductRow): CardInput {
   }
 }
 
-function desiredRow(card: CardInput, m: CardMatch | undefined, demo: boolean): ProductData {
+function desiredRow(card: CardInput, m: CardMatch | undefined, demo: boolean, container: boolean): ProductData {
   return {
     bl_product_id: card.blProductId,
     parent_id: card.parentId,
@@ -183,13 +234,13 @@ function desiredRow(card: CardInput, m: CardMatch | undefined, demo: boolean): P
     name: card.name,
     stock: card.stock,
     price: card.prices,
-    match_key: m?.key ?? null,
-    match_source: m?.source ?? null,
-    variant_id: m?.variant?.id ?? null,
-    product_id: m?.variant?.productId || null,
-    variant_sku: m?.variant?.sku ?? null,
-    product_title: m?.variant?.productTitle ?? null,
-    conflict: m?.conflict ?? null,
+    match_key: container ? null : m?.key ?? null,
+    match_source: container ? CONTAINER_SOURCE : m?.source ?? null,
+    variant_id: container ? null : m?.variant?.id ?? null,
+    product_id: container ? null : m?.variant?.productId || null,
+    variant_sku: container ? null : m?.variant?.sku ?? null,
+    product_title: container ? null : m?.variant?.productTitle ?? null,
+    conflict: container ? null : m?.conflict ?? null,
     demo,
   }
 }
@@ -241,12 +292,19 @@ function chunks<T>(list: readonly T[], size: number): T[][] {
   return out
 }
 
-interface Applied {
+export interface Applied {
   summary: MatchSummary
   created: number
   updated: number
   removed: number
   stockCards: StockCard[]
+  /** Every card of this read and of the kept snapshot (containers included). */
+  cards: CardInput[]
+  /** Card id to linked variant id (containers and conflicts left out). */
+  links: Map<string, string>
+  /** Card id to its conflict. */
+  conflicts: Map<string, string>
+  containers: number
 }
 
 async function applyRead(svc: BaseLinkerModuleService, read: CatalogRead, variants: CatalogVariant[], demo: boolean): Promise<Applied> {
@@ -264,15 +322,18 @@ async function applyRead(svc: BaseLinkerModuleService, read: CatalogRead, varian
   const removeIds = otherMode.map((r) => r.id)
   if (read.complete) for (const r of sameMode) if (!fresh.has(r.bl_product_id)) removeIds.push(r.id)
 
+  /* A main card with variants is a container: never matched. */
+  const parents = containerIds(universe.map((u) => u.card))
+  const sellable = universe.filter((u) => !parents.has(u.card.blProductId))
   const { matches, summary } = matchCards(
-    universe.map((u) => u.card),
+    sellable.map((u) => u.card),
     variants,
   )
 
   const creates: ProductData[] = []
   const updates: Array<ProductData & { id: string }> = []
   for (const u of universe) {
-    const want = desiredRow(u.card, matches.get(u.card.blProductId), demo)
+    const want = desiredRow(u.card, matches.get(u.card.blProductId), demo, parents.has(u.card.blProductId))
     if (!u.row) creates.push(want)
     else if (changed(u.row, want)) updates.push({ id: u.row.id, ...want })
   }
@@ -281,11 +342,37 @@ async function applyRead(svc: BaseLinkerModuleService, read: CatalogRead, varian
   for (const part of chunks(creates, 200)) await svc.createBaseLinkerProducts(part as never)
   for (const part of chunks(updates, 200)) await svc.updateBaseLinkerProducts(part as never)
 
-  const stockCards: StockCard[] = universe.map((u) => {
+  const links = new Map<string, string>()
+  const conflicts = new Map<string, string>()
+  const stockCards: StockCard[] = sellable.map((u) => {
     const m = matches.get(u.card.blProductId)
+    if (m?.variant && !m.conflict) links.set(u.card.blProductId, m.variant.id)
+    if (m?.conflict) conflicts.set(u.card.blProductId, m.conflict)
     return { blProductId: u.card.blProductId, variantId: m?.variant?.id ?? null, conflict: m?.conflict ?? null, stock: u.card.stock }
   })
-  return { summary, created: creates.length, updated: updates.length, removed: removeIds.length, stockCards }
+  return {
+    summary,
+    created: creates.length,
+    updated: updates.length,
+    removed: removeIds.length,
+    stockCards,
+    cards: universe.map((u) => u.card),
+    links,
+    conflicts,
+    containers: parents.size,
+  }
+}
+
+/** What Medusa can still sell per variant (single inventory item, level at the location). */
+function availableByVariant(variants: readonly StockVariant[], levels: readonly StockLevel[]): Map<string, number> {
+  const byItem = new Map(levels.map((l) => [l.inventoryItemId, Math.max(0, l.stockedQuantity - Math.max(0, l.reservedQuantity))]))
+  const out = new Map<string, number>()
+  for (const v of variants) {
+    if (!v.manageInventory || v.inventoryItems.length !== 1 || v.inventoryItems[0].requiredQuantity !== 1) continue
+    const qty = byItem.get(v.inventoryItems[0].inventoryItemId)
+    if (qty !== undefined) out.set(v.id, qty)
+  }
+  return out
 }
 
 /* ------------------------------------------------------------------ */
@@ -301,8 +388,9 @@ export async function runCatalogSync(scope: Scope, input: CatalogSyncInput = {})
     const startedAt = new Date()
     try {
       const query = queryOf(scope)
+      const directions = await loadDirections(svc)
       const variants = await loadVariants(query)
-      const planning = canPlanStock(o)
+      const planning = o.stockSync !== "off" && (directions.stock === "medusa" ? canPushStock(o) : canPlanStock(o))
       let location: LocationChoice = { id: null, reason: "no_location" }
       let levels: StockLevel[] = []
       if (planning || o.demo) {
@@ -310,7 +398,8 @@ export async function runCatalogSync(scope: Scope, input: CatalogSyncInput = {})
         if (location.id) levels = await loadLevels(scope, location.id)
       }
 
-      const read = o.demo ? await demoRead(query, variants, levels) : await liveRead(svc)
+      const demo = o.demo ? await demoRead(svc, query, variants, levels) : null
+      const read = demo ? demo.read : await liveRead(svc)
       const applied = await applyRead(svc, read, variants.catalog, o.demo)
       const s = applied.summary
       const status = read.complete ? "ok" : read.pages === 0 ? "error" : "partial"
@@ -323,6 +412,7 @@ export async function runCatalogSync(scope: Scope, input: CatalogSyncInput = {})
         counts: {
           pages: read.pages,
           cards: s.cards,
+          containers: applied.containers,
           linked: s.linked,
           linkedBySku: s.linkedBySku,
           linkedByEan: s.linkedByEan,
@@ -349,10 +439,36 @@ export async function runCatalogSync(scope: Scope, input: CatalogSyncInput = {})
             (read.complete ? "" : ` incomplete: ${svc.mask(read.reason ?? "unknown reason")}`),
         )
 
-      const stockRun = planning
-        ? await runStockPlan(scope, { trigger, complete: read.complete, cards: applied.stockCards, variants: variants.stock, location, levels })
-        : null
-      return { run, stockRun, skipped: null }
+      /* Stock: one direction at a time. */
+      let stockRun: RunDto | null = null
+      if (planning) {
+        stockRun =
+          directions.stock === "medusa"
+            ? await runStockPushPlan(scope, { trigger, read, stockCards: applied.stockCards, variants: variants.stock, location, levels })
+            : await runStockPlan(scope, { trigger, complete: read.complete, cards: applied.stockCards, variants: variants.stock, location, levels })
+      }
+      const demoData = demo ? { list: demo.list, variants: demo.variants } : undefined
+
+      /* Catalog and prices. A failure here is recorded on its own run and never fails the read. */
+      const planRuns: RunDto[] = []
+      const guard = async (what: string, fn: () => Promise<RunDto | null>) => {
+        try {
+          const r = await fn()
+          if (r) planRuns.push(r)
+        } catch (err) {
+          svc.getLogger().error(`[baselinker] ${what} plan failed: ${svc.mask((err as Error)?.message ?? String(err))}`)
+        }
+      }
+      if (directions.catalog === "baselinker") {
+        await guard("catalog import", () => runCatalogImportPlan(scope, { trigger, read, links: applied.links, demo: demoData }))
+      } else {
+        const available = availableByVariant(variants.stock, levels)
+        await guard("cards", () => runCardsPlan(scope, { trigger, read, cards: applied.cards, links: applied.links, conflicts: applied.conflicts, available }))
+        if (canPushPrices(o)) {
+          await guard("prices", () => runPricePushPlan(scope, { trigger, read, cards: applied.cards, links: applied.links, conflicts: applied.conflicts, demo: demoData }))
+        }
+      }
+      return { run, stockRun, skipped: null, planRuns }
     } catch (err) {
       /* A BaseLinker failure is not a store failure: record it and move on. */
       const message = svc.mask(err instanceof Error ? err.message : String(err))

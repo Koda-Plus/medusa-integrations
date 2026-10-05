@@ -108,7 +108,7 @@ export async function lastRun(svc: BaseLinkerModuleService, kind: RunKind): Prom
 /* One run of each kind at a time per process                          */
 /* ------------------------------------------------------------------ */
 
-export type JobKind = RunKind | "check"
+export type JobKind = RunKind | "check" | "imports_statuses" | "journal"
 
 const RUNNING_KEY = Symbol.for("koda.baselinker.running")
 type Holder = typeof globalThis & { [RUNNING_KEY]?: Set<string> }
@@ -176,11 +176,19 @@ interface LockingLike {
  * caller simply moves on, the holder finishes the job.
  */
 export async function withOrderLock<T>(scope: Scope, orderId: string, fn: () => Promise<T>): Promise<T | null> {
+  return withLock(scope, `baselinker:order:${orderId}`, fn)
+}
+
+/**
+ * The same try-lock for any key: imported marketplace orders lock their
+ * BaseLinker id (`baselinker:import:<id>`) and their marketplace reference
+ * (`marketplace-order-ref:<ref>`, a key other plugins can take too).
+ */
+export async function withLock<T>(scope: Scope, key: string, fn: () => Promise<T>): Promise<T | null> {
   const holder = globalThis as LockHolder
   const local = holder[LOCAL_LOCKS] ?? (holder[LOCAL_LOCKS] = new Set<string>())
-  if (local.has(orderId)) return null
-  local.add(orderId)
-  const key = `baselinker:order:${orderId}`
+  if (local.has(key)) return null
+  local.add(key)
   const ownerId = randomUUID()
   let locking: LockingLike | null = null
   try {
@@ -202,7 +210,7 @@ export async function withOrderLock<T>(scope: Scope, orderId: string, fn: () => 
       if (locking) await locking.release(key, { ownerId }).catch(() => false)
     }
   } finally {
-    local.delete(orderId)
+    local.delete(key)
   }
 }
 

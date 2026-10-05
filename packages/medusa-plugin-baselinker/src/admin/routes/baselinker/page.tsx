@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
-import type { CardFilter, CheckResult, OrderFilter, StatusResponse } from "../../../modules/baselinker/lib/contract"
+import type { CardFilter, CheckResult, OrderFilter, StatusResponse, SyncWhat } from "../../../modules/baselinker/lib/contract"
 import {
   baselinkerKeys,
   errorMessage,
@@ -18,7 +18,21 @@ import {
   useBaseLinkerStock,
   useBaseLinkerSync,
 } from "../../lib/baselinker-api"
+import { ViewSwitch, usePageView } from "../../lib/baselinker-guide"
+import { GuideView } from "../../lib/baselinker-guide-view"
 import { BaseLinkerIcon } from "../../lib/baselinker-icon"
+import {
+  DirectionsSection,
+  EmptyRow,
+  ImportsSection,
+  InvoicesSection,
+  PAGE_SIZE,
+  Pagination,
+  PlanSection,
+  ReferencesBlock,
+  ReturnsSection,
+  useDebounced,
+} from "../../lib/baselinker-panel"
 import {
   ChangeStatusBadge,
   ConflictBadge,
@@ -37,16 +51,16 @@ import {
 } from "../../lib/baselinker-ui"
 
 /**
- * BaseLinker by Koda Plus: the connection, the stock plan, the cards linked to
- * variants, the order outbox with status and tracking, and the history of
- * background runs.
+ * BaseLinker by Koda Plus: the Panel (connection, source of truth and
+ * writers, the plans, cards, orders both ways, returns, invoice numbers and
+ * the history of background runs) and the Setup guide, switched in the
+ * header and kept in the URL (`?view=guide`).
  */
-const PAGE_SIZE = 15
-
 const BaseLinkerPage = () => {
   const { t, i18n } = useTranslation("baselinker")
   const lang = i18n.language || "en"
   const client = useQueryClient()
+  const [view, setView] = usePageView()
   const [pollUntil, setPollUntil] = useState(0)
   const status = useBaseLinkerStatus(pollUntil)
   const s = status.data
@@ -68,7 +82,7 @@ const BaseLinkerPage = () => {
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} onAction={poll} />
+        <Header status={s} onAction={poll} view={view} onView={setView} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -76,7 +90,7 @@ const BaseLinkerPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s?.mode === "demo" ? (
+        {view === "panel" && s?.mode === "demo" ? (
           <div className="px-6 py-4">
             <InlineTip variant="info" label={t("demo.label")}>
               {t("demo.text")}
@@ -90,7 +104,7 @@ const BaseLinkerPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s ? (
+        {s && view === "panel" ? (
           <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4 xl:grid-cols-8">
             <StatTile label={t("stats.cards")} value={fmtNumber(s.counts.cards, lang)} active={cardFilter === "all"} onClick={() => setCardFilter("all")} />
             <StatTile label={t("stats.linked")} value={fmtNumber(s.counts.linked, lang)} tone="green" active={cardFilter === "linked"} onClick={() => setCardFilter("linked")} />
@@ -115,24 +129,47 @@ const BaseLinkerPage = () => {
         ) : null}
       </Container>
 
-      {s ? <ConnectionSection status={s} lang={lang} /> : null}
-      {s ? <StockSection status={s} lang={lang} /> : null}
-      {s ? <CardsSection status={s} lang={lang} filter={cardFilter} onFilter={setCardFilter} /> : null}
-      {s ? <OrdersSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
-      <RunsSection lang={lang} poll={polling} />
+      {s && view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+      {s && view === "panel" ? (
+        <>
+          <ReferencesBlock status={s} lang={lang} />
+          <DirectionsSection status={s} lang={lang} />
+          <ConnectionSection status={s} lang={lang} />
+          {s.directions.catalog === "baselinker" ? <PlanSection kind="catalog_import" status={s} lang={lang} /> : <PlanSection kind="cards" status={s} lang={lang} />}
+          {s.options.stockSync !== "off" ? s.directions.stock === "medusa" ? <PlanSection kind="stock_push" status={s} lang={lang} /> : <StockSection status={s} lang={lang} /> : null}
+          {s.directions.catalog === "medusa" && s.more.priceGroupId !== null ? <PlanSection kind="prices" status={s} lang={lang} /> : null}
+          <CardsSection status={s} lang={lang} filter={cardFilter} onFilter={setCardFilter} />
+          <OrdersSection status={s} lang={lang} poll={polling} onAction={poll} />
+          <ImportsSection status={s} lang={lang} poll={polling} />
+          {s.more.returnsSync || s.counts2.returns > 0 ? <ReturnsSection status={s} lang={lang} /> : null}
+          <InvoicesSection status={s} lang={lang} />
+          <RunsSection lang={lang} poll={polling} />
+        </>
+      ) : null}
     </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
-function Header({ status, onAction }: { status: StatusResponse | undefined; onAction: () => void }) {
+function Header({
+  status,
+  onAction,
+  view,
+  onView,
+}: {
+  status: StatusResponse | undefined
+  onAction: () => void
+  view: "panel" | "guide"
+  onView: (v: "panel" | "guide") => void
+}) {
   const { t } = useTranslation("baselinker")
   const sync = useBaseLinkerSync()
   const running = new Set(status?.running ?? [])
   const f = status?.features
+  const f2 = status?.features2
 
-  const start = async (what: "catalog" | "statuses" | "orders") => {
+  const start = async (what: SyncWhat) => {
     try {
       const r = await sync.mutateAsync(what)
       if (r.alreadyRunning) toast.info(t("toast.already"))
@@ -158,23 +195,38 @@ function Header({ status, onAction }: { status: StatusResponse | undefined; onAc
           {t("subtitle")}
         </Text>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button size="small" variant="secondary" disabled={!f?.statuses || running.has("statuses")} onClick={() => void start("statuses")}>
-          {running.has("statuses") ? t("actions.running") : t("actions.syncStatuses")}
-        </Button>
-        <Button size="small" variant="secondary" disabled={!f?.orders || running.has("orders")} onClick={() => void start("orders")}>
-          {running.has("orders") ? t("actions.running") : t("actions.sendQueue")}
-        </Button>
-        <Button
-          size="small"
-          variant="primary"
-          isLoading={sync.isPending && sync.variables === "catalog"}
-          disabled={!f?.catalog || running.has("catalog")}
-          onClick={() => void start("catalog")}
-        >
-          <ArrowPath />
-          {running.has("catalog") ? t("actions.running") : t("actions.syncCatalog")}
-        </Button>
+      <div className="flex flex-col items-start gap-3 md:items-end">
+        <ViewSwitch value={view} onChange={onView} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+        {view === "panel" ? (
+          <div className="flex flex-wrap gap-2 md:justify-end">
+            {f2?.returns ? (
+              <Button size="small" variant="secondary" disabled={running.has("returns")} onClick={() => void start("returns")}>
+                {running.has("returns") ? t("actions.running") : t("actions.readReturns")}
+              </Button>
+            ) : null}
+            {f2?.orderImport ? (
+              <Button size="small" variant="secondary" disabled={running.has("imports")} onClick={() => void start("imports")}>
+                {running.has("imports") ? t("actions.running") : t("actions.importOrders")}
+              </Button>
+            ) : null}
+            <Button size="small" variant="secondary" disabled={!f?.statuses || running.has("statuses")} onClick={() => void start("statuses")}>
+              {running.has("statuses") ? t("actions.running") : t("actions.syncStatuses")}
+            </Button>
+            <Button size="small" variant="secondary" disabled={!f?.orders || running.has("orders")} onClick={() => void start("orders")}>
+              {running.has("orders") ? t("actions.running") : t("actions.sendQueue")}
+            </Button>
+            <Button
+              size="small"
+              variant="primary"
+              isLoading={sync.isPending && sync.variables === "catalog"}
+              disabled={!f?.catalog || running.has("catalog")}
+              onClick={() => void start("catalog")}
+            >
+              <ArrowPath />
+              {running.has("catalog") ? t("actions.running") : t("actions.syncCatalog")}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -182,7 +234,7 @@ function Header({ status, onAction }: { status: StatusResponse | undefined; onAc
 
 /* ------------------------------------------------------------------ */
 
-function CheckLines({ result, configured }: { result: CheckResult; configured: StatusResponse["options"] }) {
+function CheckLines({ result, configured, more }: { result: CheckResult; configured: StatusResponse["options"]; more: StatusResponse["more"] }) {
   const { t } = useTranslation("baselinker")
   if (!result.ok) {
     return (
@@ -208,6 +260,16 @@ function CheckLines({ result, configured }: { result: CheckResult; configured: S
         : { ok: false, text: t("connection.warehouseMissing", { id: warehouseId, list: result.warehouses.join(", ") || "-" }) },
     )
   }
+  /* The price group the import reads and the price push writes: it must exist, be a standard group, and be in the Medusa currency. */
+  const groups = result.priceGroups ?? []
+  if (more.priceGroupId !== null && groups.length > 0) {
+    const group = groups.find((g) => g.id === more.priceGroupId)
+    if (!group) lines.push({ ok: false, text: t("connection.priceGroupMissing", { id: more.priceGroupId, list: groups.map((g) => `${g.id} ${g.name}`).join(", ") }) })
+    else if (group.derived) lines.push({ ok: false, text: t("connection.priceGroupDerived", { id: group.id, name: group.name }) })
+    else if (group.currency && group.currency.toLowerCase() !== more.priceCurrency.toLowerCase())
+      lines.push({ ok: false, text: t("connection.priceGroupCurrency", { id: group.id, currency: group.currency, medusa: more.priceCurrency.toUpperCase() }) })
+    else lines.push({ ok: true, text: t("connection.priceGroupFound", { id: group.id, name: group.name, currency: group.currency }) })
+  }
   const allOk = lines.every((l) => l.ok)
   return (
     <InlineTip variant={allOk ? "success" : "warning"} label={t("actions.check")}>
@@ -217,6 +279,42 @@ function CheckLines({ result, configured }: { result: CheckResult; configured: S
         ))}
       </span>
     </InlineTip>
+  )
+}
+
+/** What the account has (from the last check), to pick the ids of the options from. */
+function CheckLists({ result }: { result: CheckResult }) {
+  const { t } = useTranslation("baselinker")
+  if (!result.ok) return null
+  const blocks: Array<{ label: string; items: string[] }> = [
+    { label: t("connection.priceGroups"), items: (result.priceGroups ?? []).map((g) => `${g.id} ${g.name} (${g.currency}${g.derived ? `, ${t("connection.derived")}` : ""})`) },
+    {
+      label: t("connection.warehouseList"),
+      items: (result.warehouseDetails ?? []).map((w) => `${w.key} ${w.name} (${w.editable && w.type === "bl" ? t("connection.takesStock") : t("connection.externalStock")})`),
+    },
+    { label: t("connection.sources"), items: (result.orderSources ?? []).map((s) => `${s.type}:${s.id} ${s.name}`) },
+    { label: t("connection.statusList"), items: (result.statuses ?? []).map((s) => `${s.id} ${s.name}`) },
+    { label: t("connection.extraFields"), items: (result.extraFields ?? []).map((f) => `custom:${f.id} ${f.name}`) },
+  ].filter((b) => b.items.length > 0)
+  if (blocks.length === 0 && !result.journal) return null
+  return (
+    <div className="flex flex-col gap-y-3 px-6 py-4">
+      <Text size="xsmall" className="text-ui-fg-muted">
+        {t("connection.lists")}
+      </Text>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {blocks.map((b) => (
+          <Fact key={b.label} label={b.label} mono>
+            <span className="flex flex-col gap-y-0.5">
+              {b.items.slice(0, 12).map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </span>
+          </Fact>
+        ))}
+        {result.journal ? <Fact label={t("connection.journal")}>{t(`connection.journalStates.${result.journal}`)}</Fact> : null}
+      </div>
+    </div>
   )
 }
 
@@ -271,6 +369,9 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
         <Fact label={t("connection.orderStatus")} mono>
           {o.orderStatusId ?? (demo ? "100001" : t("connection.notSet"))}
         </Fact>
+        <Fact label={t("connection.priceGroup")} mono>
+          {status.more.priceGroupId ?? t("connection.notSet")}
+        </Fact>
         <Fact label={t("connection.source")} mono>
           {o.customSourceId ?? t("connection.none")}
         </Fact>
@@ -296,12 +397,13 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
       </div>
       {result ? (
         <div className="flex flex-col gap-y-1 px-6 py-4">
-          <CheckLines result={result} configured={o} />
+          <CheckLines result={result} configured={o} more={status.more} />
           <Text size="xsmall" className="text-ui-fg-muted">
             {t("connection.checkedAt", { time: fmtDateTime(result.checkedAt, lang) })}
           </Text>
         </div>
       ) : null}
+      {result ? <CheckLists result={result} /> : null}
       <div className="px-6 py-3">
         <Text size="xsmall" className="text-ui-fg-muted">
           {t("connection.schedule")}
@@ -312,51 +414,6 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
 }
 
 /* ------------------------------------------------------------------ */
-
-function Pagination({ count, page, onPage }: { count: number; page: number; onPage: (p: number) => void }) {
-  const { t } = useTranslation("baselinker")
-  const pageCount = Math.max(1, Math.ceil(count / PAGE_SIZE))
-  return (
-    <Table.Pagination
-      count={count}
-      pageSize={PAGE_SIZE}
-      pageIndex={page}
-      pageCount={pageCount}
-      canPreviousPage={page > 0}
-      canNextPage={page + 1 < pageCount}
-      previousPage={() => onPage(Math.max(0, page - 1))}
-      nextPage={() => onPage(page + 1)}
-      translations={{
-        of: t("pagination.of"),
-        results: t("pagination.results"),
-        pages: t("pagination.pages"),
-        prev: t("pagination.prev"),
-        next: t("pagination.next"),
-      }}
-    />
-  )
-}
-
-function useDebounced(value: string, ms = 300): string {
-  const [out, setOut] = useState(value)
-  useEffect(() => {
-    const id = window.setTimeout(() => setOut(value.trim()), ms)
-    return () => window.clearTimeout(id)
-  }, [value, ms])
-  return out
-}
-
-function EmptyRow({ cols, text }: { cols: number; text: string }) {
-  return (
-    <Table.Row>
-      <td colSpan={cols} className="px-6 py-6 text-center">
-        <Text size="small" className="text-ui-fg-muted">
-          {text}
-        </Text>
-      </td>
-    </Table.Row>
-  )
-}
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
 
@@ -373,12 +430,13 @@ function StockSection({ status, lang }: { status: StatusResponse; lang: string }
   const counts = (run?.counts ?? {}) as Record<string, unknown>
   const demo = status.mode === "demo"
   const o = status.options
+  const writer = status.writers.find((w) => w.key === "stockToMedusa")
 
   const modeText = demo
     ? t("stock.modeDemo")
     : o.stockSync === "off"
       ? t("stock.modeOff")
-      : o.stockSync === "write"
+      : writer?.live
         ? t("stock.modeWrite", { max: fmtNumber(o.maxStockChangesPerRun, lang) })
         : t("stock.modePlan")
 
@@ -404,12 +462,10 @@ function StockSection({ status, lang }: { status: StatusResponse; lang: string }
             {t("stock.subtitle")}
           </Text>
         </div>
-        <div className="flex shrink-0 items-center gap-x-2">
-          {run ? <RunStatusBadge status={run.status} /> : null}
-        </div>
+        <div className="flex shrink-0 items-center gap-x-2">{run ? <RunStatusBadge status={run.status} /> : null}</div>
       </div>
       <div className="flex flex-col gap-y-2 px-6 py-4">
-        <InlineTip variant={o.stockSync === "write" && !demo ? "warning" : "info"} label={t(`connection.stockModes.${demo ? "plan" : o.stockSync}`)}>
+        <InlineTip variant={writer?.live && !demo ? "warning" : "info"} label={t("directions.writers.stockToMedusa")}>
           {modeText}
         </InlineTip>
         <Text size="xsmall" className="text-ui-fg-muted">
@@ -466,21 +522,15 @@ function StockSection({ status, lang }: { status: StatusResponse; lang: string }
                   <Table.Cell className="text-right">
                     <div className="flex flex-col items-end">
                       <span className="tabular-nums">{c.medusaStocked === null ? t("stock.noLevel") : fmtNumber(c.medusaStocked, lang)}</span>
-                      {c.medusaReserved > 0 ? (
-                        <span className="text-ui-fg-muted txt-compact-xsmall">{t("stock.reserved", { count: c.medusaReserved })}</span>
-                      ) : null}
+                      {c.medusaReserved > 0 ? <span className="text-ui-fg-muted txt-compact-xsmall">{t("stock.reserved", { count: c.medusaReserved })}</span> : null}
                     </div>
                   </Table.Cell>
-                  <Table.Cell className={c.blStock < 0 ? "text-right tabular-nums text-ui-tag-red-text" : "text-right tabular-nums"}>
-                    {fmtNumber(c.blStock, lang)}
-                  </Table.Cell>
+                  <Table.Cell className={c.blStock < 0 ? "text-right tabular-nums text-ui-tag-red-text" : "text-right tabular-nums"}>{fmtNumber(c.blStock, lang)}</Table.Cell>
                   <Table.Cell className="text-right tabular-nums">
                     {fmtNumber(c.target, lang)}
                     {c.afterStocked !== null && c.afterStocked !== c.target ? <span className="text-ui-tag-orange-text"> ({fmtNumber(c.afterStocked, lang)})</span> : null}
                   </Table.Cell>
-                  <Table.Cell className={c.delta < 0 ? "text-right tabular-nums text-ui-tag-red-text" : "text-right tabular-nums text-ui-tag-green-text"}>
-                    {fmtDelta(c.delta, lang)}
-                  </Table.Cell>
+                  <Table.Cell className={c.delta < 0 ? "text-right tabular-nums text-ui-tag-red-text" : "text-right tabular-nums text-ui-tag-green-text"}>{fmtDelta(c.delta, lang)}</Table.Cell>
                   <Table.Cell>
                     <ChangeStatusBadge status={c.status} />
                   </Table.Cell>
@@ -515,17 +565,7 @@ function cardCount(status: StatusResponse, f: CardFilter): number {
   }
 }
 
-function CardsSection({
-  status,
-  lang,
-  filter,
-  onFilter,
-}: {
-  status: StatusResponse
-  lang: string
-  filter: CardFilter
-  onFilter: (f: CardFilter) => void
-}) {
+function CardsSection({ status, lang, filter, onFilter }: { status: StatusResponse; lang: string; filter: CardFilter; onFilter: (f: CardFilter) => void }) {
   const { t } = useTranslation("baselinker")
   const [search, setSearch] = useState("")
   const q = useDebounced(search)
@@ -575,6 +615,11 @@ function CardsSection({
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono text-ui-fg-muted txt-compact-xsmall">#{c.blProductId}</span>
                         {c.parentId ? <span className="text-ui-fg-muted txt-compact-xsmall">{t("cards.variantOf", { id: c.parentId })}</span> : null}
+                        {c.isContainer ? (
+                          <Badge size="2xsmall" color="blue">
+                            {t("productWidget.container")}
+                          </Badge>
+                        ) : null}
                         {c.demo ? (
                           <Badge size="2xsmall" color="purple">
                             {t("cards.sample")}
@@ -599,7 +644,7 @@ function CardsSection({
                       </div>
                     ) : (
                       <Text size="small" className="text-ui-fg-muted">
-                        {t("cards.noKey")}
+                        {c.isContainer ? "" : t("cards.noKey")}
                       </Text>
                     )}
                   </Table.Cell>
@@ -614,7 +659,7 @@ function CardsSection({
                       </Link>
                     ) : (
                       <Text size="small" className="text-ui-fg-muted">
-                        {c.conflict ? "" : c.matchKey ? t("cards.noVariant") : ""}
+                        {c.conflict || c.isContainer ? "" : c.matchKey ? t("cards.noVariant") : ""}
                       </Text>
                     )}
                   </Table.Cell>

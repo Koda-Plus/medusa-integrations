@@ -99,6 +99,23 @@ export const ORDER_METADATA = {
   trackingNumber: "baselinker_tracking_number",
   trackingUrl: "baselinker_tracking_url",
   carrier: "baselinker_carrier",
+  /** `true` on orders this plugin created from BaseLinker: they never go back to BaseLinker. */
+  imported: "baselinker_imported",
+  source: "baselinker_order_source",
+  externalOrderId: "baselinker_external_order_id",
+  /**
+   * Shared with the other Koda Plus marketplace plugins: `"<source>:<external id>"`,
+   * for Allegro `"allegro:<checkout form id>"`. One marketplace order, one Medusa order,
+   * whichever plugin imports it first.
+   */
+  marketplaceRef: "marketplace_order_ref",
+} as const
+
+/** Product metadata of products created by the catalog import. */
+export const PRODUCT_METADATA = {
+  /** The BaseLinker main product the Medusa product was created from. */
+  productId: "baselinker_product_id",
+  manufacturer: "manufacturer",
 } as const
 
 /** Events the plugin emits on the Medusa event bus. */
@@ -106,7 +123,88 @@ export const PLUGIN_EVENTS = {
   orderSent: "baselinker.order_sent",
   orderFailed: "baselinker.order_failed",
   orderStatusChanged: "baselinker.order_status_changed",
+  orderImported: "baselinker.order_imported",
+  orderImportFailed: "baselinker.order_import_failed",
+  planApplied: "baselinker.plan_applied",
+  invoiceNumberWritten: "baselinker.invoice_number_written",
 } as const
+
+/**
+ * Emitted by the Fakturownia plugin of Koda Plus when it issues a document:
+ * `{ id, order_id, kind, number, external_id, demo }`. A soft dependency: the
+ * plugin listens by name and never imports the Fakturownia package.
+ */
+export const FAKTUROWNIA_DOCUMENT_ISSUED = "fakturownia.document.issued"
+
+/* ------------------------------------------------------------------ */
+/* Version 0.2: both directions                                        */
+/* ------------------------------------------------------------------ */
+
+/** `getInventoryProductsData` ids per call. No limit is documented; 100 keeps one answer small. */
+export const DETAILS_BATCH = 100
+
+/** `updateInventoryProductsStock` and `updateInventoryProductsPrices`: at most 1000 products per call (documented). */
+export const BULK_UPDATE_MAX = 1000
+
+/** Catalog changes (imported products, created or updated cards) applied by one run. */
+export const DEFAULT_MAX_CATALOG_CHANGES = 200
+
+/** Price changes written to BaseLinker by one run. */
+export const DEFAULT_MAX_PRICE_CHANGES = 1000
+
+/** Failed runs of one item before it is quarantined and left for a person. */
+export const DEFAULT_QUARANTINE_AFTER = 3
+
+/** Products created or updated in one Medusa workflow call. */
+export const IMPORT_APPLY_BATCH = 10
+
+/** Option title of products the catalog import creates with several variants. */
+export const DEFAULT_IMPORT_OPTION_TITLE = "Variant"
+
+/** Marketplace orders from BaseLinker into Medusa: every 5 minutes. */
+export const IMPORT_SCHEDULE = "*/5 * * * *"
+
+/** Returns from BaseLinker (read only): every hour at minute 45. */
+export const RETURNS_SCHEDULE = "45 * * * *"
+
+/** BaseLinker orders turned into Medusa orders in one pass. */
+export const IMPORTS_PER_PASS = 20
+
+/** `getOrders` pages one discovery pass reads (100 orders each). */
+export const IMPORT_PAGES_PER_PASS = 5
+
+/** Without `orderImportSince`, the first discovery looks back this far, so a fresh setup does not pull a year of orders. */
+export const IMPORT_FIRST_LOOKBACK_HOURS = 24
+
+/** A discovered order older than this when the writer gets to it is skipped, not imported (a person can retry it). */
+export const DEFAULT_IMPORT_MAX_AGE_HOURS = 72
+
+/** Before the Medusa order is created, the next attempt of a row moves this far ahead (a dead process leaves no stuck row). */
+export const IMPORT_LEASE_MS = 10 * 60 * 1000
+
+/** Returns of the last N days are read. */
+export const DEFAULT_RETURNS_WINDOW_DAYS = 30
+
+/** `getOrderReturns` pages per run (100 returns each). */
+export const RETURNS_MAX_PAGES = 20
+
+/** Journal events the status read listens to: order created, payment, removal, parcels, status change. */
+export const JOURNAL_LOG_TYPES: readonly number[] = [1, 3, 4, 9, 10, 18, 22]
+
+/** When the journal works, the full status read still runs this often, as a safety net. */
+export const JOURNAL_FULL_PASS_MS = 2 * 60 * 60 * 1000
+
+/** The journal keeps three days; a cursor older than this means events may be gone, so the next read goes the full way. */
+export const JOURNAL_STALE_MS = 2 * 24 * 60 * 60 * 1000
+
+/** Invoice numbers written to BaseLinker in one pass. */
+export const INVOICES_PER_PASS = 20
+
+/** Fakturownia document kinds whose number goes to BaseLinker by default. */
+export const DEFAULT_INVOICE_KINDS: readonly string[] = ["vat", "receipt"]
+
+/** BaseLinker order field that receives the invoice number by default (varchar 50, "any information"). */
+export const DEFAULT_INVOICE_FIELD = "extra_field_1"
 
 /** Order metadata keys searched for the buyer's tax id (NIP) when they want an invoice. */
 export const TAX_ID_METADATA_KEYS: readonly string[] = ["invoice_nip", "tax_id", "nip", "vat_id", "company_tax_id"]

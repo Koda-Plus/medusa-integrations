@@ -5,6 +5,9 @@ import { baselinkerService, intParam, like, strParam } from "../helpers"
 
 const FILTERS: readonly CardFilter[] = ["all", "linked", "unmatched", "conflicts", "nosku"]
 
+/** Main cards with variants are containers: never "only in BaseLinker", never "no SKU". SQL `!=` skips nulls, hence the `$or`. */
+const SELLABLE = { $or: [{ match_source: null }, { match_source: { $ne: "parent" } }] }
+
 /**
  * GET /admin/baselinker/products?filter=&q=&limit=&offset=
  *
@@ -20,37 +23,38 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const filter: CardFilter = FILTERS.includes(raw) ? raw : "all"
   const q = strParam(req.query.q).slice(0, 80)
 
-  const where: Record<string, unknown> = { demo: svc.isDemo() }
+  const and: Array<Record<string, unknown>> = [{ demo: svc.isDemo() }]
   switch (filter) {
     case "linked":
-      where.variant_id = { $ne: null }
+      and.push({ variant_id: { $ne: null } })
       break
     case "unmatched":
-      where.variant_id = null
-      where.conflict = null
+      and.push({ variant_id: null, conflict: null }, SELLABLE)
       break
     case "conflicts":
-      where.conflict = { $ne: null }
+      and.push({ conflict: { $ne: null } })
       break
     case "nosku":
-      where.sku = null
+      and.push({ sku: null }, SELLABLE)
       break
   }
   if (q) {
     const pattern = like(q)
-    where.$or = [
-      { name: { $ilike: pattern } },
-      { sku: { $ilike: pattern } },
-      { ean: { $ilike: pattern } },
-      { bl_product_id: { $ilike: pattern } },
-      { variant_sku: { $ilike: pattern } },
-      { product_title: { $ilike: pattern } },
-    ]
+    and.push({
+      $or: [
+        { name: { $ilike: pattern } },
+        { sku: { $ilike: pattern } },
+        { ean: { $ilike: pattern } },
+        { bl_product_id: { $ilike: pattern } },
+        { variant_sku: { $ilike: pattern } },
+        { product_title: { $ilike: pattern } },
+      ],
+    })
   }
 
   /* Conflicts sorted by key, so the cards of one duplicated SKU sit together. */
   const order = filter === "conflicts" ? { match_key: "ASC", bl_product_id: "ASC" } : { name: "ASC", bl_product_id: "ASC" }
-  const [rows, count] = (await svc.listAndCountBaseLinkerProducts(where as never, {
+  const [rows, count] = (await svc.listAndCountBaseLinkerProducts({ $and: and } as never, {
     take: limit,
     skip: offset,
     order,
