@@ -26,6 +26,7 @@ Mostek Subiekta (.NET 8, Sfera) to OSOBNE, komercyjne repo `Koda-Plus/subiekt-ne
 - Serwis modułu CIENKI: wygenerowany CRUD + opcje + maskowanie. Logika w `lib/*` i `workflows/*`, które wołają `svc.listX()` z zewnątrz. Własne metody serwisu wołające `this.listX()` wywalają się na demo (błąd `fork`, patrz `koda-plus-demo/CLAUDE.md`).
 - Brak opcji nigdy nie wywraca startu. Tryb demo: dane z katalogu sklepu przez te same parsery, wiersze z flagą `demo`.
 - Migracje pisane ręcznie z `create table if not exists`. `model.bigNumber` wymaga kolumny `raw_`, więc używamy `number`/`json`.
+- **Nazwa migracji (plik i klasa) musi być unikalna we WSZYSTKICH paczkach.** Medusa zapisuje wykonane migracje po samej nazwie we wspólnej tabeli `mikro_orm_migrations`, więc druga migracja o tej samej nazwie w innym module uchodzi za wykonaną i jej tabele nigdy nie powstają (06.10.2026: cztery paczki miały `Migration20261006090000`, na demo przeszła tylko OLX, BaseLinker padł na „relation baselinker_import does not exist”). Przed dodaniem migracji: `ls packages/*/src/modules/*/migrations/`.
 - README każdej paczki BEZ tabel i z opcjonalnymi obrazkami (medusajs.com spłaszcza tabele). Obrazki z `raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/<paczka>/docs/`.
 - Copy: angielski w kodzie i README, polski w `pl.ts` z pełnymi znakami diakrytycznymi. Nigdzie myślnika półpauzy, pauzy ani kropki środkowej.
 
