@@ -38,7 +38,9 @@ const packages = fs
 for (const dir of packages) {
   const cwd = path.join(packagesDir, dir)
   console.log(`\n=== ${dir}: ${args.join(" ")}`)
-  const r = spawnSync(args[0], args.slice(1), { cwd, stdio: "inherit", shell: process.platform === "win32" })
+  /* One command string: npm is npm.cmd on Windows and needs a shell anyway. */
+  const command = args.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(" ")
+  const r = spawnSync(command, { cwd, stdio: "inherit", shell: true })
   if (r.status !== 0) {
     console.error(`\n${dir}: "${args.join(" ")}" failed with code ${r.status}`)
     process.exit(r.status ?? 1)
