@@ -18,6 +18,7 @@ export function referencesFor(status: AllegroStatusResponse, lang: string): Refe
   return status.references.map((r) => ({
     name: r.name,
     url: r.url,
+    icon: r.icon,
     description: pickText(r.description, lang) || undefined,
     since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),

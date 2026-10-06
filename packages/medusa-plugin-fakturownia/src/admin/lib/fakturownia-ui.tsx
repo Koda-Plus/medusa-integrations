@@ -442,6 +442,7 @@ export function referencesFor(items: readonly ReferenceDto[], lang: string): Ref
   return items.map((r) => ({
     name: r.name,
     url: r.url,
+    icon: r.icon,
     description: pickText(r.description, lang),
     since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),

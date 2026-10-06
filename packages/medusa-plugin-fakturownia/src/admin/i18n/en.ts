@@ -50,8 +50,8 @@ const en = {
     corrections: "Corrections to review",
   },
   references: {
-    title: "Running in production",
-    subtitle: "Stores that issue their documents with this integration.",
+    title: "Running in stores built by Koda Plus",
+    subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
     since: "Since {{date}}",
   },

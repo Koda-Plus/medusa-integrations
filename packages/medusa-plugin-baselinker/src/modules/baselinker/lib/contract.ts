@@ -287,6 +287,8 @@ export interface LocalizedDto {
 export interface ReferenceDto {
   name: string
   url: string
+  /** The store's icon: a data URI or an https URL. */
+  icon: string | null
   description: LocalizedDto | null
   since: string | null
   metrics: Array<{ label: LocalizedDto; value: string }>

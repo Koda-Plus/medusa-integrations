@@ -58,8 +58,8 @@ const en = {
     issues: "Waiting for you",
   },
   references: {
-    title: "Running in production",
-    subtitle: "Stores that run this integration every day.",
+    title: "Running in stores built by Koda Plus",
+    subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
   },
   connection: {

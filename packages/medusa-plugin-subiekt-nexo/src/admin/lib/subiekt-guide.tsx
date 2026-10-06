@@ -65,6 +65,8 @@ export function ViewSwitch({ value, onChange, labels }: { value: PageView; onCha
 export type Reference = {
   name: string
   url: string
+  /** The store's own icon (its favicon or logo mark): a data URI or an https URL. Without one the card shows the first letter. */
+  icon?: string | null
   description?: string
   since?: string
   metrics?: Array<{ label: string; value: string }>
@@ -94,9 +96,13 @@ export function References({ items, title, subtitle, openLabel, sinceLabel }: { 
         {items.map((r) => (
           <div key={r.url} className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
             <a href={r.url} target="_blank" rel="noreferrer" className="group flex items-center gap-x-3">
-              <span className="txt-compact-medium-plus flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ui-bg-base text-ui-fg-base shadow-borders-base">
-                {r.name.slice(0, 1).toUpperCase()}
-              </span>
+              {r.icon ? (
+                <img src={r.icon} alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-md bg-white object-contain shadow-borders-base" />
+              ) : (
+                <span className="txt-compact-medium-plus flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ui-bg-base text-ui-fg-base shadow-borders-base">
+                  {r.name.slice(0, 1).toUpperCase()}
+                </span>
+              )}
               <span className="flex min-w-0 flex-col">
                 <Text size="small" weight="plus" className="truncate text-ui-fg-base">
                   {r.name}

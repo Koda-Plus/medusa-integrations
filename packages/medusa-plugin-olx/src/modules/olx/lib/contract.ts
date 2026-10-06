@@ -23,6 +23,8 @@ export interface OlxLocalizedText {
 export interface OlxReferenceDto {
   name: string
   url: string
+  /** The store's icon: a data URI or an https URL. */
+  icon: string | null
   description: OlxLocalizedText | null
   since: string | null
   metrics: Array<{ label: OlxLocalizedText; value: string }>

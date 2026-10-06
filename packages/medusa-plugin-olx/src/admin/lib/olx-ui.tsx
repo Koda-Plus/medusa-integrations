@@ -69,6 +69,7 @@ export function kitReferences(refs: OlxReferenceDto[], lang: string): Reference[
   return refs.map((r) => ({
     name: r.name,
     url: r.url,
+    icon: r.icon,
     description: pickText(r.description, lang) || undefined,
     since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),

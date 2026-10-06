@@ -92,6 +92,8 @@ export interface AllegroLocalizedText {
 export interface AllegroReferenceDto {
   name: string
   url: string
+  /** The store's icon: a data URI or an https URL. */
+  icon: string | null
   description: AllegroLocalizedText | null
   since: string | null
   metrics: Array<{ label: AllegroLocalizedText; value: string }>

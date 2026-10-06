@@ -335,8 +335,8 @@ const en = {
     error: "Something went wrong: {{error}}",
   },
   references: {
-    title: "Running in production",
-    subtitle: "Stores that run this integration with Subiekt nexo today.",
+    title: "Running in stores built by Koda Plus",
+    subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
     since: "Since {{date}}",
   },

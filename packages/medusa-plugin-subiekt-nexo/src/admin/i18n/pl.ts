@@ -337,8 +337,8 @@ const pl: typeof en = {
     error: "Coś poszło nie tak: {{error}}",
   },
   references: {
-    title: "Działa w sklepach",
-    subtitle: "Sklepy, które już dziś pracują z tą integracją i Subiektem nexo.",
+    title: "Działa w sklepach wdrożonych przez Koda Plus",
+    subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
     since: "Od {{date}}",
   },

@@ -4,7 +4,7 @@
  * scripted connector.php and stand-ins for Medusa's order workflows (the
  * seam `setOrderOpsForTests`). Exactly once is checked across a crash.
  */
-import { afterEach, test } from "node:test"
+import { afterEach, mock, test } from "node:test"
 import assert from "node:assert/strict"
 import type { BaseLinkerPluginOptions } from "../src/modules/baselinker/lib/options.ts"
 import { importOrderNow, runOrderImport, setOrderOpsForTests, syncImportedStatuses } from "../src/workflows/baselinker/order-import.ts"
@@ -339,11 +339,12 @@ test("the loop guard on the way out: an imported order never goes to BaseLinker"
 test("demo: simulated Allegro and Amazon orders are found, and become Medusa orders once the writer is armed", async () => {
   const t = setup({ demo: true })
   for (let i = 0; i < 6; i += 1) t.s.table("Products").create({ bl_product_id: String(500 + i), sku: `KS-${i}`, name: `Produkt ${i}`, variant_id: `var_${i}`, conflict: null, price: { "1001": 10 + i }, demo: true })
-  const realNow = Date.now
-  /* Late in the day, so the simulated day has its orders. */
+  /* Late in the day, so the simulated day has its orders. The whole Date is mocked, not only
+     Date.now: the code also reads `new Date()`, and with the real clock the test failed every
+     night after midnight UTC, when the simulated day has no orders yet. */
   const fixed = new Date()
   fixed.setUTCHours(22, 0, 0, 0)
-  Date.now = () => fixed.getTime()
+  mock.timers.enable({ apis: ["Date"], now: fixed.getTime() })
   try {
     const first = await runOrderImport(t.container, "manual")
     assert.ok((first?.created ?? 0) >= 1)
@@ -355,6 +356,6 @@ test("demo: simulated Allegro and Amazon orders are found, and become Medusa ord
     assert.ok(t.orders.every((o) => o.metadata.baselinker_imported === true && o.metadata.marketplace_order_ref))
     assert.ok(t.s.table("Imports").rows.every((r) => r.demo === true))
   } finally {
-    Date.now = realNow
+    mock.timers.reset()
   }
 })
