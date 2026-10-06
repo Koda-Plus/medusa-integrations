@@ -16,8 +16,8 @@ import {
   useSubiektSync,
   useSubiektTasks,
 } from "../../lib/subiekt-api"
-import { ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, usePageNav, type PageNav } from "../../lib/subiekt-guide"
-import { GuideView } from "../../lib/subiekt-guide-view"
+import { AddStoreButton, HelpButtons, ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, communityLabels, usePageNav, type PageNav } from "../../lib/subiekt-guide"
+import { GuideView, usePromptSpec } from "../../lib/subiekt-guide-view"
 import { SubiektIcon } from "../../lib/subiekt-icon"
 import { BridgeSection, ProductsSection, WritersSection } from "../../lib/subiekt-panels"
 import {
@@ -168,6 +168,8 @@ function Header({
   const running = new Set(status?.running ?? [])
   const state = connectionState(status)
   const references = status ? referencesFor(status.references, lang) : []
+  const promptSpec = usePromptSpec()
+  const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
   const start = async (what: "stock" | "events") => {
     try {
@@ -208,22 +210,21 @@ function Header({
         <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
-        {references.length > 0 ? (
-          <div>
-            <ReferencesBadge
-              items={references}
-              labels={{
-                count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
-                title: t("references.title"),
-                subtitle: t("references.subtitle"),
-                open: t("references.open"),
-                review: t("references.review"),
-                since: (since) => t("references.since", { date: monthYear(since, lang) }),
-                rating: (value) => fmtRating(value, lang),
-              }}
-            />
-          </div>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <ReferencesBadge
+            items={references}
+            labels={{
+              count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+              title: t("references.title"),
+              subtitle: t("references.subtitle"),
+              open: t("references.open"),
+              review: t("references.review"),
+              since: (since) => t("references.since", { date: monthYear(since, lang) }),
+              rating: (value) => fmtRating(value, lang),
+            }}
+          />
+          <AddStoreButton labels={community.addStore} />
+        </div>
       </div>
       <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
         <div className="flex flex-wrap items-center gap-2">
@@ -246,6 +247,7 @@ function Header({
             </>
           ) : null}
         </div>
+        <HelpButtons spec={promptSpec} lang={lang} labels={community} />
       </div>
     </div>
   )

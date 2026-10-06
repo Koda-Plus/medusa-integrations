@@ -18,8 +18,8 @@ import {
   useBaseLinkerStock,
   useBaseLinkerSync,
 } from "../../lib/baselinker-api"
-import { ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, usePageNav, type PageNav } from "../../lib/baselinker-guide"
-import { GuideView } from "../../lib/baselinker-guide-view"
+import { AddStoreButton, HelpButtons, ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, communityLabels, usePageNav, type PageNav } from "../../lib/baselinker-guide"
+import { GuideView, usePromptSpec } from "../../lib/baselinker-guide-view"
 import { BaseLinkerIcon } from "../../lib/baselinker-icon"
 import {
   DemoDetails,
@@ -199,6 +199,8 @@ function Header({
   const f2 = status?.features2
   const state = connectionState(status)
   const references = status ? kitReferences(status.references ?? [], lang) : []
+  const promptSpec = usePromptSpec()
+  const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
   const start = async (what: SyncWhat) => {
     try {
@@ -229,22 +231,21 @@ function Header({
         <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
-        {references.length > 0 ? (
-          <div>
-            <ReferencesBadge
-              items={references}
-              labels={{
-                count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
-                title: t("references.title"),
-                subtitle: t("references.subtitle"),
-                open: t("references.open"),
-                review: t("references.review"),
-                since: (since) => t("references.since", { date: sinceDate(since, lang) }),
-                rating: (value) => fmtRating(value, lang),
-              }}
-            />
-          </div>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <ReferencesBadge
+            items={references}
+            labels={{
+              count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+              title: t("references.title"),
+              subtitle: t("references.subtitle"),
+              open: t("references.open"),
+              review: t("references.review"),
+              since: (since) => t("references.since", { date: sinceDate(since, lang) }),
+              rating: (value) => fmtRating(value, lang),
+            }}
+          />
+          <AddStoreButton labels={community.addStore} />
+        </div>
       </div>
       <div className="flex flex-col items-start gap-3 lg:items-end">
         <div className="flex flex-wrap items-center gap-2">
@@ -281,6 +282,7 @@ function Header({
             </Button>
           </div>
         ) : null}
+        <HelpButtons spec={promptSpec} lang={lang} labels={community} />
       </div>
     </div>
   )

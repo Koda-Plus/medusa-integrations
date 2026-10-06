@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ArrowUpRightOnBox, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, SquareTwoStack } from "@medusajs/icons"
-import { Badge, Container, Heading, IconButton, Popover, StatusBadge, Text, clx, toast } from "@medusajs/ui"
+import { ArrowUpRightOnBox, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
+import { Badge, Button, Container, Heading, IconButton, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
 
 /*
  * The page kit of the Koda Plus integrations: the same components in every
@@ -14,6 +14,9 @@ import { Badge, Container, Heading, IconButton, Popover, StatusBadge, Text, clx,
  *   SettingsButton   the cog that opens Settings, where the technical parts live
  *   ModeBadge        the mode of the module; in demo mode it opens a note on what is simulated
  *   ReferencesBadge  "Running in N stores", with the rating and its source; opens the list
+ *   AddStoreButton   "Add your store" next to it: a request to Koda Plus, by mail
+ *   HelpButtons      "Copy prompt" (an AI agent sets the integration up in another
+ *                    Medusa project, like here) and help on the Koda Plus Discord
  * Settings
  *   SettingsView     a title and tabs over the technical sections (account, writers, plans, history)
  * Guide
@@ -26,7 +29,10 @@ import { Badge, Container, Heading, IconButton, Popover, StatusBadge, Text, clx,
  * Typography
  *   nb, typeset      Polish copy with no one-letter word left at the end of a line
  *
- * Every string comes in through props, already translated by the page.
+ * Every string comes in through props, already translated by the page. Two
+ * exceptions, both the same for all five integrations: communityLabels() reads
+ * the page's own `community` block, and the setup prompt is written here in
+ * English and Polish, because it is one text for every integration.
  */
 
 /* ------------------------------------------------------------------ */
@@ -240,7 +246,7 @@ function SourceMark({ review, height = 10 }: { review: ReferenceReview; height?:
     )
   }
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full bg-white px-1.5 py-0.5 shadow-borders-base">
+    <span className="inline-flex shrink-0 items-center rounded-full bg-white px-2 py-1 shadow-borders-base">
       <img src={review.icon} alt={review.source} style={{ height, width: "auto" }} />
     </span>
   )
@@ -291,24 +297,24 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="inline-flex max-w-full items-center gap-x-2 rounded-full border border-ui-border-base bg-ui-bg-component py-0.5 pl-0.5 pr-2 outline-none transition-fg hover:bg-ui-bg-component-hover focus-visible:shadow-borders-focus"
+          className="inline-flex h-9 max-w-full items-center gap-x-3 rounded-full border border-ui-border-base bg-ui-bg-component py-1 pl-1.5 pr-3 outline-none transition-fg hover:bg-ui-bg-component-hover focus-visible:shadow-borders-focus"
         >
           <span className="flex shrink-0 items-center">
             {items.slice(0, 3).map((r, i) => (
-              <span key={r.url} className={clx("rounded-md", i > 0 && "-ml-1.5")}>
-                <StoreIcon reference={r} size={20} />
+              <span key={r.url} className={clx("rounded-md", i > 0 && "-ml-2")}>
+                <StoreIcon reference={r} size={24} />
               </span>
             ))}
           </span>
-          <span className="txt-compact-xsmall-plus truncate text-ui-fg-base">{labels.count}</span>
+          <span className="txt-compact-small-plus truncate text-ui-fg-base">{labels.count}</span>
           {mean ? (
-            <span className="flex shrink-0 items-center gap-x-1.5">
-              <Stars rating={mean.value} />
-              <span className="txt-compact-xsmall-plus tabular-nums text-ui-fg-base">{labels.rating(mean.value)}</span>
-              <SourceMark review={mean.first} height={9} />
+            <span className="flex shrink-0 items-center gap-x-2 border-l border-ui-border-base pl-3">
+              <Stars rating={mean.value} size={13} />
+              <span className="txt-compact-small-plus tabular-nums text-ui-fg-base">{labels.rating(mean.value)}</span>
+              <SourceMark review={mean.first} height={10} />
             </span>
           ) : null}
-          <ChevronDownMini className="shrink-0 text-ui-fg-muted" />
+          <ChevronDownMini className="-ml-1 shrink-0 text-ui-fg-muted" />
         </button>
       </Popover.Trigger>
       <Popover.Content align="start" sideOffset={8} className="w-[min(460px,calc(100vw-32px))] p-0">
@@ -388,6 +394,356 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
         </ul>
       </Popover.Content>
     </Popover>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Community: add your store, the setup prompt for an AI agent, help on Discord */
+
+/** Koda Plus support: the Discord server, and the address store requests go to. */
+export const KODA_DISCORD = "https://discord.gg/WzUUKYzu8"
+export const KODA_EMAIL = "hello@koda.plus"
+/** The Koda Plus demo store, where every integration runs on sample data. */
+const KODA_DEMO = "https://medusa.koda.plus"
+
+/** Translated strings carry nb's no-break spaces; text that leaves the admin (a mail, the clipboard) gets plain ones. */
+const plain = (text: string) => text.split(NBSP).join(" ")
+
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+export type AddStoreLabels = {
+  button: string
+  title: string
+  text: string
+  name: string
+  url: string
+  note: string
+  send: string
+  copy: string
+  copied: string
+  /** Under the form: where the request goes. */
+  hint: string
+  subject: string
+  /** The first line of the mail. */
+  greeting: string
+}
+
+export type PromptLabels = {
+  button: string
+  title: string
+  /** Where to paste it and what the agent does. */
+  text: string
+  copy: string
+  copied: string
+  failed: string
+}
+
+export type CommunityLabels = {
+  addStore: AddStoreLabels
+  prompt: PromptLabels
+  discord: { button: string; title: string }
+}
+
+/**
+ * The community strings of a page, from its own `community` block (the same
+ * keys in all five dictionaries). `integration` names it in the request mail,
+ * e.g. "Allegro by Koda Plus".
+ */
+export function communityLabels(t: Translate, integration: string): CommunityLabels {
+  const k = (key: string, options?: Record<string, unknown>) => t(`community.${key}`, options)
+  return {
+    addStore: {
+      button: k("addStore.button"),
+      title: k("addStore.title"),
+      text: k("addStore.text"),
+      name: k("addStore.name"),
+      url: k("addStore.url"),
+      note: k("addStore.note"),
+      send: k("addStore.send"),
+      copy: k("addStore.copy"),
+      copied: k("addStore.copied"),
+      hint: k("addStore.hint", { email: KODA_EMAIL }),
+      subject: k("addStore.subject", { integration }),
+      greeting: k("addStore.greeting", { integration }),
+    },
+    prompt: {
+      button: k("prompt.button"),
+      title: k("prompt.title"),
+      text: k("prompt.text"),
+      copy: k("prompt.copy"),
+      copied: k("prompt.copied"),
+      failed: k("prompt.failed"),
+    },
+    discord: { button: k("discord.button"), title: k("discord.title") },
+  }
+}
+
+/**
+ * "Add your store", next to the stores badge: a short form that opens the
+ * reader's mail app with the request to Koda Plus ready to send, or copies it
+ * for a webmail. Koda Plus checks the store before it joins the list.
+ */
+export function AddStoreButton({ labels }: { labels: AddStoreLabels }) {
+  const [name, setName] = useState("")
+  const [url, setUrl] = useState("")
+  const [note, setNote] = useState("")
+  const ready = name.trim() !== "" && url.trim() !== ""
+  const subject = plain(labels.subject)
+  const body = plain(
+    [labels.greeting, "", `${labels.name}: ${name.trim()}`, `${labels.url}: ${url.trim()}`, ...(note.trim() ? ["", note.trim()] : [])].join("\n"),
+  )
+
+  const send = () => {
+    window.location.href = `mailto:${KODA_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  }
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${KODA_EMAIL}\n${subject}\n\n${body}`)
+      toast.success(labels.copied)
+    } catch {
+      toast.error(KODA_EMAIL)
+    }
+  }
+
+  return (
+    <Popover>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className="txt-compact-small-plus inline-flex h-9 items-center gap-x-1.5 rounded-full border border-dashed border-ui-border-strong px-3.5 text-ui-fg-subtle outline-none transition-fg hover:border-ui-border-interactive hover:bg-ui-bg-component-hover hover:text-ui-fg-base focus-visible:shadow-borders-focus"
+        >
+          <PlusMini />
+          {labels.button}
+        </button>
+      </Popover.Trigger>
+      <Popover.Content align="start" sideOffset={8} className="w-[min(420px,calc(100vw-32px))] p-0">
+        <div className="flex flex-col gap-y-1 border-b border-ui-border-base px-4 py-3">
+          <Text size="small" weight="plus" className="text-ui-fg-base">
+            {labels.title}
+          </Text>
+          <Text size="xsmall" className="text-ui-fg-subtle">
+            {labels.text}
+          </Text>
+        </div>
+        <div className="flex flex-col gap-y-3 px-4 py-4">
+          <div className="flex flex-col gap-y-1.5">
+            <Label size="xsmall" weight="plus" htmlFor="koda-add-store-name">
+              {labels.name}
+            </Label>
+            <Input id="koda-add-store-name" size="small" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-y-1.5">
+            <Label size="xsmall" weight="plus" htmlFor="koda-add-store-url">
+              {labels.url}
+            </Label>
+            <Input id="koda-add-store-url" size="small" type="url" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-y-1.5">
+            <Label size="xsmall" weight="plus" htmlFor="koda-add-store-note">
+              {labels.note}
+            </Label>
+            <Textarea id="koda-add-store-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-y-3 border-t border-ui-border-base px-4 py-3">
+          <Text size="xsmall" className="text-ui-fg-muted">
+            {labels.hint}
+          </Text>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button size="small" variant="secondary" disabled={!ready} onClick={() => void copy()}>
+              <SquareTwoStack />
+              {labels.copy}
+            </Button>
+            <Button size="small" variant="primary" disabled={!ready} onClick={send}>
+              <PaperPlane />
+              {labels.send}
+            </Button>
+          </div>
+        </div>
+      </Popover.Content>
+    </Popover>
+  )
+}
+
+/** What the setup prompt needs from a page: the same setup its guide shows. */
+export type SetupPromptSpec = {
+  /** The service, e.g. "Allegro". */
+  service: string
+  /** The npm package, e.g. "@koda-plus/medusa-plugin-allegro". */
+  pkg: string
+  /** The admin page, e.g. "/app/allegro". */
+  route: string
+  /** What the integration does: the page subtitle. */
+  summary: string
+  /** What the store owner prepares first: accounts, keys, a machine. From the guide. */
+  needs: string[]
+  /** The setup from the guide: .env and medusa-config.ts. */
+  config: string
+  /** The demo switch as the demo store has it: sample data until the keys are set. */
+  demo: string
+}
+
+/** Environment variables a setup names: process.env.X in the code and X= lines of a .env. */
+function envNames(code: string): string[] {
+  const names = new Set<string>()
+  for (const m of code.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)) names.add(m[1])
+  for (const m of code.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)) names.add(m[1])
+  return [...names]
+}
+
+/**
+ * The prompt behind "Copy prompt", in the admin's language. An AI coding
+ * agent working in another Medusa project installs the plugin, sets it up as
+ * the guide shows with the demo switch of the demo store, keeps every writer
+ * off, and leaves notes (CLAUDE.md or AGENTS.md) for the sessions after it.
+ */
+export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
+  const code = (text: string) => "`" + text + "`"
+  const env = envNames(`${spec.config}\n${spec.demo}`).map(code).join(", ")
+  const needs = spec.needs.map((n) => `- ${plain(n)}`)
+  const demoPage = `${KODA_DEMO}${spec.route}`
+  const service = spec.service
+  const config = ["```ts", spec.config, "```"]
+
+  if (lang.toLowerCase().startsWith("pl")) {
+    return [
+      `# Dodaj integrację ${service} od Koda Plus do tego sklepu na Medusie`,
+      "",
+      `Pracujesz w moim projekcie Medusa v2. Dodaj integrację ${service} od Koda Plus (${spec.pkg}) tak, żeby działała i wyglądała tak samo jak w sklepie demo Koda Plus, ${demoPage} (Panel, Przewodnik wdrożenia i Ustawienia), a potem zostaw projekt gotowy do dalszej pracy nad nią.`,
+      "",
+      "## Co robi integracja",
+      plain(spec.summary),
+      "",
+      "## Czego potrzeba po mojej stronie",
+      ...needs,
+      "",
+      "## Kroki",
+      "1. Zanim cokolwiek zmienisz, sprawdź projekt: Medusa 2.12 albo nowsza (tego wymagają strony i tłumaczenia panelu we wtyczce), menedżer pakietów projektu i medusa-config.ts. Jeśli coś blokuje instalację, zatrzymaj się i napisz mi, co.",
+      `2. Zainstaluj wtyczkę menedżerem pakietów projektu, na przykład ${code(`npm install ${spec.pkg}`)}. Jeśli rejestr jej nie znajduje, zatrzymaj się i daj mi znać: dostęp daje Koda Plus (${KODA_EMAIL}, Discord ${KODA_DISCORD}).`,
+      "3. Zarejestruj wtyczkę w medusa-config.ts, nie ruszając tego, co już tam jest. Użyj konfiguracji z Przewodnika wdrożenia:",
+      "",
+      ...config,
+      "",
+      `4. Dodaj do opcji przełącznik trybu demo, tak jak w sklepie demo: ${code(spec.demo)}. Dopóki kluczy nie ma w .env, moduł pracuje na przykładowych danych i nie łączy się z ${service}.`,
+      `5. Wpisz zmienne do .env i do środowiska hostingu, nigdy do kodu ani do gita: ${env}. Jeśli nie podałem Ci wartości, zostaw ją pustą i wypisz mi ją na końcu.`,
+      `6. Uruchom migracje bazy (${code("npx medusa db:migrate")}), potem sklep, i otwórz ${spec.route} w panelu admina. Sprawdź, czy Panel, Przewodnik wdrożenia i Ustawienia otwierają się bez błędów w konsoli przeglądarki i w logu serwera.`,
+      `7. Nie włączaj żadnego zapisu, czyli niczego, co zmienia dane w ${service} albo w sklepie. Każdy zapis uzbraja człowiek w Ustawieniach, po próbie na sucho; opcje tylko na to pozwalają.`,
+      `8. Dopisz sekcję o tej integracji do notatek projektu dla agentów AI (CLAUDE.md albo AGENTS.md, zależnie od tego, czego używa projekt; jeśli nie ma żadnego, załóż CLAUDE.md): pakiet i jego wersja, gdzie są jego opcje w medusa-config.ts, zmienne środowiskowe, przełącznik demo, to, że zapisy uzbraja człowiek w Ustawieniach, że wdrożenie krok po kroku jest w panelu w Przewodniku wdrożenia, że pomoc jest na Discordzie (${KODA_DISCORD}) i że wtyczka zmienia się aktualizacją pakietu, nigdy edycją node_modules.`,
+      "",
+      "Na koniec napisz mi, co zmieniłeś i co zostało po mojej stronie: konta i klucze, pierwsze połączenie w Ustawieniach i uzbrojenie zapisów.",
+    ].join("\n")
+  }
+
+  return [
+    `# Add the ${service} integration by Koda Plus to this Medusa store`,
+    "",
+    `You are working in my Medusa v2 project. Add the ${service} integration by Koda Plus (${spec.pkg}) so that it works and looks the same as in the Koda Plus demo store, ${demoPage} (Panel, Setup guide and Settings), then leave the project ready for further work on it.`,
+    "",
+    "## What the integration does",
+    plain(spec.summary),
+    "",
+    "## What it takes on my side",
+    ...needs,
+    "",
+    "## Steps",
+    "1. Before you change anything, check the project: Medusa 2.12 or newer (the plugin's admin pages and translations need it), the project's package manager and medusa-config.ts. If something blocks the install, stop and tell me what.",
+    `2. Install the plugin with the project's package manager, for example ${code(`npm install ${spec.pkg}`)}. If the registry cannot find it, stop and tell me: Koda Plus gives access (${KODA_EMAIL}, Discord ${KODA_DISCORD}).`,
+    "3. Register the plugin in medusa-config.ts without touching what is already there. Use the setup from the Setup guide:",
+    "",
+    ...config,
+    "",
+    `4. Add the demo switch to the options, as the demo store has it: ${code(spec.demo)}. Until the keys are in .env, the module works on sample data and never calls ${service}.`,
+    `5. Put the variables in .env and in the hosting's environment, never in code or in git: ${env}. If I did not give you a value, leave it empty and list it for me at the end.`,
+    `6. Run the database migrations (${code("npx medusa db:migrate")}), then the store, and open ${spec.route} in the admin. Check that the Panel, the Setup guide and Settings open with no errors in the browser console or the server log.`,
+    `7. Do not turn on any writer, that is anything that changes data in ${service} or in the store. A person arms each writer in Settings, after a dry run; the options only allow it.`,
+    `8. Add a section about this integration to the project's notes for AI agents (CLAUDE.md or AGENTS.md, whichever the project uses; if neither exists, create CLAUDE.md): the package and its version, where its options sit in medusa-config.ts, the environment variables, the demo switch, that a person arms writers in Settings, that the step by step setup is in the admin under Setup guide, that help is on Discord (${KODA_DISCORD}), and that the plugin changes through package updates, never through edits in node_modules.`,
+    "",
+    "When you are done, tell me what you changed and what is left for me: accounts and keys, the first connection in Settings and arming the writers.",
+  ].join("\n")
+}
+
+/**
+ * "Copy prompt": one click puts the setup prompt on the clipboard, for Claude
+ * Code, Cursor or another AI agent opened in the reader's Medusa project. The
+ * popover says it was copied and shows the text.
+ */
+export function PromptButton({ spec, lang, labels }: { spec: SetupPromptSpec; lang: string; labels: PromptLabels }) {
+  const prompt = useMemo(() => buildSetupPrompt(spec, lang), [spec, lang])
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle")
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setState("copied")
+    } catch {
+      setState("failed")
+    }
+  }
+
+  return (
+    <Popover>
+      <Popover.Trigger asChild>
+        <Button size="small" variant="secondary" onClick={() => void copy()}>
+          <Sparkles />
+          {labels.button}
+        </Button>
+      </Popover.Trigger>
+      <Popover.Content align="end" sideOffset={8} className="w-[min(560px,calc(100vw-32px))] p-0">
+        <div className="flex items-start gap-x-2.5 border-b border-ui-border-base px-4 py-3">
+          {state === "copied" ? <CheckCircleSolid className="mt-px shrink-0 text-ui-tag-green-text" /> : null}
+          <div className="flex min-w-0 flex-col gap-y-1">
+            <Text size="small" weight="plus" className="text-ui-fg-base">
+              {state === "copied" ? labels.copied : state === "failed" ? labels.failed : labels.title}
+            </Text>
+            <Text size="xsmall" className="text-ui-fg-subtle">
+              {labels.text}
+            </Text>
+          </div>
+        </div>
+        <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap break-words bg-ui-bg-subtle px-4 py-3 font-mono text-[11px] leading-[18px] text-ui-fg-subtle">{prompt}</pre>
+        <div className="flex items-center justify-between gap-x-3 border-t border-ui-border-base px-4 py-3">
+          <span className="truncate font-mono txt-compact-xsmall text-ui-fg-muted">{spec.pkg}</span>
+          <Button size="small" variant="secondary" onClick={() => void copy()}>
+            <SquareTwoStack />
+            {labels.copy}
+          </Button>
+        </div>
+      </Popover.Content>
+    </Popover>
+  )
+}
+
+/** The Discord symbol as published on discord.com/branding (Symbol.svg, 64 by 48), in the current color. */
+function DiscordMark({ width = 16 }: { width?: number }) {
+  return (
+    <svg width={width} height={(width * 48) / 64} viewBox="0 0 64 48" fill="currentColor" aria-hidden>
+      <path d="M40.575 0C39.9562 1.09866 39.4006 2.2352 38.8954 3.397C34.0967 2.67719 29.2096 2.67719 24.3982 3.397C23.9057 2.2352 23.3374 1.09866 22.7186 0C18.2104 0.770324 13.8157 2.12155 9.64839 4.02841C1.38951 16.2652 -0.845688 28.1863 0.265599 39.9432C5.10222 43.517 10.5197 46.2447 16.2909 47.9874C17.5916 46.2447 18.7407 44.3883 19.7257 42.4562C17.8568 41.7616 16.0509 40.8903 14.3208 39.88C14.7755 39.5517 15.2175 39.2107 15.6468 38.8824C25.7873 43.6559 37.5316 43.6559 47.6847 38.8824C48.1141 39.236 48.5561 39.577 49.0107 39.88C47.2806 40.9029 45.4748 41.7616 43.5931 42.4688C44.5781 44.4009 45.7273 46.2573 47.028 48C52.7991 46.2573 58.2167 43.5422 63.0533 39.9684C64.3666 26.3299 60.8055 14.5099 53.6452 4.04104C49.4905 2.13418 45.0959 0.782952 40.5876 0.0252565L40.575 0ZM21.1401 32.7072C18.0209 32.7072 15.4321 29.8785 15.4321 26.3804C15.4321 22.8824 17.9199 20.041 21.1275 20.041C24.3351 20.041 26.886 22.895 26.8354 26.3804C26.7849 29.8658 24.3224 32.7072 21.1401 32.7072ZM42.1788 32.7072C39.047 32.7072 36.4834 29.8785 36.4834 26.3804C36.4834 22.8824 38.9712 20.041 42.1788 20.041C45.3864 20.041 47.9246 22.895 47.8741 26.3804C47.8236 29.8658 45.3611 32.7072 42.1788 32.7072Z" />
+    </svg>
+  )
+}
+
+/** "Help on Discord": the Koda Plus server, in Discord's own blurple. */
+export function DiscordButton({ label, title }: { label: string; title: string }) {
+  return (
+    <a
+      href={KODA_DISCORD}
+      target="_blank"
+      rel="noreferrer"
+      title={title}
+      className="txt-compact-small-plus inline-flex items-center gap-x-2 rounded-md bg-[#5865F2] px-2.5 py-1 text-white outline-none transition-fg hover:bg-[#4752C4] focus-visible:shadow-borders-focus"
+    >
+      <DiscordMark />
+      {label}
+    </a>
+  )
+}
+
+/** The developer side of the header, under the page actions: the setup prompt and help on Discord. */
+export function HelpButtons({ spec, lang, labels }: { spec: SetupPromptSpec; lang: string; labels: CommunityLabels }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+      <PromptButton spec={spec} lang={lang} labels={labels.prompt} />
+      <DiscordButton label={labels.discord.button} title={labels.discord.title} />
+    </div>
   )
 }
 

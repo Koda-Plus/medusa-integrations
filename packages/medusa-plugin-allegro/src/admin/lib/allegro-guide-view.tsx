@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { AllegroStatusResponse, AllegroWriterKey } from "../../modules/allegro/lib/contract"
 import { pickText, sinceLabel } from "../../modules/allegro/lib/references"
@@ -10,6 +11,7 @@ import {
   References,
   type GuideStep,
   type Reference,
+  type SetupPromptSpec,
   type StepState,
 } from "./allegro-guide"
 import { fmtRating } from "./allegro-ui"
@@ -107,6 +109,23 @@ await eventBus.emit({
   location: { city: "Warszawa", postCode: "00-001", province: "MAZOWIECKIE" },
   cap: 5,
 },`,
+}
+
+/** The same setup as this guide (steps "key" and "options"), for "Copy prompt" in the page header. */
+export function usePromptSpec(): SetupPromptSpec {
+  const { t } = useTranslation("allegro")
+  return useMemo(() => {
+    const needs = t("guide.needs", { returnObjects: true }) as unknown
+    return {
+      service: "Allegro",
+      pkg: "@koda-plus/medusa-plugin-allegro",
+      route: "/app/allegro",
+      summary: t("subtitle"),
+      needs: Array.isArray(needs) ? (needs as string[]) : [],
+      config: `${CODE.key}\n\n${CODE.options}`,
+      demo: 'demo: process.env.ALLEGRO_DEMO === "true" || !process.env.ALLEGRO_CLIENT_ID,',
+    }
+  }, [t])
 }
 
 function Paragraphs({ items }: { items: string[] }) {
