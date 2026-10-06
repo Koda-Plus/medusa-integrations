@@ -29,6 +29,13 @@ Mostek Subiekta (.NET 8, Sfera) to OSOBNE, komercyjne repo `Koda-Plus/subiekt-ne
 - **Nazwa migracji (plik i klasa) musi być unikalna we WSZYSTKICH paczkach.** Medusa zapisuje wykonane migracje po samej nazwie we wspólnej tabeli `mikro_orm_migrations`, więc druga migracja o tej samej nazwie w innym module uchodzi za wykonaną i jej tabele nigdy nie powstają (06.10.2026: cztery paczki miały `Migration20261006090000`, na demo przeszła tylko OLX, BaseLinker padł na „relation baselinker_import does not exist”). Przed dodaniem migracji: `ls packages/*/src/modules/*/migrations/`.
 - README każdej paczki BEZ tabel i z opcjonalnymi obrazkami (medusajs.com spłaszcza tabele). Obrazki z `raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/<paczka>/docs/`.
 - Copy: angielski w kodzie i README, polski w `pl.ts` z pełnymi znakami diakrytycznymi. Nigdzie myślnika półpauzy, pauzy ani kropki środkowej.
+- Polskie słowniki kończą się `export default typeset(pl)` (nasz skrypt bez sierotek, `nb()` w kicie), tekst spoza słowników (opisy i opinie referencji) idzie przez `nb()`.
+
+## Strona w panelu (wspólny kit)
+
+- `src/admin/lib/<ns>-guide.tsx` jest IDENTYCZNY w pięciu paczkach: zmieniasz w jednej, kopiujesz plik 1:1 do pozostałych i sprawdzasz `md5sum packages/*/src/admin/lib/*-guide.tsx`.
+- Nagłówek każdej strony: tytuł z odznakami (tryb demo, zapisy), opis, pod nim odznaka „Działa w sklepach” i „Dodaj swój sklep” (formularz otwiera mail na `KODA_EMAIL` = hello@koda.plus). Po prawej Panel | Przewodnik, zębatka Ustawień i akcje, a pod nimi `HelpButtons`: „Kopiuj prompt” i „Pomoc na Discordzie” (`KODA_DISCORD`, oficjalny symbol z discord.com/branding, kolor Blurple). Napisy z bloku `community` w słownikach (te same klucze w pięciu paczkach, `communityLabels()`).
+- Prompt składa `buildSetupPrompt()` w kicie (PL i EN, według języka panelu) z `usePromptSpec()` eksportowanego przez `<ns>-guide-view.tsx`: ta sama konfiguracja co w przewodniku plus przełącznik demo w wersji z medusa.koda.plus. Zmieniasz konfigurację w przewodniku, prompt idzie za nią. Prompt każe instalować paczkę z npm, więc u obcych zadziała dopiero po publikacji (do tego czasu kieruje do Koda Plus).
 
 ## Komendy
 
