@@ -284,6 +284,7 @@ export function referencesFor(list: ReferenceDto[] | undefined, lang: string): R
   return (list ?? []).map((r) => ({
     name: r.name,
     url: r.url,
+    icon: r.icon,
     description: resolveText(r.description, lang),
     since: r.since,
     metrics: r.metrics.map((m) => ({ label: resolveText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),

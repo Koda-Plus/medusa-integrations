@@ -61,8 +61,8 @@ const pl: typeof en = {
     unread: "Nieprzeczytane wiadomości",
   },
   references: {
-    title: "Działa w sklepach",
-    subtitle: "Sklepy, w których ta integracja pracuje na co dzień.",
+    title: "Działa w sklepach wdrożonych przez Koda Plus",
+    subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
     since: "Od {{date}}",
   },

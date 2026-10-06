@@ -14,6 +14,8 @@ export type LocalizedText = string | { en?: string; pl?: string }
 export interface ReferenceInput {
   name?: unknown
   url?: unknown
+  /** The store's favicon or logo mark: a `data:image/...;base64,` URI or an https URL. */
+  icon?: unknown
   description?: unknown
   since?: unknown
   metrics?: unknown
@@ -23,6 +25,8 @@ export interface ReferenceInput {
 export interface ReferenceDto {
   name: string
   url: string
+  /** The store's icon: a data URI (at most 64 KB) or an https URL. */
+  icon?: string
   description?: LocalizedText
   /** YYYY-MM. */
   since?: string
@@ -61,6 +65,17 @@ export function localized(value: unknown, max = 300): LocalizedText | null {
   return { ...(en ? { en } : {}), ...(pl ? { pl } : {}) }
 }
 
+const ICON_DATA_URI = /^data:image\/(png|webp|jpeg|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/
+const ICON_MAX_CHARS = 90_000
+
+/** A store icon: an image data URI of at most about 64 KB, or an https URL. Anything else is dropped. */
+export function referenceIcon(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const s = value.trim()
+  if (s.startsWith("data:")) return ICON_DATA_URI.test(s) && s.length <= ICON_MAX_CHARS ? s : null
+  return httpsUrl(s)
+}
+
 export function normalizeReferences(input: unknown): ReferenceDto[] {
   if (!Array.isArray(input)) return []
   const out: ReferenceDto[] = []
@@ -87,7 +102,8 @@ export function normalizeReferences(input: unknown): ReferenceDto[] {
       const linkUrl = httpsUrl((l as { url?: unknown }).url)
       if (label && linkUrl) links.push({ label, url: linkUrl })
     }
-    out.push({ name, url, ...(description ? { description } : {}), ...(since ? { since } : {}), metrics: metrics.slice(0, 6), links: links.slice(0, 6) })
+    const icon = referenceIcon(r.icon)
+    out.push({ name, url, ...(icon ? { icon } : {}), ...(description ? { description } : {}), ...(since ? { since } : {}), metrics: metrics.slice(0, 6), links: links.slice(0, 6) })
     if (out.length >= MAX_REFERENCES) break
   }
   return out

@@ -52,8 +52,8 @@ const pl: typeof en = {
     corrections: "Korekty do decyzji",
   },
   references: {
-    title: "Działa w sklepach",
-    subtitle: "Sklepy, które wystawiają dokumenty tą integracją.",
+    title: "Działa w sklepach wdrożonych przez Koda Plus",
+    subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
     since: "Od {{date}}",
   },

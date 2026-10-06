@@ -14,6 +14,8 @@ export type LocalizedInput = string | { en?: string; pl?: string }
 export interface ReferenceInput {
   name: string
   url: string
+  /** The store's favicon or logo mark: a `data:image/...;base64,` URI or an https URL. */
+  icon?: string
   description?: LocalizedInput
   /** `YYYY-MM`, shown as "Since April 2026" / "Od kwietnia 2026". */
   since?: string
@@ -30,6 +32,8 @@ export interface LocalizedText {
 export interface ResolvedReference {
   name: string
   url: string
+  /** The store's icon: a data URI (at most 64 KB) or an https URL. */
+  icon: string | null
   description: LocalizedText | null
   since: string | null
   metrics: Array<{ label: LocalizedText; value: string }>
@@ -76,6 +80,17 @@ export function sinceMonth(value: unknown): string | null {
   return text && /^\d{4}-(0[1-9]|1[0-2])$/.test(text) ? text : null
 }
 
+const ICON_DATA_URI = /^data:image\/(png|webp|jpeg|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/
+const ICON_MAX_CHARS = 90_000
+
+/** A store icon: an image data URI of at most about 64 KB, or an https URL. Anything else is dropped. */
+export function referenceIcon(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const s = value.trim()
+  if (s.startsWith("data:")) return ICON_DATA_URI.test(s) && s.length <= ICON_MAX_CHARS ? s : null
+  return httpsUrl(s)
+}
+
 export function resolveReferences(value: unknown): ResolvedReference[] {
   if (!Array.isArray(value)) return []
   const out: ResolvedReference[] = []
@@ -104,7 +119,7 @@ export function resolveReferences(value: unknown): ResolvedReference[] {
       })
       .filter((l): l is { label: LocalizedText; url: string } => l !== null)
       .slice(0, MAX_ITEMS)
-    out.push({ name, url, description: localized(r.description, 400), since: sinceMonth(r.since), metrics, links })
+    out.push({ name, url, icon: referenceIcon(r.icon), description: localized(r.description, 400), since: sinceMonth(r.since), metrics, links })
   }
   return out
 }

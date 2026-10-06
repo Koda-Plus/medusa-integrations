@@ -155,6 +155,8 @@ export interface LocalizedTextDto {
 export interface ReferenceDto {
   name: string
   url: string
+  /** The store's icon: a data URI or an https URL. */
+  icon: string | null
   description: LocalizedTextDto | null
   since: string | null
   metrics: Array<{ label: LocalizedTextDto; value: string }>

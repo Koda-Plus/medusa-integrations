@@ -16,6 +16,8 @@ export interface LocalizedText {
 export interface OlxReference {
   name: string
   url: string
+  /** The store's icon: a data URI (at most 64 KB) or an https URL. */
+  icon: string | null
   description: LocalizedText | null
   /** YYYY-MM, e.g. 2026-04. */
   since: string | null
@@ -27,6 +29,8 @@ export interface OlxReference {
 export interface OlxReferenceOption {
   name: string
   url: string
+  /** The store's favicon or logo mark: a `data:image/...;base64,` URI or an https URL. */
+  icon?: string
   description?: string | LocalizedText
   since?: string
   metrics?: Array<{ label: string | LocalizedText; value: string }>
@@ -52,6 +56,17 @@ export function httpsUrl(value: unknown): string | null {
   } catch {
     return null
   }
+}
+
+const ICON_DATA_URI = /^data:image\/(png|webp|jpeg|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/
+const ICON_MAX_CHARS = 90_000
+
+/** A store icon: an image data URI of at most about 64 KB, or an https URL. Anything else is dropped. */
+export function referenceIcon(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const s = value.trim()
+  if (s.startsWith("data:")) return ICON_DATA_URI.test(s) && s.length <= ICON_MAX_CHARS ? s : null
+  return httpsUrl(s)
 }
 
 /** A plain string is the same text in both languages. */
@@ -112,6 +127,7 @@ export function normalizeReferences(input: unknown): OlxReference[] {
     out.push({
       name,
       url,
+      icon: referenceIcon(r.icon),
       description: localized(r.description, 400),
       since: validSince(r.since),
       metrics,

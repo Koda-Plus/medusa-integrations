@@ -120,6 +120,7 @@ export function ReferencesBlock({ status, lang }: { status: StatusResponse; lang
   const items: Reference[] = (status.references ?? []).map((r) => ({
     name: r.name,
     url: r.url,
+    icon: r.icon,
     description: localize(r.description, lang) || undefined,
     since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: localize(m.label, lang), value: m.value })),

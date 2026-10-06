@@ -303,8 +303,8 @@ const en = {
     retried: "Queued again.",
   },
   references: {
-    title: "Running in production",
-    subtitle: "Stores where this integration works every day.",
+    title: "Running in stores built by Koda Plus",
+    subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
     since: "Since {{date}}",
   },
