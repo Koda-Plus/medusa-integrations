@@ -173,6 +173,8 @@ export interface AllegroStatusResponse {
       regionName: string | null
       shippingOptionId: string | null
       warnings: string[]
+      /** The warnings as codes with their value, translated by the admin. */
+      notes: Array<{ code: "region_missing" | "no_region" | "channel_missing" | "demo_channel" | "default_channel" | "no_channel" | "no_shipping"; value?: string }>
     }
     fakturownia: boolean
   }

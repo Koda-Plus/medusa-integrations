@@ -1,4 +1,5 @@
 import type en from "./en"
+import { typeset } from "../lib/subiekt-guide"
 
 const pl: typeof en = {
   title: "Subiekt nexo",
@@ -629,4 +630,5 @@ const pl: typeof en = {
   },
 }
 
-export default pl
+/* Polish typography: no one-letter word left at the end of a line (nb in the page kit). */
+export default typeset(pl)

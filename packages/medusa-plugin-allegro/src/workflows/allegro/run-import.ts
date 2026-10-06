@@ -104,8 +104,14 @@ interface Target {
   regionName: string | null
   salesChannelId: string | null
   salesChannelName: string | null
+  /** English sentences, for hold reasons and the API. */
   warnings: string[]
+  /** The same, as codes the admin translates. */
+  notes: TargetNote[]
 }
+
+export type TargetNoteCode = "region_missing" | "no_region" | "channel_missing" | "demo_channel" | "default_channel" | "no_channel" | "no_shipping"
+export type TargetNote = { code: TargetNoteCode; value?: string }
 
 async function firstRegionIn(query: QueryLike, currency: string): Promise<{ id: string; name: string | null; currency: string } | null> {
   const { data } = await query.graph({ entity: "region", fields: ["id", "name", "currency_code"], pagination: { take: 100 } })
@@ -146,6 +152,11 @@ export async function resolveTarget(container: MedusaContainer, svc: AllegroModu
   const o = svc.getOptions()
   const query = queryOf(container)
   const warnings: string[] = []
+  const notes: TargetNote[] = []
+  const warn = (code: TargetNoteCode, text: string, value?: string) => {
+    warnings.push(text)
+    notes.push(value === undefined ? { code } : { code, value })
+  }
   let regionId: string | null = null
   let regionName: string | null = null
   let regionCurrency: string | null = null
@@ -156,14 +167,14 @@ export async function resolveTarget(container: MedusaContainer, svc: AllegroModu
       regionId = r.id
       regionName = r.name ?? null
       regionCurrency = String(r.currency_code ?? "").toLowerCase()
-    } else warnings.push(`orderImport.regionId ${o.orderImport.regionId} does not exist.`)
+    } else warn("region_missing", `orderImport.regionId ${o.orderImport.regionId} does not exist.`, o.orderImport.regionId)
   } else {
     const r = await firstRegionIn(query, currency)
     if (r) {
       regionId = r.id
       regionName = r.name
       regionCurrency = r.currency
-    } else warnings.push(`No region in ${currency.toUpperCase()}. Create one or set orderImport.regionId.`)
+    } else warn("no_region", `No region in ${currency.toUpperCase()}. Create one or set orderImport.regionId.`, currency.toUpperCase())
   }
 
   let salesChannelId: string | null = null
@@ -174,7 +185,7 @@ export async function resolveTarget(container: MedusaContainer, svc: AllegroModu
     if (c) {
       salesChannelId = c.id
       salesChannelName = c.name
-    } else warnings.push(`orderImport.salesChannelId ${o.orderImport.salesChannelId} does not exist.`)
+    } else warn("channel_missing", `orderImport.salesChannelId ${o.orderImport.salesChannelId} does not exist.`, o.orderImport.salesChannelId)
   } else if (o.demo) {
     const { data } = await query.graph({ entity: "sales_channel", fields: ["id", "name"], filters: { name: DEMO_SALES_CHANNEL } })
     const c = (data as Array<{ id: string; name: string }>)[0] ?? (create ? await ensureDemoChannel(container, query) : null)
@@ -183,7 +194,7 @@ export async function resolveTarget(container: MedusaContainer, svc: AllegroModu
       salesChannelName = c.name
     } else if (!create) {
       salesChannelName = DEMO_SALES_CHANNEL
-      warnings.push(`The "${DEMO_SALES_CHANNEL}" sales channel is created on the first import.`)
+      warn("demo_channel", `The "${DEMO_SALES_CHANNEL}" sales channel is created on the first import.`, DEMO_SALES_CHANNEL)
     }
   } else {
     const { data } = await query.graph({ entity: "sales_channel", fields: ["id", "name"], pagination: { take: 100 } })
@@ -199,14 +210,14 @@ export async function resolveTarget(container: MedusaContainer, svc: AllegroModu
       if (c) {
         salesChannelId = c.id
         salesChannelName = c.name
-        warnings.push(`Allegro orders go to the default sales channel "${c.name}". Create a channel named "Allegro" (or set orderImport.salesChannelId) to keep them apart.`)
-      } else warnings.push("No sales channel for Allegro orders. Set orderImport.salesChannelId.")
+        warn("default_channel", `Allegro orders go to the default sales channel "${c.name}". Create a channel named "Allegro" (or set orderImport.salesChannelId) to keep them apart.`, c.name)
+      } else warn("no_channel", "No sales channel for Allegro orders. Set orderImport.salesChannelId.")
     }
   }
   if (!o.orderImport.shippingOptionId && Object.keys(o.orderImport.shippingOptions).length === 0) {
-    warnings.push("No shipping option is put on imported orders: pick one in the Medusa fulfillment form, or set orderImport.shippingOptionId.")
+    warn("no_shipping", "No shipping option is put on imported orders: pick one in the Medusa fulfillment form, or set orderImport.shippingOptionId.")
   }
-  return { regionId, currency: regionCurrency, regionName, salesChannelId, salesChannelName, warnings }
+  return { regionId, currency: regionCurrency, regionName, salesChannelId, salesChannelName, warnings, notes }
 }
 
 /** The variant maps: offer links from the snapshot first, SKUs of the whole catalog second. */

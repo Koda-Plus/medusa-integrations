@@ -31,7 +31,7 @@ export function ImportsSection({
   /** Opens the writers in Settings, where the order import is armed. */
   onOpenWriters?: () => void
 }) {
-  const { t } = useTranslation("allegro")
+  const { t, i18n } = useTranslation("allegro")
   const [search, setSearch] = useState("")
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
@@ -98,6 +98,12 @@ export function ImportsSection({
     }
   }
 
+  /* A translated hint by reason code; the server's own words, with the details, stay in the tooltip. */
+  const hint = (code: string | null, raw: string): string => {
+    const key = code ? `imports.fix.${code}` : ""
+    return key && i18n.exists(key, { ns: "allegro" }) ? t(key) : raw
+  }
+
   const rows = imports.data?.imports ?? []
   return (
     <Container className="divide-y p-0" id="allegro-imports">
@@ -125,7 +131,7 @@ export function ImportsSection({
           {c.cursor ? t("imports.cursor", { id: c.cursor.id, when: fmtDateTime(c.cursor.at, lang) }) : t("imports.noCursor")}
           {c.lastOkAt ? ` ${t("imports.lastOk", { when: fmtDateTime(c.lastOkAt, lang) })}` : ""}
         </Text>
-        {target.warnings.map((w) => (
+        {(target.notes?.length ? target.notes.map((n) => t(`imports.note.${n.code}`, { value: n.value ?? "" })) : target.warnings).map((w) => (
           <Text key={w} size="xsmall" className="text-ui-tag-orange-text">
             {w}
           </Text>
@@ -203,7 +209,7 @@ export function ImportsSection({
                 <Table.Row key={r.id} className="[&_td]:py-2.5 align-top">
                   <Table.Cell className="whitespace-nowrap">{fmtDateTime(r.boughtAt ?? r.updatedAt, lang)}</Table.Cell>
                   <Table.Cell>
-                    <div className="flex flex-col gap-y-1">
+                    <div className="flex flex-col items-start gap-y-1">
                       <span className="font-mono txt-compact-small text-ui-fg-base" title={r.checkoutFormId}>
                         {shortId(r.checkoutFormId)}
                       </span>
@@ -240,13 +246,13 @@ export function ImportsSection({
                   <Table.Cell className="max-w-[340px]">
                     <div className="flex flex-col items-start gap-y-1">
                       {r.attention ? (
-                        <Text size="xsmall" className="text-ui-tag-orange-text">
-                          {r.attention}
+                        <Text size="xsmall" className="text-ui-tag-orange-text" title={r.attention}>
+                          {t("imports.attention")}
                         </Text>
                       ) : null}
                       {r.reason ? (
-                        <Text size="xsmall" className={r.status === "held" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}>
-                          {r.reason}
+                        <Text size="xsmall" className={r.status === "held" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"} title={r.reason}>
+                          {hint(r.reasonCode, r.reason)}
                         </Text>
                       ) : null}
                       {r.status === "held" || r.status === "skipped" ? (

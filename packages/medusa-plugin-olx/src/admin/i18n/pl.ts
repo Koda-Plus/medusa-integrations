@@ -1,4 +1,5 @@
 import type en from "./en"
+import { typeset } from "../lib/olx-guide"
 
 const pl: typeof en = {
   title: "OLX",
@@ -678,4 +679,5 @@ const pl: typeof en = {
   error: "Nie udało się wczytać danych OLX: {{message}}",
 }
 
-export default pl
+/* Polish typography: no one-letter word left at the end of a line (nb in the page kit). */
+export default typeset(pl)

@@ -75,7 +75,7 @@ import { WritersSection } from "../../lib/allegro-writers"
 const PAGE_SIZE = 20
 const ORDERS_PAGE_SIZE = 10
 
-const SETTINGS_TABS = ["account", "writers", "plans", "outbox", "runs"] as const
+const SETTINGS_TABS = ["account", "writers", "imports", "plans", "outbox", "runs"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
 const AllegroPage = () => {
@@ -101,23 +101,23 @@ const AllegroPage = () => {
   const [issueFilter, setIssueFilter] = useState<AllegroIssueFilter>("open")
   const poll = () => setPollUntil(Date.now() + 30_000)
 
-  /* Imported and held orders open the order list; without the order journal, the imports. */
+  /* A jump from the panel into Settings also brings the tabs into view, wherever the panel was scrolled. */
+  const openSettings = (tab: SettingsTabId) => {
+    nav.go("settings", tab)
+    scrollToSection("allegro-top")
+  }
+
+  /* Imported and held orders open the order list; without the order journal, the import log in Settings. */
   const openImports = (f: "imported" | "held") => {
     if (s?.ordersEnabled) {
       setOrderFilter(f)
       scrollToSection("allegro-orders")
     } else {
       setImportFilter(f)
-      scrollToSection("allegro-imports")
+      openSettings("imports")
     }
   }
   const importsActive = (f: "imported" | "held") => (s?.ordersEnabled ? orderFilter === f : importFilter === f)
-
-  /* A jump from the panel into Settings also brings the tabs into view, wherever the panel was scrolled. */
-  const openSettings = (tab: SettingsTabId) => {
-    nav.go("settings", tab)
-    scrollToSection("allegro-top")
-  }
 
   const outboxOpen = s ? s.outbox.shipping.pending + s.outbox.shipping.failed + s.outbox.invoices.pending + s.outbox.invoices.failed : 0
   const outboxFailed = s ? s.outbox.shipping.failed + s.outbox.invoices.failed : 0
@@ -135,51 +135,62 @@ const AllegroPage = () => {
         ) : null}
         {s && nav.view !== "guide" ? <Warnings status={s} /> : null}
         {s && nav.view === "panel" ? (
-          <>
-            <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4 xl:grid-cols-8">
-              <StatTile label={t("stats.offers")} value={s.counts.offers} active={filter === "all"} onClick={() => setFilter("all")} />
-              <StatTile label={t("stats.live")} value={s.counts.live} tone="green" />
-              <StatTile label={t("stats.linkedLive")} value={s.counts.linkedLive} tone="green" active={filter === "linked"} onClick={() => setFilter("linked")} />
-              <StatTile label={t("stats.stockIssues")} value={s.counts.stockIssues} tone="red" active={filter === "stock"} onClick={() => setFilter("stock")} />
-              <StatTile label={t("stats.endedInStock")} value={s.counts.endedInStock} tone="orange" active={filter === "ended_in_stock"} onClick={() => setFilter("ended_in_stock")} />
-              <StatTile label={t("stats.unmatched")} value={s.counts.unmatchedLive} tone="red" active={filter === "unmatched"} onClick={() => setFilter("unmatched")} />
-              <StatTile
-                label={t("stats.ordersOpen")}
-                value={s.counts.ordersOpen}
-                tone="blue"
-                active={s.ordersEnabled && orderFilter === "open"}
-                onClick={
-                  s.ordersEnabled
-                    ? () => {
-                        setOrderFilter("open")
-                        scrollToSection("allegro-orders")
-                      }
-                    : undefined
-                }
-              />
-              <StatTile label={t("stats.noKey")} value={s.counts.noKey} active={filter === "nokey"} onClick={() => setFilter("nokey")} />
+          /* One block with two labelled groups, like OLX: a second block would get the container's divider glued to its tiles. */
+          <div className="flex flex-col gap-y-4 px-6 py-4">
+            <div className="flex flex-col gap-y-2">
+              <Text size="xsmall" className="text-ui-fg-muted">
+                {t("stats.groupOffers")}
+              </Text>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+                <StatTile label={t("stats.offers")} value={s.counts.offers} active={filter === "all"} onClick={() => setFilter("all")} />
+                <StatTile label={t("stats.live")} value={s.counts.live} tone="green" />
+                <StatTile label={t("stats.linkedLive")} value={s.counts.linkedLive} tone="green" active={filter === "linked"} onClick={() => setFilter("linked")} />
+                <StatTile label={t("stats.stockIssues")} value={s.counts.stockIssues} tone="red" active={filter === "stock"} onClick={() => setFilter("stock")} />
+                <StatTile label={t("stats.endedInStock")} value={s.counts.endedInStock} tone="orange" active={filter === "ended_in_stock"} onClick={() => setFilter("ended_in_stock")} />
+                <StatTile label={t("stats.unmatched")} value={s.counts.unmatchedLive} tone="red" active={filter === "unmatched"} onClick={() => setFilter("unmatched")} />
+                <StatTile label={t("stats.noKey")} value={s.counts.noKey} active={filter === "nokey"} onClick={() => setFilter("nokey")} />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 px-6 pb-4 md:grid-cols-4">
-              <StatTile label={t("stats.imported")} value={s.imports.imported} tone="green" active={importsActive("imported")} onClick={() => openImports("imported")} />
-              <StatTile label={t("stats.held")} value={s.imports.held} tone="red" active={importsActive("held")} onClick={() => openImports("held")} />
-              <StatTile
-                label={t("stats.outbox")}
-                value={s.outbox.shipping.pending + s.outbox.invoices.pending}
-                tone="blue"
-                onClick={() => openSettings("outbox")}
-              />
-              <StatTile
-                label={t("stats.issues")}
-                value={s.issues.needReply}
-                tone="orange"
-                active={issueFilter === "needs_reply"}
-                onClick={() => {
-                  setIssueFilter("needs_reply")
-                  scrollToSection("allegro-issues")
-                }}
-              />
+            <div className="flex flex-col gap-y-2">
+              <Text size="xsmall" className="text-ui-fg-muted">
+                {t("stats.groupOrders")}
+              </Text>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+                <StatTile
+                  label={t("stats.ordersOpen")}
+                  value={s.counts.ordersOpen}
+                  tone="blue"
+                  active={s.ordersEnabled && orderFilter === "open"}
+                  onClick={
+                    s.ordersEnabled
+                      ? () => {
+                          setOrderFilter("open")
+                          scrollToSection("allegro-orders")
+                        }
+                      : undefined
+                  }
+                />
+                <StatTile label={t("stats.imported")} value={s.imports.imported} tone="green" active={importsActive("imported")} onClick={() => openImports("imported")} />
+                <StatTile label={t("stats.held")} value={s.imports.held} tone="red" active={importsActive("held")} onClick={() => openImports("held")} />
+                <StatTile
+                  label={t("stats.outbox")}
+                  value={s.outbox.shipping.pending + s.outbox.invoices.pending}
+                  tone="blue"
+                  onClick={() => openSettings("outbox")}
+                />
+                <StatTile
+                  label={t("stats.issues")}
+                  value={s.issues.needReply}
+                  tone="orange"
+                  active={issueFilter === "needs_reply"}
+                  onClick={() => {
+                    setIssueFilter("needs_reply")
+                    scrollToSection("allegro-issues")
+                  }}
+                />
+              </div>
             </div>
-          </>
+          </div>
         ) : null}
       </Container>
 
@@ -189,7 +200,6 @@ const AllegroPage = () => {
         <>
           <OffersSection status={s} lang={lang} filter={filter} onFilter={setFilter} />
           {s.ordersEnabled ? <OrdersSection status={s} lang={lang} filter={orderFilter} onFilter={setOrderFilter} /> : null}
-          <ImportsSection status={s} lang={lang} filter={importFilter} onFilter={setImportFilter} onOpenWriters={() => openSettings("writers")} />
           <IssuesSection status={s} lang={lang} filter={issueFilter} onFilter={setIssueFilter} />
         </>
       ) : null}
@@ -203,6 +213,7 @@ const AllegroPage = () => {
           tabs={[
             { id: "account", label: t("settings.tab.account") },
             { id: "writers", label: t("settings.tab.writers"), badge: s.writers.filter((w) => w.effective).length, tone: "orange" },
+            { id: "imports", label: t("settings.tab.imports"), badge: s.imports.held, tone: "red" },
             { id: "plans", label: t("settings.tab.plans") },
             { id: "outbox", label: t("settings.tab.outbox"), badge: outboxOpen, tone: outboxFailed > 0 ? "red" : "blue" },
             { id: "runs", label: t("settings.tab.runs") },
@@ -210,6 +221,9 @@ const AllegroPage = () => {
         >
           {nav.tab === "account" ? <ConnectionSection status={s} lang={lang} /> : null}
           {nav.tab === "writers" ? <WritersSection status={s} lang={lang} /> : null}
+          {nav.tab === "imports" ? (
+            <ImportsSection status={s} lang={lang} filter={importFilter} onFilter={setImportFilter} onOpenWriters={() => openSettings("writers")} />
+          ) : null}
           {nav.tab === "plans" ? (
             <>
               <PlanSection kind="stock" status={s} lang={lang} />
