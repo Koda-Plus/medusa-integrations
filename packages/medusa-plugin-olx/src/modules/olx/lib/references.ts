@@ -13,6 +13,21 @@ export interface LocalizedText {
   pl?: string
 }
 
+/** A rating of the work at the store, on a review platform such as Clutch. */
+export interface OlxReview {
+  /** 0 to `scale`, one decimal. */
+  rating: number
+  scale: number
+  /** Who rated, e.g. "Clutch". */
+  source: string
+  /** The review itself (https). */
+  url: string | null
+  /** The source's mark: a data URI or an https URL. */
+  icon: string | null
+  quote: LocalizedText | null
+  author: string | null
+}
+
 export interface OlxReference {
   name: string
   url: string
@@ -23,6 +38,7 @@ export interface OlxReference {
   since: string | null
   metrics: Array<{ label: LocalizedText; value: string }>
   links: Array<{ label: LocalizedText; url: string }>
+  review: OlxReview | null
 }
 
 /** What the option accepts. Every field is checked, so `unknown` is fine here. */
@@ -35,6 +51,18 @@ export interface OlxReferenceOption {
   since?: string
   metrics?: Array<{ label: string | LocalizedText; value: string }>
   links?: Array<{ label: string | LocalizedText; url: string }>
+  /** The store's rating of the work, with where it was given: `{ rating: 5, source: "Clutch", url, icon }`. */
+  review?: {
+    rating: number
+    /** 5 when left out. */
+    scale?: number
+    source: string
+    url?: string
+    icon?: string
+    /** Only with the client's consent to quote them. */
+    quote?: string | LocalizedText
+    author?: string
+  }
 }
 
 const MAX_REFERENCES = 12
@@ -92,6 +120,27 @@ export function validSince(value: unknown): string | null {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(s) ? s : null
 }
 
+/** A rating with a positive value and a source, or null. The rating never exceeds its scale. */
+export function normalizeReview(value: unknown): OlxReview | null {
+  if (!value || typeof value !== "object") return null
+  const v = value as Record<string, unknown>
+  const scaleRaw = Number(v.scale ?? 5)
+  const scale = Number.isFinite(scaleRaw) && scaleRaw >= 1 && scaleRaw <= 10 ? Math.round(scaleRaw) : 5
+  const ratingRaw = typeof v.rating === "string" ? Number(v.rating.replace(",", ".")) : Number(v.rating)
+  if (!Number.isFinite(ratingRaw) || ratingRaw <= 0) return null
+  const source = clip(v.source, 40)
+  if (!source) return null
+  return {
+    rating: Math.round(Math.min(ratingRaw, scale) * 10) / 10,
+    scale,
+    source,
+    url: httpsUrl(v.url),
+    icon: referenceIcon(v.icon),
+    quote: localized(v.quote, 600),
+    author: clip(v.author, 80) || null,
+  }
+}
+
 export function normalizeReferences(input: unknown): OlxReference[] {
   if (!Array.isArray(input)) return []
   const out: OlxReference[] = []
@@ -132,6 +181,7 @@ export function normalizeReferences(input: unknown): OlxReference[] {
       since: validSince(r.since),
       metrics,
       links,
+      review: normalizeReview(r.review),
     })
   }
   return out

@@ -29,6 +29,16 @@ export interface OlxReferenceDto {
   since: string | null
   metrics: Array<{ label: OlxLocalizedText; value: string }>
   links: Array<{ label: OlxLocalizedText; url: string }>
+  /** The store's rating of the work and where it was given, e.g. Clutch. */
+  review: {
+    rating: number
+    scale: number
+    source: string
+    url: string | null
+    icon: string | null
+    quote: OlxLocalizedText | null
+    author: string | null
+  } | null
 }
 
 export interface OlxProblemDto {
