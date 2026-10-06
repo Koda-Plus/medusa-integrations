@@ -6,10 +6,11 @@
  *
  *   npm run release
  *
- * Needs `npm login` with an account in the npm organization `koda-plus`.
- * `npm publish` runs each package's prepublishOnly (tests, then
- * `medusa plugin:build`), so nothing untested or unbuilt goes out. When the
- * account uses 2FA, npm asks for it in the terminal or in the browser.
+ * Needs `npm login` as the npm account `koda-plus` (the @koda-plus scope
+ * belongs to that account, no organization). `npm publish` runs each
+ * package's prepublishOnly (tests, then `medusa plugin:build`), so nothing
+ * untested or unbuilt goes out. The account has 2FA for writes: every publish
+ * waits for a confirmation in the browser (the link npm prints).
  */
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -19,11 +20,13 @@ import { fileURLToPath } from "node:url"
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const PACKAGES = ["medusa-plugin-olx", "medusa-plugin-allegro", "medusa-plugin-baselinker", "medusa-plugin-subiekt-nexo", "medusa-plugin-fakturownia"]
 
-const npm = (args, cwd, quiet = false) => spawnSync("npm", args, { cwd, shell: true, stdio: quiet ? "pipe" : "inherit", encoding: "utf8" })
+/* One command string: npm is npm.cmd on Windows and needs a shell, and Node warns (DEP0190) when a
+   shell gets separate arguments. Every argument here is a plain token, nothing to escape. */
+const npm = (args, cwd, quiet = false) => spawnSync(`npm ${args.join(" ")}`, { cwd, shell: true, stdio: quiet ? "pipe" : "inherit", encoding: "utf8" })
 
 const who = npm(["whoami"], root, true)
 if (who.status !== 0) {
-  console.error("Not logged in to npm. Run `npm login` first (an account in the koda-plus organization).")
+  console.error("Not logged in to npm. Run `npm login` first (the koda-plus account).")
   process.exit(1)
 }
 console.log(`npm user: ${who.stdout.trim()}`)
