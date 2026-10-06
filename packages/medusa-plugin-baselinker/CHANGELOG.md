@@ -4,6 +4,15 @@
 
 Both directions, every write plan first and armed by a person.
 
+### Admin page (the same in all five Koda Plus integrations)
+
+- One header: the name with the state badges, the description, then a toolbar with the view tabs (Panel, Setup guide, Settings, each with its name) and the page's actions, one main button and the others beside it or under More actions.
+- The panel shows the business (counters, lists next to the Medusa product or order); Settings hold the technical parts (account, writers, plans, history).
+- "Running in N stores" from the `references` option, with the rating and its source (`review`), and "Add your store", a request to Koda Plus by e-mail.
+- "Copy prompt": a prompt for an AI coding agent (Claude Code, Cursor) that installs the plugin in another Medusa project the way the setup guide shows, with every writer off, and leaves notes for the next session.
+- "Help on Discord": the Koda Plus server.
+- Polish copy typeset: no one-letter word or short conjunction left at the end of a line.
+
 - Directions: `catalogSource` (`medusa` or `baselinker`) and `stockSource` (`baselinker` or `medusa`), shown as a matrix in the admin.
 - Writers: `catalogImport`, `cards`, `stockToMedusa`, `stockToBaseLinker`, `prices`, `orderImport`, `invoiceNumbers`. Each is off by default, with a hard switch in the options (`writers: { <name>: false }` wins) and an arm switch in the admin stored with who flipped it and when. The write barrier lets `addInventoryProduct`, `updateInventoryProductsStock`, `updateInventoryProductsPrices` and `setOrderFields` out only with the permit of an armed writer. Configurations of 0.1 with `stockSync: "write"` keep writing stock into Medusa until a person touches the switch.
 - Plans for every write that changes data (`baselinker_plan_item`), a cap per run (`maxCatalogChangesPerRun`, `maxStockChangesPerRun`, `maxPriceChangesPerRun`) and per item quarantine after `quarantineAfter` failed runs, released by a person.

@@ -4,6 +4,15 @@
 
 Corrections, e-mails, KSeF in depth, documents in the customer account and B2B buyer data, with a contract other plugins can build on. Every new write to Fakturownia ships off.
 
+### Admin page (the same in all five Koda Plus integrations)
+
+- One header: the name with the state badges, the description, then a toolbar with the view tabs (Panel, Setup guide, Settings, each with its name) and the page's actions, one main button and the others beside it or under More actions.
+- The panel shows the business (counters, lists next to the Medusa product or order); Settings hold the technical parts (account, writers, plans, history).
+- "Running in N stores" from the `references` option, with the rating and its source (`review`), and "Add your store", a request to Koda Plus by e-mail.
+- "Copy prompt": a prompt for an AI coding agent (Claude Code, Cursor) that installs the plugin in another Medusa project the way the setup guide shows, with every writer off, and leaves notes for the next session.
+- "Help on Discord": the Koda Plus server.
+- Polish copy typeset: no one-letter word or short conjunction left at the end of a line.
+
 ### Contract for other plugins
 
 - Events `fakturownia.document.issued` (VAT invoice, proforma, receipt) and `fakturownia.document.corrected` (correction invoice), both with `{ id, order_id, kind, number, external_id, demo }`, emitted once when a document becomes issued: a create, an adoption after a lost answer, the reconciliation of an `unknown` row, a person marking it issued with its Fakturownia id.
