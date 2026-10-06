@@ -4,15 +4,6 @@
 
 From a read-only view of OLX to a two-way tool, with every write off by default.
 
-### Admin page (the same in all five Koda Plus integrations)
-
-- One header: the name with the state badges, the description, then a toolbar with the view tabs (Panel, Setup guide, Settings, each with its name) and the page's actions, one main button and the others beside it or under More actions.
-- The panel shows the business (counters, lists next to the Medusa product or order); Settings hold the technical parts (account, writers, plans, history).
-- "Running in N stores" from the `references` option, with the rating and its source (`review`), and "Add your store", a request to Koda Plus by e-mail.
-- "Copy prompt": a prompt for an AI coding agent (Claude Code, Cursor) that installs the plugin in another Medusa project the way the setup guide shows, with every writer off, and leaves notes for the next session.
-- "Help on Discord": the Koda Plus server.
-- Polish copy typeset: no one-letter word or short conjunction left at the end of a line.
-
 - Alerts every 15 minutes: adverts live on OLX while the variant is sold out or the product unpublished in Medusa, variants in stock whose adverts are not live, and variants in stock never listed on OLX. Counters, filters, search, alert badges in the advert table and in the product widget.
 - Advert lifecycle writer (`lifecycleWriter`): deactivates live adverts of sold out or unpublished variants, finishes sold out adverts over the package limit and reactivates only the adverts it paused itself. Plan first, dry run, cap per run, quarantine after three rejections, a mass guard for plans that would end more than max(10, 25 %) of the live adverts.
 - Price writer (`priceWriter`): advert prices from the variant's base price in the market currency. The advert is read, sent back whole with only the price changed, and changes above `maxPriceChangePercent` wait for approval.
@@ -27,6 +18,15 @@ From a read-only view of OLX to a two-way tool, with every write off by default.
 - Demo mode simulates everything from the store catalog: alerts, statistics, threads, all three writers acting on the simulation, and a publish plan with one product missing a required attribute. Demo writes reset after a day, or with "Reset the simulation".
 - One new migration: alerts, plan rows, publications, writer runs, threads and a state table; statistics and category columns on the advert snapshot.
 - New jobs: `olx-plan` (every 15 minutes), `olx-refresh-stats` (hourly), `olx-sync-threads` (every 15 minutes). New workflows: `runOlxCycleWorkflow`, `runOlxWriterWorkflow`, `refreshOlxStatsWorkflow`, `syncOlxThreadsWorkflow`.
+
+### Admin page (the same in all five Koda Plus integrations)
+
+- One header: the name with the state badges, the description, then a toolbar with the view tabs (Panel, Setup guide, Settings, each with its name) and the page's actions, one main button and the others beside it or under More actions.
+- The panel shows the business (counters, lists next to the Medusa product or order); Settings hold the technical parts (account, writers, plans, history).
+- "Running in N stores" from the `references` option, with the rating and its source (`review`), and "Add your store", a request to Koda Plus by e-mail.
+- "Copy prompt": a prompt for an AI coding agent (Claude Code, Cursor) that installs the plugin in another Medusa project the way the setup guide shows, with every writer off, and leaves notes for the next session.
+- "Help on Discord": the Koda Plus server.
+- Polish copy typeset: no one-letter word or short conjunction left at the end of a line.
 
 ## 0.1.0 (2026-10-04)
 

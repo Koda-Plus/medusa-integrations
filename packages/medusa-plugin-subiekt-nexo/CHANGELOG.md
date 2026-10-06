@@ -4,15 +4,6 @@
 
 Needs no bridge update to keep working: every new feature is detected from the bridge `capabilities`. Bridge 0.2.0 (contract 1.1.0) unlocks them.
 
-### Admin page (the same in all five Koda Plus integrations)
-
-- One header: the name with the state badges, the description, then a toolbar with the view tabs (Panel, Setup guide, Settings, each with its name) and the page's actions, one main button and the others beside it or under More actions.
-- The panel shows the business (counters, lists next to the Medusa product or order); Settings hold the technical parts (account, writers, plans, history).
-- "Running in N stores" from the `references` option, with the rating and its source (`review`), and "Add your store", a request to Koda Plus by e-mail.
-- "Copy prompt": a prompt for an AI coding agent (Claude Code, Cursor) that installs the plugin in another Medusa project the way the setup guide shows, with every writer off, and leaves notes for the next session.
-- "Help on Discord": the Koda Plus server.
-- Polish copy typeset: no one-letter word or short conjunction left at the end of a line.
-
 - Contract 1.1.0, additive: `capabilities`, bridge and nexo SDK versions, database version, Sfera licence state, last event, queue sizes and server time in `GET /v1/health`; `GET /v1/products` (paged from one snapshot, price levels); the optional `buyer` block of `POST /v1/orders`; `POST /v1/orders/{orderId}/documents` (FS or PA, idempotent); `ksef_number` on documents; the `document.updated` event. New examples: `products.response.json`, `order-create-b2b.request.json`, `document-create.request.json`, `document-create.response.json`.
 - Products and prices from Subiekt, plan first: hourly job `subiekt-sync-products`, EAN then SKU matching (no suffix stripping), `priceLevel`, `priceType`, `priceCurrency`, `priceTarget` (variant prices or `priceListId`), `priceWriter` and `createMissingProducts` hard switches, `maxPriceChangesPerRun` (200) and `maxProductsPerRun` (20), re-read before every write, stale items skipped, quarantine after three failed runs with release in the admin. An incomplete read plans nothing.
 - Contractors by NIP: `nipSources` with checksum validation, `createContractors` hard switch; an invalid NIP sends the ZK to the retail buyer with a warning on the task.
@@ -22,6 +13,15 @@ Needs no bridge update to keep working: every new feature is detected from the b
 - Setup guide in English and Polish with live step states, a go-live checklist and troubleshooting; also `docs/guide-en.md` and `docs/guide-pl.md`. Verified facts in `docs/subiekt-nexo-api-notes.md`.
 - Demo bridge: products with two price levels and EAN conflicts from the store catalog, contractors by NIP, FS and PA numbers, KSeF numbers two minutes after an FS, health with every capability and a 1.4 s clock skew.
 - Migration `Migration20261006120000`: `subiekt_writer`, `subiekt_catalog_change`, `subiekt_catalog_quarantine`, new columns on connection, document and task.
+
+### Admin page (the same in all five Koda Plus integrations)
+
+- One header: the name with the state badges, the description, then a toolbar with the view tabs (Panel, Setup guide, Settings, each with its name) and the page's actions, one main button and the others beside it or under More actions.
+- The panel shows the business (counters, lists next to the Medusa product or order); Settings hold the technical parts (account, writers, plans, history).
+- "Running in N stores" from the `references` option, with the rating and its source (`review`), and "Add your store", a request to Koda Plus by e-mail.
+- "Copy prompt": a prompt for an AI coding agent (Claude Code, Cursor) that installs the plugin in another Medusa project the way the setup guide shows, with every writer off, and leaves notes for the next session.
+- "Help on Discord": the Koda Plus server.
+- Polish copy typeset: no one-letter word or short conjunction left at the end of a line.
 
 ## 0.1.0 (2026-10-05)
 
