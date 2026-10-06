@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-subiekt-nexo",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Subiekt nexo PRO (InsERT) for Medusa v2: orders become ZK documents, WZ issued in the warehouse come back to the order, invoices and receipts are issued in Subiekt with their KSeF number, company buyers are matched by NIP, stock and prices flow from Subiekt to Medusa, plan first. Talks to a bridge over a signed, documented HTTP contract.",
   "author": "Koda Plus <kontakt@koda.plus> (https://koda.plus)",
   "license": "MIT",

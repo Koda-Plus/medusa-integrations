@@ -83,6 +83,10 @@ const pl: typeof en = {
     open: "Otwórz sklep",
     badgeOne: "Działa w 1 sklepie",
     badgeMany: "Działa w {{count}} sklepach",
+    badgeSoonOne: "Wkrótce w 1 sklepie",
+    badgeSoonMany: "Wkrótce w {{count}} sklepach",
+    soon: "Wkrótce",
+    soonMore: "+{{count}} wkrótce",
     review: "Zobacz opinię",
   },
   community: {

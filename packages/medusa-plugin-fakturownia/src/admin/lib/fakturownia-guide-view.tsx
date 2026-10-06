@@ -2,7 +2,7 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { StatusResponse } from "../../modules/fakturownia/lib/contract"
 import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./fakturownia-guide"
-import { fmtRating, referencesFor, sinceMonth } from "./fakturownia-ui"
+import { fmtRating, referencesFor } from "./fakturownia-ui"
 
 /**
  * THE SETUP GUIDE: from a new Fakturownia account to production, with the
@@ -266,7 +266,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
         title={t("references.title")}
         subtitle={t("references.subtitle")}
         openLabel={t("references.open")}
-        sinceLabel={(since) => t("references.since", { date: sinceMonth(since, lang) })}
+        soonLabel={t("references.soon")}
         reviewLabel={t("references.review")}
         ratingLabel={(value) => fmtRating(value, lang)}
       />

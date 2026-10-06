@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { AllegroStatusResponse, AllegroWriterKey } from "../../modules/allegro/lib/contract"
-import { pickText, sinceLabel } from "../../modules/allegro/lib/references"
+import { pickText } from "../../modules/allegro/lib/references"
 import {
   GuideChecklist,
   GuideDiagram,
@@ -20,10 +20,10 @@ import { fmtRating } from "./allegro-ui"
 export function referencesFor(status: AllegroStatusResponse, lang: string): Reference[] {
   return status.references.map((r) => ({
     name: r.name,
-    url: r.url,
+    url: r.url ?? undefined,
+    soon: r.soon,
     icon: r.icon,
     description: pickText(r.description, lang) || undefined,
-    since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),
     links: r.links.map((l) => ({ label: pickText(l.label, lang), url: l.url })),
     review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
@@ -39,7 +39,7 @@ export function ReferencesBlock({ status, lang }: { status: AllegroStatusRespons
       title={t("references.title")}
       subtitle={t("references.subtitle")}
       openLabel={t("references.open")}
-      sinceLabel={(since) => sinceLabel(since, lang)}
+      soonLabel={t("references.soon")}
       reviewLabel={t("references.review")}
       ratingLabel={(value) => fmtRating(value, lang)}
     />

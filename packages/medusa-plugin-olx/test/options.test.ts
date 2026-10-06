@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { resolveOptions, wantsWriteScope } from "../src/modules/olx/lib/options.ts"
-import { fmtMonth, normalizeReferences, normalizeReview, pickText, validSince } from "../src/modules/olx/lib/references.ts"
+import { normalizeReferences, normalizeReview, pickText } from "../src/modules/olx/lib/references.ts"
 
 test("writers: off by default in live mode, on in demo mode, explicit false always wins", () => {
   const live = resolveOptions({ clientId: "x" })
@@ -69,7 +69,6 @@ test("references: entries without a name or an https URL are dropped, parts are 
       name: "Opony Koła",
       url: "https://www.oponykola.pl",
       description: { en: "Tyres and wheels", pl: "Opony i felgi" },
-      since: "2026-04",
       metrics: [{ label: { en: "adverts", pl: "ogłoszeń" }, value: "1 900" }, { label: "broken" }],
       links: [{ label: "Product", url: "https://www.oponykola.pl/p/1" }, { label: "Insecure", url: "http://x.pl" }],
     },
@@ -78,13 +77,12 @@ test("references: entries without a name or an https URL are dropped, parts are 
     { name: "", url: "https://shop.pl" },
     { name: "Duplicate", url: "https://www.oponykola.pl" },
     "not an object",
-    { name: "Bad since", url: "https://shop.example.com", since: "2026-13", description: "Same in both" },
+    { name: "Same text", url: "https://shop.example.com", description: "Same in both" },
   ])
   assert.equal(refs.length, 2)
-  assert.equal(refs[0].since, "2026-04")
+  assert.equal(refs[0].soon, false)
   assert.equal(refs[0].metrics.length, 1)
   assert.equal(refs[0].links.length, 1)
-  assert.equal(refs[1].since, null)
   assert.deepEqual(refs[1].description, { en: "Same in both", pl: "Same in both" })
   assert.deepEqual(normalizeReferences("nope"), [])
   assert.deepEqual(normalizeReferences(undefined), [])
@@ -114,15 +112,38 @@ test("references: the admin language with a fallback to the other one", () => {
   assert.equal(pickText({ en: "Only English" }, "pl"), "Only English")
   assert.equal(pickText({ pl: "Tylko polski" }, "en"), "Tylko polski")
   assert.equal(pickText(null, "pl"), "")
-  assert.equal(validSince("2026-04"), "2026-04")
-  assert.equal(validSince("2026-4"), null)
 })
 
-test("since: English month and year, Polish genitive for \"Od kwietnia 2026\"", () => {
-  assert.equal(fmtMonth("2026-04", "en"), "April 2026")
-  assert.equal(fmtMonth("2026-04", "pl"), "kwietnia 2026")
-  assert.equal(fmtMonth("2026-09", "pl-PL"), "września 2026")
-  assert.equal(fmtMonth("2026-01", "pl"), "stycznia 2026")
-  assert.equal(fmtMonth("not a month", "pl"), "not a month")
-  assert.equal(fmtMonth("2026-13", "en"), "2026-13")
+test("references: a store that starts soon needs only its name, a live one still needs an https URL", () => {
+  const refs = normalizeReferences([
+    { name: "Soon, no address", soon: true, description: "Opens in spring" },
+    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
+    { name: "Soon, insecure address", soon: true, url: "http://soon.example.com" },
+    { name: "Live, no address" },
+    { name: "Live, insecure address", url: "http://live.example.com" },
+    { name: "Not a boolean", soon: "yes" },
+    { soon: true },
+  ])
+  assert.deepEqual(
+    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
+    [
+      { name: "Soon, no address", soon: true, url: null },
+      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
+      { name: "Soon, insecure address", soon: true, url: null },
+    ],
+  )
+  assert.deepEqual(refs[0].description, { en: "Opens in spring", pl: "Opens in spring" })
+  assert.equal(normalizeReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
+  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
+})
+
+test("references: the since date of an older config is ignored, never an error", () => {
+  const refs = normalizeReferences([
+    { name: "Live", url: "https://a.pl", since: "2026-04" },
+    { name: "Soon", soon: true, since: { not: "a month" } },
+  ])
+  assert.equal(refs.length, 2)
+  for (const r of refs) assert.equal("since" in r, false)
+  assert.equal(refs[0].url, "https://a.pl/")
+  assert.equal(refs[1].soon, true)
 })

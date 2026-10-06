@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-baselinker",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "BaseLinker by Koda Plus: Medusa and BaseLinker (Base) in both directions. Links or creates cards, imports BaseLinker products, carries stock and prices either way, sends store orders exactly once, imports Allegro, Amazon and other marketplace orders exactly once, brings statuses, parcels, returns and invoice numbers back. Every write is planned first and armed by a person. Demo mode.",
   "author": {
     "name": "Koda Plus",

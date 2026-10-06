@@ -305,18 +305,33 @@ export type ReferenceReview = {
   author?: string | null
 }
 
-/** One live store, already in the language of the admin (the page picks en or pl from the option). */
+/**
+ * One store, already in the language of the admin (the page picks en or pl
+ * from the option): a live store, or one that starts on Medusa soon.
+ */
 export type Reference = {
   name: string
-  url: string
+  /** The live store. A store that starts soon may have one too, but it is never linked. */
+  url?: string
+  /** The store starts on Medusa soon: listed after the live ones, with a "Soon" badge and no link. */
+  soon?: boolean
   /** The store's own icon (its favicon or logo mark): a data URI or an https URL. Without one the card shows the first letter. */
   icon?: string | null
   description?: string
-  since?: string
   metrics?: Array<{ label: string; value: string }>
   /** Pages where the integration can be seen at work, e.g. a product with its Allegro link. */
   links?: Array<{ label: string; url: string }>
   review?: ReferenceReview | null
+}
+
+type LiveReference = Reference & { url: string }
+
+/** The live stores (each with its address) and, apart, the stores that start soon. An entry that is neither is left out. */
+function splitReferences(items: Reference[]): { live: LiveReference[]; soon: Reference[] } {
+  return {
+    live: items.filter((r): r is LiveReference => !r.soon && typeof r.url === "string" && r.url !== ""),
+    soon: items.filter((r) => r.soon === true),
+  }
 }
 
 const host = (url: string) => {
@@ -379,14 +394,17 @@ function StoreIcon({ reference, size }: { reference: Reference; size: number }) 
 }
 
 export type ReferencesLabels = {
-  /** On the badge: "Running in 1 store", "Działa w 3 sklepach". */
-  count: string
+  /** On the badge, from the live and the soon stores: "Running in 3 stores", "Działa w 1 sklepie", "Coming to 2 stores". */
+  count: (live: number, soon: number) => string
+  /** After the count when there are live stores too: "+2 soon", "+2 wkrótce". */
+  soonMore: (soon: number) => string
+  /** The badge of a store that starts soon: "Soon", "Wkrótce". */
+  soon: string
   title: string
   subtitle: string
   open: string
   /** "Read the review". */
   review: string
-  since: (since: string) => string
   /** A rating in the admin's number format, e.g. "5.0" or "5,0". */
   rating: (value: number) => string
 }
@@ -402,11 +420,14 @@ function meanRating(items: Reference[]): { value: number; first: ReferenceReview
 /**
  * "Running in N stores" in the page header: the stores' icons, the mean
  * rating with the stars and where it comes from. Opens the list of stores
- * with their numbers, the review and its link.
+ * with their numbers, the review and its link. Stores that start soon come
+ * after the live ones: faded in the icons, "+N soon" after the count, and in
+ * the list without a link. Only the live stores make the rating.
  */
 export function ReferencesBadge({ items, labels }: { items: Reference[]; labels: ReferencesLabels }) {
-  if (items.length === 0) return null
-  const mean = meanRating(items)
+  const { live, soon } = splitReferences(items)
+  if (live.length + soon.length === 0) return null
+  const mean = meanRating(live)
   return (
     <Popover>
       <Popover.Trigger asChild>
@@ -415,13 +436,16 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
           className="inline-flex h-9 max-w-full items-center gap-x-3 rounded-full border border-ui-border-base bg-ui-bg-component py-1 pl-1.5 pr-3 outline-none transition-fg hover:bg-ui-bg-component-hover focus-visible:shadow-borders-focus"
         >
           <span className="flex shrink-0 items-center">
-            {items.slice(0, 3).map((r, i) => (
-              <span key={r.url} className={clx("rounded-md", i > 0 && "-ml-2")}>
+            {[...live, ...soon].slice(0, 3).map((r, i) => (
+              <span key={r.url ?? r.name} className={clx("rounded-md", i > 0 && "-ml-2", r.soon && "opacity-50")}>
                 <StoreIcon reference={r} size={24} />
               </span>
             ))}
           </span>
-          <span className="txt-compact-small-plus truncate text-ui-fg-base">{labels.count}</span>
+          <span className="flex min-w-0 items-center gap-x-1.5">
+            <span className="txt-compact-small-plus truncate text-ui-fg-base">{labels.count(live.length, soon.length)}</span>
+            {live.length > 0 && soon.length > 0 ? <span className="txt-compact-small shrink-0 text-ui-fg-muted">{labels.soonMore(soon.length)}</span> : null}
+          </span>
           {mean ? (
             <span className="flex shrink-0 items-center gap-x-2 border-l border-ui-border-base pl-3">
               <Stars rating={mean.value} size={13} />
@@ -442,8 +466,8 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
           </Text>
         </div>
         <ul className="flex max-h-[60vh] flex-col divide-y divide-ui-border-base overflow-y-auto">
-          {items.map((r) => (
-            <li key={r.url} className="flex flex-col gap-y-2 px-4 py-3">
+          {live.map((r) => (
+            <li key={r.url ?? r.name} className="flex flex-col gap-y-2 px-4 py-3">
               <a href={r.url} target="_blank" rel="noreferrer" className="group flex items-center gap-x-3">
                 <StoreIcon reference={r} size={32} />
                 <span className="flex min-w-0 flex-col">
@@ -480,18 +504,13 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
                   {nb(r.description)}
                 </Text>
               ) : null}
-              {r.metrics?.length || r.since ? (
+              {r.metrics?.length ? (
                 <div className="flex flex-wrap items-center gap-1.5">
                   {(r.metrics ?? []).map((m) => (
                     <Badge key={m.label} size="2xsmall" color="green">
                       <span className="tabular-nums">{m.value}</span>&nbsp;{m.label}
                     </Badge>
                   ))}
-                  {r.since ? (
-                    <Badge size="2xsmall" color="grey">
-                      {labels.since(r.since)}
-                    </Badge>
-                  ) : null}
                 </div>
               ) : null}
               {(r.links ?? []).length ? (
@@ -503,6 +522,26 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
                     </a>
                   ))}
                 </div>
+              ) : null}
+            </li>
+          ))}
+          {soon.map((r) => (
+            <li key={r.url ?? r.name} className="flex flex-col gap-y-2 px-4 py-3">
+              <div className="flex items-center gap-x-3">
+                <StoreIcon reference={r} size={32} />
+                <span className="flex min-w-0 items-center gap-x-2">
+                  <Text size="small" weight="plus" className="truncate text-ui-fg-base">
+                    {r.name}
+                  </Text>
+                  <Badge size="2xsmall" color="blue" className="shrink-0">
+                    {labels.soon}
+                  </Badge>
+                </span>
+              </div>
+              {r.description ? (
+                <Text size="xsmall" className="text-ui-fg-subtle">
+                  {nb(r.description)}
+                </Text>
               ) : null}
             </li>
           ))}
@@ -929,8 +968,20 @@ export function SettingsView<T extends string>({
 /* ------------------------------------------------------------------ */
 /* Running in production, as cards at the end of the guide */
 
-export function References({ items, title, subtitle, openLabel, sinceLabel, reviewLabel, ratingLabel }: { items: Reference[]; title: string; subtitle: string; openLabel: string; sinceLabel: (since: string) => string; reviewLabel?: string; ratingLabel?: (value: number) => string }) {
-  if (items.length === 0) return null
+function CardIcon({ reference }: { reference: Reference }) {
+  return reference.icon ? (
+    <img src={reference.icon} alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-md bg-white object-contain shadow-borders-base" />
+  ) : (
+    <span className="txt-compact-medium-plus flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ui-bg-base text-ui-fg-base shadow-borders-base">
+      {reference.name.slice(0, 1).toUpperCase()}
+    </span>
+  )
+}
+
+/** The live stores first, as links; then the stores that start soon, with the soon badge and no link. */
+export function References({ items, title, subtitle, openLabel, soonLabel, reviewLabel, ratingLabel }: { items: Reference[]; title: string; subtitle: string; openLabel: string; soonLabel: string; reviewLabel?: string; ratingLabel?: (value: number) => string }) {
+  const { live, soon } = splitReferences(items)
+  if (live.length + soon.length === 0) return null
   return (
     <Container className="divide-y p-0">
       <div className="flex flex-col gap-y-1 px-6 py-4">
@@ -940,16 +991,10 @@ export function References({ items, title, subtitle, openLabel, sinceLabel, revi
         </Text>
       </div>
       <div className="grid grid-cols-1 gap-3 px-6 py-4 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((r) => (
-          <div key={r.url} className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
+        {live.map((r) => (
+          <div key={r.url ?? r.name} className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
             <a href={r.url} target="_blank" rel="noreferrer" className="group flex items-center gap-x-3">
-              {r.icon ? (
-                <img src={r.icon} alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-md bg-white object-contain shadow-borders-base" />
-              ) : (
-                <span className="txt-compact-medium-plus flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ui-bg-base text-ui-fg-base shadow-borders-base">
-                  {r.name.slice(0, 1).toUpperCase()}
-                </span>
-              )}
+              <CardIcon reference={r} />
               <span className="flex min-w-0 flex-col">
                 <Text size="small" weight="plus" className="truncate text-ui-fg-base">
                   {r.name}
@@ -980,18 +1025,13 @@ export function References({ items, title, subtitle, openLabel, sinceLabel, revi
                 {nb(r.description)}
               </Text>
             ) : null}
-            {r.metrics?.length || r.since ? (
+            {r.metrics?.length ? (
               <div className="flex flex-wrap items-center gap-2">
                 {(r.metrics ?? []).map((m) => (
                   <Badge key={m.label} size="2xsmall" color="green">
                     <span className="tabular-nums">{m.value}</span>&nbsp;{m.label}
                   </Badge>
                 ))}
-                {r.since ? (
-                  <Badge size="2xsmall" color="grey">
-                    {sinceLabel(r.since)}
-                  </Badge>
-                ) : null}
               </div>
             ) : null}
             <div className="mt-auto flex flex-col gap-y-1 border-t border-ui-border-base pt-2">
@@ -1006,6 +1046,26 @@ export function References({ items, title, subtitle, openLabel, sinceLabel, revi
                 <ArrowUpRightOnBox className="shrink-0" />
               </a>
             </div>
+          </div>
+        ))}
+        {soon.map((r) => (
+          <div key={r.url ?? r.name} className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
+            <div className="flex items-center gap-x-3">
+              <CardIcon reference={r} />
+              <span className="flex min-w-0 items-center gap-x-2">
+                <Text size="small" weight="plus" className="truncate text-ui-fg-base">
+                  {r.name}
+                </Text>
+                <Badge size="2xsmall" color="blue" className="shrink-0">
+                  {soonLabel}
+                </Badge>
+              </span>
+            </div>
+            {r.description ? (
+              <Text size="small" className="text-ui-fg-subtle">
+                {nb(r.description)}
+              </Text>
+            ) : null}
           </div>
         ))}
       </div>

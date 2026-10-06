@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { canArm, effectiveDirections, writerState, writerStates, type ArmRecord, type WriterKey } from "../src/modules/baselinker/lib/writers.ts"
 import { canImportOrders, canPushPrices, canPushStock, missingOptions, parseInvoiceField, parseOrderSources, resolveOptions } from "../src/modules/baselinker/lib/options.ts"
 import { isCallAllowed } from "../src/modules/baselinker/lib/security.ts"
-import { httpsUrl, normalizeReview, resolveReferences, sinceMonth } from "../src/modules/baselinker/lib/references.ts"
+import { httpsUrl, normalizeReview, resolveReferences } from "../src/modules/baselinker/lib/references.ts"
 
 const arms = (entries: Array<[WriterKey, boolean]>) =>
   new Map<WriterKey, ArmRecord>(entries.map(([k, armed]) => [k, { armed, changedBy: "user_1", changedByLabel: "anna@example.com", changedAt: "2026-10-06T08:00:00.000Z" }]))
@@ -103,9 +103,9 @@ test("options: order sources, invoice fields, capabilities and what is missing",
   ])
 })
 
-test("references: lenient, never throw, https only, localized texts, YYYY-MM months", () => {
+test("references: lenient, never throw, https only, localized texts", () => {
   const refs = resolveReferences([
-    { name: "Sklep z oponami", url: "https://example.com", since: "2026-04", description: { pl: "Opony i felgi" }, metrics: [{ label: "cards", value: "11 000" }, { label: "", value: "x" }], links: [{ label: { en: "Product" }, url: "http://insecure.example.com" }, { label: "Product", url: "https://example.com/p/1" }] },
+    { name: "Sklep z oponami", url: "https://example.com", description: { pl: "Opony i felgi" }, metrics: [{ label: "cards", value: "11 000" }, { label: "", value: "x" }], links: [{ label: { en: "Product" }, url: "http://insecure.example.com" }, { label: "Product", url: "https://example.com/p/1" }] },
     { name: "", url: "https://no-name.example.com" },
     { name: "Plain http", url: "http://example.com" },
     { name: "Duplicate", url: "https://example.com" },
@@ -116,11 +116,44 @@ test("references: lenient, never throw, https only, localized texts, YYYY-MM mon
   assert.deepEqual(refs[0].description, { pl: "Opony i felgi" })
   assert.deepEqual(refs[0].metrics, [{ label: { en: "cards", pl: "cards" }, value: "11 000" }])
   assert.deepEqual(refs[0].links, [{ label: { en: "Product", pl: "Product" }, url: "https://example.com/p/1" }])
-  assert.equal(refs[0].since, "2026-04")
-  assert.equal(sinceMonth("2026-13"), null)
+  assert.equal(refs[0].soon, false)
   assert.equal(httpsUrl("https://localhost"), null)
   assert.deepEqual(resolveReferences("not a list"), [])
   assert.deepEqual(resolveOptions({ references: [{ name: "A", url: "https://a.example.com" }] }).references.length, 1)
+})
+
+test("references: a store that starts soon needs only its name, a live one still needs an https URL", () => {
+  const refs = resolveReferences([
+    { name: "Soon, no address", soon: true, description: "Opens in spring" },
+    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
+    { name: "Soon, insecure address", soon: true, url: "http://soon.example.com" },
+    { name: "Live, no address" },
+    { name: "Live, insecure address", url: "http://live.example.com" },
+    { name: "Not a boolean", soon: "yes" },
+    { soon: true },
+  ])
+  assert.deepEqual(
+    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
+    [
+      { name: "Soon, no address", soon: true, url: null },
+      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
+      { name: "Soon, insecure address", soon: true, url: null },
+    ],
+  )
+  assert.deepEqual(refs[0].description, { en: "Opens in spring", pl: "Opens in spring" })
+  assert.equal(resolveReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
+  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
+})
+
+test("references: the since date of an older config is ignored, never an error", () => {
+  const refs = resolveReferences([
+    { name: "Live", url: "https://a.example.com", since: "2026-04" },
+    { name: "Soon", soon: true, since: { not: "a month" } },
+  ])
+  assert.equal(refs.length, 2)
+  for (const r of refs) assert.equal("since" in r, false)
+  assert.equal(refs[0].url, "https://a.example.com/")
+  assert.equal(refs[1].soon, true)
 })
 
 test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {

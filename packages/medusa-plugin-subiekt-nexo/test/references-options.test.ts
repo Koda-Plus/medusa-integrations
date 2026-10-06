@@ -10,13 +10,12 @@ test("references are validated leniently: bad entries and fields are dropped, no
       name: "Sklep A",
       url: "https://www.sklep-a.example",
       description: { en: "Cosmetics", pl: "Kosmetyki" },
-      since: "2026-04",
       metrics: [{ label: { en: "orders a month", pl: "zamówień miesięcznie" }, value: 1200 }, { label: "", value: "x" }],
       links: [{ label: "Shop", url: "https://www.sklep-a.example/sklep" }, { label: "Plain", url: "http://insecure.example" }],
     },
     { name: "No https", url: "http://sklep-b.example" },
     { url: "https://no-name.example" },
-    { name: "Bad since", url: "https://c.example", since: "April 2026", description: 42 },
+    { name: "Bad description", url: "https://c.example", description: 42 },
     "nonsense",
     null,
   ])
@@ -24,16 +23,50 @@ test("references are validated leniently: bad entries and fields are dropped, no
   assert.deepEqual(refs[0], {
     name: "Sklep A",
     url: "https://www.sklep-a.example/",
+    soon: false,
     description: { en: "Cosmetics", pl: "Kosmetyki" },
-    since: "2026-04",
     metrics: [{ label: { en: "orders a month", pl: "zamówień miesięcznie" }, value: "1200" }],
     links: [{ label: "Shop", url: "https://www.sklep-a.example/sklep" }],
   })
-  assert.deepEqual(refs[1], { name: "Bad since", url: "https://c.example/", metrics: [], links: [] })
+  assert.deepEqual(refs[1], { name: "Bad description", url: "https://c.example/", soon: false, metrics: [], links: [] })
   assert.deepEqual(normalizeReferences(undefined), [])
   assert.deepEqual(normalizeReferences({ name: "x" }), [])
   assert.deepEqual(localized({ pl: "Tylko po polsku" }), { pl: "Tylko po polsku" })
   assert.equal(localized({ en: "", pl: " " }), null)
+})
+
+test("references: a store that starts soon needs only its name, a live one still needs an https URL", () => {
+  const refs = normalizeReferences([
+    { name: "Soon, no address", soon: true, description: "Opens in spring" },
+    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
+    { name: "Soon, insecure address", soon: true, url: "http://soon.example.com" },
+    { name: "Live, no address" },
+    { name: "Live, insecure address", url: "http://live.example.com" },
+    { name: "Not a boolean", soon: "yes" },
+    { soon: true },
+  ])
+  assert.deepEqual(refs[0], { name: "Soon, no address", url: null, soon: true, description: "Opens in spring", metrics: [], links: [] })
+  assert.deepEqual(
+    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
+    [
+      { name: "Soon, no address", soon: true, url: null },
+      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
+      { name: "Soon, insecure address", soon: true, url: null },
+    ],
+  )
+  assert.equal(normalizeReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
+  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
+})
+
+test("references: the since date of an older config is ignored, never an error", () => {
+  const refs = normalizeReferences([
+    { name: "Live", url: "https://a.pl", since: "2026-04" },
+    { name: "Soon", soon: true, since: { not: "a month" } },
+  ])
+  assert.deepEqual(refs, [
+    { name: "Live", url: "https://a.pl/", soon: false, metrics: [], links: [] },
+    { name: "Soon", url: null, soon: true, metrics: [], links: [] },
+  ])
 })
 
 test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {

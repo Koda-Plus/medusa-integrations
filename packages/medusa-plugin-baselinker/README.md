@@ -173,7 +173,7 @@ Every option is optional. Numbers may come as strings (environment variables), l
 - `journal` (default `auto`): `auto` reads statuses from the BaseLinker order journal when it returns events, with a full read every 2 hours and after a gap of more than 2 days; `off` always reads the full way.
 - `invoiceNumberField` (default `extra_field_1`): the BaseLinker order field for invoice numbers: `extra_field_1`, `extra_field_2` or a custom order field id (`135` or `custom:135`).
 - `invoiceNumberKinds` (default `vat`, `receipt`): Fakturownia document kinds whose number is written.
-- `references` (default none): stores running this integration, shown as "Running in production": `[{ name, url, description?, since?: "YYYY-MM", metrics?, links? }]`, texts as strings or `{ en, pl }`. Entries without a name or an https URL are dropped, never an error.
+- `references` (default none): stores running this integration, shown as "Running in production": `[{ name, url, description?, metrics?, links?, soon? }]`, texts as strings or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped, never an error.
 
 ## How linking works
 
@@ -389,6 +389,10 @@ BaseLinker and Base are trademarks of their owner, used here only to identify th
 MIT, see [LICENSE](./LICENSE).
 
 ## Changelog
+
+### 0.2.1 (2026-10-07)
+
+- References: stores that start soon on Medusa can be listed with `soon: true` (a Soon badge, no link, `url` optional); the since date is no longer shown, and an old `since` in the options is ignored.
 
 ### 0.2.0 (2026-10-06)
 

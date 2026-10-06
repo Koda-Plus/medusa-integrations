@@ -10,7 +10,7 @@ import type {
   OlxStatusGroup,
   OlxWriterKey,
 } from "../../modules/olx/lib/contract"
-import { fmtMonth, pickText } from "../../modules/olx/lib/references"
+import { pickText } from "../../modules/olx/lib/references"
 import type { Reference } from "./olx-guide"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
@@ -62,16 +62,16 @@ export function fmtDuration(ms: number): string {
 /* ------------------------------------------------------------------ */
 
 /* Pure helpers shared with the server code and its unit tests (zero imports there). */
-export { fmtMonth, pickText }
+export { pickText }
 
 /** References of the option in the admin language, shaped for the kit. */
 export function kitReferences(refs: OlxReferenceDto[], lang: string): Reference[] {
   return refs.map((r) => ({
     name: r.name,
-    url: r.url,
+    url: r.url ?? undefined,
+    soon: r.soon,
     icon: r.icon,
     description: pickText(r.description, lang) || undefined,
-    since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),
     links: r.links.map((l) => ({ label: pickText(l.label, lang), url: l.url })),
     review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,

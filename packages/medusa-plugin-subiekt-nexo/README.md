@@ -135,7 +135,7 @@ Products and prices (0.2.0):
 
 Admin:
 
-- `references`: stores that run the integration in production, shown as cards under the counters and at the end of the guide: `[{ name, url, description?, since?: "2026-04", metrics?: [{ label, value }], links?: [{ label, url }] }]`, every text either a string or `{ en, pl }`. Entries without a name or an https URL are dropped.
+- `references`: stores that run the integration in production, shown as cards under the counters and at the end of the guide: `[{ name, url, description?, metrics?: [{ label, value }], links?: [{ label, url }], soon? }]`, every text either a string or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped.
 
 Missing options never break the boot: the module registers, the admin lists what is missing, and nothing is queued until the plugin is configured, so a store configured a week after installing does not flood Subiekt with a week of old orders. In demo mode the 0.2.0 hard switches default to on, because the writers only touch the simulation there; nothing is armed until a person arms it, except the documents and contractors writers the demo arms once as "demo (automatic)".
 
@@ -265,6 +265,10 @@ MIT, see [LICENSE](LICENSE). Built and maintained by [Koda Plus](https://koda.pl
 Subiekt nexo, nexo PRO and Sfera are trademarks of InsERT S.A. This project is independent and not affiliated with InsERT.
 
 ## Changelog
+
+### 0.2.1 (2026-10-07)
+
+- References: stores that start soon on Medusa can be listed with `soon: true` (a Soon badge, no link, `url` optional); the since date is no longer shown, and an old `since` in the options is ignored.
 
 ### 0.2.0 (2026-10-06)
 

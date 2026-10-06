@@ -22,11 +22,13 @@ export interface OlxLocalizedText {
 
 export interface OlxReferenceDto {
   name: string
-  url: string
+  /** https. Null only for a store that starts soon and has no address yet. */
+  url: string | null
+  /** The store starts on Medusa soon: a "Soon" badge, no link. */
+  soon: boolean
   /** The store's icon: a data URI or an https URL. */
   icon: string | null
   description: OlxLocalizedText | null
-  since: string | null
   metrics: Array<{ label: OlxLocalizedText; value: string }>
   links: Array<{ label: OlxLocalizedText; url: string }>
   /** The store's rating of the work and where it was given, e.g. Clutch. */

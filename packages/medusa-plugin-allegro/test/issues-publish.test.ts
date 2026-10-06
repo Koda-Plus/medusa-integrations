@@ -2,7 +2,8 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { issueCounts, issuesFromApi, returnsFromApi, unreadThreads } from "../src/modules/allegro/lib/issues.ts"
 import { catalogMatchFromApi, draftOfferBody, planPublish, validGtin } from "../src/modules/allegro/lib/publish.ts"
-import { normalizeReferences, normalizeReview, pickText, sinceLabel } from "../src/modules/allegro/lib/references.ts"
+import { resolveOptions } from "../src/modules/allegro/lib/options.ts"
+import { normalizeReferences, normalizeReview, pickText } from "../src/modules/allegro/lib/references.ts"
 
 test("returns: codes, dates and counts only; a delivered return waits for the seller's refund", () => {
   const rows = returnsFromApi({
@@ -161,24 +162,56 @@ test("draft offer body: always INACTIVE, the signature is the SKU, shipping rate
   assert.deepEqual((byId.delivery as { shippingRates: unknown }).shippingRates, { id: "5c7bbf8b-b294-4737-bbda-894320c413b8" })
 })
 
-test("references: lenient, https only, both languages, a readable since", () => {
+test("references: lenient, https only, both languages", () => {
   const refs = normalizeReferences([
-    { name: "Sklep", url: "https://sklep.example", description: { pl: "Opony", en: "Tyres" }, since: "2026-04", metrics: [{ label: "offers", value: 4000 }], links: [{ label: "Product", url: "https://sklep.example/p" }, { label: "x", url: "http://bad" }] },
+    { name: "Sklep", url: "https://sklep.example", description: { pl: "Opony", en: "Tyres" }, metrics: [{ label: "offers", value: 4000 }], links: [{ label: "Product", url: "https://sklep.example/p" }, { label: "x", url: "http://bad" }] },
     { name: "No https", url: "http://x.example" },
     { url: "https://no-name.example" },
-    { name: "Bad since", url: "https://b.example", since: "April" },
+    { name: "Second", url: "https://b.example" },
     "nonsense",
     null,
   ])
   assert.equal(refs.length, 2)
   assert.deepEqual(refs[0].metrics, [{ label: { en: "offers", pl: "offers" }, value: "4000" }])
   assert.equal(refs[0].links.length, 1)
-  assert.equal(refs[1].since, null)
+  assert.equal(refs[1].soon, false)
   assert.equal(pickText(refs[0].description, "pl-PL"), "Opony")
   assert.equal(pickText({ en: null, pl: "Tylko polski" }, "en"), "Tylko polski")
-  assert.equal(sinceLabel("2026-04", "pl"), "Od kwietnia 2026")
-  assert.equal(sinceLabel("2026-04", "en"), "Since April 2026")
   assert.deepEqual(normalizeReferences(undefined), [])
+})
+
+test("references: a store that starts soon needs only its name, a live one still needs an https URL", () => {
+  const refs = normalizeReferences([
+    { name: "Soon, no address", soon: true, description: "Opens in spring" },
+    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
+    { name: "Soon, insecure address", soon: true, url: "http://soon.example.com" },
+    { name: "Live, no address" },
+    { name: "Live, insecure address", url: "http://live.example.com" },
+    { name: "Not a boolean", soon: "yes" },
+    { soon: true },
+  ])
+  assert.deepEqual(
+    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
+    [
+      { name: "Soon, no address", soon: true, url: null },
+      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
+      { name: "Soon, insecure address", soon: true, url: null },
+    ],
+  )
+  assert.deepEqual(refs[0].description, { en: "Opens in spring", pl: "Opens in spring" })
+  assert.equal(normalizeReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
+  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
+})
+
+test("references: the since date of an older config is ignored, never an error", () => {
+  const refs = normalizeReferences([
+    { name: "Live", url: "https://a.pl", since: "2026-04" },
+    { name: "Soon", soon: true, since: { not: "a month" } },
+  ])
+  assert.equal(refs.length, 2)
+  for (const r of refs) assert.equal("since" in r, false)
+  assert.equal(refs[0].url, "https://a.pl/")
+  assert.equal(refs[1].soon, true)
 })
 
 test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {

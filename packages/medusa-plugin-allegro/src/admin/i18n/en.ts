@@ -80,6 +80,10 @@ const en = {
     open: "Open the store",
     badgeOne: "Running in 1 store",
     badgeMany: "Running in {{count}} stores",
+    badgeSoonOne: "Coming to 1 store",
+    badgeSoonMany: "Coming to {{count}} stores",
+    soon: "Soon",
+    soonMore: "+{{count}} soon",
     review: "Read the review",
   },
   community: {

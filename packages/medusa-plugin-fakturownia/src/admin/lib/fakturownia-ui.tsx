@@ -450,29 +450,14 @@ export function pickText(text: LocalizedTextDto | null | undefined, lang: string
   return (pl ? text.pl ?? text.en : text.en ?? text.pl) ?? undefined
 }
 
-/** Polish months in the genitive: "od kwietnia 2026". */
-const PL_MONTHS = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
-
-/** "2026-04" as the month and year of the admin language: "April 2026", "kwietnia 2026". */
-export function sinceMonth(since: string, lang: string): string {
-  const [y, m] = since.split("-").map((x) => Number(x))
-  if (!y || !m) return since
-  if (/^pl/i.test(lang)) return `${PL_MONTHS[m - 1] ?? ""} ${y}`.trim()
-  try {
-    return new Intl.DateTimeFormat(lang, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)))
-  } catch {
-    return since
-  }
-}
-
 /** The references of the options in the admin language, for the kit's `References` and `ReferencesBadge`. */
 export function referencesFor(items: readonly ReferenceDto[], lang: string): Reference[] {
   return items.map((r) => ({
     name: r.name,
-    url: r.url,
+    url: r.url ?? undefined,
+    soon: r.soon,
     icon: r.icon,
     description: pickText(r.description, lang),
-    since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
     links: r.links.map((l) => ({ label: pickText(l.label, lang) ?? l.url, url: l.url })),
     review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,

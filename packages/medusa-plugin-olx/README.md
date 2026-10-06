@@ -149,7 +149,7 @@ Publishing (`publish`):
 
 Presentation:
 
-- `references`: stores running the plugin, shown as "Running in production". Each entry: `name`, `url` (https), and optionally `description` (a string, or `{ en, pl }`), `since` (`YYYY-MM`), `metrics` (`[{ label, value }]`) and `links` (`[{ label, url }]`). Entries without a name or an https URL are dropped; nothing here can break the boot.
+- `references`: stores running the plugin, shown as "Running in production". Each entry: `name`, `url` (https), and optionally `description` (a string, or `{ en, pl }`), `metrics` (`[{ label, value }]`) and `links` (`[{ label, url }]`). A store that starts on Medusa soon gets `soon: true`: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped; nothing here can break the boot.
 
 Missing options never break the boot: the module registers, the admin lists what is missing and the jobs wait.
 
@@ -312,6 +312,10 @@ OLX and the OLX logo are trademarks of their owner, used here only to identify t
 MIT, see [LICENSE](./LICENSE).
 
 ## Changelog
+
+### 0.2.1 (2026-10-07)
+
+- References: stores that start soon on Medusa can be listed with `soon: true` (a Soon badge, no link, `url` optional); the since date is no longer shown, and an old `since` in the options is ignored.
 
 ### 0.2.0 (2026-10-06)
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-10-07)
+
+- References: stores that start soon (`soon: true`, shown with a Soon badge and no link); the since date is no longer shown.
+
 ## 0.2.0 (2026-10-06)
 
 The writers. Every one of them is off until it is allowed in `writes` and armed by a person in the admin.

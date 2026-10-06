@@ -1,10 +1,12 @@
 /**
  * THE `references` OPTION: stores where the integration runs in production,
  * shown in the header of the admin page ("Running in N stores", with the
- * stores' rating) and at the end of the setup guide. Validated leniently: an
- * entry without a name or an https URL is dropped, a malformed field is
- * dropped, nothing ever throws, because a typo in medusa-config must not stop
- * Medusa from starting.
+ * stores' rating) and at the end of the setup guide, and stores that start
+ * on Medusa soon (`soon: true`, a "Soon" badge, no link). Validated
+ * leniently: an entry without a name is dropped, and so is a live entry
+ * without an https URL (a soon entry needs only its name); a malformed field
+ * is dropped, an unknown one ignored, nothing ever throws, because a typo in
+ * medusa-config must not stop Medusa from starting.
  *
  * Texts may come in both admin languages, `{ en, pl }`; the admin picks one.
  * No client names live in this package: the store passes its own references.
@@ -14,11 +16,13 @@ export type LocalizedText = string | { en?: string; pl?: string }
 
 export interface ReferenceInput {
   name?: unknown
+  /** The live store (https). Optional when `soon` is true; a soon store is never linked. */
   url?: unknown
+  /** `true`: a store that starts on Medusa soon, listed with a "Soon" badge and without a link. */
+  soon?: unknown
   /** The store's favicon or logo mark: a `data:image/...;base64,` URI or an https URL. */
   icon?: unknown
   description?: unknown
-  since?: unknown
   metrics?: unknown
   links?: unknown
   /**
@@ -46,12 +50,13 @@ export interface ReviewDto {
 
 export interface ReferenceDto {
   name: string
-  url: string
+  /** https. Null only for a store that starts soon and has no address yet. */
+  url: string | null
+  /** The store starts on Medusa soon: shown with a "Soon" badge and never linked. */
+  soon: boolean
   /** The store's icon: a data URI (at most 64 KB) or an https URL. */
   icon?: string
   description?: LocalizedText
-  /** YYYY-MM. */
-  since?: string
   metrics: Array<{ label: LocalizedText; value: string }>
   links: Array<{ label: LocalizedText; url: string }>
   /** The store's rating of the work and where it was given; absent when the option has none. */
@@ -128,10 +133,10 @@ export function normalizeReferences(input: unknown): ReferenceDto[] {
     if (!raw || typeof raw !== "object") continue
     const r = raw as ReferenceInput
     const name = text(r.name, 80)
+    const soon = r.soon === true
     const url = httpsUrl(r.url)
-    if (!name || !url) continue
+    if (!name || (!url && !soon)) continue
     const description = localized(r.description, 400)
-    const since = typeof r.since === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(r.since.trim()) ? r.since.trim() : undefined
     const metrics: ReferenceDto["metrics"] = []
     for (const m of Array.isArray(r.metrics) ? r.metrics : []) {
       if (!m || typeof m !== "object") continue
@@ -152,9 +157,9 @@ export function normalizeReferences(input: unknown): ReferenceDto[] {
     out.push({
       name,
       url,
+      soon,
       ...(icon ? { icon } : {}),
       ...(description ? { description } : {}),
-      ...(since ? { since } : {}),
       metrics: metrics.slice(0, 6),
       links: links.slice(0, 6),
       ...(review ? { review } : {}),

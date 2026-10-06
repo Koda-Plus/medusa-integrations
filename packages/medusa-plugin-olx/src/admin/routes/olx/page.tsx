@@ -43,7 +43,6 @@ import {
   StatTile,
   fmtDateTime,
   fmtDuration,
-  fmtMonth,
   fmtNumber,
   fmtPrice,
   fmtRating,
@@ -249,12 +248,20 @@ function Header({
           <ReferencesBadge
             items={references}
             labels={{
-              count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+              count: (live, soon) =>
+                live > 0
+                  ? live === 1
+                    ? t("references.badgeOne")
+                    : t("references.badgeMany", { count: live })
+                  : soon === 1
+                    ? t("references.badgeSoonOne")
+                    : t("references.badgeSoonMany", { count: soon }),
+              soonMore: (soon) => t("references.soonMore", { count: soon }),
+              soon: t("references.soon"),
               title: t("references.title"),
               subtitle: t("references.subtitle"),
               open: t("references.open"),
               review: t("references.review"),
-              since: (since) => t("references.since", { date: fmtMonth(since, lang) }),
               rating: (value) => fmtRating(value, lang),
             }}
           />

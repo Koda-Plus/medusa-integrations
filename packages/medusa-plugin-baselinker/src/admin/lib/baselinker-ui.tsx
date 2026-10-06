@@ -197,23 +197,6 @@ export function localize(text: LocalizedDto | null | undefined, lang: string): s
   return (pl ? text.pl ?? text.en : text.en ?? text.pl) ?? ""
 }
 
-/** Polish months in the genitive ("od kwietnia"), which Intl does not give for a month alone. */
-const PL_GENITIVE = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
-
-/** `2026-04` as "April 2026" or "kwietnia 2026" (to follow "Since" / "Od"). */
-export function sinceDate(since: string, lang: string): string {
-  const m = /^(\d{4})-(\d{2})$/.exec(since)
-  if (!m) return since
-  const year = Number(m[1])
-  const month = Number(m[2])
-  if (lang.toLowerCase().startsWith("pl")) return `${PL_GENITIVE[month - 1] ?? m[2]} ${year}`
-  try {
-    return new Intl.DateTimeFormat(lang, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 15)))
-  } catch {
-    return since
-  }
-}
-
 /** A rating in the admin's number format: 5.0 or 5,0. */
 export function fmtRating(value: number, lang: string): string {
   try {
@@ -227,10 +210,10 @@ export function fmtRating(value: number, lang: string): string {
 export function kitReferences(refs: ReferenceDto[], lang: string): Reference[] {
   return refs.map((r) => ({
     name: r.name,
-    url: r.url,
+    url: r.url ?? undefined,
+    soon: r.soon,
     icon: r.icon,
     description: localize(r.description, lang) || undefined,
-    since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: localize(m.label, lang), value: m.value })),
     links: r.links.map((l) => ({ label: localize(l.label, lang), url: l.url })),
     review: r.review ? { ...r.review, quote: localize(r.review.quote, lang) || undefined } : null,

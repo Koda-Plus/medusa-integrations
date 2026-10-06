@@ -41,7 +41,6 @@ import {
   fmtNumber,
   fmtRating,
   kitReferences,
-  sinceDate,
 } from "./baselinker-ui"
 
 /*
@@ -138,7 +137,7 @@ export function ReferencesBlock({ status, lang }: { status: StatusResponse; lang
       title={t("references.title")}
       subtitle={t("references.subtitle")}
       openLabel={t("references.open")}
-      sinceLabel={(since) => t("references.since", { date: sinceDate(since, lang) })}
+      soonLabel={t("references.soon")}
       reviewLabel={t("references.review")}
       ratingLabel={(value) => fmtRating(value, lang)}
     />

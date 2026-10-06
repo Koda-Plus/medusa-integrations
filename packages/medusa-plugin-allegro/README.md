@@ -167,7 +167,7 @@ Customer issues:
 
 References:
 
-- `references` (default `[]`): stores running the integration, `{ name, url, description?, since?, metrics?, links? }` where texts can be `{ en, pl }` and `since` is `YYYY-MM`. Entries without a name or an https address are dropped, never thrown.
+- `references` (default `[]`): stores running the integration, `{ name, url, description?, metrics?, links?, soon? }` where texts can be `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped, never thrown.
 
 ## Setup in brief
 
@@ -339,6 +339,10 @@ Allegro and the Allegro logo are trademarks of their owner, used here only to id
 MIT, see [LICENSE](./LICENSE).
 
 ## Changelog
+
+### 0.2.1 (2026-10-07)
+
+- References: stores that start soon on Medusa can be listed with `soon: true` (a Soon badge, no link, `url` optional); the since date is no longer shown, and an old `since` in the options is ignored.
 
 ### 0.2.0 (2026-10-06)
 
