@@ -31,8 +31,8 @@ import {
   useOlxStatus,
   useOlxSync,
 } from "../../lib/olx-api"
-import { ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, usePageNav, type PageNav } from "../../lib/olx-guide"
-import { GuideView } from "../../lib/olx-guide-view"
+import { AddStoreButton, HelpButtons, ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, communityLabels, usePageNav, type PageNav } from "../../lib/olx-guide"
+import { GuideView, usePromptSpec } from "../../lib/olx-guide-view"
 import { OlxIcon } from "../../lib/olx-icon"
 import { ActivityCounters, AlertsSection, DemoDetails, MessagesSection } from "../../lib/olx-panel"
 import {
@@ -204,6 +204,8 @@ function Header({
   const canSync = Boolean(status && (status.mode === "demo" || status.connection.connected))
   const armed = status ? status.writers.filter((w) => w.active).length : 0
   const references = status ? kitReferences(status.references, lang) : []
+  const promptSpec = usePromptSpec(status)
+  const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
   const onSync = async () => {
     try {
@@ -245,32 +247,34 @@ function Header({
         <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
-        {references.length > 0 ? (
-          <div>
-            <ReferencesBadge
-              items={references}
-              labels={{
-                count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
-                title: t("references.title"),
-                subtitle: t("references.subtitle"),
-                open: t("references.open"),
-                review: t("references.review"),
-                since: (since) => t("references.since", { date: fmtMonth(since, lang) }),
-                rating: (value) => fmtRating(value, lang),
-              }}
-            />
-          </div>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <ReferencesBadge
+            items={references}
+            labels={{
+              count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+              title: t("references.title"),
+              subtitle: t("references.subtitle"),
+              open: t("references.open"),
+              review: t("references.review"),
+              since: (since) => t("references.since", { date: fmtMonth(since, lang) }),
+              rating: (value) => fmtRating(value, lang),
+            }}
+          />
+          <AddStoreButton labels={community.addStore} />
+        </div>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-        <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
-        {nav.view !== "guide" ? (
-          <Button size="small" variant="primary" isLoading={sync.isPending || Boolean(status?.running)} disabled={!canSync} onClick={() => void onSync()}>
-            <ArrowPath />
-            {status?.running ? t("actions.syncing") : t("actions.sync")}
-          </Button>
-        ) : null}
+      <div className="flex shrink-0 flex-col gap-2 lg:items-end">
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
+          {nav.view !== "guide" ? (
+            <Button size="small" variant="primary" isLoading={sync.isPending || Boolean(status?.running)} disabled={!canSync} onClick={() => void onSync()}>
+              <ArrowPath />
+              {status?.running ? t("actions.syncing") : t("actions.sync")}
+            </Button>
+          ) : null}
+        </div>
+        <HelpButtons spec={promptSpec} lang={lang} labels={community} />
       </div>
     </div>
   )

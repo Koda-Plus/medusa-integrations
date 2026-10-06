@@ -21,6 +21,19 @@ function OffNote({ text, detail }: { text: string; detail: string }) {
   )
 }
 
+/** Allegro's reason (returns) or subject (disputes, claims) in words; the code itself stays in the tooltip. */
+function IssueReason({ code }: { code: string | null }) {
+  const { t, i18n } = useTranslation("allegro")
+  if (!code) return null
+  const key = `issues.reason.${code}`
+  if (!i18n.exists(key, { ns: "allegro" })) return <span className="font-mono txt-compact-xsmall text-ui-fg-subtle">{code}</span>
+  return (
+    <span className="txt-compact-small text-ui-fg-subtle" title={code}>
+      {t(key)}
+    </span>
+  )
+}
+
 /**
  * Returns, disputes and claims of Allegro buyers, each next to the store
  * order it concerns. The filter lives on the page, so the "Waiting for you"
@@ -155,7 +168,7 @@ export function IssuesSection({
                     </div>
                   </Table.Cell>
                   <Table.Cell>
-                    <span className="font-mono txt-compact-xsmall text-ui-fg-subtle">{r.reasonCode ?? ""}</span>
+                    <IssueReason code={r.reasonCode} />
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDate(r.dueAt, lang)}</Table.Cell>
                   <Table.Cell className="max-w-[240px]">

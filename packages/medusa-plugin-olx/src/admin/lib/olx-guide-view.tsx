@@ -1,7 +1,8 @@
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { OlxStatusResponse, OlxWriterKey } from "../../modules/olx/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type StepState } from "./olx-guide"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./olx-guide"
 import { fmtMonth, fmtRating, kitReferences } from "./olx-ui"
 
 /*
@@ -35,18 +36,12 @@ const FAQ_KEYS = [
   "stats",
 ] as const
 
-export function GuideView({ status: s, lang }: { status: OlxStatusResponse; lang: string }) {
-  const { t } = useTranslation("olx")
-  const demo = s.mode === "demo"
-  const live = !demo
-  const connected = live && s.connection.connected
-  const writer = (w: OlxWriterKey) => s.writers.find((x) => x.writer === w)
-  const anyAllowed = live && Object.values(s.settings.writersAllowed).some(Boolean)
-  const redirect = s.redirectUri ?? t("missing.redirectFallback")
+/** What the store owner prepares, in the order of the guide. */
+const NEEDS = ["account", "portal", "backend", "sku", "key"] as const
 
-  const p = (key: string) => <p>{t(key)}</p>
-
-  const optionsCode = [
+/** .env and medusa-config.ts, as step "options" shows them (and the setup prompt hands to an agent). */
+function setupCode(redirect: string, market: string): string {
+  return [
     "# .env",
     "OLX_CLIENT_ID=...",
     "OLX_CLIENT_SECRET=...",
@@ -61,7 +56,7 @@ export function GuideView({ status: s, lang }: { status: OlxStatusResponse; lang
     "      clientSecret: process.env.OLX_CLIENT_SECRET,",
     "      encryptionKey: process.env.OLX_ENCRYPTION_KEY,",
     `      redirectUri: "${redirect}",`,
-    `      market: "${s.market}",`,
+    `      market: "${market}",`,
     "      // Writers: off unless allowed here AND armed in the admin.",
     '      lifecycleWriter: process.env.OLX_LIFECYCLE_WRITER === "true",',
     '      priceWriter: process.env.OLX_PRICE_WRITER === "true",',
@@ -70,6 +65,38 @@ export function GuideView({ status: s, lang }: { status: OlxStatusResponse; lang
     "  },",
     "]",
   ].join("\n")
+}
+
+/** The same setup as this guide, for "Copy prompt" in the page header. The redirect is the other store's, so a placeholder. */
+export function usePromptSpec(s: OlxStatusResponse | undefined): SetupPromptSpec {
+  const { t } = useTranslation("olx")
+  const market = s?.market ?? "pl"
+  return useMemo(
+    () => ({
+      service: "OLX",
+      pkg: "@koda-plus/medusa-plugin-olx",
+      route: "/app/olx",
+      summary: t("subtitle"),
+      needs: NEEDS.map((k) => t(`guide.intro.needs.${k}`)),
+      config: setupCode(t("missing.redirectFallback"), market),
+      demo: 'demo: process.env.OLX_DEMO === "true" || !process.env.OLX_CLIENT_ID,',
+    }),
+    [t, market],
+  )
+}
+
+export function GuideView({ status: s, lang }: { status: OlxStatusResponse; lang: string }) {
+  const { t } = useTranslation("olx")
+  const demo = s.mode === "demo"
+  const live = !demo
+  const connected = live && s.connection.connected
+  const writer = (w: OlxWriterKey) => s.writers.find((x) => x.writer === w)
+  const anyAllowed = live && Object.values(s.settings.writersAllowed).some(Boolean)
+  const redirect = s.redirectUri ?? t("missing.redirectFallback")
+
+  const p = (key: string) => <p>{t(key)}</p>
+
+  const optionsCode = setupCode(redirect, s.market)
 
   const writersCode = [
     "# allow one writer at a time, then restart and connect the account again",
@@ -242,7 +269,7 @@ export function GuideView({ status: s, lang }: { status: OlxStatusResponse; lang
         time={t("guide.intro.time")}
         timeLabel={t("guide.intro.timeLabel")}
         needsLabel={t("guide.intro.needsLabel")}
-        needs={(["account", "portal", "backend", "sku", "key"] as const).map((k) => t(`guide.intro.needs.${k}`))}
+        needs={NEEDS.map((k) => t(`guide.intro.needs.${k}`))}
       />
       <GuideDiagram
         title={t("guide.diagram.title")}

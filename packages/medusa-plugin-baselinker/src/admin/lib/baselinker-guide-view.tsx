@@ -1,7 +1,8 @@
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { StatusResponse } from "../../modules/baselinker/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type StepState } from "./baselinker-guide"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec, type StepState } from "./baselinker-guide"
 import { ReferencesBlock } from "./baselinker-panel"
 
 /*
@@ -45,6 +46,23 @@ const INVOICES = `invoiceNumberField: "extra_field_1", // or "extra_field_2", or
 invoiceNumberKinds: ["vat", "receipt"],`
 
 const TOKEN = "BASELINKER_API_TOKEN=your-token"
+
+/** The same setup as this guide (steps "token" and "options"), for "Copy prompt" in the page header. */
+export function usePromptSpec(): SetupPromptSpec {
+  const { t } = useTranslation("baselinker")
+  return useMemo(() => {
+    const needs = t("guide.intro.needs", { returnObjects: true }) as unknown
+    return {
+      service: "BaseLinker",
+      pkg: "@koda-plus/medusa-plugin-baselinker",
+      route: "/app/baselinker",
+      summary: t("subtitle"),
+      needs: Array.isArray(needs) ? (needs as string[]) : [],
+      config: `${TOKEN}\n\n${CONFIG}`,
+      demo: 'demo: process.env.BASELINKER_DEMO === "true" || !process.env.BASELINKER_API_TOKEN,',
+    }
+  }, [t])
+}
 
 export function GuideView({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("baselinker")

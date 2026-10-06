@@ -1,8 +1,9 @@
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { SubiektStatusResponse } from "../../modules/subiekt/lib/contract"
 import { GUIDE_STEPS, guideChecks, guideStepStates, type GuideCheckKey, type GuideStepId } from "../../modules/subiekt/lib/guide"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type DiagramNode, type GuideStep } from "./subiekt-guide"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type DiagramNode, type GuideStep, type SetupPromptSpec } from "./subiekt-guide"
 import { RichText, fmtRating, monthYear, referencesFor } from "./subiekt-ui"
 
 /*
@@ -44,6 +45,27 @@ const MEDUSA_CODE = `{
 },
 
 npx medusa db:migrate`
+
+/**
+ * The same setup as this guide (step "medusa"), for "Copy prompt" in the page
+ * header. The bridge on the Windows machine is set up by a person (the guide's
+ * first steps); the agent only does the Medusa side.
+ */
+export function usePromptSpec(): SetupPromptSpec {
+  const { t } = useTranslation("subiekt")
+  return useMemo(() => {
+    const needs = t("guide.intro.needs", { returnObjects: true }) as unknown
+    return {
+      service: "Subiekt nexo",
+      pkg: "@koda-plus/medusa-plugin-subiekt-nexo",
+      route: "/app/subiekt",
+      summary: t("subtitle"),
+      needs: Array.isArray(needs) ? (needs as string[]) : [],
+      config: `// medusa-config.ts, in plugins: [ ... ]\n${MEDUSA_CODE}`,
+      demo: 'demo: process.env.SUBIEKT_DEMO === "true" || !process.env.SUBIEKT_BRIDGE_URL,',
+    }
+  }, [t])
+}
 
 const CLOCK_CODE = "w32tm /resync"
 

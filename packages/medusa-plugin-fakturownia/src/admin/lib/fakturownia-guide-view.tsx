@@ -1,6 +1,7 @@
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { StatusResponse } from "../../modules/fakturownia/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type StepState } from "./fakturownia-guide"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./fakturownia-guide"
 import { fmtRating, referencesFor, sinceMonth } from "./fakturownia-ui"
 
 /**
@@ -33,6 +34,26 @@ npx medusa db:migrate`
 
 const ENV = `FAKTUROWNIA_API_TOKEN=...   # Ustawienia > Ustawienia konta > Integracja > Kod autoryzacyjny API
 FAKTUROWNIA_ACCOUNT=mojafirma # https://mojafirma.fakturownia.pl`
+
+/** What the store owner prepares, in the order of the guide. */
+const NEEDS = ["account", "settings", "ksef", "medusa", "order"] as const
+
+/** The same setup as this guide (steps "token" and "install"), for "Copy prompt" in the page header. */
+export function usePromptSpec(): SetupPromptSpec {
+  const { t } = useTranslation("fakturownia")
+  return useMemo(
+    () => ({
+      service: "Fakturownia",
+      pkg: "@koda-plus/medusa-plugin-fakturownia",
+      route: "/app/fakturownia",
+      summary: t("subtitle"),
+      needs: NEEDS.map((k) => t(`guide.intro.needs.${k}`)),
+      config: `# .env\n${ENV}\n\n${CONFIG}`,
+      demo: 'demo: process.env.FAKTUROWNIA_DEMO === "true" || !process.env.FAKTUROWNIA_API_TOKEN,',
+    }),
+    [t],
+  )
+}
 
 const DEPARTMENTS = `departmentId: 123,
 departmentsBySalesChannel: {
@@ -216,7 +237,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
         time={t("guide.intro.time")}
         timeLabel={t("guide.intro.timeLabel")}
         needsLabel={t("guide.intro.needsLabel")}
-        needs={[t("guide.intro.needs.account"), t("guide.intro.needs.settings"), t("guide.intro.needs.ksef"), t("guide.intro.needs.medusa"), t("guide.intro.needs.order")]}
+        needs={NEEDS.map((k) => t(`guide.intro.needs.${k}`))}
       />
       <GuideDiagram
         title={t("guide.diagram.title")}
