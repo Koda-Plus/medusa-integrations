@@ -1,4 +1,5 @@
 import type en from "./en"
+import { typeset } from "../lib/allegro-guide"
 
 const pl: typeof en = {
   title: "Allegro",
@@ -11,10 +12,11 @@ const pl: typeof en = {
   },
   settings: {
     title: "Ustawienia",
-    subtitle: "Techniczna strona integracji: konto Allegro, zapisy z planami, przesyłki i faktury wysyłane do Allegro oraz historia synchronizacji.",
+    subtitle: "Techniczna strona integracji: konto Allegro, zapisy z planami, zaimportowane zamówienia, przesyłki i faktury wysyłane do Allegro oraz historia synchronizacji.",
     tab: {
       account: "Konto Allegro",
       writers: "Zapisy",
+      imports: "Zaimportowane zamówienia",
       plans: "Plany",
       outbox: "Wysyłki i faktury",
       runs: "Historia synchronizacji",
@@ -59,6 +61,8 @@ const pl: typeof en = {
     text: "Brakuje opcji wtyczki: {{missing}}. Identyfikator i sekret daje aplikacja zarejestrowana w portalu deweloperskim Allegro dla {{host}} jako aplikacja „bez dostępu do przeglądarki”, klucz szyfru polecenie openssl rand -base64 32. Adres zwrotny nie jest potrzebny.",
   },
   stats: {
+    groupOffers: "Oferty i stany",
+    groupOrders: "Zamówienia i kupujący",
     offers: "Oferty",
     live: "Aktywne",
     linkedLive: "Produkty aktywne na Allegro",
@@ -349,6 +353,49 @@ const pl: typeof en = {
       not_ready: "Czeka na płatność",
       never_ready: "Płatność nie została dokończona",
       cancelled: "Anulowane na Allegro",
+      duplicate_ref: "Zaimportowane gdzie indziej",
+      complete_failed: "Nie udało się dokończyć",
+      adopted: "Przejęte",
+      total_mismatch: "Inna suma",
+      cancelled_on_allegro: "Anulowane na Allegro",
+      lease_expired: "Przerwany import",
+    },
+    fix: {
+      unmapped_lines: "Żadna wersja produktu nie pasuje do pozycji. Wpisz SKU w sygnaturze oferty albo dodaj je do wersji i kliknij Ponów.",
+      currency_mismatch: "Zamówienie jest w innej walucie niż region. Ustaw orderImport.regionId na region w walucie zamówienia.",
+      no_address: "Formularz z Allegro nie ma pełnego adresu dostawy.",
+      no_lines: "Formularz z Allegro nie ma pozycji.",
+      bad_line: "Pozycja nie ma ceny albo ilości.",
+      no_region: "Brak regionu dla zamówień z Allegro. Załóż region w PLN albo ustaw orderImport.regionId.",
+      no_channel: "Brak kanału sprzedaży dla zamówień z Allegro. Ustaw orderImport.salesChannelId.",
+      stock: "Za mało sztuk na stanie, żeby zarezerwować zamówienie. Uzupełnij stan albo zezwól na zamówienia bez stanu i kliknij Ponów.",
+      workflow_error: "Medusa odrzuciła zamówienie. Usuń przyczynę z treści błędu i kliknij Ponów.",
+      too_many_attempts: "Import nie udał się kilka razy z rzędu. Usuń przyczynę z ostatniego błędu i kliknij Ponów.",
+      form_not_found: "Allegro nie zna tego formularza zakupu.",
+      create_failed: "Nie udało się utworzyć zamówienia. Kolejna próba pójdzie sama.",
+      complete_failed: "Zamówienie jest w Medusie, ale nie udało się go dokończyć. Kolejna próba pójdzie sama.",
+      fetch_failed: "Nie udało się odczytać formularza z Allegro. Kolejna próba pójdzie sama.",
+      busy: "Inny proces właśnie importuje to zamówienie.",
+      not_ready: "Płatność na Allegro jeszcze się nie zakończyła. Zamówienie wejdzie, gdy się zakończy.",
+      never_ready: "Płatność nie zakończyła się w ciągu 7 dni, więc zamówienie zostało pominięte.",
+      cancelled: "Kupujący albo Allegro anulowali zakup przed importem.",
+      duplicate_ref: "Inna integracja już zaimportowała to zamówienie, więc zostało pominięte i nie powstało drugi raz.",
+      adopted: "Wcześniejsza próba utworzyła już to zamówienie, więc zostało przejęte i nic nie powstało drugi raz.",
+      total_mismatch: "Zaimportowane, ale suma w Medusie różni się od sumy z Allegro. Sprawdź promocje i podatek od dostawy.",
+      cancelled_on_allegro: "Anulowane na Allegro: zamówienie w Medusie zostało anulowane, a stan zwolniony.",
+      lease_expired: "Import przerwał się w połowie. Zanim cokolwiek powstanie ponownie, Medusa zostanie sprawdzona, czy zamówienie już jest.",
+    },
+    attention: "Kupujący anulował zakup na Allegro już po imporcie. Sprawdź zamówienie w Medusie i rozlicz zwrot ręcznie.",
+    note: {
+      region_missing: "Region z orderImport.regionId ({{value}}) nie istnieje.",
+      no_region: "Brak regionu w walucie {{value}}. Załóż go albo ustaw orderImport.regionId.",
+      channel_missing: "Kanał sprzedaży z orderImport.salesChannelId ({{value}}) nie istnieje.",
+      demo_channel: "Kanał sprzedaży „{{value}}” powstanie przy pierwszym imporcie.",
+      default_channel:
+        "Zamówienia z Allegro trafiają do domyślnego kanału sprzedaży „{{value}}”. Załóż kanał o nazwie „Allegro” (albo ustaw orderImport.salesChannelId), żeby je rozdzielić.",
+      no_channel: "Brak kanału sprzedaży dla zamówień z Allegro. Ustaw orderImport.salesChannelId.",
+      no_shipping:
+        "Zaimportowane zamówienia nie dostają opcji dostawy: wybierz ją przy realizacji w Medusie albo ustaw orderImport.shippingOptionId.",
     },
     paid: "Opłacone",
     notPaid: "Nieopłacone",
@@ -730,10 +777,10 @@ const pl: typeof en = {
         title: "Najpierw uzbrój import zamówień",
         body: [
           "Ustal, dokąd trafiają zamówienia z Allegro: orderImport.salesChannelId (kanał sprzedaży o nazwie Allegro zostanie wybrany sam) i orderImport.regionId (inaczej pierwszy region w PLN). Połącz ten kanał z lokalizacją magazynową, z której wysyłasz zamówienia z Allegro. orderImport.shippingOptionId dodaje opcję dostawy do każdego zaimportowanego zamówienia, więc można je zrealizować bez wybierania jej ręcznie.",
-          "Kliknij Próba na sucho w Zaimportowanych zamówieniach: każdy czekający formularz mówi, czy zostałby utworzony, wstrzymany czy pominięty, i dlaczego. Potem uzbrój Import zamówień. Nowa instalacja zaczyna od najnowszego zdarzenia na Allegro; starsze zamówienia dodasz oknem importu.",
+          "W Ustawieniach otwórz Zaimportowane zamówienia i kliknij Próba na sucho: każdy czekający formularz mówi, czy zostałby utworzony, wstrzymany czy pominięty, i dlaczego. Potem uzbrój Import zamówień. Nowa instalacja zaczyna od najnowszego zdarzenia na Allegro; starsze zamówienia dodasz oknem importu.",
           "Każde zaimportowane zamówienie ma metadata.marketplace_order_ref = allegro:<identyfikator formularza>, ceny z Allegro jako pozycje z podatkiem w cenie i liniami podatkowymi z regionu, płatność (pobraną, gdy pieniądze są u Allegro, nieopłaconą przy płatności za pobraniem) i zarezerwowany stan. Powstaje jako szkic i zostaje złożone tak jak szkic zamówienia w panelu, więc wychodzi zdarzenie order.placed: fakturowanie (Fakturownia) i ERP (Subiekt nexo) widzą je jak każde inne zamówienie. Nie powstaje konto klienta, a no_notification jest ustawione. Niech własne maile sklepu o zamówieniach pomijają zamówienia z marketplace_order_ref: Allegro samo pisze do kupującego.",
         ],
-        check: "Zaimportowane zamówienia pokazują zamówienia z linkami do Medusy, a Medusa pokazuje je w kanale sprzedaży Allegro.",
+        check: "Zaimportowane zamówienia w Ustawieniach pokazują zamówienia z linkami do Medusy, a Medusa pokazuje je w kanale sprzedaży Allegro.",
       },
       stock: {
         title: "Uzbrój wysyłkę stanów",
@@ -919,4 +966,5 @@ const pl: typeof en = {
   error: "Nie udało się wczytać danych Allegro: {{message}}",
 }
 
-export default pl
+/* Polish typography: no one-letter word left at the end of a line (nb in the page kit). */
+export default typeset(pl)

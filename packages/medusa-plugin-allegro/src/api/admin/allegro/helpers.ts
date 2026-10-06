@@ -256,6 +256,7 @@ export async function buildStatus(scope: MedusaContainer | MedusaRequest["scope"
         regionName: target?.regionName ?? null,
         shippingOptionId: o.orderImport.shippingOptionId,
         warnings: target?.warnings ?? [],
+        notes: target?.notes ?? [],
       },
       fakturownia: fakturowniaPresent(scope),
     },

@@ -23,9 +23,40 @@ import { Badge, Container, Heading, IconButton, Popover, StatusBadge, Text, clx,
  *   GuideDiagram     boxes and arrows for how the parts talk to each other
  *   GuideChecklist   go-live checklist with ticks from the live status
  *   GuideFaq         troubleshooting, one question per row, opens in place
+ * Typography
+ *   nb, typeset      Polish copy with no one-letter word left at the end of a line
  *
  * Every string comes in through props, already translated by the page.
  */
+
+/* ------------------------------------------------------------------ */
+/* Typography: the Koda Plus script against orphans, as on our offers */
+
+const NBSP = "\u00a0"
+/* A one-letter word or a short conjunction or preposition, with the space after it. */
+const SHORT = /(^|[\s("„])(oraz|albo|lub|ale|że|bo|czy|gdy|aby|by|więc|jak|na|do|za|ze|we|od|po|to|[aiouwze])[ \t]+/gi
+
+/**
+ * Glues "w", "i", "z", "na", "do", "że" and the like to the next word and a number
+ * to its thousands and units, so no short word hangs at the end of a line. Two
+ * passes catch runs like "i w domu". Line breaks are left alone.
+ */
+export function nb(text: string): string {
+  let out = text
+  for (let k = 0; k < 2; k++) out = out.replace(SHORT, `$1$2${NBSP}`)
+  out = out.replace(/(\d) (?=\d{3}\b)/g, `$1${NBSP}`)
+  return out.replace(/(\d) (zł|€|Kč|EUR|USD|PLN|CZK|mln|tys\.|cm|mm|m²|%)/g, `$1${NBSP}$2`)
+}
+
+/** nb over every string of a translation dictionary (nested objects and arrays), keys untouched. */
+export function typeset<T>(value: T): T {
+  if (typeof value === "string") return nb(value) as T
+  if (Array.isArray(value)) return value.map((v) => typeset(v)) as T
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, typeset(v)])) as T
+  }
+  return value
+}
 
 /* ------------------------------------------------------------------ */
 /* The page view, kept in the URL so a link can open the guide or a settings tab */
@@ -319,13 +350,13 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
               ) : null}
               {r.review?.quote ? (
                 <Text size="xsmall" className="border-l-2 border-ui-border-strong pl-2 italic text-ui-fg-subtle">
-                  {r.review.quote}
+                  {nb(r.review.quote)}
                   {r.review.author ? <span className="not-italic text-ui-fg-muted"> {r.review.author}</span> : null}
                 </Text>
               ) : null}
               {r.description ? (
                 <Text size="xsmall" className="text-ui-fg-subtle">
-                  {r.description}
+                  {nb(r.description)}
                 </Text>
               ) : null}
               {r.metrics?.length || r.since ? (
@@ -475,7 +506,7 @@ export function References({ items, title, subtitle, openLabel, sinceLabel, revi
             ) : null}
             {r.description ? (
               <Text size="small" className="text-ui-fg-subtle">
-                {r.description}
+                {nb(r.description)}
               </Text>
             ) : null}
             {r.metrics?.length || r.since ? (
