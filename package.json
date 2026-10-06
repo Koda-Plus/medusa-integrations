@@ -9,7 +9,8 @@
     "typecheck": "node scripts/each.mjs npm run typecheck",
     "build": "node scripts/each.mjs npm run build",
     "check": "node scripts/each.mjs npm test && node scripts/each.mjs npm run typecheck",
-    "vendor": "node scripts/vendor-into-app.mjs ../koda-plus-demo/medusa-backend"
+    "vendor": "node scripts/vendor-into-app.mjs ../koda-plus-demo/medusa-backend",
+    "release": "node scripts/publish-all.mjs"
   },
   "engines": {
     "node": ">=20"
