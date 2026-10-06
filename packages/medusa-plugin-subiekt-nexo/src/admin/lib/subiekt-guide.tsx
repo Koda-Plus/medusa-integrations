@@ -40,6 +40,8 @@ import { Badge, Button, Container, DropdownMenu, Heading, Input, Label, Popover,
 /* Typography: the Koda Plus script against orphans, as on our offers */
 
 const NBSP = "\u00a0"
+/* A non-breaking hyphen: "e-mail" never ends a line on "e-". */
+const NBHY = "\u2011"
 /* A one-letter word or a short conjunction or preposition, with the space after it. */
 const SHORT = /(^|[\s("„])(oraz|albo|lub|ale|że|bo|czy|gdy|aby|by|więc|jak|na|do|za|ze|we|od|po|to|[aiouwze])[ \t]+/gi
 
@@ -52,6 +54,7 @@ export function nb(text: string): string {
   let out = text
   for (let k = 0; k < 2; k++) out = out.replace(SHORT, `$1$2${NBSP}`)
   out = out.replace(/(\d) (?=\d{3}\b)/g, `$1${NBSP}`)
+  out = out.replace(/\b([eE])-(?=mail)/g, `$1${NBHY}`)
   return out.replace(/(\d) (zł|€|Kč|EUR|USD|PLN|CZK|mln|tys\.|cm|mm|m²|%)/g, `$1${NBSP}$2`)
 }
 
