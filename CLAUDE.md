@@ -39,10 +39,12 @@ Mostek Subiekta (.NET 8, Sfera) to OSOBNE, komercyjne repo `Koda-Plus/subiekt-ne
 
 ## Komendy
 
-- `npm run check`: testy + typy we wszystkich paczkach. `npm run build`: `medusa plugin:build` w każdej.
+- `npm run check`: testy + typy we wszystkich paczkach. `npm run build`: `medusa plugin:build` w każdej. `npm run release`: publikacja na npm (patrz Publikacja).
 - `npm run vendor`: kopia wszystkich wtyczek do `../koda-plus-demo/medusa-backend` (medusa.koda.plus). Potem w koda-plus-demo: commit + push na `main` = wdrożenie na Railway. Zmiana `package.json` backendu psuje cache Dockera, więc wtyczki NIE są tam zależnościami npm, tylko kodem aplikacji.
 - Każda paczka: `npm install` (nie `npm ci`: skopiowany lockfile OLX bywał rozjechany), `npm test`, `npm run typecheck`, `npm run build`.
 
-## Publikacja (czeka na decyzję Remika)
+## Publikacja
 
-Repo na GitHubie i paczki na npm (scope `@koda-plus`) NIE są jeszcze publiczne. Deck dla zespołu Medusy (`clients/medusa/oferta`) ma przełącznik `PUBLISHED`, który pokazuje linki do npm i GitHuba dopiero po publikacji.
+- Repo `Koda-Plus/medusa-integrations` jest PUBLICZNE od 06.10.2026 (decyzja Remika, po audycie całej historii: bez sekretów, plików `.env`, danych klientów; wszystkie zrzuty w historii to dane demo). Wszystko, co tu trafia, jest od razu publiczne: żadnych tokenów, danych klientów ani zrzutów z prawdziwych sklepów.
+- npm: `npm run release` publikuje pięć paczek po kolei (pomija wersje już opublikowane, więc można go ponowić). Wymaga `npm login` na koncie w organizacji npm `koda-plus`; konto i logowanie robi Remik, `npm publish` odpala testy i `medusa plugin:build` każdej paczki. Nowa wersja: podnieś `version` i CHANGELOG w paczce, potem `npm run release`.
+- Katalog medusajs.com/integrations zbiera paczki z npm po słowach kluczowych `medusa-v2`, `medusa-plugin-integration` i kategorii (`medusa-plugin-other` dla OLX, Allegro, Fakturowni, `medusa-plugin-erp` dla BaseLinkera i Subiekta).
