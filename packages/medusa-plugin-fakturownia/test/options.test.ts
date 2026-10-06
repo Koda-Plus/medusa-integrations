@@ -157,6 +157,42 @@ test("references: a review needs a positive rating and a source, never exceeds i
   assert.equal(fromOptions[0].review?.author, "Jan")
 })
 
+test("references: a store that starts soon needs only its name, a live one still needs an https URL", () => {
+  const refs = resolveReferences([
+    { name: "Soon, no address", soon: true, description: "Opens in spring" },
+    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
+    { name: "Soon, insecure address", soon: true, url: "http://soon.example.com" },
+    { name: "Live, no address" },
+    { name: "Live, insecure address", url: "http://live.example.com" },
+    { name: "Not a boolean", soon: "yes" },
+    { soon: true },
+  ])
+  assert.deepEqual(
+    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
+    [
+      { name: "Soon, no address", soon: true, url: null },
+      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
+      { name: "Soon, insecure address", soon: true, url: null },
+    ],
+  )
+  assert.deepEqual(refs[0].description, { en: "Opens in spring", pl: "Opens in spring" })
+  assert.equal(resolveReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
+  const live = resolveReferences([{ name: "Live", url: "https://a.pl" }])
+  assert.equal(live[0].soon, false)
+  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
+})
+
+test("references: the since date of an older config is ignored, never an error", () => {
+  const refs = resolveReferences([
+    { name: "Live", url: "https://a.pl", since: "2026-04" },
+    { name: "Soon", soon: true, since: { not: "a month" } },
+  ])
+  assert.equal(refs.length, 2)
+  for (const r of refs) assert.equal("since" in r, false)
+  assert.equal(refs[0].url, "https://a.pl/")
+  assert.equal(refs[1].soon, true)
+})
+
 test("dates: the Polish calendar day, also when UTC still says yesterday", () => {
   assert.equal(warsawDate(new Date("2026-10-04T22:30:00Z")), "2026-10-05", "00:30 in Warsaw (CEST)")
   assert.equal(warsawDate(new Date("2026-10-05T21:59:00Z")), "2026-10-05")

@@ -324,9 +324,12 @@ const pl: typeof en = {
     title: "Działa w sklepach wdrożonych przez Koda Plus",
     subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
-    since: "Od {{date}}",
     badgeOne: "Działa w 1 sklepie",
     badgeMany: "Działa w {{count}} sklepach",
+    badgeSoonOne: "Wkrótce w 1 sklepie",
+    badgeSoonMany: "Wkrótce w {{count}} sklepach",
+    soon: "Wkrótce",
+    soonMore: "+{{count}} wkrótce",
     review: "Zobacz opinię",
   },
   community: {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 (2026-10-07)
+
+- References: stores that start soon (`soon: true`, shown with a Soon badge and no link); the since date is no longer shown.
+
 ## 0.2.1 (2026-10-06)
 
 README only: screenshots of the admin page and of the order widget, and the link to the live demo on medusa.koda.plus, like the other Koda Plus integrations. No code changes.

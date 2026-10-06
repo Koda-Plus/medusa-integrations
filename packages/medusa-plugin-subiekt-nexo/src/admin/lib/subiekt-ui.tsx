@@ -265,31 +265,14 @@ export function resolveText(value: Localized, lang: string): string | undefined 
   return (pl ? value.pl ?? value.en : value.en ?? value.pl) || undefined
 }
 
-/** Polish needs the genitive after "od": "od kwietnia 2026". */
-const PL_GENITIVE = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
-
-/** "April 2026" / "kwietnia 2026" for a YYYY-MM, ready for "Since {{date}}" / "Od {{date}}". */
-export function monthYear(since: string, lang: string): string {
-  const m = /^(\d{4})-(\d{2})$/.exec(since)
-  if (!m) return since
-  const year = Number(m[1])
-  const month = Number(m[2])
-  if (lang.toLowerCase().startsWith("pl")) return `${PL_GENITIVE[month - 1] ?? m[2]} ${year}`
-  try {
-    return new Intl.DateTimeFormat(lang, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 15)))
-  } catch {
-    return since
-  }
-}
-
 /** The `references` option in the admin language, as the guide kit renders them. */
 export function referencesFor(list: ReferenceDto[] | undefined, lang: string): Reference[] {
   return (list ?? []).map((r) => ({
     name: r.name,
-    url: r.url,
+    url: r.url ?? undefined,
+    soon: r.soon,
     icon: r.icon,
     description: resolveText(r.description, lang),
-    since: r.since,
     metrics: r.metrics.map((m) => ({ label: resolveText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
     links: r.links.map((l) => ({ label: resolveText(l.label, lang) ?? l.url, url: l.url })),
     review: r.review ? { ...r.review, quote: resolveText(r.review.quote ?? undefined, lang) } : null,

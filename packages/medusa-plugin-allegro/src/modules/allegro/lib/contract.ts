@@ -91,11 +91,13 @@ export interface AllegroLocalizedText {
 
 export interface AllegroReferenceDto {
   name: string
-  url: string
+  /** https. Null only for a store that starts soon and has no address yet. */
+  url: string | null
+  /** The store starts on Medusa soon: a "Soon" badge, no link. */
+  soon: boolean
   /** The store's icon: a data URI or an https URL. */
   icon: string | null
   description: AllegroLocalizedText | null
-  since: string | null
   metrics: Array<{ label: AllegroLocalizedText; value: string }>
   links: Array<{ label: AllegroLocalizedText; url: string }>
   /** The store's rating of the work and where it was given, e.g. Clutch. */

@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-olx",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OLX by Koda Plus: link OLX adverts to Medusa products by SKU, alerts when OLX and the store disagree, advert statistics and unread messages, and opt-in writers (end and bring back adverts by stock, update prices, publish products) with plans, dry runs and two switches. Demo mode.",
   "author": {
     "name": "Koda Plus",

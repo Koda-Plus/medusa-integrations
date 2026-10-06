@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-10-07)
+
+- References: stores that start soon (`soon: true`, shown with a Soon badge and no link); the since date is no longer shown.
+
 ## 0.2.0 (2026-10-06)
 
 Needs no bridge update to keep working: every new feature is detected from the bridge `capabilities`. Bridge 0.2.0 (contract 1.1.0) unlocks them.

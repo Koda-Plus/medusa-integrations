@@ -1,11 +1,14 @@
 /**
  * "RUNNING IN PRODUCTION": stores that use the plugin, passed by the app in
  * the `references` option and shown on the OLX page and at the end of the
- * setup guide. Zero imports.
+ * setup guide. A store that starts on Medusa soon (`soon: true`) is listed
+ * too, with a "Soon" badge and no link. Zero imports.
  *
  * LENIENT ON PURPOSE. A reference is decoration: a typo in it must never stop
- * Medusa from starting. Entries without a name or without an https URL are
- * dropped, broken parts of an entry are dropped, nothing ever throws.
+ * Medusa from starting. Entries without a name are dropped, and so are live
+ * entries without an https URL (a soon entry needs only its name); broken
+ * parts of an entry are dropped, unknown fields are ignored, nothing ever
+ * throws.
  */
 
 export interface LocalizedText {
@@ -30,12 +33,13 @@ export interface OlxReview {
 
 export interface OlxReference {
   name: string
-  url: string
+  /** https. Null only for a store that starts soon and has no address yet. */
+  url: string | null
+  /** The store starts on Medusa soon: shown with a "Soon" badge and never linked. */
+  soon: boolean
   /** The store's icon: a data URI (at most 64 KB) or an https URL. */
   icon: string | null
   description: LocalizedText | null
-  /** YYYY-MM, e.g. 2026-04. */
-  since: string | null
   metrics: Array<{ label: LocalizedText; value: string }>
   links: Array<{ label: LocalizedText; url: string }>
   review: OlxReview | null
@@ -44,11 +48,13 @@ export interface OlxReference {
 /** What the option accepts. Every field is checked, so `unknown` is fine here. */
 export interface OlxReferenceOption {
   name: string
-  url: string
+  /** The live store (https). Optional when `soon` is true; a soon store is never linked. */
+  url?: string
+  /** A store that starts on Medusa soon: listed with a "Soon" badge and without a link. */
+  soon?: boolean
   /** The store's favicon or logo mark: a `data:image/...;base64,` URI or an https URL. */
   icon?: string
   description?: string | LocalizedText
-  since?: string
   metrics?: Array<{ label: string | LocalizedText; value: string }>
   links?: Array<{ label: string | LocalizedText; url: string }>
   /** The store's rating of the work, with where it was given: `{ rating: 5, source: "Clutch", url, icon }`. */
@@ -114,12 +120,6 @@ export function localized(value: unknown, max: number): LocalizedText | null {
   return out
 }
 
-export function validSince(value: unknown): string | null {
-  if (typeof value !== "string") return null
-  const s = value.trim()
-  return /^\d{4}-(0[1-9]|1[0-2])$/.test(s) ? s : null
-}
-
 /** A rating with a positive value and a source, or null. The rating never exceeds its scale. */
 export function normalizeReview(value: unknown): OlxReview | null {
   if (!value || typeof value !== "object") return null
@@ -150,9 +150,10 @@ export function normalizeReferences(input: unknown): OlxReference[] {
     if (!raw || typeof raw !== "object") continue
     const r = raw as Record<string, unknown>
     const name = clip(r.name, 80)
+    const soon = r.soon === true
     const url = httpsUrl(r.url)
-    if (!name || !url || seen.has(url)) continue
-    seen.add(url)
+    if (!name || (!url && !soon) || (url && seen.has(url))) continue
+    if (url) seen.add(url)
     const metrics: OlxReference["metrics"] = []
     if (Array.isArray(r.metrics)) {
       for (const m of r.metrics) {
@@ -176,9 +177,9 @@ export function normalizeReferences(input: unknown): OlxReference[] {
     out.push({
       name,
       url,
+      soon,
       icon: referenceIcon(r.icon),
       description: localized(r.description, 400),
-      since: validSince(r.since),
       metrics,
       links,
       review: normalizeReview(r.review),
@@ -192,49 +193,4 @@ export function pickText(text: LocalizedText | null | undefined, lang: string): 
   if (!text) return ""
   const pl = /^pl\b/i.test(lang)
   return (pl ? text.pl || text.en : text.en || text.pl) ?? ""
-}
-
-const PL_MONTHS_GENITIVE = [
-  "stycznia",
-  "lutego",
-  "marca",
-  "kwietnia",
-  "maja",
-  "czerwca",
-  "lipca",
-  "sierpnia",
-  "września",
-  "października",
-  "listopada",
-  "grudnia",
-]
-
-/**
- * "2026-04" as "April 2026", or in Polish the genitive "kwietnia 2026", so
- * the admin can say "Since April 2026" and "Od kwietnia 2026". Intl gives
- * the nominative for month and year alone ("kwiecień 2026"), so Polish is
- * formatted with a day and the day is cut; a month table is the fallback.
- */
-export function fmtMonth(since: string, lang: string): string {
-  const m = /^(\d{4})-(\d{2})$/.exec(since)
-  if (!m) return since
-  const year = Number(m[1])
-  const month = Number(m[2]) - 1
-  if (month < 0 || month > 11) return since
-  const date = new Date(Date.UTC(year, month, 15))
-  if (/^pl\b/i.test(lang)) {
-    try {
-      const text = new Intl.DateTimeFormat("pl", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(date)
-      const stripped = text.replace(/^\d+\s+/, "").replace(/\s*r\.$/, "")
-      if (/[a-ząćęłńóśźż]/i.test(stripped)) return stripped
-    } catch {
-      /* fall back to the table */
-    }
-    return `${PL_MONTHS_GENITIVE[month]} ${year}`
-  }
-  try {
-    return new Intl.DateTimeFormat(lang, { month: "long", year: "numeric", timeZone: "UTC" }).format(date)
-  } catch {
-    return since
-  }
 }

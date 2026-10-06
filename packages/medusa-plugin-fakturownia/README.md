@@ -128,7 +128,7 @@ Without `apiToken` the plugin runs in demo mode. With `demo: false` and no token
 - `nipSources` (default: the keys of `taxIdMetadataKeys` in the order metadata, then in the billing address metadata, then `billing_address.tax_id`): where the buyer's NIP is looked for, in order. Strings `order.metadata.<key>`, `billing_address.metadata.<key>`, `billing_address.tax_id`, `billing_address.company` (a NIP typed into the company name, taken only when it passes the checksum), `company:<entity>`, or an object `{ entity, customerField, nipField, nameField }` for a company module of your store read with Query by the order's customer (defaults `customer_id`, `nip`, `name`).
 - `taxIdMetadataKeys` (default `nip`, `tax_id`, `invoice_nip`): the metadata keys of the default `nipSources`.
 - `oidPrefix` (default none): a prefix for the order number sent to Fakturownia, for accounts that already hold documents numbered like Medusa orders (an earlier shop).
-- `references` (default none): stores running the integration, shown in the admin ("Running in production"): `[{ name, url, description?, since?: "YYYY-MM", metrics?: [{ label, value }], links?: [{ label, url }] }]`, texts plain or `{ en, pl }`. Entries without a name or an https address are dropped.
+- `references` (default none): stores running the integration, shown in the admin ("Running in production"): `[{ name, url, description?, metrics?: [{ label, value }], links?: [{ label, url }], soon? }]`, texts plain or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped.
 - `requestsPerMinute` (default `60`): self-imposed rate limit (Fakturownia documents none).
 - `timeoutMs` (default `30000`): one request.
 
@@ -377,6 +377,10 @@ Fakturownia and its logo are trademarks of their owner, used here only to identi
 MIT, see [LICENSE](./LICENSE).
 
 ## Changelog
+
+### 0.2.2 (2026-10-07)
+
+- References: stores that start soon on Medusa can be listed with `soon: true` (a Soon badge, no link, `url` optional); the since date is no longer shown, and an old `since` in the options is ignored.
 
 ### 0.2.1 (2026-10-06)
 

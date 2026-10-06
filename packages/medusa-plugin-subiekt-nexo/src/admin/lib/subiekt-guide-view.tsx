@@ -4,7 +4,7 @@ import { InlineTip } from "@medusajs/ui"
 import type { SubiektStatusResponse } from "../../modules/subiekt/lib/contract"
 import { GUIDE_STEPS, guideChecks, guideStepStates, type GuideCheckKey, type GuideStepId } from "../../modules/subiekt/lib/guide"
 import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type DiagramNode, type GuideStep, type SetupPromptSpec } from "./subiekt-guide"
-import { RichText, fmtRating, monthYear, referencesFor } from "./subiekt-ui"
+import { RichText, fmtRating, referencesFor } from "./subiekt-ui"
 
 /*
  * The setup guide of the Subiekt page (?view=guide): from an empty Windows
@@ -171,7 +171,7 @@ export function GuideView({ status, lang }: { status: SubiektStatusResponse; lan
         title={t("references.title")}
         subtitle={t("references.subtitle")}
         openLabel={t("references.open")}
-        sinceLabel={(since) => t("references.since", { date: monthYear(since, lang) })}
+        soonLabel={t("references.soon")}
         reviewLabel={t("references.review")}
         ratingLabel={(value) => fmtRating(value, lang)}
       />

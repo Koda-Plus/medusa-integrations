@@ -1,24 +1,27 @@
 /**
  * "RUNNING IN PRODUCTION": stores that use the integration, from the
- * `references` option, for the admin page and the end of the setup guide.
- * Zero imports.
+ * `references` option, for the admin page and the end of the setup guide,
+ * and stores that start on Medusa soon (`soon: true`, a "Soon" badge, no
+ * link). Zero imports.
  *
- * Validated leniently: an entry without a name or an https address is
- * dropped, texts may be plain or `{ en, pl }`, and nothing here ever throws,
- * so a typo in `medusa-config.ts` never stops Medusa. The package itself
- * names no store: the references come from the configuration.
+ * Validated leniently: an entry without a name is dropped, and so is a live
+ * entry without an https address (a soon entry needs only its name); texts
+ * may be plain or `{ en, pl }`, unknown fields are ignored, and nothing here
+ * ever throws, so a typo in `medusa-config.ts` never stops Medusa. The
+ * package itself names no store: the references come from the configuration.
  */
 
 export type LocalizedText = string | { en?: string; pl?: string }
 
 export interface ReferenceOption {
   name: string
-  url: string
+  /** The live store (https). Optional when `soon` is true; a soon store is never linked. */
+  url?: string
+  /** A store that starts on Medusa soon: listed with a "Soon" badge and without a link. */
+  soon?: boolean
   /** The store's favicon or logo mark: a `data:image/...;base64,` URI or an https URL. */
   icon?: string
   description?: LocalizedText
-  /** `YYYY-MM`: since when the store runs the integration. */
-  since?: string
   metrics?: Array<{ label: LocalizedText; value: string }>
   links?: Array<{ label: LocalizedText; url: string }>
   /** The store's rating of the work, with where it was given: `{ rating: 5, source: "Clutch", url, icon }`. */
@@ -58,11 +61,13 @@ export interface ResolvedReview {
 
 export interface ResolvedReference {
   name: string
-  url: string
+  /** https. Null only for a store that starts soon and has no address yet. */
+  url: string | null
+  /** The store starts on Medusa soon: shown with a "Soon" badge and never linked. */
+  soon: boolean
   /** The store's icon: a data URI (at most 64 KB) or an https URL. */
   icon: string | null
   description: ResolvedText | null
-  since: string | null
   metrics: Array<{ label: ResolvedText; value: string }>
   links: Array<{ label: ResolvedText; url: string }>
   review: ResolvedReview | null
@@ -100,12 +105,6 @@ export function resolveText(v: unknown, max = 400): ResolvedText | null {
     return en || pl ? { en, pl } : null
   }
   return null
-}
-
-function since(v: unknown): string | null {
-  const s = clip(v, 7)
-  if (!s || !/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) return null
-  return s
 }
 
 const ICON_DATA_URI = /^data:image\/(png|webp|jpeg|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/
@@ -147,8 +146,9 @@ export function resolveReferences(option: unknown): ResolvedReference[] {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue
     const r = raw as Record<string, unknown>
     const name = clip(r.name, 80)
+    const soon = r.soon === true
     const url = httpsUrl(r.url)
-    if (!name || !url) continue
+    if (!name || (!url && !soon)) continue
     const metrics = (Array.isArray(r.metrics) ? r.metrics : [])
       .map((m) => {
         const mm = (m && typeof m === "object" ? m : {}) as Record<string, unknown>
@@ -167,7 +167,7 @@ export function resolveReferences(option: unknown): ResolvedReference[] {
       })
       .filter((l): l is { label: ResolvedText; url: string } => l !== null)
       .slice(0, MAX_ITEMS)
-    out.push({ name, url, icon: referenceIcon(r.icon), description: resolveText(r.description), since: since(r.since), metrics, links, review: normalizeReview(r.review) })
+    out.push({ name, url, soon, icon: referenceIcon(r.icon), description: resolveText(r.description), metrics, links, review: normalizeReview(r.review) })
     if (out.length >= MAX_REFERENCES) break
   }
   return out

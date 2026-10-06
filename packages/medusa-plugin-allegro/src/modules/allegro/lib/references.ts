@@ -1,9 +1,11 @@
 /**
  * "RUNNING IN PRODUCTION": stores that use this integration, from the
- * `references` option. Zero imports.
+ * `references` option, and stores that start on Medusa soon (`soon: true`,
+ * shown with a "Soon" badge and no link). Zero imports.
  *
- * Validated leniently: an entry without a name or without an https address
- * is dropped, a field of the wrong type is ignored, nothing ever throws. A
+ * Validated leniently: an entry without a name is dropped, and so is a live
+ * entry without an https address (a soon entry needs only its name); a field
+ * of the wrong type is ignored, unknown fields too, nothing ever throws. A
  * reference is marketing, not configuration, so it must never stop a boot.
  * Texts may come in both languages (`{ en, pl }`); the admin picks one.
  */
@@ -12,12 +14,13 @@ export type LocalizedText = string | { en?: string; pl?: string }
 
 export interface ReferenceInput {
   name: string
-  url: string
+  /** The live store (https). Optional when `soon` is true; a soon store is never linked. */
+  url?: string
+  /** A store that starts on Medusa soon: listed with a "Soon" badge and without a link. */
+  soon?: boolean
   /** The store's favicon or logo mark: a `data:image/...;base64,` URI or an https URL. */
   icon?: string
   description?: LocalizedText
-  /** YYYY-MM */
-  since?: string
   metrics?: Array<{ label: LocalizedText; value: string }>
   links?: Array<{ label: LocalizedText; url: string }>
   /** The store's rating of the work, with where it was given: `{ rating: 5, source: "Clutch", url, icon }`. */
@@ -56,11 +59,13 @@ export interface ResolvedReview {
 
 export interface ResolvedReference {
   name: string
-  url: string
+  /** https. Null only for a store that starts soon and has no address yet. */
+  url: string | null
+  /** The store starts on Medusa soon: shown with a "Soon" badge and never linked. */
+  soon: boolean
   /** The store's icon: a data URI (at most 64 KB) or an https URL. */
   icon: string | null
   description: ResolvedText | null
-  since: string | null
   metrics: Array<{ label: ResolvedText; value: string }>
   links: Array<{ label: ResolvedText; url: string }>
   review: ResolvedReview | null
@@ -97,12 +102,6 @@ function localized(v: unknown, max: number): ResolvedText | null {
     return en || pl ? { en, pl } : null
   }
   return null
-}
-
-function since(v: unknown): string | null {
-  const s = text(v, 7)
-  if (!s || !/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) return null
-  return s
 }
 
 const ICON_DATA_URI = /^data:image\/(png|webp|jpeg|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/
@@ -145,9 +144,10 @@ export function normalizeReferences(raw: unknown): ResolvedReference[] {
     if (!item || typeof item !== "object") continue
     const r = item as Record<string, unknown>
     const name = text(r.name, 80)
+    const soon = r.soon === true
     const url = httpsUrl(r.url)
-    if (!name || !url || seen.has(url)) continue
-    seen.add(url)
+    if (!name || (!url && !soon) || (url && seen.has(url))) continue
+    if (url) seen.add(url)
     const metrics: ResolvedReference["metrics"] = []
     for (const m of Array.isArray(r.metrics) ? r.metrics : []) {
       const mm = (m ?? {}) as Record<string, unknown>
@@ -165,9 +165,9 @@ export function normalizeReferences(raw: unknown): ResolvedReference[] {
     out.push({
       name,
       url,
+      soon,
       icon: referenceIcon(r.icon),
       description: localized(r.description, 400),
-      since: since(r.since),
       metrics: metrics.slice(0, 6),
       links: links.slice(0, 6),
       review: normalizeReview(r.review),
@@ -182,40 +182,4 @@ export function pickText(t: ResolvedText | null | undefined, lang: string): stri
   if (!t) return ""
   const polish = /^pl\b/i.test(lang)
   return (polish ? t.pl ?? t.en : t.en ?? t.pl) ?? ""
-}
-
-const PL_MONTHS_GENITIVE = [
-  "stycznia",
-  "lutego",
-  "marca",
-  "kwietnia",
-  "maja",
-  "czerwca",
-  "lipca",
-  "sierpnia",
-  "września",
-  "października",
-  "listopada",
-  "grudnia",
-]
-
-/**
- * "2026-04" as "Since April 2026" or "Od kwietnia 2026". Polish needs the
- * genitive month after "od", which Intl does not give for a month alone, so
- * Polish uses a small table and other languages use Intl.
- */
-export function sinceLabel(value: string, lang: string): string {
-  const m = /^(\d{4})-(\d{2})$/.exec(value)
-  if (!m) return value
-  const year = Number(m[1])
-  const month = Number(m[2])
-  if (/^pl\b/i.test(lang)) return `Od ${PL_MONTHS_GENITIVE[month - 1] ?? m[2]} ${year}`
-  try {
-    const label = new Intl.DateTimeFormat(lang || "en", { month: "long", year: "numeric", timeZone: "UTC" }).format(
-      new Date(Date.UTC(year, month - 1, 1)),
-    )
-    return `Since ${label}`
-  } catch {
-    return `Since ${value}`
-  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-allegro",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Allegro by Koda Plus: connect an Allegro seller account to Medusa, link offers to products by signature, import Allegro orders exactly once and send quantities, parcels, invoices, prices and draft offers back, each writer allowed in the options and armed in the admin. Device flow, encrypted tokens, sandbox and demo mode.",
   "author": {
     "name": "Koda Plus",
