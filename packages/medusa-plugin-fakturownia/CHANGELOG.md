@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-10-06)
+
+README only: screenshots of the admin page and of the order widget, and the link to the live demo on medusa.koda.plus, like the other Koda Plus integrations. No code changes.
+
 ## 0.2.0 (2026-10-06)
 
 Corrections, e-mails, KSeF in depth, documents in the customer account and B2B buyer data, with a contract other plugins can build on. Every new write to Fakturownia ships off.

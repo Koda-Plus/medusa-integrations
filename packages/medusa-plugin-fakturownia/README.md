@@ -4,6 +4,10 @@ Issue Polish **VAT invoices, proformas, receipts and correction invoices in Fakt
 
 Nothing about the buyer is stored in Medusa: the plugin keeps the document kind, number, amounts, positions and statuses, and builds the buyer data from the order at the moment it sends it. E-mail addresses in the send history are masked.
 
+![Fakturownia page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-fakturownia/docs/admin-fakturownia.png)
+
+**Live demo:** Medusa admin [medusa.koda.plus/app/fakturownia](https://medusa.koda.plus/app/fakturownia?demo=en), signed in to a public demo account by the link itself. The demo runs the plugin in demo mode: a simulated Fakturownia account that issues documents for the store's own orders, with KSeF statuses, corrections to approve and e-mails, and zero outgoing requests.
+
 ## What it does
 
 - **Documents** (VAT invoice, proforma, receipt): Medusa to Fakturownia, at the trigger you choose (`payment_captured` by default, or `order_placed`), retried with backoff, with a pass every 2 minutes.
@@ -176,6 +180,8 @@ The plugin does not send documents to KSeF itself: that is the account's setting
 - The document drawer shows the number, the dates, the errors KSeF reported, the verification link, the **UPO** and the **KSeF XML** (fetched by the backend from `GET /invoices/{id}/attachment?kind=gov_upo|gov`) and the history.
 - **Send to KSeF again** (`GET /invoices/{id}.json?send_to_ksef=yes`) for a document never sent, a send error, a KSeF server error, an offline document or a fixed connection problem, with the KSeF writer armed, once per five minutes per document. Not offered for `status_check_error` (the invoice may be accepted already: check Fakturownia) or `duplicate_error`.
 - The header counts the documents accepted, processing and rejected.
+
+![The order page widget: the document, its payment and KSeF status, and corrections](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-fakturownia/docs/admin-order-widget.png)
 
 ## E-mails and reminders
 
@@ -371,6 +377,10 @@ Fakturownia and its logo are trademarks of their owner, used here only to identi
 MIT, see [LICENSE](./LICENSE).
 
 ## Changelog
+
+### 0.2.1 (2026-10-06)
+
+- README: screenshots of the admin page and of the order widget, and the link to the live demo. No code changes.
 
 ### 0.2.0 (2026-10-06)
 

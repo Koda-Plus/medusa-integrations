@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-fakturownia",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Fakturownia by Koda Plus: Polish VAT invoices, proformas, receipts and correction invoices in Fakturownia (fakturownia.pl) for Medusa orders, issued exactly once, with payments, KSeF, e-mails and the documents in the customer account. Demo mode.",
   "author": {
     "name": "Koda Plus",
