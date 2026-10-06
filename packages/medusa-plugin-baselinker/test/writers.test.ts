@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { canArm, effectiveDirections, writerState, writerStates, type ArmRecord, type WriterKey } from "../src/modules/baselinker/lib/writers.ts"
 import { canImportOrders, canPushPrices, canPushStock, missingOptions, parseInvoiceField, parseOrderSources, resolveOptions } from "../src/modules/baselinker/lib/options.ts"
 import { isCallAllowed } from "../src/modules/baselinker/lib/security.ts"
-import { httpsUrl, resolveReferences, sinceMonth } from "../src/modules/baselinker/lib/references.ts"
+import { httpsUrl, normalizeReview, resolveReferences, sinceMonth } from "../src/modules/baselinker/lib/references.ts"
 
 const arms = (entries: Array<[WriterKey, boolean]>) =>
   new Map<WriterKey, ArmRecord>(entries.map(([k, armed]) => [k, { armed, changedBy: "user_1", changedByLabel: "anna@example.com", changedAt: "2026-10-06T08:00:00.000Z" }]))
@@ -121,4 +121,21 @@ test("references: lenient, never throw, https only, localized texts, YYYY-MM mon
   assert.equal(httpsUrl("https://localhost"), null)
   assert.deepEqual(resolveReferences("not a list"), [])
   assert.deepEqual(resolveOptions({ references: [{ name: "A", url: "https://a.example.com" }] }).references.length, 1)
+})
+
+test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {
+  const review = normalizeReview({ rating: "4,8", source: "Clutch", url: "https://clutch.co/review/1", icon: "javascript:alert(1)", quote: { pl: "Polecam" } })
+  assert.deepEqual(review, { rating: 4.8, scale: 5, source: "Clutch", url: "https://clutch.co/review/1", icon: null, quote: { pl: "Polecam" }, author: null })
+  assert.equal(normalizeReview({ rating: 9, source: "Clutch" })?.rating, 5)
+  assert.equal(normalizeReview({ rating: 9, scale: 10, source: "Google" })?.scale, 10)
+  assert.equal(normalizeReview({ rating: 5, source: "Clutch", url: "http://clutch.co" })?.url, null)
+  assert.equal(normalizeReview({ rating: 0, source: "Clutch" }), null)
+  assert.equal(normalizeReview({ rating: 5 }), null)
+  assert.equal(normalizeReview("5 stars"), null)
+  const [withReview, without] = resolveReferences([
+    { name: "A", url: "https://a.example.com", review: { rating: 5, source: "Clutch" } },
+    { name: "B", url: "https://b.example.com", review: { rating: "great" } },
+  ])
+  assert.equal(withReview.review?.rating, 5)
+  assert.equal(without.review, null)
 })

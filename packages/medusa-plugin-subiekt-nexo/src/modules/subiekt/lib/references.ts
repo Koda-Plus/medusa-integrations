@@ -1,9 +1,10 @@
 /**
  * THE `references` OPTION: stores where the integration runs in production,
- * shown on the admin page ("Running in production") and at the end of the
- * setup guide. Validated leniently: an entry without a name or an https URL is
- * dropped, a malformed field is dropped, nothing ever throws, because a typo in
- * medusa-config must not stop Medusa from starting.
+ * shown in the header of the admin page ("Running in N stores", with the
+ * stores' rating) and at the end of the setup guide. Validated leniently: an
+ * entry without a name or an https URL is dropped, a malformed field is
+ * dropped, nothing ever throws, because a typo in medusa-config must not stop
+ * Medusa from starting.
  *
  * Texts may come in both admin languages, `{ en, pl }`; the admin picks one.
  * No client names live in this package: the store passes its own references.
@@ -20,6 +21,27 @@ export interface ReferenceInput {
   since?: unknown
   metrics?: unknown
   links?: unknown
+  /**
+   * The store's rating of the work, with where it was given:
+   * `{ rating: 5, scale?: 5, source: "Clutch", url?, icon?, quote?, author? }`.
+   * Quote the client only with their consent.
+   */
+  review?: unknown
+}
+
+/** A rating of the work at the store, on a review platform such as Clutch. */
+export interface ReviewDto {
+  /** 0 to `scale`, one decimal. */
+  rating: number
+  scale: number
+  /** Who rated, e.g. "Clutch". */
+  source: string
+  /** The review itself (https). */
+  url: string | null
+  /** The source's mark: a data URI or an https URL. */
+  icon: string | null
+  quote: LocalizedText | null
+  author: string | null
 }
 
 export interface ReferenceDto {
@@ -32,6 +54,8 @@ export interface ReferenceDto {
   since?: string
   metrics: Array<{ label: LocalizedText; value: string }>
   links: Array<{ label: LocalizedText; url: string }>
+  /** The store's rating of the work and where it was given; absent when the option has none. */
+  review?: ReviewDto
 }
 
 const MAX_REFERENCES = 12
@@ -76,6 +100,27 @@ export function referenceIcon(value: unknown): string | null {
   return httpsUrl(s)
 }
 
+/** A rating with a positive value and a source, or null. The rating never exceeds its scale. */
+export function normalizeReview(value: unknown): ReviewDto | null {
+  if (!value || typeof value !== "object") return null
+  const v = value as Record<string, unknown>
+  const scaleRaw = Number(v.scale ?? 5)
+  const scale = Number.isFinite(scaleRaw) && scaleRaw >= 1 && scaleRaw <= 10 ? Math.round(scaleRaw) : 5
+  const ratingRaw = typeof v.rating === "string" ? Number(v.rating.replace(",", ".")) : Number(v.rating)
+  if (!Number.isFinite(ratingRaw) || ratingRaw <= 0) return null
+  const source = text(v.source, 40)
+  if (!source) return null
+  return {
+    rating: Math.round(Math.min(ratingRaw, scale) * 10) / 10,
+    scale,
+    source,
+    url: httpsUrl(v.url),
+    icon: referenceIcon(v.icon),
+    quote: localized(v.quote, 600),
+    author: text(v.author, 80),
+  }
+}
+
 export function normalizeReferences(input: unknown): ReferenceDto[] {
   if (!Array.isArray(input)) return []
   const out: ReferenceDto[] = []
@@ -103,7 +148,17 @@ export function normalizeReferences(input: unknown): ReferenceDto[] {
       if (label && linkUrl) links.push({ label, url: linkUrl })
     }
     const icon = referenceIcon(r.icon)
-    out.push({ name, url, ...(icon ? { icon } : {}), ...(description ? { description } : {}), ...(since ? { since } : {}), metrics: metrics.slice(0, 6), links: links.slice(0, 6) })
+    const review = normalizeReview(r.review)
+    out.push({
+      name,
+      url,
+      ...(icon ? { icon } : {}),
+      ...(description ? { description } : {}),
+      ...(since ? { since } : {}),
+      metrics: metrics.slice(0, 6),
+      links: links.slice(0, 6),
+      ...(review ? { review } : {}),
+    })
     if (out.length >= MAX_REFERENCES) break
   }
   return out

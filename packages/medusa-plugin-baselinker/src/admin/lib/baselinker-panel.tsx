@@ -25,27 +25,31 @@ import {
   useBaseLinkerRelease,
   useBaseLinkerReturns,
 } from "./baselinker-api"
-import { References, type Reference } from "./baselinker-guide"
+import { References } from "./baselinker-guide"
 import {
   FilterPills,
   ImportStatusBadge,
   InvoiceStatusBadge,
+  MedusaColumn,
   OrderLink,
   PlanActionBadge,
   PlanStatusBadge,
   RunStatusBadge,
+  StoreOrderCell,
   fmtDateTime,
   fmtMoney,
   fmtNumber,
-  localize,
+  fmtRating,
+  kitReferences,
   sinceDate,
 } from "./baselinker-ui"
 
 /*
  * Sections of the BaseLinker page added in 0.2: the source of truth with the
  * writers and their arm switches, the plans of the writers, the marketplace
- * orders imported from BaseLinker, returns and invoice numbers. Shared table
- * pieces (pagination, empty row, debounced search) live here too.
+ * orders imported from BaseLinker, returns and invoice numbers, plus the demo
+ * note of the mode badge and the stores running the integration. Shared
+ * table pieces (pagination, empty row, debounced search) live here too.
  */
 
 export const PAGE_SIZE = 15
@@ -112,27 +116,31 @@ function SectionHead({ title, subtitle, right }: { title: string; subtitle?: Rea
 }
 
 /* ------------------------------------------------------------------ */
-/* Running in production                                               */
+/* Demo note, shown in the popover of the mode badge                   */
+/* ------------------------------------------------------------------ */
+
+export function DemoDetails({ status }: { status: StatusResponse }) {
+  const { t } = useTranslation("baselinker")
+  if (status.mode !== "demo") return null
+  return <span>{t("demo.text")}</span>
+}
+
+/* ------------------------------------------------------------------ */
+/* Running in production, as cards at the end of the guide             */
+/* (the page header shows the same stores in its badge)                */
 /* ------------------------------------------------------------------ */
 
 export function ReferencesBlock({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("baselinker")
-  const items: Reference[] = (status.references ?? []).map((r) => ({
-    name: r.name,
-    url: r.url,
-    icon: r.icon,
-    description: localize(r.description, lang) || undefined,
-    since: r.since ?? undefined,
-    metrics: r.metrics.map((m) => ({ label: localize(m.label, lang), value: m.value })),
-    links: r.links.map((l) => ({ label: localize(l.label, lang), url: l.url })),
-  }))
   return (
     <References
-      items={items}
+      items={kitReferences(status.references ?? [], lang)}
       title={t("references.title")}
       subtitle={t("references.subtitle")}
       openLabel={t("references.open")}
       sinceLabel={(since) => t("references.since", { date: sinceDate(since, lang) })}
+      reviewLabel={t("references.review")}
+      ratingLabel={(value) => fmtRating(value, lang)}
     />
   )
 }
@@ -637,26 +645,26 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
     }
   }
 
+  const off = !status.features2.orderImport
+  const waiting = !off && !writer?.live && c.pending > 0
+
   return (
     <Container className="divide-y p-0">
       <SectionHead title={t("imports.title")} subtitle={t("imports.subtitle")} />
-      <div className="flex flex-col gap-2 px-6 py-4">
-        {!status.features2.orderImport ? (
-          <InlineTip variant="info" label={t("directions.writers.orderImport")}>
-            {t("imports.off")}
-          </InlineTip>
-        ) : null}
-        {status.features2.orderImport && !writer?.live && c.pending > 0 ? (
-          <InlineTip variant="warning" label={t("directions.writers.orderImport")}>
-            {t("imports.waiting", { count: c.pending })}
-          </InlineTip>
-        ) : null}
-        {status.features2.orderImport ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("imports.emailNote")}
-          </Text>
-        ) : null}
-      </div>
+      {off || waiting ? (
+        <div className="flex flex-col gap-2 px-6 py-4">
+          {off ? (
+            <InlineTip variant="info" label={t("directions.writers.orderImport")}>
+              {t("imports.off")}
+            </InlineTip>
+          ) : null}
+          {waiting ? (
+            <InlineTip variant="warning" label={t("directions.writers.orderImport")}>
+              {t("imports.waiting", { count: c.pending })}
+            </InlineTip>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
         <FilterPills<ImportFilter>
           value={filter}
@@ -671,9 +679,11 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
         <Table>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>{t("imports.col.order")}</Table.HeaderCell>
               <Table.HeaderCell>{t("imports.col.source")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("imports.col.medusa")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("imports.col.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <MedusaColumn label={t("imports.col.medusa")} hint={`${t("imports.how")} ${t("imports.emailNote")}`} />
+              </Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("imports.col.total")}</Table.HeaderCell>
               <Table.HeaderCell>{t("imports.col.payment")}</Table.HeaderCell>
               <Table.HeaderCell>{t("imports.col.blStatus")}</Table.HeaderCell>
@@ -687,6 +697,7 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5 [&_td]:align-top">
+                  <Table.Cell className="whitespace-nowrap capitalize">{r.source}</Table.Cell>
                   <Table.Cell>
                     <div className="flex flex-col gap-y-0.5">
                       <span className="font-mono txt-compact-small-plus">{r.blOrderId}</span>
@@ -694,8 +705,15 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
                       {r.confirmedAt ? <span className="text-ui-fg-muted txt-compact-xsmall">{fmtDateTime(r.confirmedAt, lang)}</span> : null}
                     </div>
                   </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap capitalize">{r.source}</Table.Cell>
-                  <Table.Cell>{r.orderId ? <OrderLink orderId={r.orderId} displayId={r.displayId} /> : null}</Table.Cell>
+                  <Table.Cell className="max-w-[260px]">
+                    {r.orderId ? (
+                      <StoreOrderCell orderId={r.orderId} displayId={r.displayId} />
+                    ) : (
+                      <Badge size="2xsmall" color="orange">
+                        {t(`imports.noOrder.${r.status === "skipped" || r.status === "failed" ? r.status : "pending"}`)}
+                      </Badge>
+                    )}
+                  </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmtMoney(r.total, r.currency, lang)}</Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{r.paymentState ? t(`imports.payment.${r.paymentState}`, { defaultValue: r.paymentState }) : ""}</Table.Cell>
                   <Table.Cell className="whitespace-nowrap">
@@ -786,7 +804,9 @@ export function ReturnsSection({ status, lang }: { status: StatusResponse; lang:
           <Table.Header>
             <Table.Row>
               <Table.HeaderCell>{t("returns.col.return")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("returns.col.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <MedusaColumn label={t("returns.col.order")} hint={t("returns.how")} />
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("returns.col.source")}</Table.HeaderCell>
               <Table.HeaderCell>{t("returns.col.status")}</Table.HeaderCell>
               <Table.HeaderCell>{t("returns.col.items")}</Table.HeaderCell>
@@ -806,9 +826,15 @@ export function ReturnsSection({ status, lang }: { status: StatusResponse; lang:
                       {r.externalReturnId ? <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{r.externalReturnId}</span> : null}
                     </div>
                   </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex flex-col">
-                      {r.orderId ? <OrderLink orderId={r.orderId} displayId={r.displayId} /> : <span className="text-ui-fg-muted txt-compact-small">{t("returns.noOrder")}</span>}
+                  <Table.Cell className="max-w-[260px]">
+                    <div className="flex flex-col items-start gap-y-1">
+                      {r.orderId ? (
+                        <StoreOrderCell orderId={r.orderId} displayId={r.displayId} />
+                      ) : (
+                        <Badge size="2xsmall" color="orange">
+                          {t("returns.noOrder")}
+                        </Badge>
+                      )}
                       {r.blOrderId ? <span className="font-mono text-ui-fg-muted txt-compact-xsmall">BL {r.blOrderId}</span> : null}
                     </div>
                   </Table.Cell>

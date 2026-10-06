@@ -1,42 +1,68 @@
 import { useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ArrowUpRightOnBox, CheckCircleSolid, ChevronDownMini, SquareTwoStack } from "@medusajs/icons"
-import { Badge, Container, Heading, Text, clx, toast } from "@medusajs/ui"
+import { ArrowUpRightOnBox, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, SquareTwoStack } from "@medusajs/icons"
+import { Badge, Container, Heading, IconButton, Popover, StatusBadge, Text, clx, toast } from "@medusajs/ui"
 
 /*
- * The guide kit of the Koda Plus integrations: the same components in every
- * package (copied as src/admin/lib/<ns>-guide.tsx, exports prefixed with the
- * namespace), so the five integration pages share one look.
+ * The page kit of the Koda Plus integrations: the same components in every
+ * package (copied as src/admin/lib/<ns>-guide.tsx), so the five integration
+ * pages share one look.
  *
- *   ViewSwitch     "Panel | Setup guide" in the page header, kept in ?view=
- *   References     "Running in production": live stores that use the integration
- *   GuideIntro     what the setup takes: time, what you need, a short overview
- *   GuideSteps     numbered steps with a live state (done / to do / optional)
- *   GuideDiagram   boxes and arrows for how the parts talk to each other
- *   GuideChecklist go-live checklist with ticks from the live status
- *   GuideFaq       troubleshooting, one question per row, opens in place
+ * Header
+ *   usePageNav       Panel, Setup guide or Settings, and the settings tab, kept in ?view= and ?tab=
+ *   ViewSwitch       "Panel | Setup guide"
+ *   SettingsButton   the cog that opens Settings, where the technical parts live
+ *   ModeBadge        the mode of the module; in demo mode it opens a note on what is simulated
+ *   ReferencesBadge  "Running in N stores", with the rating and its source; opens the list
+ * Settings
+ *   SettingsView     a title and tabs over the technical sections (account, writers, plans, history)
+ * Guide
+ *   References       "Running in production" cards, at the end of the guide
+ *   GuideIntro       what the setup takes: time, what you need, a short overview
+ *   GuideSteps       numbered steps with a live state (done / to do / optional)
+ *   GuideDiagram     boxes and arrows for how the parts talk to each other
+ *   GuideChecklist   go-live checklist with ticks from the live status
+ *   GuideFaq         troubleshooting, one question per row, opens in place
  *
  * Every string comes in through props, already translated by the page.
  */
 
 /* ------------------------------------------------------------------ */
-/* The page view, kept in the URL so a link can open the guide directly */
+/* The page view, kept in the URL so a link can open the guide or a settings tab */
 
-export type PageView = "panel" | "guide"
+export type PageView = "panel" | "guide" | "settings"
 
-export function usePageView(): [PageView, (v: PageView) => void] {
-  const [params, setParams] = useSearchParams()
-  const view: PageView = params.get("view") === "guide" ? "guide" : "panel"
-  const set = (v: PageView) => {
-    const next = new URLSearchParams(params)
-    if (v === "panel") next.delete("view")
-    else next.set("view", v)
-    setParams(next, { replace: true })
-  }
-  return [view, set]
+export type PageNav<T extends string> = {
+  view: PageView
+  /** The settings tab; the first one when the URL names none. */
+  tab: T
+  go: (view: PageView, tab?: T) => void
 }
 
-export function ViewSwitch({ value, onChange, labels }: { value: PageView; onChange: (v: PageView) => void; labels: Record<PageView, string> }) {
+export function usePageNav<T extends string>(tabs: readonly T[]): PageNav<T> {
+  const [params, setParams] = useSearchParams()
+  const raw = params.get("view")
+  const view: PageView = raw === "guide" || raw === "settings" ? raw : "panel"
+  const asked = params.get("tab") ?? ""
+  const tab = ((tabs as readonly string[]).includes(asked) ? asked : tabs[0]) as T
+  const go = (next: PageView, nextTab?: T) => {
+    const p = new URLSearchParams(params)
+    if (next === "panel") p.delete("view")
+    else p.set("view", next)
+    if (next === "settings") p.set("tab", nextTab ?? tab)
+    else p.delete("tab")
+    setParams(p, { replace: true })
+  }
+  return { view, tab, go }
+}
+
+/** Panel or guide only, for a page without settings. */
+export function usePageView(): [PageView, (v: PageView) => void] {
+  const nav = usePageNav(["main"] as const)
+  return [nav.view, (v) => nav.go(v)]
+}
+
+export function ViewSwitch({ value, onChange, labels }: { value: PageView; onChange: (v: "panel" | "guide") => void; labels: Record<"panel" | "guide", string> }) {
   return (
     <div className="inline-flex rounded-full border border-ui-border-base bg-ui-bg-component p-0.5" role="tablist">
       {(["panel", "guide"] as const).map((v) => (
@@ -58,8 +84,74 @@ export function ViewSwitch({ value, onChange, labels }: { value: PageView; onCha
   )
 }
 
+export function SettingsButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <IconButton
+      type="button"
+      size="small"
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      onClick={onClick}
+      className={clx(active && "bg-ui-bg-component-pressed text-ui-fg-base shadow-borders-interactive-with-active")}
+    >
+      <CogSixTooth />
+    </IconButton>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Header badges */
+
+type BadgeColor = "green" | "orange" | "red" | "blue" | "grey" | "purple"
+
+/**
+ * The mode of the module. With `children` (the demo note, a missing setting)
+ * the badge opens it in a popover instead of a note across the page.
+ */
+export function ModeBadge({ color, label, title, children }: { color: BadgeColor; label: string; title?: string; children?: ReactNode }) {
+  if (!children) return <StatusBadge color={color}>{label}</StatusBadge>
+  return (
+    <Popover>
+      <Popover.Trigger asChild>
+        <button type="button" className="inline-flex rounded-full outline-none transition-fg hover:opacity-80 focus-visible:shadow-borders-focus" aria-label={title ?? label}>
+          <StatusBadge color={color} className="cursor-pointer">
+            <span className="inline-flex items-center gap-x-1">
+              {label}
+              <InformationCircleSolid className="h-3 w-3 opacity-70" />
+            </span>
+          </StatusBadge>
+        </button>
+      </Popover.Trigger>
+      <Popover.Content align="start" sideOffset={8} className="w-[min(440px,calc(100vw-32px))] p-0">
+        <div className="border-b border-ui-border-base px-4 py-3">
+          <Text size="small" weight="plus" className="text-ui-fg-base">
+            {title ?? label}
+          </Text>
+        </div>
+        <div className="txt-small flex max-h-[60vh] flex-col gap-y-3 overflow-y-auto px-4 py-3 text-ui-fg-subtle">{children}</div>
+      </Popover.Content>
+    </Popover>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /* Running in production */
+
+/** A rating of the work at that store, on a review platform such as Clutch. */
+export type ReferenceReview = {
+  rating: number
+  /** The top of the scale, 5 by default. */
+  scale: number
+  /** Who rated: the platform, e.g. "Clutch". */
+  source: string
+  /** The review itself. */
+  url?: string | null
+  /** The source's mark: a data URI or an https URL, shown on a white chip. */
+  icon?: string | null
+  quote?: string
+  author?: string | null
+}
 
 /** One live store, already in the language of the admin (the page picks en or pl from the option). */
 export type Reference = {
@@ -72,6 +164,7 @@ export type Reference = {
   metrics?: Array<{ label: string; value: string }>
   /** Pages where the integration can be seen at work, e.g. a product with its Allegro link. */
   links?: Array<{ label: string; url: string }>
+  review?: ReferenceReview | null
 }
 
 const host = (url: string) => {
@@ -82,7 +175,259 @@ const host = (url: string) => {
   }
 }
 
-export function References({ items, title, subtitle, openLabel, sinceLabel }: { items: Reference[]; title: string; subtitle: string; openLabel: string; sinceLabel: (since: string) => string }) {
+const STAR = "M10 1.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L10 14.9l-5.25 2.75 1-5.85L1.5 7.7l5.9-.9L10 1.5z"
+
+/** Stars out of five, filled to the rating (a 4.5 fills four and a half). */
+export function Stars({ rating, scale = 5, size = 12 }: { rating: number; scale?: number; size?: number }) {
+  const fill = Math.max(0, Math.min(1, rating / (scale || 5))) * 100
+  const row = (color: string) => (
+    <span className="flex gap-x-px" style={{ color }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <svg key={i} width={size} height={size} viewBox="0 0 20 20" aria-hidden>
+          <path d={STAR} fill="currentColor" />
+        </svg>
+      ))}
+    </span>
+  )
+  return (
+    <span className="relative inline-flex shrink-0" aria-hidden>
+      {row("var(--fg-disabled)")}
+      <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill}%` }}>
+        {row("#F5A524")}
+      </span>
+    </span>
+  )
+}
+
+/** The source of a rating: its mark on a white chip (marks are drawn for light backgrounds), or its name. */
+function SourceMark({ review, height = 10 }: { review: ReferenceReview; height?: number }) {
+  if (!review.icon) {
+    return (
+      <Text size="xsmall" weight="plus" className="text-ui-fg-subtle">
+        {review.source}
+      </Text>
+    )
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-white px-1.5 py-0.5 shadow-borders-base">
+      <img src={review.icon} alt={review.source} style={{ height, width: "auto" }} />
+    </span>
+  )
+}
+
+function StoreIcon({ reference, size }: { reference: Reference; size: number }) {
+  const box = { width: size, height: size }
+  return reference.icon ? (
+    <img src={reference.icon} alt="" width={size} height={size} style={box} className="shrink-0 rounded-md bg-white object-contain shadow-borders-base" />
+  ) : (
+    <span style={box} className="txt-compact-xsmall-plus flex shrink-0 items-center justify-center rounded-md bg-ui-bg-base text-ui-fg-base shadow-borders-base">
+      {reference.name.slice(0, 1).toUpperCase()}
+    </span>
+  )
+}
+
+export type ReferencesLabels = {
+  /** On the badge: "Running in 1 store", "Działa w 3 sklepach". */
+  count: string
+  title: string
+  subtitle: string
+  open: string
+  /** "Read the review". */
+  review: string
+  since: (since: string) => string
+  /** A rating in the admin's number format, e.g. "5.0" or "5,0". */
+  rating: (value: number) => string
+}
+
+/** The mean of the ratings, on a five star scale, or null when nobody rated. */
+function meanRating(items: Reference[]): { value: number; first: ReferenceReview } | null {
+  const reviews = items.map((r) => r.review).filter((r): r is ReferenceReview => Boolean(r))
+  if (reviews.length === 0) return null
+  const value = reviews.reduce((sum, r) => sum + (r.rating / (r.scale || 5)) * 5, 0) / reviews.length
+  return { value: Math.round(value * 10) / 10, first: reviews[0] }
+}
+
+/**
+ * "Running in N stores" in the page header: the stores' icons, the mean
+ * rating with the stars and where it comes from. Opens the list of stores
+ * with their numbers, the review and its link.
+ */
+export function ReferencesBadge({ items, labels }: { items: Reference[]; labels: ReferencesLabels }) {
+  if (items.length === 0) return null
+  const mean = meanRating(items)
+  return (
+    <Popover>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className="inline-flex max-w-full items-center gap-x-2 rounded-full border border-ui-border-base bg-ui-bg-component py-0.5 pl-0.5 pr-2 outline-none transition-fg hover:bg-ui-bg-component-hover focus-visible:shadow-borders-focus"
+        >
+          <span className="flex shrink-0 items-center">
+            {items.slice(0, 3).map((r, i) => (
+              <span key={r.url} className={clx("rounded-md", i > 0 && "-ml-1.5")}>
+                <StoreIcon reference={r} size={20} />
+              </span>
+            ))}
+          </span>
+          <span className="txt-compact-xsmall-plus truncate text-ui-fg-base">{labels.count}</span>
+          {mean ? (
+            <span className="flex shrink-0 items-center gap-x-1.5">
+              <Stars rating={mean.value} />
+              <span className="txt-compact-xsmall-plus tabular-nums text-ui-fg-base">{labels.rating(mean.value)}</span>
+              <SourceMark review={mean.first} height={9} />
+            </span>
+          ) : null}
+          <ChevronDownMini className="shrink-0 text-ui-fg-muted" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Content align="start" sideOffset={8} className="w-[min(460px,calc(100vw-32px))] p-0">
+        <div className="flex flex-col gap-y-0.5 border-b border-ui-border-base px-4 py-3">
+          <Text size="small" weight="plus" className="text-ui-fg-base">
+            {labels.title}
+          </Text>
+          <Text size="xsmall" className="text-ui-fg-subtle">
+            {labels.subtitle}
+          </Text>
+        </div>
+        <ul className="flex max-h-[60vh] flex-col divide-y divide-ui-border-base overflow-y-auto">
+          {items.map((r) => (
+            <li key={r.url} className="flex flex-col gap-y-2 px-4 py-3">
+              <a href={r.url} target="_blank" rel="noreferrer" className="group flex items-center gap-x-3">
+                <StoreIcon reference={r} size={32} />
+                <span className="flex min-w-0 flex-col">
+                  <Text size="small" weight="plus" className="truncate text-ui-fg-base">
+                    {r.name}
+                  </Text>
+                  <Text size="xsmall" className="truncate text-ui-fg-interactive group-hover:text-ui-fg-interactive-hover">
+                    {host(r.url)}
+                  </Text>
+                </span>
+                <ArrowUpRightOnBox className="ml-auto shrink-0 text-ui-fg-muted group-hover:text-ui-fg-interactive" />
+              </a>
+              {r.review ? (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Stars rating={r.review.rating} scale={r.review.scale} />
+                  <span className="txt-compact-xsmall-plus tabular-nums text-ui-fg-base">{labels.rating((r.review.rating / (r.review.scale || 5)) * 5)}</span>
+                  <SourceMark review={r.review} />
+                  {r.review.url ? (
+                    <a href={r.review.url} target="_blank" rel="noreferrer" className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+                      {labels.review}
+                      <ArrowUpRightOnBox className="h-3.5 w-3.5" />
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
+              {r.review?.quote ? (
+                <Text size="xsmall" className="border-l-2 border-ui-border-strong pl-2 italic text-ui-fg-subtle">
+                  {r.review.quote}
+                  {r.review.author ? <span className="not-italic text-ui-fg-muted"> {r.review.author}</span> : null}
+                </Text>
+              ) : null}
+              {r.description ? (
+                <Text size="xsmall" className="text-ui-fg-subtle">
+                  {r.description}
+                </Text>
+              ) : null}
+              {r.metrics?.length || r.since ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(r.metrics ?? []).map((m) => (
+                    <Badge key={m.label} size="2xsmall" color="green">
+                      <span className="tabular-nums">{m.value}</span>&nbsp;{m.label}
+                    </Badge>
+                  ))}
+                  {r.since ? (
+                    <Badge size="2xsmall" color="grey">
+                      {labels.since(r.since)}
+                    </Badge>
+                  ) : null}
+                </div>
+              ) : null}
+              {(r.links ?? []).length ? (
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {(r.links ?? []).map((l) => (
+                    <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+                      {l.label}
+                      <ArrowUpRightOnBox className="h-3.5 w-3.5" />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </Popover.Content>
+    </Popover>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings */
+
+export type SettingsTab<T extends string> = {
+  id: T
+  label: string
+  /** A count or a word next to the label, e.g. armed writers or open plans. */
+  badge?: string | number | null
+  tone?: BadgeColor
+}
+
+/** Settings: a title and tabs over the technical sections; the page renders the open tab below. */
+export function SettingsView<T extends string>({
+  title,
+  subtitle,
+  tabs,
+  value,
+  onChange,
+  children,
+}: {
+  title: string
+  subtitle: string
+  tabs: Array<SettingsTab<T>>
+  value: T
+  onChange: (tab: T) => void
+  children: ReactNode
+}) {
+  return (
+    <>
+      <Container className="divide-y p-0">
+        <div className="flex flex-col gap-y-1 px-6 py-4">
+          <Heading level="h2">{title}</Heading>
+          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
+            {subtitle}
+          </Text>
+        </div>
+        <div role="tablist" aria-label={title} className="flex gap-x-1 overflow-x-auto px-4 py-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={value === tab.id}
+              onClick={() => onChange(tab.id)}
+              className={clx(
+                "txt-compact-small-plus inline-flex shrink-0 items-center gap-x-1.5 rounded-md px-3 py-1.5 outline-none transition-fg focus-visible:shadow-borders-focus",
+                value === tab.id ? "bg-ui-bg-component text-ui-fg-base shadow-borders-base" : "text-ui-fg-subtle hover:bg-ui-bg-component-hover hover:text-ui-fg-base",
+              )}
+            >
+              {tab.label}
+              {tab.badge !== undefined && tab.badge !== null && tab.badge !== 0 && tab.badge !== "" ? (
+                <Badge size="2xsmall" color={tab.tone ?? "grey"}>
+                  <span className="tabular-nums">{tab.badge}</span>
+                </Badge>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </Container>
+      {children}
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Running in production, as cards at the end of the guide */
+
+export function References({ items, title, subtitle, openLabel, sinceLabel, reviewLabel, ratingLabel }: { items: Reference[]; title: string; subtitle: string; openLabel: string; sinceLabel: (since: string) => string; reviewLabel?: string; ratingLabel?: (value: number) => string }) {
   if (items.length === 0) return null
   return (
     <Container className="divide-y p-0">
@@ -113,6 +458,21 @@ export function References({ items, title, subtitle, openLabel, sinceLabel }: { 
               </span>
               <ArrowUpRightOnBox className="ml-auto shrink-0 text-ui-fg-muted group-hover:text-ui-fg-interactive" />
             </a>
+            {r.review ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Stars rating={r.review.rating} scale={r.review.scale} />
+                <span className="txt-compact-xsmall-plus tabular-nums text-ui-fg-base">
+                  {(ratingLabel ?? ((v: number) => v.toFixed(1)))((r.review.rating / (r.review.scale || 5)) * 5)}
+                </span>
+                <SourceMark review={r.review} />
+                {r.review.url && reviewLabel ? (
+                  <a href={r.review.url} target="_blank" rel="noreferrer" className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+                    {reviewLabel}
+                    <ArrowUpRightOnBox className="h-3.5 w-3.5" />
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
             {r.description ? (
               <Text size="small" className="text-ui-fg-subtle">
                 {r.description}

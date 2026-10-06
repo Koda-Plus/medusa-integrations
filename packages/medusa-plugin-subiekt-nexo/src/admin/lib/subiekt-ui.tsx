@@ -1,4 +1,6 @@
 import type { ReactNode } from "react"
+import { Link } from "react-router-dom"
+import { ArrowUpRightMini } from "@medusajs/icons"
 import { Badge, Button, StatusBadge, Text, clx } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
 import type { CatalogChangeStatus, ReferenceDto, RunDto, RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
@@ -123,7 +125,8 @@ export function connectionState(s: SubiektStatusResponse | undefined): { key: st
   return { key: "connected", tone: "green" }
 }
 
-export function ModeBadge({ status }: { status: SubiektStatusResponse | undefined }) {
+/** The connection state as a badge, in the Connection section of Settings. The page header shows it in the kit's ModeBadge. */
+export function ConnectionBadge({ status }: { status: SubiektStatusResponse | undefined }) {
   const { t } = useTranslation("subiekt")
   const state = connectionState(status)
   return <StatusBadge color={state.tone}>{t(`mode.${state.key}`)}</StatusBadge>
@@ -289,15 +292,99 @@ export function referencesFor(list: ReferenceDto[] | undefined, lang: string): R
     since: r.since,
     metrics: r.metrics.map((m) => ({ label: resolveText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
     links: r.links.map((l) => ({ label: resolveText(l.label, lang) ?? l.url, url: l.url })),
+    review: r.review ? { ...r.review, quote: resolveText(r.review.quote ?? undefined, lang) } : null,
   }))
 }
 
-/** Link to an order in the admin. A plain anchor: router links break inside some admin builds. */
-export function OrderLink({ orderId, displayId }: { orderId: string | null; displayId: number | null }) {
-  if (!orderId) return <span className="text-ui-fg-muted">-</span>
+/** A rating in the admin's number format: 5.0 or 5,0. */
+export function fmtRating(value: number, lang: string): string {
+  try {
+    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
+  } catch {
+    return value.toFixed(1)
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* The store side of a row: its order or product in Medusa             */
+/*                                                                     */
+/* Router links, like the kit's usePageNav: the plugin build keeps     */
+/* react-router-dom external, so they share the admin's router and     */
+/* respect its base path.                                              */
+
+/** The Medusa mark (the hexagon of the admin's own login screen), in the text colour. */
+export function MedusaMark({ className }: { className?: string }) {
   return (
-    <a href={`/app/orders/${orderId}`} className="text-ui-fg-interactive hover:text-ui-fg-interactive-hover tabular-nums">
-      {displayId ? `#${displayId}` : orderId.slice(0, 14)}
-    </a>
+    <svg viewBox="0 0 36 38" fill="none" aria-hidden className={className}>
+      <path
+        d="M30.85 6.16832L22.2453 1.21782C19.4299 -0.405941 15.9801 -0.405941 13.1648 1.21782L4.52043 6.16832C1.74473 7.79208 0 10.802 0 14.0099V23.9505C0 27.198 1.74473 30.1683 4.52043 31.7921L13.1251 36.7822C15.9405 38.4059 19.3903 38.4059 22.2056 36.7822L30.8103 31.7921C33.6257 30.1683 35.3307 27.198 35.3307 23.9505V14.0099C35.41 10.802 33.6653 7.79208 30.85 6.16832ZM17.6852 27.8317C12.8079 27.8317 8.8426 23.8713 8.8426 19C8.8426 14.1287 12.8079 10.1683 17.6852 10.1683C22.5625 10.1683 26.5674 14.1287 26.5674 19C26.5674 23.8713 22.6022 27.8317 17.6852 27.8317Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
+/** The header of a store column: the Medusa mark and the label, with how the two sides are linked in a tooltip. */
+export function StoreColumn({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <span className="inline-flex items-center gap-x-1.5" title={hint}>
+      <MedusaMark className="h-3.5 w-3.5 text-ui-fg-muted" />
+      {label}
+    </span>
+  )
+}
+
+/**
+ * A record in the store, one click away: the Medusa mark on a small tile, its
+ * name as a link, a mono key line (an SKU, an order id) and the link text.
+ */
+export function StoreLink({ to, title, mono, monoTitle, action }: { to: string; title: string; mono?: string | null; monoTitle?: string; action: string }) {
+  return (
+    <Link to={to} className="group flex items-center gap-x-2.5" title={action}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
+        <MedusaMark className="h-4 w-4 text-ui-fg-base" />
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="txt-compact-small-plus truncate text-ui-fg-base group-hover:text-ui-fg-interactive">{title}</span>
+        <span className="flex min-w-0 items-center gap-x-1.5">
+          {mono ? (
+            <span className="truncate font-mono text-ui-fg-muted txt-compact-xsmall" title={monoTitle}>
+              {mono}
+            </span>
+          ) : null}
+          <span className="txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-x-0.5 text-ui-fg-interactive">
+            {action}
+            <ArrowUpRightMini />
+          </span>
+        </span>
+      </span>
+    </Link>
+  )
+}
+
+/** A row with nothing to open in the store: an orange badge saying why, and the key it goes by. */
+export function StoreUnlinked({ label, hint, mono }: { label: string; hint?: string; mono?: string | null }) {
+  return (
+    <div className="flex flex-col items-start gap-y-1" title={hint}>
+      <Badge size="2xsmall" color="orange">
+        {label}
+      </Badge>
+      {mono ? <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{mono}</span> : null}
+    </div>
+  )
+}
+
+/** The order of a task or a document: its number, its id (the one Subiekt keeps in the document notes) and a link to it. */
+export function StoreOrderCell({ orderId, displayId }: { orderId: string | null; displayId: number | null }) {
+  const { t } = useTranslation("subiekt")
+  if (!orderId) return <StoreUnlinked label={t("store.noOrder")} hint={t("store.noOrderHint")} />
+  return (
+    <StoreLink
+      to={`/orders/${orderId}`}
+      title={displayId ? `#${displayId}` : orderId}
+      mono={displayId ? orderId : null}
+      monoTitle={orderId}
+      action={t("store.openOrder")}
+    />
   )
 }

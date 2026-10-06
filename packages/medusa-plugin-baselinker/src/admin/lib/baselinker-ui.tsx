@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
+import { ArrowUpRightMini } from "@medusajs/icons"
 import { Badge, StatusBadge, Text, clx } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
 import type {
@@ -10,11 +11,13 @@ import type {
   OrderRowStatus,
   PlanAction,
   PlanStatus,
+  ReferenceDto,
   RunDto,
   RunStatus,
   StatusResponse,
   StockChangeStatus,
 } from "../../modules/baselinker/lib/contract"
+import type { Reference } from "./baselinker-guide"
 
 type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
@@ -51,7 +54,7 @@ export function fmtDelta(value: number, lang: string): string {
   return "0"
 }
 
-/** One word for the whole connection: what a person needs to know first. */
+/** One word for the whole connection: what a person needs to know first. The page shows it in the mode badge of the header. */
 export function connectionState(s: StatusResponse | undefined): { key: string; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
   if (s.mode === "demo") return { key: "demo", tone: "purple" }
@@ -63,10 +66,69 @@ export function connectionState(s: StatusResponse | undefined): { key: string; t
   return { key: "unknown", tone: "grey" }
 }
 
-export function ModeBadge({ status }: { status: StatusResponse | undefined }) {
+/* ------------------------------------------------------------------ */
+/* The store side of a row: its Medusa product or order                */
+/* ------------------------------------------------------------------ */
+
+/** The Medusa mark (the hexagon of the admin's own login screen), in the text colour. */
+export function MedusaMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 36 38" fill="none" aria-hidden className={className}>
+      <path
+        d="M30.85 6.16832L22.2453 1.21782C19.4299 -0.405941 15.9801 -0.405941 13.1648 1.21782L4.52043 6.16832C1.74473 7.79208 0 10.802 0 14.0099V23.9505C0 27.198 1.74473 30.1683 4.52043 31.7921L13.1251 36.7822C15.9405 38.4059 19.3903 38.4059 22.2056 36.7822L30.8103 31.7921C33.6257 30.1683 35.3307 27.198 35.3307 23.9505V14.0099C35.41 10.802 33.6653 7.79208 30.85 6.16832ZM17.6852 27.8317C12.8079 27.8317 8.8426 23.8713 8.8426 19C8.8426 14.1287 12.8079 10.1683 17.6852 10.1683C22.5625 10.1683 26.5674 14.1287 26.5674 19C26.5674 23.8713 22.6022 27.8317 17.6852 27.8317Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
+/** The header of a column with the store side: the Medusa mark, the label, and how the rows relate to Medusa in the tooltip. */
+export function MedusaColumn({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <span className="inline-flex items-center gap-x-1.5" title={hint}>
+      <MedusaMark className="h-3.5 w-3.5 text-ui-fg-muted" />
+      {label}
+    </span>
+  )
+}
+
+/** A product or an order in Medusa, one click away: the mark in a tile, the name, a mono key and "Open". */
+export function StoreLink({ to, name, detail, detailTitle, open }: { to: string; name: string; detail?: string | null; detailTitle?: string; open: string }) {
+  return (
+    <Link to={to} className="group flex items-center gap-x-2.5" title={open}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
+        <MedusaMark className="h-4 w-4 text-ui-fg-base" />
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="txt-compact-small-plus truncate text-ui-fg-base group-hover:text-ui-fg-interactive">{name}</span>
+        <span className="flex min-w-0 items-center gap-x-1.5">
+          {detail ? (
+            <span className="truncate font-mono text-ui-fg-muted txt-compact-xsmall" title={detailTitle}>
+              {detail}
+            </span>
+          ) : null}
+          <span className="txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-x-0.5 text-ui-fg-interactive">
+            {open}
+            <ArrowUpRightMini />
+          </span>
+        </span>
+      </span>
+    </Link>
+  )
+}
+
+/** The Medusa order of a row: its number, the order id and "Open order". */
+export function StoreOrderCell({ orderId, displayId }: { orderId: string; displayId: number | null }) {
   const { t } = useTranslation("baselinker")
-  const state = connectionState(status)
-  return <StatusBadge color={state.tone}>{t(`mode.${state.key}`)}</StatusBadge>
+  return (
+    <StoreLink
+      to={`/orders/${orderId}`}
+      name={displayId ? `#${displayId}` : orderId}
+      detail={displayId ? orderId : null}
+      detailTitle={orderId}
+      open={t("actions.openOrder")}
+    />
+  )
 }
 
 const ORDER_TONE: Record<OrderRowStatus, Tone> = { pending: "blue", sent: "green", failed: "red", skipped: "grey" }
@@ -150,6 +212,29 @@ export function sinceDate(since: string, lang: string): string {
   } catch {
     return since
   }
+}
+
+/** A rating in the admin's number format: 5.0 or 5,0. */
+export function fmtRating(value: number, lang: string): string {
+  try {
+    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
+  } catch {
+    return value.toFixed(1)
+  }
+}
+
+/** References of the option in the admin language, shaped for the kit (the header badge and the cards at the end of the guide). */
+export function kitReferences(refs: ReferenceDto[], lang: string): Reference[] {
+  return refs.map((r) => ({
+    name: r.name,
+    url: r.url,
+    icon: r.icon,
+    description: localize(r.description, lang) || undefined,
+    since: r.since ?? undefined,
+    metrics: r.metrics.map((m) => ({ label: localize(m.label, lang), value: m.value })),
+    links: r.links.map((l) => ({ label: localize(l.label, lang), url: l.url })),
+    review: r.review ? { ...r.review, quote: localize(r.review.quote, lang) || undefined } : null,
+  }))
 }
 
 export function ConflictBadge({ conflict }: { conflict: CardConflict }) {

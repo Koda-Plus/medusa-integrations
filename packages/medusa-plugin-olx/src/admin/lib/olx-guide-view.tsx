@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { OlxStatusResponse, OlxWriterKey } from "../../modules/olx/lib/contract"
 import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type StepState } from "./olx-guide"
-import { fmtMonth, kitReferences } from "./olx-ui"
+import { fmtMonth, fmtRating, kitReferences } from "./olx-ui"
 
 /*
  * The "Setup guide" view: what the rollout takes, how the parts talk, the
@@ -277,6 +277,8 @@ export function GuideView({ status: s, lang }: { status: OlxStatusResponse; lang
         subtitle={t("references.subtitle")}
         openLabel={t("references.open")}
         sinceLabel={(since) => t("references.since", { date: fmtMonth(since, lang) })}
+        reviewLabel={t("references.review")}
+        ratingLabel={(value) => fmtRating(value, lang)}
       />
     </div>
   )

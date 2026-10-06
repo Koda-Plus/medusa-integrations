@@ -1,18 +1,43 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightOnBox } from "@medusajs/icons"
+import { ArrowUpRightOnBox, InformationCircleSolid } from "@medusajs/icons"
 import { Badge, Button, Container, StatusBadge, Table, Text, toast } from "@medusajs/ui"
 import type { AllegroIssueFilter, AllegroStatusResponse } from "../../modules/allegro/lib/contract"
 import { errorMessage, useAllegroIssues, useAllegroIssuesSync } from "./allegro-api"
-import { EmptyRow, Pager, Pills, SectionHeader, StatTile, fmtDate, fmtDateTime } from "./allegro-ui"
+import { EmptyRow, OrderLink, Pager, Pills, SectionHeader, StatTile, StoreColumn, fmtDate, fmtDateTime, shortId } from "./allegro-ui"
 
 const PAGE = 10
 const FILTERS: AllegroIssueFilter[] = ["open", "needs_reply", "returns", "disputes", "claims", "all"]
 
-export function IssuesSection({ status, lang }: { status: AllegroStatusResponse; lang: string }) {
+/** A short note for the store owner; the technical detail (options, scopes) on hover. */
+function OffNote({ text, detail }: { text: string; detail: string }) {
+  return (
+    <span className="inline-flex w-fit cursor-help items-center gap-x-1 text-ui-fg-muted" title={detail}>
+      <Text size="xsmall" className="text-ui-fg-muted">
+        {text}
+      </Text>
+      <InformationCircleSolid className="h-3.5 w-3.5 shrink-0" />
+    </span>
+  )
+}
+
+/**
+ * Returns, disputes and claims of Allegro buyers, each next to the store
+ * order it concerns. The filter lives on the page, so the "Waiting for you"
+ * counter above can open the ones that need a reply.
+ */
+export function IssuesSection({
+  status,
+  lang,
+  filter,
+  onFilter,
+}: {
+  status: AllegroStatusResponse
+  lang: string
+  filter: AllegroIssueFilter
+  onFilter: (f: AllegroIssueFilter) => void
+}) {
   const { t } = useTranslation("allegro")
-  const [filter, setFilter] = useState<AllegroIssueFilter>("open")
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter])
   const list = useAllegroIssues(filter, page * PAGE, PAGE)
@@ -39,7 +64,7 @@ export function IssuesSection({ status, lang }: { status: AllegroStatusResponse;
   ]
 
   return (
-    <Container className="divide-y p-0">
+    <Container className="divide-y p-0" id="allegro-issues">
       <SectionHeader
         title={t("issues.title")}
         subtitle={t("issues.subtitle")}
@@ -50,10 +75,10 @@ export function IssuesSection({ status, lang }: { status: AllegroStatusResponse;
         }
       />
       <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile label={t("issues.tiles.returnsOpen")} value={i.returnsOpen} tone="orange" onClick={() => setFilter("returns")} active={filter === "returns"} />
-        <StatTile label={t("issues.tiles.disputesOpen")} value={i.disputesOpen} tone="orange" onClick={() => setFilter("disputes")} active={filter === "disputes"} />
-        <StatTile label={t("issues.tiles.claimsOpen")} value={i.claimsOpen} tone="orange" onClick={() => setFilter("claims")} active={filter === "claims"} />
-        <StatTile label={t("issues.tiles.needReply")} value={i.needReply} tone="red" onClick={() => setFilter("needs_reply")} active={filter === "needs_reply"} />
+        <StatTile label={t("issues.tiles.returnsOpen")} value={i.returnsOpen} tone="orange" onClick={() => onFilter("returns")} active={filter === "returns"} />
+        <StatTile label={t("issues.tiles.disputesOpen")} value={i.disputesOpen} tone="orange" onClick={() => onFilter("disputes")} active={filter === "disputes"} />
+        <StatTile label={t("issues.tiles.claimsOpen")} value={i.claimsOpen} tone="orange" onClick={() => onFilter("claims")} active={filter === "claims"} />
+        <StatTile label={t("issues.tiles.needReply")} value={i.needReply} tone="red" onClick={() => onFilter("needs_reply")} active={filter === "needs_reply"} />
         <StatTile label={t("issues.tiles.dueSoon")} value={i.dueSoon} tone="red" />
         <StatTile
           label={t("issues.tiles.unread")}
@@ -76,19 +101,11 @@ export function IssuesSection({ status, lang }: { status: AllegroStatusResponse;
             {t("issues.checked", { when: fmtDateTime(i.checkedAt, lang) })}
           </Text>
         ) : null}
-        {!s.disputes ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("issues.off.disputes")}
-          </Text>
-        ) : null}
-        {!s.messages ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("issues.off.messages")}
-          </Text>
-        ) : null}
+        {!s.disputes ? <OffNote text={t("issues.offShort.disputes")} detail={t("issues.off.disputes")} /> : null}
+        {!s.messages ? <OffNote text={t("issues.offShort.messages")} detail={t("issues.off.messages")} /> : null}
       </div>
       <div className="px-6 py-4">
-        <Pills filters={FILTERS} value={filter} onChange={setFilter} label={(f) => t(`issues.filter.${f}`)} />
+        <Pills filters={FILTERS} value={filter} onChange={onFilter} label={(f) => t(`issues.filter.${f}`)} />
       </div>
       <div className="overflow-x-auto">
         <Table>
@@ -99,7 +116,9 @@ export function IssuesSection({ status, lang }: { status: AllegroStatusResponse;
               <Table.HeaderCell>{t("issues.col.status")}</Table.HeaderCell>
               <Table.HeaderCell>{t("issues.col.reason")}</Table.HeaderCell>
               <Table.HeaderCell>{t("issues.col.due")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("issues.col.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <StoreColumn label={t("issues.col.order")} />
+              </Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -139,11 +158,23 @@ export function IssuesSection({ status, lang }: { status: AllegroStatusResponse;
                     <span className="font-mono txt-compact-xsmall text-ui-fg-subtle">{r.reasonCode ?? ""}</span>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDate(r.dueAt, lang)}</Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="max-w-[240px]">
                     {r.orderId ? (
-                      <Link to={`/orders/${r.orderId}`} className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                        {r.displayId ? `#${r.displayId}` : t("actions.openOrder")}
-                      </Link>
+                      <OrderLink
+                        orderId={r.orderId}
+                        displayId={r.displayId}
+                        code={r.checkoutFormId ? shortId(r.checkoutFormId) : null}
+                        codeTitle={r.checkoutFormId ? `${t("imports.col.form")} ${r.checkoutFormId}` : undefined}
+                      />
+                    ) : r.checkoutFormId ? (
+                      <div className="flex flex-col items-start gap-y-0.5">
+                        <Text size="xsmall" className="text-ui-fg-muted">
+                          {t("orders.notImported")}
+                        </Text>
+                        <span className="font-mono txt-compact-xsmall text-ui-fg-muted" title={`${t("imports.col.form")} ${r.checkoutFormId}`}>
+                          {shortId(r.checkoutFormId)}
+                        </span>
+                      </div>
                     ) : null}
                   </Table.Cell>
                 </Table.Row>

@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { localized, normalizeReferences } from "../src/modules/subiekt/lib/references.ts"
+import { localized, normalizeReferences, normalizeReview } from "../src/modules/subiekt/lib/references.ts"
 import { optionWarnings, resolveOptions } from "../src/modules/subiekt/lib/options.ts"
 import { DEFAULT_NIP_SOURCES } from "../src/modules/subiekt/lib/constants.ts"
 
@@ -34,6 +34,24 @@ test("references are validated leniently: bad entries and fields are dropped, no
   assert.deepEqual(normalizeReferences({ name: "x" }), [])
   assert.deepEqual(localized({ pl: "Tylko po polsku" }), { pl: "Tylko po polsku" })
   assert.equal(localized({ en: "", pl: " " }), null)
+})
+
+test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {
+  const review = normalizeReview({ rating: "4,8", source: "Clutch", url: "https://clutch.co/review/1", icon: "javascript:alert(1)", quote: { pl: "Polecam" } })
+  assert.deepEqual(review, { rating: 4.8, scale: 5, source: "Clutch", url: "https://clutch.co/review/1", icon: null, quote: { pl: "Polecam" }, author: null })
+  assert.equal(normalizeReview({ rating: 9, source: "Clutch" })?.rating, 5)
+  assert.equal(normalizeReview({ rating: 9, scale: 10, source: "Google" })?.scale, 10)
+  assert.equal(normalizeReview({ rating: 5, source: "Clutch", url: "http://clutch.co" })?.url, null)
+  assert.equal(normalizeReview({ rating: 0, source: "Clutch" }), null)
+  assert.equal(normalizeReview({ rating: 5 }), null)
+  assert.equal(normalizeReview("5 stars"), null)
+  const [withReview, without] = normalizeReferences([
+    { name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch" } },
+    { name: "B", url: "https://b.pl", review: { rating: "great" } },
+  ])
+  assert.equal(withReview.review?.rating, 5)
+  // Like every other optional part of a reference, a missing or invalid review is left out.
+  assert.equal("review" in without, false)
 })
 
 test("0.2.0 options: safe defaults, normalized values", () => {

@@ -1,12 +1,26 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { InformationCircleSolid } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, InlineTip, Switch, Table, Text, toast } from "@medusajs/ui"
 import type { DocumentKind, StatusResponse, SummaryMonthDto, WriterDto, WriterKey } from "../../modules/fakturownia/lib/contract"
 import { errorMessage, useFakturowniaEmail, useFakturowniaEmails, useFakturowniaReminders, useFakturowniaSummary, useFakturowniaWriter } from "./fakturownia-api"
 import { EmailHistory } from "./fakturownia-document"
-import { KindBadge, OrderLink, WriterBadge, fmtDate, fmtDateTime, fmtMoney, fmtMoneyList, fmtNumber } from "./fakturownia-ui"
+import { KindBadge, MedusaMark, StoreOrderCell, WriterBadge, fmtDate, fmtDateTime, fmtMoney, fmtMoneyList, fmtNumber } from "./fakturownia-ui"
 
 const WRITER_KEYS: WriterKey[] = ["corrections", "emails", "ksef"]
+
+/** The demo note, shown in the popover of the mode badge in the header. */
+export function DemoDetails({ status }: { status: StatusResponse }) {
+  const { t } = useTranslation("fakturownia")
+  if (status.mode !== "demo") return null
+  return (
+    <>
+      <span>{t("demo.text")}</span>
+      <span>{t("demo.new")}</span>
+      {status.demoReason === "no_token" ? <span>{t("demo.noToken")}</span> : null}
+    </>
+  )
+}
 
 /**
  * WRITES TO FAKTUROWNIA: the writers added in 0.2.0, each off until a person
@@ -104,20 +118,25 @@ export function UnpaidSection({ status, lang, onOpenDocument }: { status: Status
           <WriterBadge writer={writer} />
         </span>
       </div>
-      <div className="px-6 py-3">
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("unpaid.noApi")}
-        </Text>
-      </div>
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>{t("documents.col.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <span className="inline-flex items-center gap-x-1.5">
+                  <MedusaMark className="h-3.5 w-3.5 text-ui-fg-muted" />
+                  {t("documents.col.order")}
+                </span>
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("documents.col.number")}</Table.HeaderCell>
               <Table.HeaderCell>{t("drawer.issueDate")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("documents.col.total")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("unpaid.reminders")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <span className="inline-flex items-center gap-x-1" title={t("unpaid.noApi")}>
+                  {t("unpaid.reminders")}
+                  <InformationCircleSolid className="h-3.5 w-3.5 text-ui-fg-muted" />
+                </span>
+              </Table.HeaderCell>
               <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
@@ -133,8 +152,8 @@ export function UnpaidSection({ status, lang, onOpenDocument }: { status: Status
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.document.id} className="[&_td]:py-2.5">
-                  <Table.Cell>
-                    <OrderLink orderId={r.document.orderId} displayId={r.document.displayId} />
+                  <Table.Cell className="max-w-[340px]">
+                    <StoreOrderCell orderId={r.document.orderId} displayId={r.document.displayId} />
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">
                     <span className="flex items-center gap-x-2">

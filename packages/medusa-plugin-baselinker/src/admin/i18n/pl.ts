@@ -9,6 +9,17 @@ const pl: typeof en = {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
   },
+  settings: {
+    title: "Ustawienia",
+    subtitle: "Techniczna strona integracji: kierunki z ich zapisami, konto BaseLinkera, plany, numery faktur i historia synchronizacji.",
+    tab: {
+      directions: "Kierunki",
+      account: "Konto BaseLinkera",
+      plans: "Plany",
+      invoices: "Numery faktur",
+      runs: "Historia synchronizacji",
+    },
+  },
   mode: {
     demo: "Dane demo",
     connected: "Połączone",
@@ -27,6 +38,8 @@ const pl: typeof en = {
     track: "Śledź przesyłkę",
     importOrders: "Importuj zamówienia teraz",
     readReturns: "Pobierz zwroty",
+    openProduct: "Otwórz produkt",
+    openOrder: "Otwórz zamówienie",
   },
   demo: {
     label: "Tryb demo",
@@ -34,7 +47,7 @@ const pl: typeof en = {
   },
   missing: {
     label: "Konfiguracja",
-    text: "Brakuje opcji wtyczki: {{missing}}. Token znajdziesz w BaseLinkerze w sekcji Moje konto, API; numery katalogu, magazynu i statusu podpowie sprawdzenie połączenia poniżej albo metody getInventories i getOrderStatusList.",
+    text: "Brakuje opcji wtyczki: {{missing}}. Token znajdziesz w BaseLinkerze w sekcji Moje konto, API; numery katalogu, magazynu i statusu podpowie sprawdzenie połączenia w Ustawieniach (zakładka Konto BaseLinkera) albo metody getInventories i getOrderStatusList.",
   },
   stats: {
     cards: "Karty w BaseLinkerze",
@@ -142,8 +155,9 @@ const pl: typeof en = {
   },
   cards: {
     title: "Karty",
-    subtitle:
-      "Każda karta katalogu BaseLinkera i wariant, z którym jest połączona. Najpierw SKU, potem EAN, unikalne po obu stronach; duplikaty są pokazywane, nigdy łączone. Karty główne z wariantami są widoczne, łączymy ich warianty. Tu niczego nie zakładamy ani nie importujemy: to zadanie uzbrojonych zapisów.",
+    subtitle: "Karty produktów z katalogu BaseLinkera obok produktów sklepu, z którymi są połączone. Przy połączonej karcie widać jej produkt w Medusie, jeden klik dalej.",
+    matching:
+      "Klucz dopasowania: najpierw SKU, potem EAN, unikalne po obu stronach; duplikaty są pokazywane, nigdy łączone. Karty główne z wariantami są widoczne, łączymy ich warianty. Tu niczego nie zakładamy ani nie importujemy: to zadanie uzbrojonych zapisów.",
     search: "Szukaj: nazwa, SKU, EAN, numer karty",
     filter: {
       all: "Wszystkie",
@@ -154,9 +168,8 @@ const pl: typeof en = {
     },
     col: {
       card: "Karta",
-      key: "SKU / EAN",
       stock: "Stan w BaseLinkerze",
-      product: "Produkt w Medusie",
+      product: "Produkt w sklepie",
     },
     conflict: {
       duplicate_sku: "SKU na kilku kartach",
@@ -177,7 +190,8 @@ const pl: typeof en = {
   orders: {
     title: "Zamówienia do BaseLinkera",
     subtitle:
-      "Każde złożone zamówienie trafia tam raz: znacznik w admin_comments pozwala wtyczce znaleźć zamówienie, które BaseLinker już ma, zanim cokolwiek zapisze. Nieudane próby wracają z rosnącą przerwą, a potem czekają tutaj.",
+      "Zamówienia złożone w sklepie, każde wysłane do BaseLinkera raz, ze statusem i numerem przesyłki, które tam otrzymało. Zamówienie, którego nie udało się wysłać, czeka tutaj razem z powodem.",
+    how: "Każde złożone zamówienie trafia tam raz: znacznik w admin_comments pozwala wtyczce znaleźć zamówienie, które BaseLinker już ma, zanim cokolwiek zapisze. Nieudane próby wracają z rosnącą przerwą, a potem czekają tutaj.",
     search: "Numer zamówienia lub numer z BaseLinkera",
     filter: {
       all: "Wszystkie",
@@ -187,7 +201,7 @@ const pl: typeof en = {
       skipped: "Pominięte",
     },
     col: {
-      order: "Zamówienie",
+      order: "Zamówienie w sklepie",
       status: "Status",
       bl: "Zamówienie w BaseLinkerze",
       blStatus: "Status w BaseLinkerze",
@@ -309,6 +323,9 @@ const pl: typeof en = {
     subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
     since: "Od {{date}}",
+    badgeOne: "Działa w 1 sklepie",
+    badgeMany: "Działa w {{count}} sklepach",
+    review: "Zobacz opinię",
   },
   directions: {
     title: "Źródło prawdy i zapisy",
@@ -493,8 +510,8 @@ const pl: typeof en = {
   },
   imports: {
     title: "Zamówienia z marketplace'ów z BaseLinkera",
-    subtitle:
-      "Zamówienia z wybranych źródeł (Allegro, Amazon, eBay, Erli...), które zebrał BaseLinker. Wyszukiwane co 5 minut; stają się zamówieniami w Medusie, każde dokładnie raz, tylko gdy zapis importu zamówień jest uzbrojony. Nasze zamówienia wysłane do BaseLinkera nigdy nie wracają.",
+    subtitle: "Zamówienia z marketplace'ów (Allegro, Amazon, eBay, Erli i inne) zebrane przez BaseLinkera, obok zamówień w sklepie, którymi się stały.",
+    how: "Wyszukiwane co 5 minut; stają się zamówieniami w Medusie, każde dokładnie raz, tylko gdy zapis importu zamówień jest uzbrojony. Nasze zamówienia wysłane do BaseLinkera nigdy nie wracają.",
     waiting: "Na zapis importu zamówień czeka zamówień: {{count}}.",
     off: "Import zamówień jest wyłączony: ustaw orderImportSources, żeby importować zamówienia z marketplace'ów.",
     emailNote:
@@ -510,11 +527,16 @@ const pl: typeof en = {
     col: {
       order: "Zamówienie w BaseLinkerze",
       source: "Źródło",
-      medusa: "Zamówienie w Medusie",
+      medusa: "Zamówienie w sklepie",
       total: "Wartość",
       payment: "Płatność",
       blStatus: "Status w BaseLinkerze",
       details: "Szczegóły",
+    },
+    noOrder: {
+      pending: "Czeka na import",
+      skipped: "Pominięte, bez importu",
+      failed: "Import nieudany",
     },
     statuses: {
       pending: "Czeka",
@@ -539,18 +561,19 @@ const pl: typeof en = {
   },
   returns: {
     title: "Zwroty",
-    subtitle: "Menedżer zwrotów BaseLinkera, tylko odczyt, z powiązaniem z zamówieniem w Medusie, gdy to zamówienie wysłała albo zaimportowała ta wtyczka. Nie zapisujemy danych kupujących.",
+    subtitle: "Zwroty z menedżera zwrotów BaseLinkera obok zamówienia w sklepie, do którego należą.",
+    how: "Tylko odczyt. Zwrot łączy się z zamówieniem w sklepie, gdy to zamówienie wysłała albo zaimportowała ta wtyczka. Nie zapisujemy danych kupujących.",
     off: "Zwroty są wyłączone (returnsSync: false).",
     col: {
       return: "Zwrot",
-      order: "Zamówienie",
+      order: "Zamówienie w sklepie",
       source: "Źródło",
       status: "Status",
       items: "Pozycje",
       refunded: "Zwrócono",
       created: "Utworzono",
     },
-    noOrder: "nie nasze",
+    noOrder: "Zamówienie spoza sklepu",
     empty: "Brak zwrotów z ostatnich {{days}} dni.",
     search: "Numer zwrotu, zamówienia w BaseLinkerze lub numer zamówienia",
   },
@@ -637,7 +660,7 @@ const pl: typeof en = {
         title: "Utwórz token API",
         body: "W BaseLinkerze otwórz Konto i inne, Moje konto, a potem zakładkę API, i wygeneruj token nazwany jak ten sklep. Skopiuj go raz i trzymaj na serwerze: wtyczka maskuje go w każdym logu, błędzie i ekranie.",
         link: "Dokumentacja API BaseLinkera",
-        check: "Sprawdzenie połączenia w Panelu mówi, że token działa.",
+        check: "Sprawdzenie połączenia (Ustawienia, Konto BaseLinkera) mówi, że token działa.",
       },
       options: {
         title: "Skonfiguruj wtyczkę",
@@ -666,7 +689,7 @@ const pl: typeof en = {
       },
       dryRun: {
         title: "Przeczytaj plany (próba na sucho)",
-        body: "Synchronizuj karty czyta BaseLinkera i tworzy każdy plan dla obowiązujących kierunków: import katalogu albo plan kart, plan stanów, plan cen. Nic nie jest zapisywane. Przeczytaj je w Panelu, pozycja po pozycji i pole po polu.",
+        body: "Synchronizuj karty czyta BaseLinkera i tworzy każdy plan dla obowiązujących kierunków: import katalogu albo plan kart, plan stanów, plan cen. Nic nie jest zapisywane. Przeczytaj je w Ustawieniach, w zakładce Plany, pozycja po pozycji i pole po polu.",
         check: "Każdy potrzebny plan ma swój ostatni przebieg w Historii.",
       },
       arm: {
