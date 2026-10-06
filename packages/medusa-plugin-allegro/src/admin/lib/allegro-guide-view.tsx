@@ -12,8 +12,9 @@ import {
   type Reference,
   type StepState,
 } from "./allegro-guide"
+import { fmtRating } from "./allegro-ui"
 
-/** References of the options, in the admin language. */
+/** References of the options, in the admin language, shaped for the kit. */
 export function referencesFor(status: AllegroStatusResponse, lang: string): Reference[] {
   return status.references.map((r) => ({
     name: r.name,
@@ -23,9 +24,11 @@ export function referencesFor(status: AllegroStatusResponse, lang: string): Refe
     since: r.since ?? undefined,
     metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),
     links: r.links.map((l) => ({ label: pickText(l.label, lang), url: l.url })),
+    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
   }))
 }
 
+/** "Running in production" cards, at the end of the guide; the page header has the badge. */
 export function ReferencesBlock({ status, lang }: { status: AllegroStatusResponse; lang: string }) {
   const { t } = useTranslation("allegro")
   return (
@@ -35,6 +38,8 @@ export function ReferencesBlock({ status, lang }: { status: AllegroStatusRespons
       subtitle={t("references.subtitle")}
       openLabel={t("references.open")}
       sinceLabel={(since) => sinceLabel(since, lang)}
+      reviewLabel={t("references.review")}
+      ratingLabel={(value) => fmtRating(value, lang)}
     />
   )
 }

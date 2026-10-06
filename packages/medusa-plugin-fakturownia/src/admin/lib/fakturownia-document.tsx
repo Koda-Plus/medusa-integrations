@@ -13,9 +13,9 @@ import {
   Fact,
   KindBadge,
   KsefBadge,
-  OrderLink,
   PaidBadge,
   Section,
+  StoreOrderCell,
   WriterBadge,
   fmtDate,
   fmtDateTime,
@@ -84,7 +84,7 @@ function Overview({ doc, corrected, lang }: { doc: DocumentDto; corrected: Docum
     <Section title={t("drawer.overview")} aside={<DocumentStatusBadge status={doc.status} />}>
       <div className="grid grid-cols-2 gap-3">
         <Fact label={t("documents.col.order")}>
-          <OrderLink orderId={doc.orderId} displayId={doc.displayId} />
+          <StoreOrderCell orderId={doc.orderId} displayId={doc.displayId} />
         </Fact>
         <Fact label={t("documents.col.total")}>{fmtMoney(doc.totalGross, doc.currency, lang)}</Fact>
         <Fact label={t("drawer.issueDate")}>{fmtDate(doc.issueDate, lang) || "-"}</Fact>

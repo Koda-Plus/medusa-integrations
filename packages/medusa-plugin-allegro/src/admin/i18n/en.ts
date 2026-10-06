@@ -7,6 +7,17 @@ const en = {
     panel: "Panel",
     guide: "Setup guide",
   },
+  settings: {
+    title: "Settings",
+    subtitle: "The technical side of the integration: the Allegro account, writers with their plans, parcels and invoices sent to Allegro, and the sync history.",
+    tab: {
+      account: "Allegro account",
+      writers: "Writers",
+      plans: "Plans",
+      outbox: "Parcels and invoices",
+      runs: "Sync history",
+    },
+  },
   mode: {
     demo: "Demo data",
     connected: "Connected",
@@ -34,6 +45,8 @@ const en = {
     release: "Release",
     queue: "Queue for import",
     openOrder: "Open order",
+    openProduct: "Open product",
+    openWriters: "Arm it in Settings",
   },
   demo: {
     label: "Demo mode",
@@ -61,6 +74,9 @@ const en = {
     title: "Running in stores built by Koda Plus",
     subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
+    badgeOne: "Running in 1 store",
+    badgeMany: "Running in {{count}} stores",
+    review: "Read the review",
   },
   connection: {
     title: "Allegro account",
@@ -278,8 +294,9 @@ const en = {
   },
   imports: {
     title: "Imported orders",
-    subtitle:
-      "Allegro checkout forms into Medusa orders, exactly once: a row per form before anything happens, a lookup in Medusa before every create, and a reason for every order held.",
+    subtitle: "Allegro purchases as orders in your store, each exactly once. A held order says why: fix the cause and click Retry.",
+    how: "Allegro checkout forms into Medusa orders, exactly once: a row per form before anything happens, a lookup in Medusa before every create, and a reason for every order held.",
+    notArmed: "The order import is not armed, so Allegro orders do not reach the store yet.",
     target: "Orders land in the sales channel {{channel}}, region {{region}}.",
     noTarget: "Where orders land is not set yet.",
     cursor: "Event journal read up to {{id}} ({{when}}).",
@@ -298,7 +315,7 @@ const en = {
       bought: "Bought",
       form: "Allegro order",
       status: "Status",
-      order: "Medusa order",
+      order: "Order in the store",
       payment: "Payment",
       total: "Total",
       note: "Note",
@@ -311,6 +328,25 @@ const en = {
       skipped: "Skipped",
       cancelled: "Cancelled",
       unknown: "Checking",
+    },
+    why: {
+      unmapped_lines: "No product for an item",
+      currency_mismatch: "Another currency than the region",
+      no_address: "No delivery address",
+      no_lines: "No items",
+      bad_line: "An item without a price or quantity",
+      no_region: "No region for Allegro orders",
+      no_channel: "No sales channel for Allegro orders",
+      stock: "Not enough stock",
+      workflow_error: "Medusa refused the order",
+      too_many_attempts: "Failed too many times",
+      form_not_found: "Allegro does not know this order",
+      create_failed: "Creating the order failed",
+      fetch_failed: "Allegro did not answer",
+      busy: "Being imported right now",
+      not_ready: "Waiting for the payment",
+      never_ready: "The payment never finished",
+      cancelled: "Cancelled on Allegro",
     },
     paid: "Paid",
     notPaid: "Not paid",
@@ -374,7 +410,7 @@ const en = {
   },
   issues: {
     title: "Customer issues",
-    subtitle: "Returns, disputes and claims as Allegro reports them, and unread messages. Read only: answer them in the seller panel.",
+    subtitle: "Returns, disputes and claims of your Allegro buyers, and their unread messages. You reply in the Allegro seller panel, linked below.",
     tiles: {
       returnsOpen: "Open returns",
       disputesOpen: "Open disputes",
@@ -388,6 +424,10 @@ const en = {
     off: {
       disputes: "Disputes and claims are off (issues.disputes). Their scope, allegro:api:disputes, has no read-only variant.",
       messages: "Unread messages are off (issues.messages). Their scope, allegro:api:messaging, has no read-only variant.",
+    },
+    offShort: {
+      disputes: "Disputes and claims are not tracked.",
+      messages: "Unread messages are not counted.",
     },
     panel: {
       orders: "Orders",
@@ -409,7 +449,7 @@ const en = {
       status: "Status",
       reason: "Reason",
       due: "Due",
-      order: "Order",
+      order: "Order in the store",
     },
     kind: {
       return: "Return",
@@ -440,8 +480,9 @@ const en = {
   },
   offers: {
     title: "Offers",
-    subtitle:
-      "Matching key: the offer signature (external.id) against the variant SKU. One primary offer per variant: live beats activating beats draft beats ended. Quantity shows Allegro / Medusa.",
+    subtitle: "Your Allegro offers next to the store products they sell. A linked offer shows its product in Medusa, one click away. Quantity shows Allegro / Medusa.",
+    matching:
+      "Matching key: the offer signature (external.id) against the variant SKU. One primary offer per variant: live beats activating beats draft beats ended.",
     search: "Search name, SKU or offer id",
     filter: {
       all: "All",
@@ -458,20 +499,21 @@ const en = {
       status: "Status",
       price: "Price",
       stock: "Quantity",
-      key: "Signature",
-      product: "Product",
+      product: "Product in the store",
     },
     empty: "No offers in this view.",
     primary: "Primary",
     sample: "Sample",
-    noProduct: "No product with this SKU",
+    noProduct: "No product with this signature",
     noKey: "No signature",
+    signatureTitle: "Signature on Allegro: {{signature}}",
     stockNote:
       "The stock check labels; the stock writer acts on it only when armed. A sale on Allegro that Medusa has not heard of yet looks like an oversell, which is why the order import comes first.",
   },
   orders: {
     title: "Allegro orders",
-    subtitle: "The journal, refreshed every ten minutes, with the import of every order into Medusa. The journal itself stores no buyer data.",
+    subtitle: "Orders placed on Allegro, what they contain and whether each one has reached your store.",
+    journal: "The journal, refreshed every ten minutes, with the import of every order into Medusa. The journal itself stores no buyer data.",
     search: "Search order id or delivery method",
     filter: {
       all: "All",
@@ -488,7 +530,7 @@ const en = {
       status: "Status",
       lines: "Items",
       total: "Total",
-      import: "In Medusa",
+      import: "Order in the store",
     },
     group: {
       open: "To ship",
@@ -507,8 +549,8 @@ const en = {
       RETURNED: "Returned",
     },
     empty: "No orders in this view.",
-    noProduct: "No product",
     notImported: "Not imported",
+    inStore: "Order in the store",
   },
   runs: {
     title: "History",
@@ -645,7 +687,7 @@ const en = {
       connect: {
         title: "Connect the seller account with the code",
         body: [
-          "Click Connect Allegro account on the Panel. The page shows a short code and opens allegro.pl/skojarz-aplikacje; the seller, logged in to Allegro, types the code and approves. The page notices within seconds.",
+          "Open Settings (the cog in the page header) and click Connect Allegro account on the Allegro account tab. The page shows a short code and opens allegro.pl/skojarz-aplikacje; the seller, logged in to Allegro, types the code and approves. The page notices within seconds.",
           "The access token lives 12 hours and the refresh token 3 months. Both refresh by themselves, one process at a time, even with a server and a worker.",
         ],
         check: "The badge says Connected and the granted scopes are listed under the account.",
@@ -678,7 +720,7 @@ const en = {
         title: "Allow the writers you need, then connect again",
         body: [
           "In writes, set true only for the writers you will use. The device login asks only for the scopes of allowed writers, so after changing writes click Connect again: the seller approves the wider consent (allegro:api:sale:offers:write for stock, prices and drafts, allegro:api:orders:write for parcels and invoices).",
-          "Allowing is not arming: an allowed writer still does nothing until a person arms it on the Panel.",
+          "Allowing is not arming: an allowed writer still does nothing until a person arms it in Settings, on the Writers tab.",
         ],
         check: "No Connect again warning under the account.",
       },

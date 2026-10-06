@@ -650,7 +650,7 @@ function StoreProductCell({ advert: a }: { advert: OlxAdvertDto }) {
             <span className="truncate font-mono text-ui-fg-muted txt-compact-xsmall" title={keyTitle}>
               {a.sku ?? a.matchKey}
             </span>
-            <span className="txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-x-0.5 text-ui-fg-interactive">
+            <span className="txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-x-0.5 whitespace-nowrap text-ui-fg-interactive">
               {t("adverts.openProduct")}
               <ArrowUpRightMini />
             </span>

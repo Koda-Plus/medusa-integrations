@@ -293,6 +293,16 @@ export interface ReferenceDto {
   since: string | null
   metrics: Array<{ label: LocalizedDto; value: string }>
   links: Array<{ label: LocalizedDto; url: string }>
+  /** The store's rating of the work and where it was given, e.g. Clutch. */
+  review: {
+    rating: number
+    scale: number
+    source: string
+    url: string | null
+    icon: string | null
+    quote: LocalizedDto | null
+    author: string | null
+  } | null
 }
 
 /* ------------------------------------------------------------------ */

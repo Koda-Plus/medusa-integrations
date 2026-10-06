@@ -4,6 +4,17 @@ const en = {
   subtitle:
     "Orders become ZK documents in Subiekt nexo PRO, the WZ issued in the warehouse comes back to the order, sales documents carry their KSeF number, and stock and prices flow from Subiekt to Medusa.",
   view: { panel: "Panel", guide: "Setup guide" },
+  settings: {
+    title: "Settings",
+    subtitle: "The technical side of the integration: the connection to the bridge and its diagnostics, the writers, the stock sync and the history of background jobs.",
+    tab: {
+      connection: "Connection",
+      bridge: "Bridge",
+      writers: "Writers",
+      stock: "Stock",
+      runs: "History",
+    },
+  },
   mode: {
     demo: "Demo bridge",
     connected: "Connected",
@@ -45,6 +56,18 @@ const en = {
     zk: "ZK documents",
     wz: "WZ documents",
     sales: "FS and PA",
+  },
+  store: {
+    openOrder: "Open order",
+    openProduct: "Open product",
+    findProduct: "Find product",
+    orderMatching: "Every document Subiekt issues for an order keeps the order's id in its notes, as [medusa:order_...]: that is how the document finds its order.",
+    noOrder: "No order in the store",
+    noOrderHint: "Subiekt sent this document without an order tag in its notes, so it belongs to no order here. A WZ typed by hand, instead of issued from the ZK, has no tag.",
+    noProduct: "No product in the store",
+    notInStore: "Not in the store yet",
+    notInStoreHint: "Only in Subiekt so far. When the writer for new products is on, it is created in the store as a draft.",
+    draft: "Created in the store as a draft, with this SKU.",
   },
   connection: {
     title: "Connection",
@@ -188,7 +211,9 @@ const en = {
   },
   products: {
     title: "Products from Subiekt",
-    subtitle: "Prices and missing products, planned first. Nothing changes until a person arms a writer.",
+    subtitle: "Prices from Subiekt next to the store products they update, and Subiekt products the store does not sell yet. Everything is a plan first: nothing changes until someone switches its writer on in Settings.",
+    matching: "Subiekt products are matched to store variants by EAN first, then by the SKU against the Subiekt symbol. A code used twice is a conflict and is never guessed.",
+    matchedKey: "Matched by {{by}}: {{code}}",
     settings: "Prices from {{level}} ({{type}}) to {{target}}, in {{currency}}.",
     settingsLevel: "level {{symbol}}",
     settingsTargets: { variant: "variant prices", price_list: "price list {{id}}" },
@@ -219,7 +244,7 @@ const en = {
       stale: "Changed meanwhile",
       skipped: "Skipped",
     },
-    columns: { product: "Product", change: "Change", matched: "Matched by", status: "Status", details: "Details" },
+    columns: { product: "Product in Subiekt", change: "Change", store: "Product in the store", matched: "Matched by", status: "Status", details: "Details" },
     matchedBy: { ean: "EAN", sku: "SKU" },
     newProduct: "new, {{price}}",
     empty: "Nothing in this plan.",
@@ -234,11 +259,12 @@ const en = {
   },
   tasks: {
     title: "Queue",
-    subtitle: "Every call Medusa owes the bridge, with retries. A failed task waits for a person.",
+    subtitle: "Orders on their way to Subiekt: every ZK, WZ, invoice or receipt the store asked for, and how it went. A send that failed waits here for you, with a Send again button.",
+    technical: "Every call Medusa owes the bridge, with retries. A failed task waits for a person.",
     filters: { attention: "Need attention", open: "Open", done: "Done", all: "All" },
     search: "Order number",
     empty: "Nothing here.",
-    columns: { order: "Order", operation: "Operation", status: "Status", attempts: "Attempts", document: "Document", details: "Details", actions: "" },
+    columns: { order: "Order in the store", operation: "Operation", status: "Status", attempts: "Attempts", document: "Document in Subiekt", details: "Details", actions: "" },
     kinds: { "order.create": "Create ZK", "order.cancel": "Cancel ZK", "order.fulfill": "Issue WZ", "order.document": "Issue sales document" },
     documentKinds: { fs: "Issue FS", pa: "Issue PA" },
     statuses: {
@@ -260,10 +286,10 @@ const en = {
   },
   documents: {
     title: "Documents",
-    subtitle: "Issued by Subiekt for Medusa orders.",
+    subtitle: "What Subiekt issued for your orders: ZK, WZ, invoices and receipts, each next to its order in the store.",
     filters: { all: "All", ZK: "ZK", WZ: "WZ", FS: "FS", PA: "PA" },
     empty: "No documents yet.",
-    columns: { number: "Number", order: "Order", issued: "Issued", source: "Source", status: "Status", ksef: "KSeF number" },
+    columns: { number: "Number", order: "Order in the store", issued: "Issued", source: "Source", status: "Status", ksef: "KSeF number" },
     sources: { bridge: "Medusa", subiekt: "Warehouse", demo: "Demo" },
     statuses: { open: "Open", canceled: "Canceled", completed: "Completed" },
     ksefWaiting: "waiting for KSeF",
@@ -339,6 +365,9 @@ const en = {
     subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
     since: "Since {{date}}",
+    badgeOne: "Running in 1 store",
+    badgeMany: "Running in {{count}} stores",
+    review: "Read the review",
   },
   guide: {
     intro: {
@@ -442,7 +471,7 @@ const en = {
       connection: {
         title: "Check the connection, signatures and clocks",
         body: [
-          "Click Check connection. The Bridge section shows the versions, the nexo SDK and database, the licence, what the bridge can do, the round trip and the clock skew.",
+          "Click Check connection. In Settings (the cog), the Bridge tab shows the versions, the nexo SDK and database, the licence, what the bridge can do, the round trip and the clock skew.",
           "Signatures fail when the secret differs or when the clocks differ by more than 5 minutes. Keep Windows time synchronized (Settings, Time and language, Sync now, or `w32tm /resync` as administrator).",
         ],
         check: "Connected, signatures accepted, clock skew under a minute.",
@@ -469,14 +498,14 @@ const en = {
           "salesDocument auto issues an FS when the order carries a valid NIP and a PA otherwise. The bridge realizes the WZ when there is one (the goods left already) and the ZK otherwise, once per order. KSeF numbers arrive when Subiekt sent the e-invoice; they appear on the order. Receipts are fiscalized in Subiekt, never by the bridge.",
           "For company buyers set the bridge to BuyerMode customer: the ZK goes to the contractor with that NIP. To create missing contractors, set CreateContractors in the bridge, createContractors in Medusa and arm the contractors writer. An invalid NIP (checksum) sends the order to the retail buyer with a warning in the queue.",
         ],
-        check: "Writers section: documents armed, and the test order shows its FS or PA.",
+        check: "Settings, Writers tab: documents armed, and the test order shows its FS or PA.",
       },
       prices: {
         title: "Prices and new products",
         body: [
           "Set priceWriter or createMissingProducts in medusa-config.ts, read the plan, then arm the writer here. Each run applies at most maxPriceChangesPerRun prices and maxProductsPerRun products, reads every item again right before it writes, skips what changed in Medusa meanwhile and quarantines an item that failed three runs in a row. New products are drafts: add images and a sales channel, then publish.",
         ],
-        check: "Writers section: the price writer armed by a person, the plan rows Applied.",
+        check: "Settings, Writers tab: the price writer armed by a person, the plan rows Applied.",
       },
       live: {
         title: "Go live",
@@ -490,16 +519,16 @@ const en = {
       title: "Go-live checklist",
       subtitle: "Ticks come from the live status of this store.",
       items: {
-        reachable: { label: "The bridge answers through the tunnel", hint: "Bridge section: Connected." },
+        reachable: { label: "The bridge answers through the tunnel", hint: "Settings, Bridge tab: Connected." },
         signatures: { label: "Signatures accepted", hint: "Same secret in Medusa and the bridge." },
         clock: { label: "Clock skew under a minute", hint: "Signatures fail beyond 5 minutes." },
         contract: { label: "The bridge speaks contract 1.1", hint: "Bridge 0.2.0 or newer: products, documents, contractors." },
-        subiekt: { label: "Subiekt logs in and the licence accepts it", hint: "Bridge section: nexo licence." },
-        stock: { label: "First stock read without errors", hint: "Stock section." },
+        subiekt: { label: "Subiekt logs in and the licence accepts it", hint: "Settings, Bridge tab: nexo licence." },
+        stock: { label: "First stock read without errors", hint: "Settings, Stock tab." },
         dryRun: { label: "Stock dry run switched off after review", hint: "stockDryRun: false." },
         zk: { label: "First ZK created", hint: "A test order." },
         wz: { label: "A WZ came back from the warehouse", hint: "Issued from the ZK in Subiekt." },
-        writers: { label: "Every allowed writer decided by a person", hint: "Writers section: armed or switched off on purpose." },
+        writers: { label: "Every allowed writer decided by a person", hint: "Settings, Writers tab: armed or switched off on purpose." },
         attention: { label: "Nothing needs attention in the queue", hint: "Queue: Need attention is empty." },
         webhook: { label: "Webhook from the bridge accepted (optional)", hint: "Bridge:Medusa:WebhookUrl." },
       },
@@ -510,7 +539,7 @@ const en = {
         {
           q: "Subiekt not answering: the database is in another version than the SDK",
           a: [
-            "Sfera connects only to a database of exactly its own version. After a Subiekt update the database moves on and the bridge built against the old SDK cannot log in. The Connection section then says \"The nexo database has a different version than the SDK the bridge was built with\", with the SDK version and Sfera's own message; the bridge answers subiekt_unavailable and Medusa keeps retrying, no order is lost.",
+            "Sfera connects only to a database of exactly its own version. After a Subiekt update the database moves on and the bridge built against the old SDK cannot log in. Settings, Connection tab, then says \"The nexo database has a different version than the SDK the bridge was built with\", with the SDK version and Sfera's own message; the bridge answers subiekt_unavailable and Medusa keeps retrying, no order is lost.",
             "Install the nexo SDK of the new version, then run deploy\\upgrade-service.ps1: it rebuilds the bridge against the newest SDK installed. To pin one, pass -NexoSdkBin with its Bin folder.",
           ],
         },
@@ -542,7 +571,7 @@ const en = {
         {
           q: "invalid_signature or stale_timestamp",
           a: [
-            "invalid_signature: the secret differs between Medusa and the bridge. stale_timestamp: the clocks differ by more than 5 minutes. The Bridge section shows the skew. To change the secret without downtime, put the old one in previousSecret (Medusa) and PreviousSecret (bridge) for the switch.",
+            "invalid_signature: the secret differs between Medusa and the bridge. stale_timestamp: the clocks differ by more than 5 minutes. The Bridge tab in Settings shows the skew. To change the secret without downtime, put the old one in previousSecret (Medusa) and PreviousSecret (bridge) for the switch.",
           ],
         },
         {

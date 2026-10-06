@@ -12,6 +12,9 @@ import {
   Pager,
   RunStatusBadge,
   SampleList,
+  StoreColumn,
+  StoreLink,
+  StoreUnlinked,
   fmtDateTime,
   fmtDuration,
   fmtMoney,
@@ -21,9 +24,10 @@ import {
 } from "./subiekt-ui"
 
 /*
- * The 0.2.0 sections of the Subiekt page: what the bridge reported (Bridge),
- * the write switches (Writers) and the plan of products and prices from
- * Subiekt. The page composes them; every string comes from i18n.
+ * The 0.2.0 sections of the Subiekt page: what the bridge reported (Bridge)
+ * and the write switches (Writers), both in Settings, and the plan of
+ * products and prices from Subiekt, in the Panel next to the store products.
+ * The page composes them; every string comes from i18n.
  */
 
 const PAGE_SIZE = 15
@@ -301,6 +305,51 @@ function ChangeCell({ change, lang }: { change: CatalogChangeDto; lang: string }
   )
 }
 
+/**
+ * The Subiekt side of a plan row: the product as Subiekt knows it. A new
+ * product shows its Subiekt name; a price change its symbol, because its
+ * name in the row is the store's and sits in the store cell.
+ */
+function SubiektProductCell({ change: c }: { change: CatalogChangeDto }) {
+  const codes = [c.kind === "create" ? c.symbol : null, c.ean ? `EAN ${c.ean}` : null].filter(Boolean).join(", ")
+  return (
+    <div className="flex min-w-0 flex-col">
+      <Text size="small" className="truncate text-ui-fg-base">
+        {c.kind === "create" ? c.title ?? c.symbol : c.symbol}
+      </Text>
+      {codes ? (
+        <Text size="xsmall" className="truncate font-mono text-ui-fg-muted">
+          {codes}
+        </Text>
+      ) : null}
+    </div>
+  )
+}
+
+/** The store side of a plan row: the product in Medusa, one click away, or why there is none. */
+function StoreProductCell({ change: c }: { change: CatalogChangeDto }) {
+  const { t } = useTranslation("subiekt")
+  if (c.productId) {
+    const code = c.matchedBy === "ean" ? c.ean : c.sku
+    const matched = c.matchedBy && code ? t("products.matchedKey", { by: t(`products.matchedBy.${c.matchedBy}`, { defaultValue: c.matchedBy }), code }) : undefined
+    return (
+      <StoreLink
+        to={`/products/${c.productId}`}
+        title={c.title ?? c.sku ?? c.symbol}
+        mono={c.sku ?? (c.ean ? `EAN ${c.ean}` : null)}
+        monoTitle={matched}
+        action={t("store.openProduct")}
+      />
+    )
+  }
+  if (c.kind === "create" && c.status === "applied") {
+    // The writer created a draft whose SKU is the Subiekt symbol; the plan row keeps no product id, so the link searches the product list by it.
+    return <StoreLink to={`/products?q=${encodeURIComponent(c.symbol)}`} title={c.title ?? c.symbol} mono={c.symbol} monoTitle={t("store.draft")} action={t("store.findProduct")} />
+  }
+  if (c.kind === "create") return <StoreUnlinked label={t("store.notInStore")} hint={t("store.notInStoreHint")} mono={c.symbol} />
+  return <StoreUnlinked label={t("store.noProduct")} mono={c.sku ?? c.symbol} />
+}
+
 export function ProductsSection({ status, lang, poll, onAction }: { status: SubiektStatusResponse; lang: string; poll: boolean; onAction: () => void }) {
   const { t } = useTranslation("subiekt")
   const [kind, setKind] = useState<ProductKind>("all")
@@ -467,7 +516,9 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
             <Table.Row>
               <Table.HeaderCell>{t("products.columns.product")}</Table.HeaderCell>
               <Table.HeaderCell>{t("products.columns.change")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("products.columns.matched")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <StoreColumn label={t("products.columns.store")} hint={t("products.matching")} />
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("products.columns.status")}</Table.HeaderCell>
               <Table.HeaderCell>{t("products.columns.details")}</Table.HeaderCell>
             </Table.Row>
@@ -484,20 +535,15 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
             ) : (
               rows.map((c) => (
                 <Table.Row key={c.id} className="[&_td]:py-2.5">
-                  <Table.Cell className="max-w-xs">
-                    <div className="flex min-w-0 flex-col">
-                      <Text size="small" className="truncate text-ui-fg-base">
-                        {c.title ?? c.symbol}
-                      </Text>
-                      <Text size="xsmall" className="truncate font-mono text-ui-fg-muted">
-                        {[c.symbol, c.sku && c.sku !== c.symbol ? `SKU ${c.sku}` : null, c.ean ? `EAN ${c.ean}` : null].filter(Boolean).join(", ")}
-                      </Text>
-                    </div>
+                  <Table.Cell className="max-w-[240px]">
+                    <SubiektProductCell change={c} />
                   </Table.Cell>
                   <Table.Cell>
                     <ChangeCell change={c} lang={lang} />
                   </Table.Cell>
-                  <Table.Cell>{c.matchedBy ? t(`products.matchedBy.${c.matchedBy}`, { defaultValue: c.matchedBy }) : "-"}</Table.Cell>
+                  <Table.Cell className="max-w-[300px]">
+                    <StoreProductCell change={c} />
+                  </Table.Cell>
                   <Table.Cell>
                     <CatalogStatusBadge status={c.status} />
                   </Table.Cell>

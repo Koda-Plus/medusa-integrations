@@ -6,6 +6,17 @@ const pl: typeof en = {
   subtitle:
     "Zamówienia trafiają do Subiekta nexo PRO jako dokumenty ZK, WZ wystawione w magazynie wraca do zamówienia, dokumenty sprzedaży dostają numer KSeF, a stany i ceny płyną z Subiekta do Medusy.",
   view: { panel: "Panel", guide: "Przewodnik wdrożenia" },
+  settings: {
+    title: "Ustawienia",
+    subtitle: "Techniczna strona integracji: połączenie z mostem i jego diagnostyka, przełączniki zapisu, synchronizacja stanów i historia zadań w tle.",
+    tab: {
+      connection: "Połączenie",
+      bridge: "Most",
+      writers: "Zapisy",
+      stock: "Stany",
+      runs: "Historia",
+    },
+  },
   mode: {
     demo: "Most demo",
     connected: "Połączone",
@@ -47,6 +58,18 @@ const pl: typeof en = {
     zk: "Dokumenty ZK",
     wz: "Dokumenty WZ",
     sales: "FS i PA",
+  },
+  store: {
+    openOrder: "Otwórz zamówienie",
+    openProduct: "Otwórz produkt",
+    findProduct: "Znajdź produkt",
+    orderMatching: "Każdy dokument, który Subiekt wystawia do zamówienia, trzyma w uwagach identyfikator tego zamówienia, jako [medusa:order_...]: po nim dokument znajduje swoje zamówienie.",
+    noOrder: "Bez zamówienia w sklepie",
+    noOrderHint: "Subiekt przysłał ten dokument bez znacznika zamówienia w uwagach, więc nie należy tu do żadnego zamówienia. WZ wpisane ręcznie, a nie wystawione z ZK, nie ma znacznika.",
+    noProduct: "Brak produktu w sklepie",
+    notInStore: "Jeszcze nie w sklepie",
+    notInStoreHint: "Na razie tylko w Subiekcie. Gdy zapis nowych produktów jest włączony, produkt powstaje w sklepie jako szkic.",
+    draft: "Założony w sklepie jako szkic, z tym SKU.",
   },
   connection: {
     title: "Połączenie",
@@ -190,7 +213,9 @@ const pl: typeof en = {
   },
   products: {
     title: "Produkty z Subiekta",
-    subtitle: "Ceny i brakujące produkty, najpierw jako plan. Nic się nie zmienia, dopóki ktoś nie włączy zapisu.",
+    subtitle: "Ceny z Subiekta obok produktów w sklepie, które aktualizują, oraz towary z Subiekta, których sklep jeszcze nie sprzedaje. Najpierw wszystko jest planem: nic się nie zmienia, dopóki ktoś nie włączy zapisu w Ustawieniach.",
+    matching: "Towary z Subiekta są dopasowywane do wariantów w sklepie najpierw po EAN, potem po SKU porównanym z symbolem w Subiekcie. Kod użyty dwa razy to konflikt i nigdy nie jest zgadywany.",
+    matchedKey: "Dopasowane po {{by}}: {{code}}",
     settings: "Ceny z {{level}} ({{type}}) do: {{target}}, w walucie {{currency}}.",
     settingsLevel: "poziomu {{symbol}}",
     settingsTargets: { variant: "ceny wariantów", price_list: "cennik {{id}}" },
@@ -221,7 +246,7 @@ const pl: typeof en = {
       stale: "Zmienione w międzyczasie",
       skipped: "Pominięte",
     },
-    columns: { product: "Produkt", change: "Zmiana", matched: "Dopasowanie", status: "Status", details: "Szczegóły" },
+    columns: { product: "Towar w Subiekcie", change: "Zmiana", store: "Produkt w sklepie", matched: "Dopasowanie", status: "Status", details: "Szczegóły" },
     matchedBy: { ean: "EAN", sku: "SKU" },
     newProduct: "nowy, {{price}}",
     empty: "Nic w tym planie.",
@@ -236,11 +261,12 @@ const pl: typeof en = {
   },
   tasks: {
     title: "Kolejka",
-    subtitle: "Każde wywołanie, które Medusa ma do wykonania w moście, z ponowieniami. Nieudane zadanie czeka na człowieka.",
+    subtitle: "Zamówienia w drodze do Subiekta: każde ZK, WZ, faktura albo paragon, o które poprosił sklep, i jak poszło. Wysyłka, która się nie udała, czeka tu na Ciebie z przyciskiem Wyślij ponownie.",
+    technical: "Każde wywołanie, które Medusa ma do wykonania w moście, z ponowieniami. Nieudane zadanie czeka na człowieka.",
     filters: { attention: "Wymagają uwagi", open: "Otwarte", done: "Zakończone", all: "Wszystkie" },
     search: "Numer zamówienia",
     empty: "Nic tu nie ma.",
-    columns: { order: "Zamówienie", operation: "Operacja", status: "Status", attempts: "Próby", document: "Dokument", details: "Szczegóły", actions: "" },
+    columns: { order: "Zamówienie w sklepie", operation: "Operacja", status: "Status", attempts: "Próby", document: "Dokument w Subiekcie", details: "Szczegóły", actions: "" },
     kinds: { "order.create": "Utwórz ZK", "order.cancel": "Anuluj ZK", "order.fulfill": "Wystaw WZ", "order.document": "Wystaw dokument sprzedaży" },
     documentKinds: { fs: "Wystaw FS", pa: "Wystaw PA" },
     statuses: {
@@ -262,10 +288,10 @@ const pl: typeof en = {
   },
   documents: {
     title: "Dokumenty",
-    subtitle: "Wystawione przez Subiekta dla zamówień z Medusy.",
+    subtitle: "Co Subiekt wystawił do Twoich zamówień: ZK, WZ, faktury i paragony, każdy dokument obok swojego zamówienia w sklepie.",
     filters: { all: "Wszystkie", ZK: "ZK", WZ: "WZ", FS: "FS", PA: "PA" },
     empty: "Jeszcze nie ma dokumentów.",
-    columns: { number: "Numer", order: "Zamówienie", issued: "Wystawiono", source: "Źródło", status: "Status", ksef: "Numer KSeF" },
+    columns: { number: "Numer", order: "Zamówienie w sklepie", issued: "Wystawiono", source: "Źródło", status: "Status", ksef: "Numer KSeF" },
     sources: { bridge: "Medusa", subiekt: "Magazyn", demo: "Demo" },
     statuses: { open: "Otwarty", canceled: "Anulowany", completed: "Zrealizowany" },
     ksefWaiting: "czeka na KSeF",
@@ -341,6 +367,9 @@ const pl: typeof en = {
     subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
     since: "Od {{date}}",
+    badgeOne: "Działa w 1 sklepie",
+    badgeMany: "Działa w {{count}} sklepach",
+    review: "Zobacz opinię",
   },
   guide: {
     intro: {
@@ -444,7 +473,7 @@ const pl: typeof en = {
       connection: {
         title: "Sprawdź połączenie, podpisy i zegary",
         body: [
-          "Kliknij Sprawdź połączenie. Sekcja Most pokazuje wersje, nexo SDK i bazę, licencję, co most obsługuje, czas odpowiedzi i różnicę zegarów.",
+          "Kliknij Sprawdź połączenie. W Ustawieniach (zębatka) zakładka Most pokazuje wersje, nexo SDK i bazę, licencję, co most obsługuje, czas odpowiedzi i różnicę zegarów.",
           "Podpisy zawodzą, gdy sekret jest różny albo gdy zegary różnią się o ponad 5 minut. Trzymaj czas Windows zsynchronizowany (Ustawienia, Czas i język, Synchronizuj teraz, albo `w32tm /resync` jako administrator).",
         ],
         check: "Połączone, podpisy przyjęte, różnica zegarów poniżej minuty.",
@@ -471,14 +500,14 @@ const pl: typeof en = {
           "salesDocument auto wystawia FS, gdy zamówienie niesie poprawny NIP, a w pozostałych przypadkach PA. Most realizuje WZ, jeśli istnieje (towar już wyjechał), a w przeciwnym razie ZK, raz na zamówienie. Numery KSeF przychodzą, gdy Subiekt wyśle e-fakturę; pojawiają się przy zamówieniu. Paragony fiskalizuje Subiekt, nigdy most.",
           "Dla firm ustaw w moście BuyerMode customer: ZK trafia do kontrahenta z tym NIP. Żeby zakładać brakujących kontrahentów, ustaw CreateContractors w moście, createContractors w Medusie i włącz zapis kontrahentów. Niepoprawny NIP (suma kontrolna) kieruje zamówienie do nabywcy detalicznego z ostrzeżeniem w kolejce.",
         ],
-        check: "Sekcja Przełączniki zapisu: dokumenty włączone, a zamówienie testowe pokazuje swoją FS albo PA.",
+        check: "Ustawienia, zakładka Zapisy: dokumenty włączone, a zamówienie testowe pokazuje swoją FS albo PA.",
       },
       prices: {
         title: "Ceny i nowe produkty",
         body: [
           "Ustaw priceWriter albo createMissingProducts w medusa-config.ts, przeczytaj plan, potem włącz zapis tutaj. Każdy przebieg nanosi najwyżej maxPriceChangesPerRun cen i maxProductsPerRun produktów, tuż przed zapisem czyta każdą pozycję ponownie, pomija to, co ktoś w międzyczasie zmienił w Medusie, i wysyła do kwarantanny pozycję, która zawiodła trzy przebiegi z rzędu. Nowe produkty powstają jako szkice: dodaj zdjęcia i kanał sprzedaży, potem opublikuj.",
         ],
-        check: "Sekcja Przełączniki zapisu: zapis cen włączony przez człowieka, wiersze planu Naniesione.",
+        check: "Ustawienia, zakładka Zapisy: zapis cen włączony przez człowieka, wiersze planu Naniesione.",
       },
       live: {
         title: "Start produkcyjny",
@@ -492,16 +521,16 @@ const pl: typeof en = {
       title: "Lista kontrolna przed startem",
       subtitle: "Znaczniki pochodzą z bieżącego stanu tego sklepu.",
       items: {
-        reachable: { label: "Most odpowiada przez tunel", hint: "Sekcja Most: Połączone." },
+        reachable: { label: "Most odpowiada przez tunel", hint: "Ustawienia, zakładka Most: Połączone." },
         signatures: { label: "Podpisy przyjęte", hint: "Ten sam sekret w Medusie i w moście." },
         clock: { label: "Różnica zegarów poniżej minuty", hint: "Powyżej 5 minut podpisy przestają działać." },
         contract: { label: "Most mówi kontraktem 1.1", hint: "Most 0.2.0 lub nowszy: produkty, dokumenty, kontrahenci." },
-        subiekt: { label: "Subiekt się loguje, a licencja to przyjmuje", hint: "Sekcja Most: licencja nexo." },
-        stock: { label: "Pierwszy odczyt stanów bez błędów", hint: "Sekcja Stany." },
+        subiekt: { label: "Subiekt się loguje, a licencja to przyjmuje", hint: "Ustawienia, zakładka Most: licencja nexo." },
+        stock: { label: "Pierwszy odczyt stanów bez błędów", hint: "Ustawienia, zakładka Stany." },
         dryRun: { label: "Próba na sucho dla stanów wyłączona po przeglądzie", hint: "stockDryRun: false." },
         zk: { label: "Pierwsze ZK założone", hint: "Zamówienie testowe." },
         wz: { label: "WZ wróciło z magazynu", hint: "Wystawione z ZK w Subiekcie." },
-        writers: { label: "Każdy dozwolony zapis rozstrzygnięty przez człowieka", hint: "Sekcja Przełączniki zapisu: włączony albo świadomie wyłączony." },
+        writers: { label: "Każdy dozwolony zapis rozstrzygnięty przez człowieka", hint: "Ustawienia, zakładka Zapisy: włączony albo świadomie wyłączony." },
         attention: { label: "Nic w kolejce nie wymaga uwagi", hint: "Kolejka: Wymagają uwagi jest puste." },
         webhook: { label: "Webhook z mostu przyjęty (opcjonalnie)", hint: "Bridge:Medusa:WebhookUrl." },
       },
@@ -512,7 +541,7 @@ const pl: typeof en = {
         {
           q: "Subiekt nie odpowiada: baza jest w innej wersji niż SDK",
           a: [
-            "Sfera łączy się tylko z bazą dokładnie w swojej wersji. Po aktualizacji Subiekta baza idzie naprzód i most zbudowany na starym SDK nie może się zalogować. Sekcja Połączenie pokazuje wtedy „The nexo database has a different version than the SDK the bridge was built with” z wersją SDK i komunikatem samej Sfery; most odpowiada subiekt_unavailable, a Medusa ponawia, więc żadne zamówienie nie ginie.",
+            "Sfera łączy się tylko z bazą dokładnie w swojej wersji. Po aktualizacji Subiekta baza idzie naprzód i most zbudowany na starym SDK nie może się zalogować. Zakładka Połączenie w Ustawieniach pokazuje wtedy „The nexo database has a different version than the SDK the bridge was built with” z wersją SDK i komunikatem samej Sfery; most odpowiada subiekt_unavailable, a Medusa ponawia, więc żadne zamówienie nie ginie.",
             "Zainstaluj nexo SDK w nowej wersji, potem uruchom deploy\\upgrade-service.ps1: przebuduje most na najnowszym zainstalowanym SDK. Żeby wskazać konkretne, podaj -NexoSdkBin z jego folderem Bin.",
           ],
         },
@@ -544,7 +573,7 @@ const pl: typeof en = {
         {
           q: "invalid_signature albo stale_timestamp",
           a: [
-            "invalid_signature: sekret w Medusie i w moście jest różny. stale_timestamp: zegary różnią się o ponad 5 minut. Sekcja Most pokazuje różnicę. Żeby zmienić sekret bez przerwy, na czas zmiany wpisz stary w previousSecret (Medusa) i PreviousSecret (most).",
+            "invalid_signature: sekret w Medusie i w moście jest różny. stale_timestamp: zegary różnią się o ponad 5 minut. Zakładka Most w Ustawieniach pokazuje różnicę. Żeby zmienić sekret bez przerwy, na czas zmiany wpisz stary w previousSecret (Medusa) i PreviousSecret (most).",
           ],
         },
         {

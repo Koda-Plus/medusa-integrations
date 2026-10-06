@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Button, Container, Copy, Heading, InlineTip, Input, StatusBadge, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import type { AllegroOfferFilter, AllegroOrderFilter, AllegroRunDto, AllegroStatusResponse } from "../../../modules/allegro/lib/contract"
+import type {
+  AllegroImportFilter,
+  AllegroIssueFilter,
+  AllegroOfferDto,
+  AllegroOfferFilter,
+  AllegroOrderDto,
+  AllegroOrderFilter,
+  AllegroOrderLineDto,
+  AllegroRunDto,
+  AllegroStatusResponse,
+} from "../../../modules/allegro/lib/contract"
+import { sinceLabel } from "../../../modules/allegro/lib/references"
 import {
   allegroKeys,
   errorMessage,
@@ -18,8 +28,8 @@ import {
   useAllegroStatus,
   useAllegroSync,
 } from "../../lib/allegro-api"
-import { ViewSwitch, usePageView } from "../../lib/allegro-guide"
-import { GuideView, ReferencesBlock } from "../../lib/allegro-guide-view"
+import { ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, usePageNav, type PageNav } from "../../lib/allegro-guide"
+import { GuideView, referencesFor } from "../../lib/allegro-guide-view"
 import { AllegroIcon } from "../../lib/allegro-icon"
 import { ImportsSection } from "../../lib/allegro-imports"
 import { IssuesSection } from "../../lib/allegro-issues"
@@ -28,36 +38,51 @@ import { PlanSection } from "../../lib/allegro-plans"
 import {
   EmptyRow,
   IMPORT_TONE,
-  KeyCell,
+  ImportWhy,
+  NoProduct,
   OfferStatus,
+  OrderLink,
   OrderStatus,
   Pager,
   Pills,
+  ProductLink,
   SectionHeader,
   StatTile,
   StockCell,
+  StoreColumn,
   fmtDateTime,
   fmtDuration,
   fmtMoney,
+  fmtRating,
+  scrollToSection,
   useDebounced,
 } from "../../lib/allegro-ui"
 import { WritersSection } from "../../lib/allegro-writers"
 
 /**
- * Allegro by Koda Plus: device login to the seller account, the offer
- * snapshot linked to products by signature with the stock check, the
- * writers (each allowed in the options and armed here), their plans, the
- * imported orders, parcels and invoices, customer issues and the history.
- * A second view is the setup guide.
+ * Allegro by Koda Plus. Three views, switched in the header and kept in the URL:
+ *
+ * - Panel: the business side. Counters, the offers next to the store products
+ *   they sell, the Allegro orders and their imports next to the store orders
+ *   they became, then the returns and disputes waiting for a reply.
+ * - Setup guide (`?view=guide`).
+ * - Settings (`?view=settings&tab=`), behind the cog: the technical side.
+ *   The Allegro account, the writers, their plans, parcels and invoices sent
+ *   to Allegro and the sync history.
+ *
+ * The demo note and the stores running the integration sit in header badges.
  */
 const PAGE_SIZE = 20
 const ORDERS_PAGE_SIZE = 10
+
+const SETTINGS_TABS = ["account", "writers", "plans", "outbox", "runs"] as const
+type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
 const AllegroPage = () => {
   const { t, i18n } = useTranslation("allegro")
   const lang = i18n.language || "en"
   const client = useQueryClient()
-  const [view, setView] = usePageView()
+  const nav = usePageNav(SETTINGS_TABS)
   const [pollUntil, setPollUntil] = useState(0)
   const status = useAllegroStatus(pollUntil)
   const s = status.data
@@ -72,12 +97,35 @@ const AllegroPage = () => {
 
   const [filter, setFilter] = useState<AllegroOfferFilter>("all")
   const [orderFilter, setOrderFilter] = useState<AllegroOrderFilter>("all")
+  const [importFilter, setImportFilter] = useState<AllegroImportFilter>("all")
+  const [issueFilter, setIssueFilter] = useState<AllegroIssueFilter>("open")
   const poll = () => setPollUntil(Date.now() + 30_000)
+
+  /* Imported and held orders open the order list; without the order journal, the imports. */
+  const openImports = (f: "imported" | "held") => {
+    if (s?.ordersEnabled) {
+      setOrderFilter(f)
+      scrollToSection("allegro-orders")
+    } else {
+      setImportFilter(f)
+      scrollToSection("allegro-imports")
+    }
+  }
+  const importsActive = (f: "imported" | "held") => (s?.ordersEnabled ? orderFilter === f : importFilter === f)
+
+  /* A jump from the panel into Settings also brings the tabs into view, wherever the panel was scrolled. */
+  const openSettings = (tab: SettingsTabId) => {
+    nav.go("settings", tab)
+    scrollToSection("allegro-top")
+  }
+
+  const outboxOpen = s ? s.outbox.shipping.pending + s.outbox.shipping.failed + s.outbox.invoices.pending + s.outbox.invoices.failed : 0
+  const outboxFailed = s ? s.outbox.shipping.failed + s.outbox.invoices.failed : 0
 
   return (
     <div className="flex flex-col gap-y-3">
-      <Container className="divide-y p-0">
-        <Header status={s} loading={status.isLoading} view={view} onView={setView} onSyncStarted={poll} />
+      <Container className="divide-y p-0" id="allegro-top">
+        <Header status={s} loading={status.isLoading} lang={lang} nav={nav} onSyncStarted={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label="Allegro">
@@ -85,8 +133,8 @@ const AllegroPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s ? <Tips status={s} /> : null}
-        {s && view === "panel" ? (
+        {s && nav.view !== "guide" ? <Warnings status={s} /> : null}
+        {s && nav.view === "panel" ? (
           <>
             <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4 xl:grid-cols-8">
               <StatTile label={t("stats.offers")} value={s.counts.offers} active={filter === "all"} onClick={() => setFilter("all")} />
@@ -95,36 +143,83 @@ const AllegroPage = () => {
               <StatTile label={t("stats.stockIssues")} value={s.counts.stockIssues} tone="red" active={filter === "stock"} onClick={() => setFilter("stock")} />
               <StatTile label={t("stats.endedInStock")} value={s.counts.endedInStock} tone="orange" active={filter === "ended_in_stock"} onClick={() => setFilter("ended_in_stock")} />
               <StatTile label={t("stats.unmatched")} value={s.counts.unmatchedLive} tone="red" active={filter === "unmatched"} onClick={() => setFilter("unmatched")} />
-              <StatTile label={t("stats.ordersOpen")} value={s.counts.ordersOpen} tone="blue" active={orderFilter === "open"} onClick={() => setOrderFilter("open")} />
+              <StatTile
+                label={t("stats.ordersOpen")}
+                value={s.counts.ordersOpen}
+                tone="blue"
+                active={s.ordersEnabled && orderFilter === "open"}
+                onClick={
+                  s.ordersEnabled
+                    ? () => {
+                        setOrderFilter("open")
+                        scrollToSection("allegro-orders")
+                      }
+                    : undefined
+                }
+              />
               <StatTile label={t("stats.noKey")} value={s.counts.noKey} active={filter === "nokey"} onClick={() => setFilter("nokey")} />
             </div>
             <div className="grid grid-cols-2 gap-3 px-6 pb-4 md:grid-cols-4">
-              <StatTile label={t("stats.imported")} value={s.imports.imported} tone="green" active={orderFilter === "imported"} onClick={() => setOrderFilter("imported")} />
-              <StatTile label={t("stats.held")} value={s.imports.held} tone="red" active={orderFilter === "held"} onClick={() => setOrderFilter("held")} />
-              <StatTile label={t("stats.outbox")} value={s.outbox.shipping.pending + s.outbox.invoices.pending} tone="blue" />
-              <StatTile label={t("stats.issues")} value={s.issues.needReply} tone="orange" />
+              <StatTile label={t("stats.imported")} value={s.imports.imported} tone="green" active={importsActive("imported")} onClick={() => openImports("imported")} />
+              <StatTile label={t("stats.held")} value={s.imports.held} tone="red" active={importsActive("held")} onClick={() => openImports("held")} />
+              <StatTile
+                label={t("stats.outbox")}
+                value={s.outbox.shipping.pending + s.outbox.invoices.pending}
+                tone="blue"
+                onClick={() => openSettings("outbox")}
+              />
+              <StatTile
+                label={t("stats.issues")}
+                value={s.issues.needReply}
+                tone="orange"
+                active={issueFilter === "needs_reply"}
+                onClick={() => {
+                  setIssueFilter("needs_reply")
+                  scrollToSection("allegro-issues")
+                }}
+              />
             </div>
           </>
         ) : null}
       </Container>
 
-      {s && view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
 
-      {s && view === "panel" ? (
+      {s && nav.view === "panel" ? (
         <>
-          <ReferencesBlock status={s} lang={lang} />
-          <ConnectionSection status={s} lang={lang} />
-          <WritersSection status={s} lang={lang} />
-          <ImportsSection status={s} lang={lang} />
-          <PlanSection kind="stock" status={s} lang={lang} />
           <OffersSection status={s} lang={lang} filter={filter} onFilter={setFilter} />
           {s.ordersEnabled ? <OrdersSection status={s} lang={lang} filter={orderFilter} onFilter={setOrderFilter} /> : null}
-          <OutboxSection status={s} lang={lang} />
-          <IssuesSection status={s} lang={lang} />
-          <PlanSection kind="prices" status={s} lang={lang} />
-          <PlanSection kind="publish" status={s} lang={lang} />
-          <RunsSection lang={lang} />
+          <ImportsSection status={s} lang={lang} filter={importFilter} onFilter={setImportFilter} onOpenWriters={() => openSettings("writers")} />
+          <IssuesSection status={s} lang={lang} filter={issueFilter} onFilter={setIssueFilter} />
         </>
+      ) : null}
+
+      {s && nav.view === "settings" ? (
+        <SettingsView
+          title={t("settings.title")}
+          subtitle={t("settings.subtitle")}
+          value={nav.tab}
+          onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
+          tabs={[
+            { id: "account", label: t("settings.tab.account") },
+            { id: "writers", label: t("settings.tab.writers"), badge: s.writers.filter((w) => w.effective).length, tone: "orange" },
+            { id: "plans", label: t("settings.tab.plans") },
+            { id: "outbox", label: t("settings.tab.outbox"), badge: outboxOpen, tone: outboxFailed > 0 ? "red" : "blue" },
+            { id: "runs", label: t("settings.tab.runs") },
+          ]}
+        >
+          {nav.tab === "account" ? <ConnectionSection status={s} lang={lang} /> : null}
+          {nav.tab === "writers" ? <WritersSection status={s} lang={lang} /> : null}
+          {nav.tab === "plans" ? (
+            <>
+              <PlanSection kind="stock" status={s} lang={lang} />
+              <PlanSection kind="prices" status={s} lang={lang} />
+              <PlanSection kind="publish" status={s} lang={lang} />
+            </>
+          ) : null}
+          {nav.tab === "outbox" ? <OutboxSection status={s} lang={lang} /> : null}
+          {nav.tab === "runs" ? <RunsSection lang={lang} /> : null}
+        </SettingsView>
       ) : null}
     </div>
   )
@@ -144,14 +239,14 @@ function modeBadge(s: AllegroStatusResponse | undefined): { color: "green" | "or
 function Header({
   status,
   loading,
-  view,
-  onView,
+  lang,
+  nav,
   onSyncStarted,
 }: {
   status: AllegroStatusResponse | undefined
   loading: boolean
-  view: "panel" | "guide"
-  onView: (v: "panel" | "guide") => void
+  lang: string
+  nav: PageNav<SettingsTabId>
   onSyncStarted: () => void
 }) {
   const { t } = useTranslation("allegro")
@@ -160,6 +255,7 @@ function Header({
   const canSync = Boolean(status && (status.mode === "demo" || status.connection.connected))
   const running = Boolean(status?.running.offers || status?.running.orders)
   const armed = status?.writers.filter((w) => w.effective).length ?? 0
+  const references = status ? referencesFor(status, lang) : []
 
   const onSync = async () => {
     try {
@@ -173,15 +269,19 @@ function Header({
   }
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
-      <div className="min-w-0">
+    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <AllegroIcon width={24} height={24} className="shrink-0" />
           <Heading level="h1">{t("title")}</Heading>
           <Badge size="2xsmall" color="grey">
             {t("by")}
           </Badge>
-          {!loading ? <StatusBadge color={badge.color}>{t(badge.key)}</StatusBadge> : null}
+          {!loading ? (
+            <ModeBadge color={badge.color} label={t(badge.key)} title={t("demo.label")}>
+              {status?.mode === "demo" ? <span>{t("demo.text")}</span> : null}
+            </ModeBadge>
+          ) : null}
           {status ? (
             <Badge size="2xsmall" color={armed > 0 ? "orange" : "grey"}>
               {armed > 0 ? t("mode.writersArmed", { count: armed }) : t("mode.readOnly")}
@@ -193,13 +293,30 @@ function Header({
             </Badge>
           ) : null}
         </div>
-        <Text size="small" className="mt-1 max-w-3xl text-ui-fg-subtle">
+        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
+        {references.length > 0 ? (
+          <div>
+            <ReferencesBadge
+              items={references}
+              labels={{
+                count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+                title: t("references.title"),
+                subtitle: t("references.subtitle"),
+                open: t("references.open"),
+                review: t("references.review"),
+                since: (since) => sinceLabel(since, lang),
+                rating: (value) => fmtRating(value, lang),
+              }}
+            />
+          </div>
+        ) : null}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-3">
-        <ViewSwitch value={view} onChange={onView} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-        {view === "panel" ? (
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+        <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
+        {nav.view !== "guide" ? (
           <Button size="small" variant="primary" isLoading={sync.isPending || running} disabled={!canSync} onClick={() => void onSync()}>
             <ArrowPath />
             {running ? t("actions.syncing") : t("actions.sync")}
@@ -210,27 +327,17 @@ function Header({
   )
 }
 
-function Tips({ status }: { status: AllegroStatusResponse }) {
+/** Only what needs a person now; the demo note lives in the mode badge. */
+function Warnings({ status }: { status: AllegroStatusResponse }) {
   const { t } = useTranslation("allegro")
-  if (status.mode === "demo") {
-    return (
-      <div className="px-6 py-4">
-        <InlineTip variant="info" label={t("demo.label")}>
-          {t("demo.text")}
-        </InlineTip>
-      </div>
-    )
-  }
-  if (!status.configured) {
-    return (
-      <div className="px-6 py-4">
-        <InlineTip variant="warning" label={t("missing.label")}>
-          {t("missing.text", { missing: status.missing.join(", "), host: status.webHost })}
-        </InlineTip>
-      </div>
-    )
-  }
-  return null
+  if (status.mode === "demo" || status.configured) return null
+  return (
+    <div className="px-6 py-4">
+      <InlineTip variant="warning" label={t("missing.label")}>
+        {t("missing.text", { missing: status.missing.join(", "), host: status.webHost })}
+      </InlineTip>
+    </div>
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -433,7 +540,7 @@ function OffersSection({
   const rows = offers.data?.offers ?? []
 
   return (
-    <Container className="divide-y p-0">
+    <Container className="divide-y p-0" id="allegro-offers">
       <SectionHeader title={t("offers.title")} subtitle={t("offers.subtitle")} />
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
         <Pills filters={FILTERS} value={filter} onChange={onFilter} label={(f) => t(`offers.filter.${f}`)} count={(f) => filterCount(status, f)} />
@@ -450,13 +557,14 @@ function OffersSection({
               <Table.HeaderCell>{t("offers.col.status")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("offers.col.price")}</Table.HeaderCell>
               <Table.HeaderCell>{t("offers.col.stock")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("offers.col.key")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("offers.col.product")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <StoreColumn label={t("offers.col.product")} hint={t("offers.matching")} />
+              </Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow span={6} loading={offers.isLoading} text={t("offers.empty")} />
+              <EmptyRow span={5} loading={offers.isLoading} text={t("offers.empty")} />
             ) : (
               rows.map((o) => (
                 <Table.Row key={o.id} className="[&_td]:py-2.5">
@@ -494,20 +602,8 @@ function OffersSection({
                   <Table.Cell>
                     <StockCell offer={o} />
                   </Table.Cell>
-                  <Table.Cell>
-                    <KeyCell offer={o} />
-                  </Table.Cell>
-                  <Table.Cell className="max-w-[260px]">
-                    {o.productId ? (
-                      <Link to={`/products/${o.productId}`} className="flex flex-col gap-y-0.5 hover:text-ui-fg-interactive">
-                        <span className="txt-compact-small-plus truncate text-ui-fg-base">{o.productTitle ?? o.productId}</span>
-                        <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{o.sku}</span>
-                      </Link>
-                    ) : (
-                      <Text size="small" className="text-ui-fg-muted">
-                        {o.matchKey ? t("offers.noProduct") : ""}
-                      </Text>
-                    )}
+                  <Table.Cell className="max-w-[300px]">
+                    <StoreProductCell offer={o} />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -523,6 +619,29 @@ function OffersSection({
       </div>
     </Container>
   )
+}
+
+/** The signature as the seller typed it on Allegro, or null when the offer has none. */
+function signatureOf(externalId: string | null, matchKey: string | null): string | null {
+  if (!matchKey) return null
+  return externalId?.trim() || matchKey
+}
+
+/** The store side of an offer: its Medusa product, one click away, or why there is none. */
+function StoreProductCell({ offer: o }: { offer: AllegroOfferDto }) {
+  const { t } = useTranslation("allegro")
+  const signature = signatureOf(o.externalId, o.matchKey)
+  if (o.productId) {
+    return (
+      <ProductLink
+        productId={o.productId}
+        title={o.productTitle ?? o.productId}
+        code={o.sku ?? signature}
+        codeTitle={signature ? t("offers.signatureTitle", { signature }) : undefined}
+      />
+    )
+  }
+  return <NoProduct signature={signature} />
 }
 
 /* ------------------------------------------------------------------ */
@@ -557,7 +676,7 @@ function OrdersSection({
   }
 
   return (
-    <Container className="divide-y p-0">
+    <Container className="divide-y p-0" id="allegro-orders">
       <SectionHeader title={t("orders.title")} subtitle={t("orders.subtitle")} />
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
         <Pills filters={ORDER_FILTERS} value={filter} onChange={onFilter} label={(f) => t(`orders.filter.${f}`)} count={(f) => counts[f] ?? null} />
@@ -575,7 +694,9 @@ function OrdersSection({
               <Table.HeaderCell>{t("orders.col.status")}</Table.HeaderCell>
               <Table.HeaderCell>{t("orders.col.lines")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("orders.col.total")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("orders.col.import")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <StoreColumn label={t("orders.col.import")} hint={t("orders.journal")} />
+              </Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -607,50 +728,16 @@ function OrdersSection({
                   <Table.Cell>
                     <OrderStatus order={o} />
                   </Table.Cell>
-                  <Table.Cell className="max-w-[420px]">
-                    <div className="flex flex-col gap-y-1.5">
+                  <Table.Cell className="max-w-[380px]">
+                    <div className="flex flex-col gap-y-2">
                       {o.lines.map((l, i) => (
-                        <div key={`${l.offerId}-${i}`} className="flex flex-col">
-                          <span className="txt-compact-small text-ui-fg-base">
-                            <span className="tabular-nums text-ui-fg-muted">{l.quantity} x </span>
-                            {l.productId ? (
-                              <Link to={`/products/${l.productId}`} className="hover:text-ui-fg-interactive">
-                                {l.productTitle ?? l.offerName}
-                              </Link>
-                            ) : (
-                              <a href={l.offerUrl} target="_blank" rel="noreferrer" className="hover:text-ui-fg-interactive">
-                                {l.offerName}
-                              </a>
-                            )}
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{l.sku ?? l.externalId ?? `#${l.offerId}`}</span>
-                            {l.productId ? null : (
-                              <Badge size="2xsmall" color="red">
-                                {t("orders.noProduct")}
-                              </Badge>
-                            )}
-                          </span>
-                        </div>
+                        <OrderLineCell key={`${l.offerId}-${i}`} line={l} />
                       ))}
                     </div>
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmtMoney(o.total, lang)}</Table.Cell>
-                  <Table.Cell>
-                    {o.import ? (
-                      <div className="flex flex-col items-start gap-y-1" title={o.import.reason ?? undefined}>
-                        <StatusBadge color={IMPORT_TONE[o.import.status] ?? "grey"}>{t(`imports.status.${o.import.status}`)}</StatusBadge>
-                        {o.import.orderId ? (
-                          <Link to={`/orders/${o.import.orderId}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                            {o.import.displayId ? `#${o.import.displayId}` : t("actions.openOrder")}
-                          </Link>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <Text size="xsmall" className="text-ui-fg-muted">
-                        {t("orders.notImported")}
-                      </Text>
-                    )}
+                  <Table.Cell className="max-w-[240px]">
+                    <OrderInStoreCell order={o} />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -660,6 +747,79 @@ function OrdersSection({
       </div>
       <Pager count={orders.data?.count ?? 0} page={page} size={ORDERS_PAGE_SIZE} onPage={setPage} />
     </Container>
+  )
+}
+
+/** One item of an Allegro order: its store product, or the Allegro offer and why it has no product. */
+function OrderLineCell({ line: l }: { line: AllegroOrderLineDto }) {
+  const { t } = useTranslation("allegro")
+  const signature = l.externalId?.trim() || null
+  const quantity = <span className="tabular-nums text-ui-fg-muted">{l.quantity} x </span>
+  if (l.productId) {
+    return (
+      <ProductLink
+        productId={l.productId}
+        title={
+          <>
+            {quantity}
+            {l.productTitle ?? l.offerName}
+          </>
+        }
+        code={l.sku ?? signature}
+        codeTitle={signature ? t("offers.signatureTitle", { signature }) : undefined}
+      />
+    )
+  }
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-y-1">
+      <a
+        href={l.offerUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="txt-compact-small inline-flex max-w-full items-center gap-x-1 text-ui-fg-base hover:text-ui-fg-interactive"
+        title={t("actions.openOffer")}
+      >
+        <span className="truncate">
+          {quantity}
+          {l.offerName}
+        </span>
+        <ArrowUpRightOnBox className="shrink-0 text-ui-fg-muted" />
+      </a>
+      <span className="flex flex-wrap items-center gap-1.5">
+        <Badge size="2xsmall" color="orange">
+          {signature ? t("offers.noProduct") : t("offers.noKey")}
+        </Badge>
+        <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{signature ?? `#${l.offerId}`}</span>
+      </span>
+    </div>
+  )
+}
+
+/** The store side of an Allegro order: the order it became, or why there is none yet. */
+function OrderInStoreCell({ order: o }: { order: AllegroOrderDto }) {
+  const { t } = useTranslation("allegro")
+  const imp = o.import
+  if (!imp) {
+    return (
+      <Text size="xsmall" className="text-ui-fg-muted">
+        {t("orders.notImported")}
+      </Text>
+    )
+  }
+  const state = <StatusBadge color={IMPORT_TONE[imp.status] ?? "grey"}>{t(`imports.status.${imp.status}`)}</StatusBadge>
+  if (imp.orderId) {
+    return (
+      <div className="flex flex-col items-start gap-y-1.5" title={imp.status === "imported" ? undefined : (imp.reason ?? undefined)}>
+        <OrderLink orderId={imp.orderId} displayId={imp.displayId} />
+        {imp.status !== "imported" ? state : null}
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col items-start gap-y-1" title={imp.reason ?? undefined}>
+      {state}
+      <ImportWhy status={imp.status} reasonCode={imp.reasonCode} reason={imp.reason} fallback={false} />
+    </div>
   )
 }
 

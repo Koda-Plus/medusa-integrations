@@ -161,6 +161,16 @@ export interface ReferenceDto {
   since: string | null
   metrics: Array<{ label: LocalizedTextDto; value: string }>
   links: Array<{ label: LocalizedTextDto; url: string }>
+  /** The store's rating of the work and where it was given, e.g. Clutch. */
+  review: {
+    rating: number
+    scale: number
+    source: string
+    url: string | null
+    icon: string | null
+    quote: LocalizedTextDto | null
+    author: string | null
+  } | null
 }
 
 export interface StatusResponse {

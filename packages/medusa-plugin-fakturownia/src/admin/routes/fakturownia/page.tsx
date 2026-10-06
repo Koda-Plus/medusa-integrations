@@ -16,10 +16,10 @@ import {
 } from "../../lib/fakturownia-api"
 import { CorrectionsSection } from "../../lib/fakturownia-corrections"
 import { DocumentDrawer } from "../../lib/fakturownia-document"
-import { References, ViewSwitch, usePageView } from "../../lib/fakturownia-guide"
+import { ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, usePageNav, type PageNav } from "../../lib/fakturownia-guide"
 import { GuideView } from "../../lib/fakturownia-guide-view"
 import { FakturowniaIcon } from "../../lib/fakturownia-icon"
-import { MailboxSection, SummarySection, UnpaidSection, WritersSection } from "../../lib/fakturownia-panels"
+import { DemoDetails, MailboxSection, SummarySection, UnpaidSection, WritersSection } from "../../lib/fakturownia-panels"
 import {
   BuyerWarningText,
   DocumentActions,
@@ -29,33 +29,46 @@ import {
   FilterPills,
   KindBadge,
   KsefBadge,
-  ModeBadge,
-  OrderLink,
+  MedusaMark,
   PaidBadge,
   RunStatusBadge,
   StatTile,
+  StoreOrderCell,
+  connectionState,
   fmtDateTime,
   fmtDuration,
   fmtMoney,
   fmtNumber,
+  fmtRating,
   referencesFor,
   runSummary,
   sinceMonth,
 } from "../../lib/fakturownia-ui"
 
 /**
- * Fakturownia by Koda Plus: the Panel (the connection, the writers, the
- * corrections, the documents with their KSeF and e-mail history, the unpaid
- * documents, the e-mails, the monthly summary, the background runs) and the
- * Setup guide, switched in the header and kept in `?view=guide`.
+ * Fakturownia by Koda Plus. Three views, switched in the header and kept in the URL:
+ *
+ * - Panel: the business side. Counters, the documents next to the store
+ *   orders they belong to (one click to each order), the corrections waiting
+ *   for a person, the unpaid documents with reminders, the monthly summary.
+ * - Setup guide (`?view=guide`).
+ * - Settings (`?view=settings&tab=`), behind the cog: the technical side.
+ *   The Fakturownia account with the options in use, the writers, the e-mails
+ *   and the history of background runs.
+ *
+ * The demo note and the stores running the integration sit in header badges.
+ * The document drawer opens from every list.
  */
 const PAGE_SIZE = 15
+
+const SETTINGS_TABS = ["account", "writers", "mailbox", "runs"] as const
+type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
 const FakturowniaPage = () => {
   const { t, i18n } = useTranslation("fakturownia")
   const lang = i18n.language || "en"
   const client = useQueryClient()
-  const [view, setView] = usePageView()
+  const nav = usePageNav(SETTINGS_TABS)
   const [pollUntil, setPollUntil] = useState(0)
   const status = useFakturowniaStatus(pollUntil)
   const s = status.data
@@ -78,7 +91,7 @@ const FakturowniaPage = () => {
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} view={view} onView={setView} onAction={poll} />
+        <Header status={s} lang={lang} nav={nav} onAction={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -86,25 +99,8 @@ const FakturowniaPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s?.mode === "demo" ? (
-          <div className="px-6 py-4">
-            <InlineTip variant="info" label={t("demo.label")}>
-              <span className="flex flex-col gap-y-1">
-                <span>{t("demo.text")}</span>
-                <span>{t("demo.new")}</span>
-                {s.demoReason === "no_token" ? <span>{t("demo.noToken")}</span> : null}
-              </span>
-            </InlineTip>
-          </div>
-        ) : null}
-        {s && s.mode === "live" && s.missing.length > 0 ? (
-          <div className="px-6 py-4">
-            <InlineTip variant="warning" label={t("missing.label")}>
-              {t("missing.text", { missing: s.missing.join(", ") })}
-            </InlineTip>
-          </div>
-        ) : null}
-        {s && view === "panel" ? (
+        {s ? <Warnings status={s} /> : null}
+        {s && nav.view === "panel" ? (
           <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
             <StatTile label={t("stats.issued24h")} value={fmtNumber(s.counts.issued24h, lang)} tone="green" active={filter === "issued"} onClick={() => setFilter("issued")} />
             <StatTile
@@ -142,27 +138,37 @@ const FakturowniaPage = () => {
         ) : null}
       </Container>
 
-      {s && view === "guide" ? <GuideView status={s} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} /> : null}
 
-      {s && view === "panel" ? (
+      {s && nav.view === "panel" ? (
         <>
-          <References
-            items={referencesFor(s.references, lang)}
-            title={t("references.title")}
-            subtitle={t("references.subtitle")}
-            openLabel={t("references.open")}
-            sinceLabel={(since) => t("references.since", { date: sinceMonth(since, lang) })}
-          />
-          <WritersSection status={s} lang={lang} />
-          <ConnectionSection status={s} lang={lang} />
-          <CorrectionsSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
           <DocumentsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} onAction={poll} onOpen={setOpenDocument} />
+          <CorrectionsSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
           <UnpaidSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
-          <MailboxSection status={s} lang={lang} />
           <SummarySection lang={lang} />
-          <RunsSection lang={lang} poll={polling} />
         </>
       ) : null}
+
+      {s && nav.view === "settings" ? (
+        <SettingsView
+          title={t("settings.title")}
+          subtitle={t("settings.subtitle")}
+          value={nav.tab}
+          onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
+          tabs={[
+            { id: "account", label: t("settings.tab.account") },
+            { id: "writers", label: t("settings.tab.writers"), badge: Object.values(s.writers).filter((w) => w.armed).length, tone: "green" },
+            { id: "mailbox", label: t("settings.tab.mailbox") },
+            { id: "runs", label: t("settings.tab.runs") },
+          ]}
+        >
+          {nav.tab === "account" ? <ConnectionSection status={s} lang={lang} /> : null}
+          {nav.tab === "writers" ? <WritersSection status={s} lang={lang} /> : null}
+          {nav.tab === "mailbox" ? <MailboxSection status={s} lang={lang} /> : null}
+          {nav.tab === "runs" ? <RunsSection lang={lang} poll={polling} /> : null}
+        </SettingsView>
+      ) : null}
+
       {openDocument ? <DocumentDrawer documentId={openDocument} onClose={() => setOpenDocument(null)} /> : null}
     </div>
   )
@@ -170,11 +176,13 @@ const FakturowniaPage = () => {
 
 /* ------------------------------------------------------------------ */
 
-function Header({ status, view, onView, onAction }: { status: StatusResponse | undefined; view: "panel" | "guide"; onView: (v: "panel" | "guide") => void; onAction: () => void }) {
+function Header({ status, lang, nav, onAction }: { status: StatusResponse | undefined; lang: string; nav: PageNav<SettingsTabId>; onAction: () => void }) {
   const { t } = useTranslation("fakturownia")
   const sync = useFakturowniaSync()
   const running = new Set(status?.running ?? [])
   const ready = Boolean(status?.configured)
+  const mode = connectionState(status)
+  const references = status ? referencesFor(status.references, lang) : []
 
   const start = async (what: "issue" | "statuses") => {
     try {
@@ -188,23 +196,46 @@ function Header({ status, view, onView, onAction }: { status: StatusResponse | u
   }
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-start md:justify-between">
-      <div className="flex min-w-0 flex-col gap-y-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-y-2">
+        <div className="flex flex-wrap items-center gap-2">
           <FakturowniaIcon width={24} height={24} className="shrink-0" />
           <Heading level="h1">{t("title")}</Heading>
           <Badge size="2xsmall" color="grey">
             {t("by")}
           </Badge>
-          {status ? <ModeBadge status={status} /> : null}
+          {status ? (
+            <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
+              {status.mode === "demo" ? <DemoDetails status={status} /> : null}
+            </ModeBadge>
+          ) : null}
         </div>
-        <Text size="small" className="max-w-2xl text-ui-fg-subtle">
+        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
+        {references.length > 0 ? (
+          <div>
+            <ReferencesBadge
+              items={references}
+              labels={{
+                count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+                title: t("references.title"),
+                subtitle: t("references.subtitle"),
+                open: t("references.open"),
+                review: t("references.review"),
+                since: (since) => t("references.since", { date: sinceMonth(since, lang) }),
+                rating: (value) => fmtRating(value, lang),
+              }}
+            />
+          </div>
+        ) : null}
       </div>
-      <div className="flex flex-col items-start gap-3 md:items-end">
-        <ViewSwitch value={view} onChange={onView} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-        {view === "panel" ? (
+      <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
+        <div className="flex items-center gap-2">
+          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
+        </div>
+        {nav.view !== "guide" ? (
           <div className="flex flex-wrap gap-2">
             <Button size="small" variant="secondary" disabled={!ready || running.has("statuses")} onClick={() => void start("statuses")}>
               {running.has("statuses") ? t("actions.running") : t("actions.refreshStatuses")}
@@ -216,6 +247,19 @@ function Header({ status, view, onView, onAction }: { status: StatusResponse | u
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/** Only what needs a person now: missing options in live mode. The demo note lives in the mode badge. */
+function Warnings({ status }: { status: StatusResponse }) {
+  const { t } = useTranslation("fakturownia")
+  if (status.mode === "demo" || status.missing.length === 0) return null
+  return (
+    <div className="px-6 py-4">
+      <InlineTip variant="warning" label={t("missing.label")}>
+        {t("missing.text", { missing: status.missing.join(", ") })}
+      </InlineTip>
     </div>
   )
 }
@@ -492,7 +536,12 @@ function DocumentsSection({
         <Table>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>{t("documents.col.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <span className="inline-flex items-center gap-x-1.5" title={t("documents.exactlyOnce")}>
+                  <MedusaMark className="h-3.5 w-3.5 text-ui-fg-muted" />
+                  {t("documents.col.order")}
+                </span>
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("documents.col.kind")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.col.number")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.col.status")}</Table.HeaderCell>
@@ -509,8 +558,8 @@ function DocumentsSection({
             ) : (
               rows.map((d) => (
                 <Table.Row key={d.id} className="[&_td]:py-2.5 align-top">
-                  <Table.Cell>
-                    <OrderLink orderId={d.orderId} displayId={d.displayId} />
+                  <Table.Cell className="max-w-[260px]">
+                    <StoreOrderCell orderId={d.orderId} displayId={d.displayId} />
                   </Table.Cell>
                   <Table.Cell>
                     <div className="flex flex-col items-start gap-y-1">

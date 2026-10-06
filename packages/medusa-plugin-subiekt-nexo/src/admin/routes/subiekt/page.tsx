@@ -16,41 +16,54 @@ import {
   useSubiektSync,
   useSubiektTasks,
 } from "../../lib/subiekt-api"
-import { References, ViewSwitch, usePageView, type PageView } from "../../lib/subiekt-guide"
+import { ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, usePageNav, type PageNav } from "../../lib/subiekt-guide"
 import { GuideView } from "../../lib/subiekt-guide-view"
 import { SubiektIcon } from "../../lib/subiekt-icon"
 import { BridgeSection, ProductsSection, WritersSection } from "../../lib/subiekt-panels"
 import {
+  ConnectionBadge,
   DocumentStatusBadge,
   Field,
   FilterPills,
-  ModeBadge,
-  OrderLink,
   Pager,
   RunStatusBadge,
   SampleList,
   StatTile,
+  StoreColumn,
+  StoreOrderCell,
   TaskStatusBadge,
+  connectionState,
   fmtDateTime,
   fmtDuration,
   fmtNumber,
+  fmtRating,
   monthYear,
   referencesFor,
   runSummary,
 } from "../../lib/subiekt-ui"
 
 /**
- * Subiekt nexo by Koda Plus. Two views in the header switch, kept in the URL
- * (`?view=guide`): the panel (connection, bridge diagnostics, writers, stock,
- * products and prices, the queue, documents, history) and the setup guide.
+ * Subiekt nexo by Koda Plus. Three views, switched in the header and kept in the URL:
+ *
+ * - Panel: the business side. Counters, the queue of orders on their way to
+ *   Subiekt and the documents Subiekt issued, each next to its order in the
+ *   store, then the products and prices from Subiekt next to the store products.
+ * - Setup guide (`?view=guide`).
+ * - Settings (`?view=settings&tab=`), behind the cog: the technical side.
+ *   The connection, the bridge diagnostics, the writers, the stock sync and the history.
+ *
+ * The demo note and the stores running the integration sit in header badges.
  */
 const PAGE_SIZE = 15
+
+const SETTINGS_TABS = ["connection", "bridge", "writers", "stock", "runs"] as const
+type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
 const SubiektPage = () => {
   const { t, i18n } = useTranslation("subiekt")
   const lang = i18n.language || "en"
   const client = useQueryClient()
-  const [view, setView] = usePageView()
+  const nav = usePageNav(SETTINGS_TABS)
   const [pollUntil, setPollUntil] = useState(0)
   const status = useSubiektStatus(pollUntil)
   const s = status.data
@@ -67,12 +80,11 @@ const SubiektPage = () => {
   }, [runKey, client])
 
   const poll = () => setPollUntil(Date.now() + 30_000)
-  const references = s ? referencesFor(s.references, lang) : []
 
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} view={view} onView={setView} onAction={poll} />
+        <Header status={s} loading={status.isLoading} lang={lang} nav={nav} onAction={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -80,30 +92,8 @@ const SubiektPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s?.mode === "demo" && view === "panel" ? (
-          <div className="px-6 py-4">
-            <InlineTip variant="info" label={t("demo.label")}>
-              {t("demo.text")}
-            </InlineTip>
-          </div>
-        ) : null}
-        {s && s.mode === "live" && s.missing.length > 0 ? (
-          <div className="px-6 py-4">
-            <InlineTip variant="warning" label={t("missing.label")}>
-              {t("missing.text", { missing: s.missing.join(", ") })}
-            </InlineTip>
-          </div>
-        ) : null}
-        {s && s.optionWarnings.length > 0
-          ? s.optionWarnings.map((w) => (
-              <div key={w} className="px-6 py-4">
-                <InlineTip variant="warning" label={t("optionWarnings.label")}>
-                  {t(`optionWarnings.${w}`, { defaultValue: w })}
-                </InlineTip>
-              </div>
-            ))
-          : null}
-        {s && view === "panel" ? (
+        {s ? <Warnings status={s} /> : null}
+        {s && nav.view === "panel" ? (
           <div className="grid grid-cols-2 divide-x divide-y md:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
             <StatTile label={t("stats.sent24h")} value={fmtNumber(s.counts.succeeded24h, lang)} />
             <StatTile label={t("stats.waiting")} value={fmtNumber(s.counts.waiting, lang)} tone={s.counts.waiting ? undefined : "muted"} />
@@ -120,51 +110,64 @@ const SubiektPage = () => {
         ) : null}
       </Container>
 
-      {view === "guide" ? (
-        s ? (
-          <GuideView status={s} lang={lang} />
-        ) : null
-      ) : (
+      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+
+      {/* The documents table reads its own endpoint, so it shows even when the status failed, as it always did. */}
+      {nav.view === "panel" ? (
         <>
-          {s ? (
-            <References
-              items={references}
-              title={t("references.title")}
-              subtitle={t("references.subtitle")}
-              openLabel={t("references.open")}
-              sinceLabel={(since) => t("references.since", { date: monthYear(since, lang) })}
-            />
-          ) : null}
-          {s ? (
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-              <ConnectionSection status={s} lang={lang} />
-              <BridgeSection status={s} lang={lang} />
-            </div>
-          ) : null}
-          {s ? (
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-              <WritersSection status={s} lang={lang} />
-              <StockSection run={s.lastRuns.stock ?? null} lang={lang} />
-            </div>
-          ) : null}
-          {s ? <ProductsSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
           {s ? <TasksSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
           <DocumentsSection lang={lang} poll={polling} />
-          <RunsSection lang={lang} poll={polling} />
+          {s ? <ProductsSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
         </>
-      )}
+      ) : null}
+
+      {nav.view === "settings" ? (
+        <SettingsView
+          title={t("settings.title")}
+          subtitle={t("settings.subtitle")}
+          value={nav.tab}
+          onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
+          tabs={[
+            { id: "connection", label: t("settings.tab.connection") },
+            { id: "bridge", label: t("settings.tab.bridge") },
+            { id: "writers", label: t("settings.tab.writers"), badge: s?.writers.filter((w) => w.active).length, tone: "orange" },
+            { id: "stock", label: t("settings.tab.stock"), badge: s?.options.stockDryRun ? t("stock.dryRun") : null, tone: "purple" },
+            { id: "runs", label: t("settings.tab.runs") },
+          ]}
+        >
+          {s && nav.tab === "connection" ? <ConnectionSection status={s} lang={lang} /> : null}
+          {s && nav.tab === "bridge" ? <BridgeSection status={s} lang={lang} /> : null}
+          {s && nav.tab === "writers" ? <WritersSection status={s} lang={lang} /> : null}
+          {s && nav.tab === "stock" ? <StockSection run={s.lastRuns.stock ?? null} lang={lang} /> : null}
+          {nav.tab === "runs" ? <RunsSection lang={lang} poll={polling} /> : null}
+        </SettingsView>
+      ) : null}
     </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
-function Header({ status, view, onView, onAction }: { status: SubiektStatusResponse | undefined; view: PageView; onView: (v: PageView) => void; onAction: () => void }) {
+function Header({
+  status,
+  loading,
+  lang,
+  nav,
+  onAction,
+}: {
+  status: SubiektStatusResponse | undefined
+  loading: boolean
+  lang: string
+  nav: PageNav<SettingsTabId>
+  onAction: () => void
+}) {
   const { t } = useTranslation("subiekt")
   const sync = useSubiektSync()
   const check = useSubiektCheck()
   const ready = Boolean(status && (status.mode === "demo" || status.configured))
   const running = new Set(status?.running ?? [])
+  const state = connectionState(status)
+  const references = status ? referencesFor(status.references, lang) : []
 
   const start = async (what: "stock" | "events") => {
     try {
@@ -188,27 +191,50 @@ function Header({ status, view, onView, onAction }: { status: SubiektStatusRespo
   }
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-start md:justify-between">
-      <div className="flex flex-col gap-y-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-y-2">
+        <div className="flex flex-wrap items-center gap-2">
           <SubiektIcon width={24} height={24} className="shrink-0" />
           <Heading level="h1">{t("title")}</Heading>
-          <Text size="small" className="text-ui-fg-muted">
+          <Badge size="2xsmall" color="grey">
             {t("by")}
-          </Text>
-          <ModeBadge status={status} />
+          </Badge>
+          {!loading ? (
+            <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
+              {status?.mode === "demo" ? <span>{t("demo.text")}</span> : null}
+            </ModeBadge>
+          ) : null}
         </div>
-        <Text size="small" className="max-w-2xl text-ui-fg-subtle">
+        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
+        {references.length > 0 ? (
+          <div>
+            <ReferencesBadge
+              items={references}
+              labels={{
+                count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+                title: t("references.title"),
+                subtitle: t("references.subtitle"),
+                open: t("references.open"),
+                review: t("references.review"),
+                since: (since) => t("references.since", { date: monthYear(since, lang) }),
+                rating: (value) => fmtRating(value, lang),
+              }}
+            />
+          </div>
+        ) : null}
       </div>
-      <div className="flex flex-col items-start gap-3 md:items-end">
-        <ViewSwitch value={view} onChange={onView} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+      <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button size="small" variant="secondary" disabled={!ready} isLoading={check.isPending} onClick={onCheck}>
             {t("actions.check")}
           </Button>
-          {view === "panel" ? (
+          {nav.view !== "guide" ? (
             <>
               <Button size="small" variant="secondary" disabled={!ready || running.has("events")} onClick={() => start("events")}>
                 {running.has("events") ? t("actions.running") : t("actions.events")}
@@ -225,6 +251,29 @@ function Header({ status, view, onView, onAction }: { status: SubiektStatusRespo
   )
 }
 
+/** Only what needs a person now, in every view as before; the demo note lives in the mode badge. */
+function Warnings({ status }: { status: SubiektStatusResponse }) {
+  const { t } = useTranslation("subiekt")
+  return (
+    <>
+      {status.mode === "live" && status.missing.length > 0 ? (
+        <div className="px-6 py-4">
+          <InlineTip variant="warning" label={t("missing.label")}>
+            {t("missing.text", { missing: status.missing.join(", ") })}
+          </InlineTip>
+        </div>
+      ) : null}
+      {status.optionWarnings.map((w) => (
+        <div key={w} className="px-6 py-4">
+          <InlineTip variant="warning" label={t("optionWarnings.label")}>
+            {t(`optionWarnings.${w}`, { defaultValue: w })}
+          </InlineTip>
+        </div>
+      ))}
+    </>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 
 function ConnectionSection({ status, lang }: { status: SubiektStatusResponse; lang: string }) {
@@ -235,7 +284,7 @@ function ConnectionSection({ status, lang }: { status: SubiektStatusResponse; la
     <Container className="divide-y p-0">
       <div className="flex items-center justify-between px-6 py-4">
         <Heading level="h2">{t("connection.title")}</Heading>
-        <ModeBadge status={status} />
+        <ConnectionBadge status={status} />
       </div>
       <div className="py-2">
         <Field label={t("connection.bridge")}>
@@ -453,7 +502,7 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
       <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
         <div>
           <Heading level="h2">{t("tasks.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
+          <Text size="small" className="max-w-3xl text-ui-fg-subtle" title={t("tasks.technical")}>
             {t("tasks.subtitle")}
           </Text>
         </div>
@@ -477,11 +526,13 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
         <Table>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>{t("tasks.columns.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <StoreColumn label={t("tasks.columns.order")} hint={t("store.orderMatching")} />
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("tasks.columns.operation")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("tasks.columns.document")}</Table.HeaderCell>
               <Table.HeaderCell>{t("tasks.columns.status")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("tasks.columns.attempts")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("tasks.columns.document")}</Table.HeaderCell>
               <Table.HeaderCell>{t("tasks.columns.details")}</Table.HeaderCell>
               <Table.HeaderCell />
             </Table.Row>
@@ -498,19 +549,19 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
             ) : (
               rows.map((task) => (
                 <Table.Row key={task.id} className="[&_td]:py-2.5">
-                  <Table.Cell>
-                    <OrderLink orderId={task.orderId} displayId={task.displayId} />
+                  <Table.Cell className="max-w-[260px]">
+                    <StoreOrderCell orderId={task.orderId} displayId={task.displayId} />
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">
                     {task.kind === "order.document" && (task.documentKind === "fs" || task.documentKind === "pa")
                       ? t(`tasks.documentKinds.${task.documentKind}`)
                       : t(`tasks.kinds.${task.kind}`)}
                   </Table.Cell>
+                  <Table.Cell className="whitespace-nowrap font-mono text-xs">{task.documentNumber ?? ""}</Table.Cell>
                   <Table.Cell>
                     <TaskStatusBadge status={task.status} />
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{task.attempts}</Table.Cell>
-                  <Table.Cell className="whitespace-nowrap font-mono text-xs">{task.documentNumber ?? ""}</Table.Cell>
                   <Table.Cell className="max-w-md">
                     <TaskDetails task={task} lang={lang} />
                   </Table.Cell>
@@ -549,7 +600,7 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
       <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
         <div>
           <Heading level="h2">{t("documents.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
+          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
             {t("documents.subtitle")}
           </Text>
         </div>
@@ -564,7 +615,9 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
           <Table.Header>
             <Table.Row>
               <Table.HeaderCell>{t("documents.columns.number")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("documents.columns.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <StoreColumn label={t("documents.columns.order")} hint={t("store.orderMatching")} />
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.issued")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.source")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.ksef")}</Table.HeaderCell>
@@ -587,8 +640,8 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
                     {d.number}
                     {d.related.length > 0 ? <span className="text-ui-fg-muted"> ← {d.related.map((r) => r.number).join(", ")}</span> : null}
                   </Table.Cell>
-                  <Table.Cell>
-                    <OrderLink orderId={d.orderId} displayId={d.displayId} />
+                  <Table.Cell className="max-w-[260px]">
+                    <StoreOrderCell orderId={d.orderId} displayId={d.displayId} />
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDateTime(d.issuedAt, lang)}</Table.Cell>
                   <Table.Cell>{t(`documents.sources.${d.source}`, { defaultValue: d.source })}</Table.Cell>

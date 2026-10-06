@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Table, Text, Textarea, toast } from "@medusajs/ui"
 import type { CorrectionPlanDto, PlanFilter, StatusResponse, WriterDto } from "../../modules/fakturownia/lib/contract"
 import { errorMessage, useFakturowniaCorrections, useFakturowniaPlanAction } from "./fakturownia-api"
-import { DocumentStatusBadge, FilterPills, KindBadge, OrderLink, PlanStatusBadge, WriterBadge, fmtDateTime, fmtDelta, fmtMoney, fmtQuantity } from "./fakturownia-ui"
+import { DocumentStatusBadge, FilterPills, KindBadge, PlanStatusBadge, StoreOrderCell, WriterBadge, fmtDateTime, fmtDelta, fmtMoney, fmtQuantity } from "./fakturownia-ui"
 
 const PAGE = 10
 const FILTERS: PlanFilter[] = ["open", "approved", "issued", "closed", "all"]
@@ -120,18 +120,20 @@ export function PlanCard({
   return (
     <div className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex flex-wrap items-center gap-2">
-          {!compact ? <OrderLink orderId={plan.orderId} displayId={plan.displayId} /> : null}
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("corrections.of")}
-          </Text>
-          <KindBadge kind={plan.documentKind} />
-          <span className="txt-compact-small font-mono">{plan.documentNumber ?? ""}</span>
-          {plan.simulated ? (
-            <Badge size="2xsmall" color="purple">
-              {t("corrections.simulated")}
-            </Badge>
-          ) : null}
+        <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          {!compact ? <StoreOrderCell orderId={plan.orderId} displayId={plan.displayId} /> : null}
+          <span className="flex flex-wrap items-center gap-2">
+            <Text size="small" className="text-ui-fg-subtle">
+              {t("corrections.of")}
+            </Text>
+            <KindBadge kind={plan.documentKind} />
+            <span className="txt-compact-small font-mono">{plan.documentNumber ?? ""}</span>
+            {plan.simulated ? (
+              <Badge size="2xsmall" color="purple">
+                {t("corrections.simulated")}
+              </Badge>
+            ) : null}
+          </span>
         </span>
         <PlanStatusBadge status={plan.status} />
       </div>

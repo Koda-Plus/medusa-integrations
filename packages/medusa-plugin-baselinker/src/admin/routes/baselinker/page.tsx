@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
-import type { CardFilter, CheckResult, OrderFilter, StatusResponse, SyncWhat } from "../../../modules/baselinker/lib/contract"
+import type { CardDto, CardFilter, CheckResult, OrderFilter, StatusResponse, SyncWhat } from "../../../modules/baselinker/lib/contract"
 import {
   baselinkerKeys,
   errorMessage,
@@ -18,10 +18,11 @@ import {
   useBaseLinkerStock,
   useBaseLinkerSync,
 } from "../../lib/baselinker-api"
-import { ViewSwitch, usePageView } from "../../lib/baselinker-guide"
+import { ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, usePageNav, type PageNav } from "../../lib/baselinker-guide"
 import { GuideView } from "../../lib/baselinker-guide-view"
 import { BaseLinkerIcon } from "../../lib/baselinker-icon"
 import {
+  DemoDetails,
   DirectionsSection,
   EmptyRow,
   ImportsSection,
@@ -29,7 +30,6 @@ import {
   PAGE_SIZE,
   Pagination,
   PlanSection,
-  ReferencesBlock,
   ReturnsSection,
   useDebounced,
 } from "../../lib/baselinker-panel"
@@ -38,29 +38,45 @@ import {
   ConflictBadge,
   Fact,
   FilterPills,
-  ModeBadge,
-  OrderLink,
+  MedusaColumn,
   OrderStatusBadge,
   RunStatusBadge,
   StatTile,
+  StoreLink,
+  StoreOrderCell,
+  connectionState,
   fmtDateTime,
   fmtDelta,
   fmtDuration,
   fmtNumber,
+  fmtRating,
+  kitReferences,
   runSummary,
+  sinceDate,
 } from "../../lib/baselinker-ui"
 
 /**
- * BaseLinker by Koda Plus: the Panel (connection, source of truth and
- * writers, the plans, cards, orders both ways, returns, invoice numbers and
- * the history of background runs) and the Setup guide, switched in the
- * header and kept in the URL (`?view=guide`).
+ * BaseLinker by Koda Plus. Three views, switched in the header and kept in the URL:
+ *
+ * - Panel: the business side. Counters, the BaseLinker cards next to the
+ *   store products they are linked to, the store orders sent to BaseLinker,
+ *   the marketplace orders imported into the store and the returns, each row
+ *   with its Medusa product or order one click away.
+ * - Setup guide (`?view=guide`).
+ * - Settings (`?view=settings&tab=`), behind the cog: the technical side.
+ *   Directions and writers, the BaseLinker account, the plans, invoice
+ *   numbers and the sync history.
+ *
+ * The demo note and the stores running the integration sit in header badges.
  */
+const SETTINGS_TABS = ["directions", "account", "plans", "invoices", "runs"] as const
+type SettingsTabId = (typeof SETTINGS_TABS)[number]
+
 const BaseLinkerPage = () => {
   const { t, i18n } = useTranslation("baselinker")
   const lang = i18n.language || "en"
   const client = useQueryClient()
-  const [view, setView] = usePageView()
+  const nav = usePageNav(SETTINGS_TABS)
   const [pollUntil, setPollUntil] = useState(0)
   const status = useBaseLinkerStatus(pollUntil)
   const s = status.data
@@ -82,7 +98,7 @@ const BaseLinkerPage = () => {
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} onAction={poll} view={view} onView={setView} />
+        <Header status={s} lang={lang} nav={nav} onAction={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -90,21 +106,8 @@ const BaseLinkerPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {view === "panel" && s?.mode === "demo" ? (
-          <div className="px-6 py-4">
-            <InlineTip variant="info" label={t("demo.label")}>
-              {t("demo.text")}
-            </InlineTip>
-          </div>
-        ) : null}
-        {s && s.mode === "live" && s.missing.length > 0 ? (
-          <div className="px-6 py-4">
-            <InlineTip variant="warning" label={t("missing.label")}>
-              {t("missing.text", { missing: s.missing.join(", ") })}
-            </InlineTip>
-          </div>
-        ) : null}
-        {s && view === "panel" ? (
+        {s ? <Warnings status={s} /> : null}
+        {s && nav.view === "panel" ? (
           <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4 xl:grid-cols-8">
             <StatTile label={t("stats.cards")} value={fmtNumber(s.counts.cards, lang)} active={cardFilter === "all"} onClick={() => setCardFilter("all")} />
             <StatTile label={t("stats.linked")} value={fmtNumber(s.counts.linked, lang)} tone="green" active={cardFilter === "linked"} onClick={() => setCardFilter("linked")} />
@@ -122,29 +125,55 @@ const BaseLinkerPage = () => {
               onClick={() => setCardFilter("conflicts")}
             />
             <StatTile label={t("stats.onlyInMedusa")} value={fmtNumber(s.counts.onlyInMedusa, lang)} tone={s.counts.onlyInMedusa > 0 ? "orange" : "default"} />
-            <StatTile label={t("stats.stockChanges")} value={fmtNumber(s.counts.stockChanges, lang)} tone={s.counts.stockChanges > 0 ? "orange" : "default"} />
+            <StatTile
+              label={t("stats.stockChanges")}
+              value={fmtNumber(s.counts.stockChanges, lang)}
+              tone={s.counts.stockChanges > 0 ? "orange" : "default"}
+              onClick={s.options.stockSync !== "off" ? () => nav.go("settings", "plans") : undefined}
+            />
             <StatTile label={t("stats.sent24h")} value={fmtNumber(s.counts.ordersSent24h, lang)} tone="green" />
             <StatTile label={t("stats.failed")} value={fmtNumber(s.counts.ordersFailed, lang)} tone={s.counts.ordersFailed > 0 ? "red" : "default"} />
           </div>
         ) : null}
       </Container>
 
-      {s && view === "guide" ? <GuideView status={s} lang={lang} /> : null}
-      {s && view === "panel" ? (
+      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+
+      {s && nav.view === "panel" ? (
         <>
-          <ReferencesBlock status={s} lang={lang} />
-          <DirectionsSection status={s} lang={lang} />
-          <ConnectionSection status={s} lang={lang} />
-          {s.directions.catalog === "baselinker" ? <PlanSection kind="catalog_import" status={s} lang={lang} /> : <PlanSection kind="cards" status={s} lang={lang} />}
-          {s.options.stockSync !== "off" ? s.directions.stock === "medusa" ? <PlanSection kind="stock_push" status={s} lang={lang} /> : <StockSection status={s} lang={lang} /> : null}
-          {s.directions.catalog === "medusa" && s.more.priceGroupId !== null ? <PlanSection kind="prices" status={s} lang={lang} /> : null}
           <CardsSection status={s} lang={lang} filter={cardFilter} onFilter={setCardFilter} />
           <OrdersSection status={s} lang={lang} poll={polling} onAction={poll} />
           <ImportsSection status={s} lang={lang} poll={polling} />
           {s.more.returnsSync || s.counts2.returns > 0 ? <ReturnsSection status={s} lang={lang} /> : null}
-          <InvoicesSection status={s} lang={lang} />
-          <RunsSection lang={lang} poll={polling} />
         </>
+      ) : null}
+
+      {s && nav.view === "settings" ? (
+        <SettingsView
+          title={t("settings.title")}
+          subtitle={t("settings.subtitle")}
+          value={nav.tab}
+          onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
+          tabs={[
+            { id: "directions", label: t("settings.tab.directions"), badge: s.writers.filter((w) => w.live).length, tone: "orange" },
+            { id: "account", label: t("settings.tab.account") },
+            { id: "plans", label: t("settings.tab.plans"), badge: s.counts2.quarantined, tone: "red" },
+            { id: "invoices", label: t("settings.tab.invoices"), badge: s.counts2.invoices.conflict + s.counts2.invoices.failed, tone: "red" },
+            { id: "runs", label: t("settings.tab.runs") },
+          ]}
+        >
+          {nav.tab === "directions" ? <DirectionsSection status={s} lang={lang} /> : null}
+          {nav.tab === "account" ? <ConnectionSection status={s} lang={lang} /> : null}
+          {nav.tab === "plans" ? (
+            <>
+              {s.directions.catalog === "baselinker" ? <PlanSection kind="catalog_import" status={s} lang={lang} /> : <PlanSection kind="cards" status={s} lang={lang} />}
+              {s.options.stockSync !== "off" ? s.directions.stock === "medusa" ? <PlanSection kind="stock_push" status={s} lang={lang} /> : <StockSection status={s} lang={lang} /> : null}
+              {s.directions.catalog === "medusa" && s.more.priceGroupId !== null ? <PlanSection kind="prices" status={s} lang={lang} /> : null}
+            </>
+          ) : null}
+          {nav.tab === "invoices" ? <InvoicesSection status={s} lang={lang} /> : null}
+          {nav.tab === "runs" ? <RunsSection lang={lang} poll={polling} /> : null}
+        </SettingsView>
       ) : null}
     </div>
   )
@@ -154,20 +183,22 @@ const BaseLinkerPage = () => {
 
 function Header({
   status,
+  lang,
+  nav,
   onAction,
-  view,
-  onView,
 }: {
   status: StatusResponse | undefined
+  lang: string
+  nav: PageNav<SettingsTabId>
   onAction: () => void
-  view: "panel" | "guide"
-  onView: (v: "panel" | "guide") => void
 }) {
   const { t } = useTranslation("baselinker")
   const sync = useBaseLinkerSync()
   const running = new Set(status?.running ?? [])
   const f = status?.features
   const f2 = status?.features2
+  const state = connectionState(status)
+  const references = status ? kitReferences(status.references ?? [], lang) : []
 
   const start = async (what: SyncWhat) => {
     try {
@@ -181,24 +212,47 @@ function Header({
   }
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-start md:justify-between">
-      <div className="flex min-w-0 flex-col gap-y-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-y-2">
+        <div className="flex flex-wrap items-center gap-2">
           <BaseLinkerIcon width={24} height={24} className="shrink-0" />
           <Heading level="h1">{t("title")}</Heading>
           <Badge size="2xsmall" color="grey">
             {t("by")}
           </Badge>
-          {status ? <ModeBadge status={status} /> : null}
+          {status ? (
+            <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
+              {status.mode === "demo" ? <DemoDetails status={status} /> : null}
+            </ModeBadge>
+          ) : null}
         </div>
-        <Text size="small" className="max-w-2xl text-ui-fg-subtle">
+        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {t("subtitle")}
         </Text>
+        {references.length > 0 ? (
+          <div>
+            <ReferencesBadge
+              items={references}
+              labels={{
+                count: references.length === 1 ? t("references.badgeOne") : t("references.badgeMany", { count: references.length }),
+                title: t("references.title"),
+                subtitle: t("references.subtitle"),
+                open: t("references.open"),
+                review: t("references.review"),
+                since: (since) => t("references.since", { date: sinceDate(since, lang) }),
+                rating: (value) => fmtRating(value, lang),
+              }}
+            />
+          </div>
+        ) : null}
       </div>
-      <div className="flex flex-col items-start gap-3 md:items-end">
-        <ViewSwitch value={view} onChange={onView} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-        {view === "panel" ? (
-          <div className="flex flex-wrap gap-2 md:justify-end">
+      <div className="flex flex-col items-start gap-3 lg:items-end">
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
+          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
+        </div>
+        {nav.view !== "guide" ? (
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             {f2?.returns ? (
               <Button size="small" variant="secondary" disabled={running.has("returns")} onClick={() => void start("returns")}>
                 {running.has("returns") ? t("actions.running") : t("actions.readReturns")}
@@ -228,6 +282,19 @@ function Header({
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/** Only what needs a person now: the options a live store still misses. The demo note lives in the mode badge. */
+function Warnings({ status }: { status: StatusResponse }) {
+  const { t } = useTranslation("baselinker")
+  if (status.mode !== "live" || status.missing.length === 0) return null
+  return (
+    <div className="px-6 py-4">
+      <InlineTip variant="warning" label={t("missing.label")}>
+        {t("missing.text", { missing: status.missing.join(", ") })}
+      </InlineTip>
     </div>
   )
 }
@@ -598,22 +665,33 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
           <Table.Header>
             <Table.Row>
               <Table.HeaderCell>{t("cards.col.card")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("cards.col.key")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("cards.col.stock")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("cards.col.product")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <MedusaColumn label={t("cards.col.product")} hint={t("cards.matching")} />
+              </Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={4} text={cards.isLoading ? "" : t("cards.empty")} />
+              <EmptyRow cols={3} text={cards.isLoading ? "" : t("cards.empty")} />
             ) : (
               rows.map((c) => (
                 <Table.Row key={c.id} className="[&_td]:py-2.5">
-                  <Table.Cell className="max-w-[340px]">
+                  <Table.Cell className="max-w-[380px]">
                     <div className="flex flex-col gap-y-1">
                       <span className="txt-compact-small-plus truncate text-ui-fg-base">{c.name || "-"}</span>
-                      <span className="flex flex-wrap items-center gap-1.5">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="font-mono text-ui-fg-muted txt-compact-xsmall">#{c.blProductId}</span>
+                        {c.sku ? (
+                          <span className="text-ui-fg-muted txt-compact-xsmall">
+                            {t("cards.source.sku")} <span className="font-mono text-ui-fg-subtle">{c.sku}</span>
+                          </span>
+                        ) : null}
+                        {c.ean ? (
+                          <span className="text-ui-fg-muted txt-compact-xsmall">
+                            {t("cards.source.ean")} <span className="font-mono text-ui-fg-subtle">{c.ean}</span>
+                          </span>
+                        ) : null}
                         {c.parentId ? <span className="text-ui-fg-muted txt-compact-xsmall">{t("cards.variantOf", { id: c.parentId })}</span> : null}
                         {c.isContainer ? (
                           <Badge size="2xsmall" color="blue">
@@ -628,40 +706,11 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
                       </span>
                     </div>
                   </Table.Cell>
-                  <Table.Cell>
-                    {c.sku || c.ean ? (
-                      <div className="flex flex-col items-start gap-y-1">
-                        {c.sku ? <span className="font-mono text-ui-fg-base txt-compact-small">{c.sku}</span> : null}
-                        {c.ean ? <span className="font-mono text-ui-fg-subtle txt-compact-xsmall">{c.ean}</span> : null}
-                        <span className="flex flex-wrap gap-1">
-                          {c.variantId && c.matchSource ? (
-                            <Badge size="2xsmall" color={c.matchSource === "sku" ? "blue" : "purple"}>
-                              {t(`cards.source.${c.matchSource}`)}
-                            </Badge>
-                          ) : null}
-                          {c.conflict ? <ConflictBadge conflict={c.conflict} /> : null}
-                        </span>
-                      </div>
-                    ) : (
-                      <Text size="small" className="text-ui-fg-muted">
-                        {c.isContainer ? "" : t("cards.noKey")}
-                      </Text>
-                    )}
-                  </Table.Cell>
                   <Table.Cell className={c.stock !== null && c.stock < 0 ? "text-right tabular-nums text-ui-tag-red-text" : "text-right tabular-nums"}>
                     {c.stock === null ? "" : fmtNumber(c.stock, lang)}
                   </Table.Cell>
-                  <Table.Cell className="max-w-[280px]">
-                    {c.productId ? (
-                      <Link to={`/products/${c.productId}`} className="flex flex-col gap-y-0.5 hover:text-ui-fg-interactive">
-                        <span className="txt-compact-small-plus truncate text-ui-fg-base">{c.productTitle ?? c.productId}</span>
-                        <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{c.variantSku}</span>
-                      </Link>
-                    ) : (
-                      <Text size="small" className="text-ui-fg-muted">
-                        {c.conflict || c.isContainer ? "" : c.matchKey ? t("cards.noVariant") : ""}
-                      </Text>
-                    )}
+                  <Table.Cell className="max-w-[300px]">
+                    <StoreProductCell card={c} />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -679,6 +728,53 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
         </div>
       ) : null}
     </Container>
+  )
+}
+
+/** The store side of a card: the Medusa product of its variant, one click away, or why there is none. */
+function StoreProductCell({ card: c }: { card: CardDto }) {
+  const { t } = useTranslation("baselinker")
+  const keyTitle = c.matchKey ? `${c.matchKey}${c.matchSource ? ` (${t(`cards.source.${c.matchSource}`)})` : ""}` : undefined
+  if (c.productId) {
+    return (
+      <StoreLink
+        to={`/products/${c.productId}`}
+        name={c.productTitle ?? c.productId}
+        detail={c.variantSku ?? c.matchKey}
+        detailTitle={keyTitle}
+        open={t("actions.openProduct")}
+      />
+    )
+  }
+  if (c.isContainer) {
+    return (
+      <Text size="xsmall" className="text-ui-fg-muted">
+        {t("productWidget.containerNote")}
+      </Text>
+    )
+  }
+  if (c.conflict || c.matchKey) {
+    return (
+      <div className="flex flex-col items-start gap-y-1">
+        {c.conflict ? (
+          <ConflictBadge conflict={c.conflict} />
+        ) : (
+          <Badge size="2xsmall" color="orange">
+            {t("cards.noVariant")}
+          </Badge>
+        )}
+        {c.matchKey ? (
+          <span className="font-mono text-ui-fg-muted txt-compact-xsmall" title={keyTitle}>
+            {c.matchKey}
+          </span>
+        ) : null}
+      </div>
+    )
+  }
+  return (
+    <Text size="small" className="text-ui-fg-muted">
+      {t("cards.noKey")}
+    </Text>
   )
 }
 
@@ -752,9 +848,11 @@ function OrdersSection({ status, lang, poll, onAction }: { status: StatusRespons
         <Table>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>{t("orders.col.order")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("orders.col.status")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <MedusaColumn label={t("orders.col.order")} hint={t("orders.how")} />
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("orders.col.bl")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("orders.col.status")}</Table.HeaderCell>
               <Table.HeaderCell>{t("orders.col.blStatus")}</Table.HeaderCell>
               <Table.HeaderCell>{t("orders.col.tracking")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("orders.col.attempts")}</Table.HeaderCell>
@@ -768,13 +866,13 @@ function OrdersSection({ status, lang, poll, onAction }: { status: StatusRespons
             ) : (
               rows.map((o) => (
                 <Table.Row key={o.id} className="[&_td]:py-2.5">
-                  <Table.Cell>
-                    <OrderLink orderId={o.orderId} displayId={o.displayId} />
+                  <Table.Cell className="max-w-[260px]">
+                    <StoreOrderCell orderId={o.orderId} displayId={o.displayId} />
                   </Table.Cell>
+                  <Table.Cell className="whitespace-nowrap font-mono txt-compact-small">{o.blOrderId ?? ""}</Table.Cell>
                   <Table.Cell>
                     <OrderStatusBadge status={o.status} />
                   </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap font-mono txt-compact-small">{o.blOrderId ?? ""}</Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{o.blStatusName ?? (o.blStatusId !== null ? `#${o.blStatusId}` : "")}</Table.Cell>
                   <Table.Cell className="whitespace-nowrap">
                     {o.trackingNumber ? (

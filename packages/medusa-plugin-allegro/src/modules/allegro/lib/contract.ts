@@ -98,6 +98,16 @@ export interface AllegroReferenceDto {
   since: string | null
   metrics: Array<{ label: AllegroLocalizedText; value: string }>
   links: Array<{ label: AllegroLocalizedText; url: string }>
+  /** The store's rating of the work and where it was given, e.g. Clutch. */
+  review: {
+    rating: number
+    scale: number
+    source: string
+    url: string | null
+    icon: string | null
+    quote: AllegroLocalizedText | null
+    author: string | null
+  } | null
 }
 
 export interface AllegroPlanSummaryDto {

@@ -7,6 +7,16 @@ const en = {
     panel: "Panel",
     guide: "Setup guide",
   },
+  settings: {
+    title: "Settings",
+    subtitle: "The technical side of the integration: the Fakturownia account with the options in use, the writers, the e-mails sent and the history of background runs.",
+    tab: {
+      account: "Fakturownia account",
+      writers: "Writers",
+      mailbox: "E-mails",
+      runs: "History",
+    },
+  },
   mode: {
     demo: "Demo data",
     connected: "Connected",
@@ -54,6 +64,9 @@ const en = {
     subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
     since: "Since {{date}}",
+    badgeOne: "Running in 1 store",
+    badgeMany: "Running in {{count}} stores",
+    review: "Read the review",
   },
   writers: {
     title: "Writes to Fakturownia",
@@ -140,9 +153,9 @@ const en = {
   corrections: {
     title: "Corrections",
     subtitle:
-      "When an issued order changes (a return received, a refund, an order edit, a cancellation), the plugin plans the correction: which positions, before and after, net, VAT and gross. A person approves the plan as it is shown; then the correction invoice is issued once.",
+      "When an order changes after its document was issued (a return, a refund, an order edit, a cancellation), the correction waits here for your decision: the positions before and after, net, VAT and gross. Approve it as shown and the correction invoice is issued once.",
     off: "Corrections are off (corrections: \"off\" in the plugin options): a canceled order's invoice is only flagged, as in 0.1.0.",
-    waitingForWriter: "{{count}} approved correction(s) wait for the corrections writer. Turn it on under Writes to Fakturownia.",
+    waitingForWriter: "{{count}} approved correction(s) wait for the corrections writer. Turn it on in Settings, Writers.",
     search: "Document number or order number",
     filter: {
       open: "To review",
@@ -227,7 +240,7 @@ const en = {
     reasonLabel: "Reason printed on the correction",
     reasonHint: "{{left}} characters left (KSeF takes 256).",
     approveArmed: "The corrections writer is on: the correction goes to Fakturownia within two minutes.",
-    approveNotArmed: "The corrections writer is off: the approved correction waits until someone turns it on under Writes to Fakturownia.",
+    approveNotArmed: "The corrections writer is off: the approved correction waits until someone turns it on in Settings, Writers.",
     approveBlocked: "Corrections are turned off in the plugin options: the approved correction waits until the options allow it.",
     approveRevision: "Revision {{revision}} of the plan.",
     approvedNow: "Approved. The correction goes to Fakturownia now.",
@@ -244,8 +257,10 @@ const en = {
   },
   documents: {
     title: "Documents",
-    subtitle:
+    subtitle: "Every invoice, proforma, receipt and correction issued for your orders, next to the order it belongs to. Click a document number to see its KSeF status, e-mails and corrections.",
+    exactlyOnce:
       "One row per order and kind (corrections: one per change), refused twice by the database itself. A document is looked up in Fakturownia by its order number before it is created; a lost answer is never sent again blindly, it is looked up first.",
+    openOrder: "Open order",
     search: "Document number or order number",
     filter: {
       all: "All",
@@ -258,7 +273,7 @@ const en = {
       canceled: "Canceled",
     },
     col: {
-      order: "Order",
+      order: "Order in the store",
       kind: "Kind",
       number: "Number",
       status: "Status",
@@ -338,7 +353,7 @@ const en = {
     xml: "Download KSeF XML",
     resend: "Send to KSeF again",
     resent: "Sent to KSeF again. The answer comes in a few minutes.",
-    writerOff: "The KSeF writer is off: turn it on under Writes to Fakturownia.",
+    writerOff: "The KSeF writer is off: turn it on in Settings, Writers.",
     writerBlocked: "Sending to KSeF is turned off in the plugin options (writers.ksef: false).",
     hints: {
       status_check_error: "KSeF may have accepted this invoice already (the status check failed). Check it in Fakturownia before sending it again there.",
@@ -365,7 +380,7 @@ const en = {
     remind: "Send a reminder",
     sent: "Fakturownia sent the e-mail.",
     reminded: "The reminder went out.",
-    writerOff: "The e-mails writer is off: turn it on under Writes to Fakturownia.",
+    writerOff: "The e-mails writer is off: turn it on in Settings, Writers.",
     writerBlocked: "E-mails are turned off in the plugin options (writers.emails: false).",
     demo: "Demo mode: the e-mail lands in the simulated mailbox, nothing is sent.",
     notIssued: "A document can be e-mailed once it is issued in Fakturownia.",
@@ -387,7 +402,7 @@ const en = {
   },
   unpaid: {
     title: "Unpaid documents",
-    subtitle: "Proformas and VAT invoices issued at least {{days}} days ago and still unpaid, the oldest first.",
+    subtitle: "Proformas and VAT invoices issued at least {{days}} days ago and still unpaid, the oldest first. A reminder e-mails the document to the buyer again, at most once a day.",
     noApi:
       "Fakturownia's API has no reminder call and no field for the text of an e-mail: a reminder e-mails the document again with the account's e-mail template, at most once a day. For reminders with their own text, use the automatic payment reminders in Fakturownia's settings.",
     reminders: "Reminders",
@@ -592,7 +607,7 @@ const en = {
       },
       check: {
         title: "Check the connection",
-        p1: "Click Check connection in the Panel. It reads the companies of the account (and the category, when categoryId is set); nothing is created or changed.",
+        p1: "Click Check connection in Settings, Fakturownia account. It reads the companies of the account (and the category, when categoryId is set); nothing is created or changed.",
         check: "The check is green and lists your companies.",
       },
       department: {
@@ -643,7 +658,7 @@ const en = {
       },
       writers: {
         title: "Turn on the writers you want",
-        p1: "Corrections, e-mails and KSeF re-sending start off. Turn each one on under Writes to Fakturownia when the team is ready; this page shows who turned it on and when.",
+        p1: "Corrections, e-mails and KSeF re-sending start off. Turn each one on in Settings, Writers, when the team is ready; this page shows who turned it on and when.",
         p2: "A writer set to false in the options stays off whatever happens here: use it to forbid a write on a store for good.",
         check: "Each writer shows On or Off by option, with a name and a date.",
       },

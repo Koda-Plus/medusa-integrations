@@ -2,7 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { issueCounts, issuesFromApi, returnsFromApi, unreadThreads } from "../src/modules/allegro/lib/issues.ts"
 import { catalogMatchFromApi, draftOfferBody, planPublish, validGtin } from "../src/modules/allegro/lib/publish.ts"
-import { normalizeReferences, pickText, sinceLabel } from "../src/modules/allegro/lib/references.ts"
+import { normalizeReferences, normalizeReview, pickText, sinceLabel } from "../src/modules/allegro/lib/references.ts"
 
 test("returns: codes, dates and counts only; a delivered return waits for the seller's refund", () => {
   const rows = returnsFromApi({
@@ -179,4 +179,22 @@ test("references: lenient, https only, both languages, a readable since", () => 
   assert.equal(sinceLabel("2026-04", "pl"), "Od kwietnia 2026")
   assert.equal(sinceLabel("2026-04", "en"), "Since April 2026")
   assert.deepEqual(normalizeReferences(undefined), [])
+})
+
+test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {
+  const review = normalizeReview({ rating: "4,8", source: "Clutch", url: "https://clutch.co/review/1", icon: "javascript:alert(1)", quote: { pl: "Polecam" } })
+  assert.deepEqual(review, { rating: 4.8, scale: 5, source: "Clutch", url: "https://clutch.co/review/1", icon: null, quote: { en: null, pl: "Polecam" }, author: null })
+  assert.equal(normalizeReview({ rating: 9, source: "Clutch" })?.rating, 5)
+  assert.equal(normalizeReview({ rating: 9, scale: 10, source: "Google" })?.scale, 10)
+  assert.equal(normalizeReview({ rating: 5, source: "Clutch", url: "http://clutch.co" })?.url, null)
+  assert.equal(normalizeReview({ rating: 5, source: "Clutch", icon: "data:image/svg+xml;base64,PHN2Zz4=" })?.icon, "data:image/svg+xml;base64,PHN2Zz4=")
+  assert.equal(normalizeReview({ rating: 0, source: "Clutch" }), null)
+  assert.equal(normalizeReview({ rating: 5 }), null)
+  assert.equal(normalizeReview("5 stars"), null)
+  const [withReview, without] = normalizeReferences([
+    { name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch" } },
+    { name: "B", url: "https://b.pl", review: { rating: "great" } },
+  ])
+  assert.equal(withReview.review?.rating, 5)
+  assert.equal(without.review, null)
 })

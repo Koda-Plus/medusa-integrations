@@ -9,6 +9,16 @@ const pl: typeof en = {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
   },
+  settings: {
+    title: "Ustawienia",
+    subtitle: "Techniczna strona integracji: konto Fakturowni z używanymi opcjami, zapisy, wysłane e-maile i historia przebiegów w tle.",
+    tab: {
+      account: "Konto Fakturowni",
+      writers: "Zapisy",
+      mailbox: "E-maile",
+      runs: "Historia",
+    },
+  },
   mode: {
     demo: "Dane demo",
     connected: "Połączone",
@@ -56,6 +66,9 @@ const pl: typeof en = {
     subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
     since: "Od {{date}}",
+    badgeOne: "Działa w 1 sklepie",
+    badgeMany: "Działa w {{count}} sklepach",
+    review: "Zobacz opinię",
   },
   writers: {
     title: "Zapis do Fakturowni",
@@ -142,9 +155,9 @@ const pl: typeof en = {
   corrections: {
     title: "Korekty",
     subtitle:
-      "Gdy wystawione zamówienie się zmienia (przyjęty zwrot, zwrot pieniędzy, edycja zamówienia, anulowanie), wtyczka planuje korektę: które pozycje, stan przed i po, netto, VAT i brutto. Osoba zatwierdza plan dokładnie taki, jaki widzi, a potem faktura korygująca jest wystawiana raz.",
+      "Gdy zamówienie zmieni się po wystawieniu dokumentu (zwrot towaru, zwrot pieniędzy, edycja zamówienia, anulowanie), korekta czeka tutaj na Twoją decyzję: pozycje przed i po, netto, VAT i brutto. Zatwierdź ją taką, jaką widzisz, a faktura korygująca zostanie wystawiona raz.",
     off: "Korekty są wyłączone (corrections: \"off\" w opcjach wtyczki): faktura anulowanego zamówienia jest tylko oznaczana, jak w 0.1.0.",
-    waitingForWriter: "Zatwierdzone korekty czekające na zapis korekt: {{count}}. Włącz go w sekcji Zapis do Fakturowni.",
+    waitingForWriter: "Zatwierdzone korekty czekające na zapis korekt: {{count}}. Włącz go w Ustawieniach, w zakładce Zapisy.",
     search: "Numer dokumentu lub numer zamówienia",
     filter: {
       open: "Do decyzji",
@@ -229,7 +242,7 @@ const pl: typeof en = {
     reasonLabel: "Przyczyna drukowana na korekcie",
     reasonHint: "Zostało znaków: {{left}} (KSeF przyjmuje 256).",
     approveArmed: "Zapis korekt jest włączony: korekta trafi do Fakturowni w ciągu dwóch minut.",
-    approveNotArmed: "Zapis korekt jest wyłączony: zatwierdzona korekta poczeka, aż ktoś go włączy w sekcji Zapis do Fakturowni.",
+    approveNotArmed: "Zapis korekt jest wyłączony: zatwierdzona korekta poczeka, aż ktoś go włączy w Ustawieniach, w zakładce Zapisy.",
     approveBlocked: "Korekty są wyłączone w opcjach wtyczki: zatwierdzona korekta poczeka, aż opcje na to pozwolą.",
     approveRevision: "Wersja planu: {{revision}}.",
     approvedNow: "Zatwierdzono. Korekta trafia teraz do Fakturowni.",
@@ -246,8 +259,10 @@ const pl: typeof en = {
   },
   documents: {
     title: "Dokumenty",
-    subtitle:
+    subtitle: "Faktury, proformy, paragony i korekty wystawione do Twoich zamówień, każdy dokument obok zamówienia, do którego należy. Kliknij numer dokumentu, żeby zobaczyć status KSeF, e-maile i korekty.",
+    exactlyOnce:
       "Jeden wiersz na zamówienie i rodzaj dokumentu (korekty: jedna na zmianę); drugiego takiego samego odmawia sama baza danych. Przed utworzeniem dokument jest szukany w Fakturowni po numerze zamówienia, a zgubiona odpowiedź nigdy nie jest wysyłana ponownie na ślepo: najpierw wyszukanie.",
+    openOrder: "Otwórz zamówienie",
     search: "Numer dokumentu lub numer zamówienia",
     filter: {
       all: "Wszystkie",
@@ -260,7 +275,7 @@ const pl: typeof en = {
       canceled: "Anulowane",
     },
     col: {
-      order: "Zamówienie",
+      order: "Zamówienie w sklepie",
       kind: "Rodzaj",
       number: "Numer",
       status: "Status",
@@ -340,7 +355,7 @@ const pl: typeof en = {
     xml: "Pobierz XML z KSeF",
     resend: "Wyślij do KSeF ponownie",
     resent: "Wysłano do KSeF ponownie. Odpowiedź przyjdzie za kilka minut.",
-    writerOff: "Wysyłka do KSeF jest wyłączona: włącz ją w sekcji Zapis do Fakturowni.",
+    writerOff: "Wysyłka do KSeF jest wyłączona: włącz ją w Ustawieniach, w zakładce Zapisy.",
     writerBlocked: "Wysyłka do KSeF jest zablokowana w opcjach wtyczki (writers.ksef: false).",
     hints: {
       status_check_error: "KSeF mógł już przyjąć tę fakturę (sprawdzenie statusu się nie udało). Sprawdź ją w Fakturowni, zanim wyślesz ją tam ponownie.",
@@ -367,7 +382,7 @@ const pl: typeof en = {
     remind: "Wyślij przypomnienie",
     sent: "Fakturownia wysłała e-mail.",
     reminded: "Przypomnienie wyszło.",
-    writerOff: "Zapis e-maili jest wyłączony: włącz go w sekcji Zapis do Fakturowni.",
+    writerOff: "Zapis e-maili jest wyłączony: włącz go w Ustawieniach, w zakładce Zapisy.",
     writerBlocked: "E-maile są zablokowane w opcjach wtyczki (writers.emails: false).",
     demo: "Tryb demo: e-mail trafia do symulowanej skrzynki, nic nie jest wysyłane.",
     notIssued: "Dokument można wysłać e-mailem, gdy jest wystawiony w Fakturowni.",
@@ -389,7 +404,7 @@ const pl: typeof en = {
   },
   unpaid: {
     title: "Nieopłacone dokumenty",
-    subtitle: "Proformy i faktury VAT wystawione co najmniej {{days}} dni temu i nadal nieopłacone, od najstarszych.",
+    subtitle: "Proformy i faktury VAT wystawione co najmniej {{days}} dni temu i nadal nieopłacone, od najstarszych. Przypomnienie wysyła nabywcy dokument ponownie e-mailem, najwyżej raz dziennie.",
     noApi:
       "API Fakturowni nie ma wywołania przypomnienia ani pola na treść e-maila: przypomnienie wysyła dokument ponownie z szablonem e-maila konta, najwyżej raz dziennie. Przypomnienia z własną treścią ustawisz w automatycznych przypomnieniach o płatności w ustawieniach Fakturowni.",
     reminders: "Przypomnienia",
@@ -594,7 +609,7 @@ const pl: typeof en = {
       },
       check: {
         title: "Sprawdź połączenie",
-        p1: "Kliknij Sprawdź połączenie w Panelu. Odczytuje firmy zapisane na koncie (i kategorię, gdy ustawiono categoryId); nic nie jest tworzone ani zmieniane.",
+        p1: "Kliknij Sprawdź połączenie w Ustawieniach, w zakładce Konto Fakturowni. Odczytuje firmy zapisane na koncie (i kategorię, gdy ustawiono categoryId); nic nie jest tworzone ani zmieniane.",
         check: "Sprawdzenie jest zielone i pokazuje Twoje firmy.",
       },
       department: {
@@ -645,7 +660,7 @@ const pl: typeof en = {
       },
       writers: {
         title: "Włącz zapisy, których potrzebujesz",
-        p1: "Korekty, e-maile i ponowna wysyłka do KSeF startują wyłączone. Włącz każdy w sekcji Zapis do Fakturowni, gdy zespół jest gotowy; ta strona pokazuje, kto go włączył i kiedy.",
+        p1: "Korekty, e-maile i ponowna wysyłka do KSeF startują wyłączone. Włącz każdy w Ustawieniach, w zakładce Zapisy, gdy zespół jest gotowy; ta strona pokazuje, kto go włączył i kiedy.",
         p2: "Zapis ustawiony w opcjach na false zostaje wyłączony bez względu na to, co dzieje się tutaj: tak blokuje się zapis w sklepie na stałe.",
         check: "Każdy zapis pokazuje Włączony albo Zablokowany opcją, z osobą i datą.",
       },

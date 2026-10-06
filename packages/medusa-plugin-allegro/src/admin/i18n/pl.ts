@@ -9,6 +9,17 @@ const pl: typeof en = {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
   },
+  settings: {
+    title: "Ustawienia",
+    subtitle: "Techniczna strona integracji: konto Allegro, zapisy z planami, przesyłki i faktury wysyłane do Allegro oraz historia synchronizacji.",
+    tab: {
+      account: "Konto Allegro",
+      writers: "Zapisy",
+      plans: "Plany",
+      outbox: "Wysyłki i faktury",
+      runs: "Historia synchronizacji",
+    },
+  },
   mode: {
     demo: "Dane demo",
     connected: "Połączone",
@@ -36,6 +47,8 @@ const pl: typeof en = {
     release: "Zwolnij",
     queue: "Dodaj do importu",
     openOrder: "Otwórz zamówienie",
+    openProduct: "Otwórz produkt",
+    openWriters: "Uzbrój w Ustawieniach",
   },
   demo: {
     label: "Tryb demo",
@@ -63,6 +76,9 @@ const pl: typeof en = {
     title: "Działa w sklepach wdrożonych przez Koda Plus",
     subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
+    badgeOne: "Działa w 1 sklepie",
+    badgeMany: "Działa w {{count}} sklepach",
+    review: "Zobacz opinię",
   },
   connection: {
     title: "Konto Allegro",
@@ -280,8 +296,9 @@ const pl: typeof en = {
   },
   imports: {
     title: "Zaimportowane zamówienia",
-    subtitle:
-      "Formularze zakupu z Allegro jako zamówienia w Medusie, dokładnie raz: wiersz dla każdego formularza, zanim cokolwiek się stanie, sprawdzenie w Medusie przed każdym utworzeniem i powód przy każdym wstrzymanym zamówieniu.",
+    subtitle: "Zakupy z Allegro jako zamówienia w Twoim sklepie, każdy dokładnie raz. Wstrzymane zamówienie mówi dlaczego: usuń przyczynę i kliknij Ponów.",
+    how: "Formularze zakupu z Allegro jako zamówienia w Medusie, dokładnie raz: wiersz dla każdego formularza, zanim cokolwiek się stanie, sprawdzenie w Medusie przed każdym utworzeniem i powód przy każdym wstrzymanym zamówieniu.",
+    notArmed: "Import zamówień nie jest uzbrojony, więc zamówienia z Allegro jeszcze nie trafiają do sklepu.",
     target: "Zamówienia trafiają do kanału sprzedaży {{channel}}, region {{region}}.",
     noTarget: "Nie ustalono jeszcze, dokąd trafiają zamówienia.",
     cursor: "Dziennik zdarzeń przeczytany do {{id}} ({{when}}).",
@@ -300,7 +317,7 @@ const pl: typeof en = {
       bought: "Kupione",
       form: "Zamówienie Allegro",
       status: "Status",
-      order: "Zamówienie Medusy",
+      order: "Zamówienie w sklepie",
       payment: "Płatność",
       total: "Razem",
       note: "Uwagi",
@@ -313,6 +330,25 @@ const pl: typeof en = {
       skipped: "Pominięte",
       cancelled: "Anulowane",
       unknown: "Sprawdzamy",
+    },
+    why: {
+      unmapped_lines: "Pozycja bez produktu",
+      currency_mismatch: "Inna waluta niż w regionie",
+      no_address: "Brak adresu dostawy",
+      no_lines: "Brak pozycji",
+      bad_line: "Pozycja bez ceny lub ilości",
+      no_region: "Brak regionu dla zamówień z Allegro",
+      no_channel: "Brak kanału sprzedaży dla zamówień z Allegro",
+      stock: "Za mało na stanie",
+      workflow_error: "Medusa odrzuciła zamówienie",
+      too_many_attempts: "Za dużo nieudanych prób",
+      form_not_found: "Allegro nie zna tego zamówienia",
+      create_failed: "Nie udało się utworzyć zamówienia",
+      fetch_failed: "Allegro nie odpowiedziało",
+      busy: "Właśnie się importuje",
+      not_ready: "Czeka na płatność",
+      never_ready: "Płatność nie została dokończona",
+      cancelled: "Anulowane na Allegro",
     },
     paid: "Opłacone",
     notPaid: "Nieopłacone",
@@ -376,7 +412,7 @@ const pl: typeof en = {
   },
   issues: {
     title: "Sprawy kupujących",
-    subtitle: "Zwroty, dyskusje i reklamacje tak, jak je widzi Allegro, oraz nieprzeczytane wiadomości. Tylko odczyt: odpowiadasz w panelu sprzedawcy.",
+    subtitle: "Zwroty, dyskusje i reklamacje Twoich kupujących z Allegro oraz ich nieprzeczytane wiadomości. Odpowiadasz w panelu sprzedawcy Allegro, linki są poniżej.",
     tiles: {
       returnsOpen: "Otwarte zwroty",
       disputesOpen: "Otwarte dyskusje",
@@ -390,6 +426,10 @@ const pl: typeof en = {
     off: {
       disputes: "Dyskusje i reklamacje są wyłączone (issues.disputes). Ich zakres, allegro:api:disputes, nie ma wersji tylko do odczytu.",
       messages: "Nieprzeczytane wiadomości są wyłączone (issues.messages). Ich zakres, allegro:api:messaging, nie ma wersji tylko do odczytu.",
+    },
+    offShort: {
+      disputes: "Dyskusje i reklamacje nie są śledzone.",
+      messages: "Nieprzeczytane wiadomości nie są liczone.",
     },
     panel: {
       orders: "Zamówienia",
@@ -411,7 +451,7 @@ const pl: typeof en = {
       status: "Status",
       reason: "Powód",
       due: "Termin",
-      order: "Zamówienie",
+      order: "Zamówienie w sklepie",
     },
     kind: {
       return: "Zwrot",
@@ -442,8 +482,9 @@ const pl: typeof en = {
   },
   offers: {
     title: "Oferty",
-    subtitle:
-      "Klucz dopasowania: sygnatura oferty (external.id) porównana z SKU wariantu. Jedna oferta główna na wariant: aktywna wygrywa z aktywowaną, ta ze szkicem, a szkic z zakończoną. Ilość pokazuje Allegro / Medusa.",
+    subtitle: "Oferty z Allegro obok produktów, które sprzedają w sklepie. Przy połączonej ofercie widać jej produkt w Medusie, jeden klik dalej. Ilość pokazuje Allegro / Medusa.",
+    matching:
+      "Klucz dopasowania: sygnatura oferty (external.id) porównana z SKU wariantu. Jedna oferta główna na wariant: aktywna wygrywa z aktywującą się, ta ze szkicem, a szkic z zakończoną.",
     search: "Szukaj: nazwa, SKU, numer oferty",
     filter: {
       all: "Wszystkie",
@@ -460,20 +501,21 @@ const pl: typeof en = {
       status: "Status",
       price: "Cena",
       stock: "Ilość",
-      key: "Sygnatura",
-      product: "Produkt",
+      product: "Produkt w sklepie",
     },
     empty: "Brak ofert w tym widoku.",
     primary: "Główna",
     sample: "Przykład",
-    noProduct: "Brak produktu z tym SKU",
+    noProduct: "Brak produktu z tą sygnaturą",
     noKey: "Bez sygnatury",
+    signatureTitle: "Sygnatura na Allegro: {{signature}}",
     stockNote:
       "Kontrola stanów oznacza różnice; zapis stanów działa na jej podstawie tylko wtedy, gdy jest uzbrojony. Sprzedaż na Allegro, o której Medusa jeszcze nie wie, wygląda jak nadsprzedaż, dlatego import zamówień idzie pierwszy.",
   },
   orders: {
     title: "Zamówienia z Allegro",
-    subtitle: "Dziennik odświeżany co dziesięć minut, z importem każdego zamówienia do Medusy. Sam dziennik nie przechowuje danych kupującego.",
+    subtitle: "Zamówienia złożone na Allegro, ich pozycje i to, czy każde trafiło już do Twojego sklepu.",
+    journal: "Dziennik odświeżany co dziesięć minut, z importem każdego zamówienia do Medusy. Sam dziennik nie przechowuje danych kupującego.",
     search: "Szukaj: numer zamówienia, sposób dostawy",
     filter: {
       all: "Wszystkie",
@@ -490,7 +532,7 @@ const pl: typeof en = {
       status: "Status",
       lines: "Pozycje",
       total: "Razem",
-      import: "W Medusie",
+      import: "Zamówienie w sklepie",
     },
     group: {
       open: "Do wysyłki",
@@ -509,8 +551,8 @@ const pl: typeof en = {
       RETURNED: "Zwrócone",
     },
     empty: "Brak zamówień w tym widoku.",
-    noProduct: "Brak produktu",
     notImported: "Nie zaimportowano",
+    inStore: "Zamówienie w sklepie",
   },
   runs: {
     title: "Historia",
@@ -647,7 +689,7 @@ const pl: typeof en = {
       connect: {
         title: "Połącz konto sprzedawcy kodem",
         body: [
-          "Kliknij Połącz konto Allegro w Panelu. Strona pokaże krótki kod i otworzy allegro.pl/skojarz-aplikacje; sprzedawca, zalogowany na Allegro, wpisuje kod i zatwierdza. Strona zauważy to w kilka sekund.",
+          "Otwórz Ustawienia (zębatka w nagłówku strony) i w zakładce Konto Allegro kliknij Połącz konto Allegro. Strona pokaże krótki kod i otworzy allegro.pl/skojarz-aplikacje; sprzedawca, zalogowany na Allegro, wpisuje kod i zatwierdza. Strona zauważy to w kilka sekund.",
           "Token dostępu żyje 12 godzin, a refresh token 3 miesiące. Oba odświeżają się same, jeden proces naraz, także przy osobnym serwerze i workerze.",
         ],
         check: "Oznaczenie pokazuje Połączone, a pod kontem widać przyznane zakresy.",
@@ -680,7 +722,7 @@ const pl: typeof en = {
         title: "Pozwól na potrzebne zapisy i połącz ponownie",
         body: [
           "W writes ustaw true tylko dla zapisów, których będziesz używać. Logowanie kodem prosi tylko o zakresy dozwolonych zapisów, więc po zmianie writes kliknij Połącz ponownie: sprzedawca zatwierdzi szerszą zgodę (allegro:api:sale:offers:write dla stanów, cen i szkiców, allegro:api:orders:write dla przesyłek i faktur).",
-          "Pozwolenie to jeszcze nie uzbrojenie: dozwolony zapis nic nie robi, dopóki człowiek nie uzbroi go w Panelu.",
+          "Pozwolenie to jeszcze nie uzbrojenie: dozwolony zapis nic nie robi, dopóki człowiek nie uzbroi go w Ustawieniach, w zakładce Zapisy.",
         ],
         check: "Pod kontem nie ma ostrzeżenia Połącz ponownie.",
       },

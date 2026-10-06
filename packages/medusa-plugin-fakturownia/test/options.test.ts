@@ -12,6 +12,7 @@ import {
   parseTaxValue,
   resolveOptions,
 } from "../src/modules/fakturownia/lib/options.ts"
+import { normalizeReview, resolveReferences } from "../src/modules/fakturownia/lib/references.ts"
 
 test("defaults: the final document at payment capture, VAT 23, Polish, 7 days, marked paid, no e-mail", () => {
   const o = resolveOptions({ apiToken: "t0ken-long-enough", account: "mojafirma" })
@@ -134,6 +135,26 @@ test("account: the full address works, anything that is not a subdomain is refus
 test("oid prefix: whitespace removed, at most 20 characters", () => {
   assert.equal(resolveOptions({ oidPrefix: " M 2026- " }).oidPrefix, "M2026-")
   assert.equal(resolveOptions({ oidPrefix: "x".repeat(30) }).oidPrefix.length, 20)
+})
+
+test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {
+  const review = normalizeReview({ rating: "4,8", source: "Clutch", url: "https://clutch.co/review/1", icon: "javascript:alert(1)", quote: { pl: "Polecam" } })
+  assert.deepEqual(review, { rating: 4.8, scale: 5, source: "Clutch", url: "https://clutch.co/review/1", icon: null, quote: { en: null, pl: "Polecam" }, author: null })
+  assert.equal(normalizeReview({ rating: 9, source: "Clutch" })?.rating, 5)
+  assert.equal(normalizeReview({ rating: 9, scale: 10, source: "Google" })?.scale, 10)
+  assert.equal(normalizeReview({ rating: 5, source: "Clutch", url: "http://clutch.co" })?.url, null)
+  assert.equal(normalizeReview({ rating: 0, source: "Clutch" }), null)
+  assert.equal(normalizeReview({ rating: 5 }), null)
+  assert.equal(normalizeReview("5 stars"), null)
+  const [withReview, without] = resolveReferences([
+    { name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch" } },
+    { name: "B", url: "https://b.pl", review: { rating: "great" } },
+  ])
+  assert.equal(withReview.review?.rating, 5)
+  assert.equal(without.review, null)
+  const fromOptions = resolveOptions({ references: [{ name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch", author: "Jan" } }] }).references
+  assert.equal(fromOptions[0].review?.source, "Clutch")
+  assert.equal(fromOptions[0].review?.author, "Jan")
 })
 
 test("dates: the Polish calendar day, also when UTC still says yesterday", () => {

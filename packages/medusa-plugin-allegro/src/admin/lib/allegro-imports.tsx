@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Container, InlineTip, Input, Label, StatusBadge, Table, Text, toast } from "@medusajs/ui"
 import type { AllegroImportFilter, AllegroImportRunResponse, AllegroStatusResponse } from "../../modules/allegro/lib/contract"
 import { errorMessage, useAllegroImportRetry, useAllegroImportRun, useAllegroImportWindow, useAllegroImports } from "./allegro-api"
-import { EmptyRow, IMPORT_TONE, Pager, Pills, SectionHeader, fmtDateTime, fmtMoney, shortId, useDebounced } from "./allegro-ui"
+import { EmptyRow, IMPORT_TONE, ImportWhy, OrderLink, Pager, Pills, SectionHeader, StoreColumn, fmtDateTime, fmtMoney, shortId, useDebounced } from "./allegro-ui"
 
 const PAGE = 10
 const FILTERS: AllegroImportFilter[] = ["all", "imported", "held", "pending", "attention", "skipped", "cancelled"]
@@ -13,9 +12,26 @@ function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-export function ImportsSection({ status, lang }: { status: AllegroStatusResponse; lang: string }) {
+/**
+ * Allegro purchases as orders of the store: each row next to the store order
+ * it became, or why there is none yet. The filter lives on the page, so the
+ * counters above can open the held or the imported ones.
+ */
+export function ImportsSection({
+  status,
+  lang,
+  filter,
+  onFilter,
+  onOpenWriters,
+}: {
+  status: AllegroStatusResponse
+  lang: string
+  filter: AllegroImportFilter
+  onFilter: (f: AllegroImportFilter) => void
+  /** Opens the writers in Settings, where the order import is armed. */
+  onOpenWriters?: () => void
+}) {
   const { t } = useTranslation("allegro")
-  const [filter, setFilter] = useState<AllegroImportFilter>("all")
   const [search, setSearch] = useState("")
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
@@ -84,7 +100,7 @@ export function ImportsSection({ status, lang }: { status: AllegroStatusResponse
 
   const rows = imports.data?.imports ?? []
   return (
-    <Container className="divide-y p-0">
+    <Container className="divide-y p-0" id="allegro-imports">
       <SectionHeader
         title={t("imports.title")}
         subtitle={t("imports.subtitle")}
@@ -115,9 +131,16 @@ export function ImportsSection({ status, lang }: { status: AllegroStatusResponse
           </Text>
         ))}
         {!armed ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("plans.notArmed")}
-          </Text>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Text size="xsmall" className="text-ui-fg-muted">
+              {t("imports.notArmed")}
+            </Text>
+            {onOpenWriters ? (
+              <button type="button" onClick={onOpenWriters} className="txt-compact-xsmall-plus text-ui-fg-interactive transition-fg hover:text-ui-fg-interactive-hover">
+                {t("actions.openWriters")}
+              </button>
+            ) : null}
+          </span>
         ) : null}
       </div>
       {preview ? (
@@ -152,7 +175,7 @@ export function ImportsSection({ status, lang }: { status: AllegroStatusResponse
         </div>
       ) : null}
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <Pills filters={FILTERS} value={filter} onChange={setFilter} label={(f) => t(`imports.filter.${f}`)} count={(f) => counts[f] ?? null} />
+        <Pills filters={FILTERS} value={filter} onChange={onFilter} label={(f) => t(`imports.filter.${f}`)} count={(f) => counts[f] ?? null} />
         <div className="w-full lg:w-64">
           <Input size="small" type="search" placeholder={t("orders.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -164,7 +187,9 @@ export function ImportsSection({ status, lang }: { status: AllegroStatusResponse
               <Table.HeaderCell>{t("imports.col.bought")}</Table.HeaderCell>
               <Table.HeaderCell>{t("imports.col.form")}</Table.HeaderCell>
               <Table.HeaderCell>{t("imports.col.status")}</Table.HeaderCell>
-              <Table.HeaderCell>{t("imports.col.order")}</Table.HeaderCell>
+              <Table.HeaderCell>
+                <StoreColumn label={t("imports.col.order")} hint={t("imports.how")} />
+              </Table.HeaderCell>
               <Table.HeaderCell>{t("imports.col.payment")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("imports.col.total")}</Table.HeaderCell>
               <Table.HeaderCell>{t("imports.col.note")}</Table.HeaderCell>
@@ -192,12 +217,8 @@ export function ImportsSection({ status, lang }: { status: AllegroStatusResponse
                   <Table.Cell>
                     <StatusBadge color={IMPORT_TONE[r.status] ?? "grey"}>{t(`imports.status.${r.status}`)}</StatusBadge>
                   </Table.Cell>
-                  <Table.Cell>
-                    {r.orderId ? (
-                      <Link to={`/orders/${r.orderId}`} className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                        {r.displayId ? `#${r.displayId}` : t("actions.openOrder")}
-                      </Link>
-                    ) : null}
+                  <Table.Cell className="max-w-[240px]">
+                    {r.orderId ? <OrderLink orderId={r.orderId} displayId={r.displayId} /> : <ImportWhy status={r.status} reasonCode={r.reasonCode} reason={r.reason} />}
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">
                     {r.paymentType ? (

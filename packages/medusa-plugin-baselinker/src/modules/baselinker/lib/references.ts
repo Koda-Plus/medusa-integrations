@@ -21,12 +21,39 @@ export interface ReferenceInput {
   since?: string
   metrics?: Array<{ label: LocalizedInput; value: string }>
   links?: Array<{ label: LocalizedInput; url: string }>
+  /** The store's rating of the work, with where it was given: `{ rating: 5, source: "Clutch", url, icon }`. */
+  review?: {
+    rating: number
+    /** 5 when left out. */
+    scale?: number
+    source: string
+    url?: string
+    icon?: string
+    /** Only with the client's consent to quote them. */
+    quote?: LocalizedInput
+    author?: string
+  }
 }
 
 /** Both languages, each optional; the admin falls back to the other one. */
 export interface LocalizedText {
   en?: string
   pl?: string
+}
+
+/** A rating of the work at the store, on a review platform such as Clutch. */
+export interface ReferenceReview {
+  /** 0 to `scale`, one decimal. */
+  rating: number
+  scale: number
+  /** Who rated, e.g. "Clutch". */
+  source: string
+  /** The review itself (https). */
+  url: string | null
+  /** The source's mark: a data URI or an https URL. */
+  icon: string | null
+  quote: LocalizedText | null
+  author: string | null
 }
 
 export interface ResolvedReference {
@@ -38,6 +65,7 @@ export interface ResolvedReference {
   since: string | null
   metrics: Array<{ label: LocalizedText; value: string }>
   links: Array<{ label: LocalizedText; url: string }>
+  review: ReferenceReview | null
 }
 
 const MAX_REFERENCES = 12
@@ -91,6 +119,27 @@ export function referenceIcon(value: unknown): string | null {
   return httpsUrl(s)
 }
 
+/** A rating with a positive value and a source, or null. The rating never exceeds its scale. */
+export function normalizeReview(value: unknown): ReferenceReview | null {
+  if (!value || typeof value !== "object") return null
+  const v = value as Record<string, unknown>
+  const scaleRaw = Number(v.scale ?? 5)
+  const scale = Number.isFinite(scaleRaw) && scaleRaw >= 1 && scaleRaw <= 10 ? Math.round(scaleRaw) : 5
+  const ratingRaw = typeof v.rating === "string" ? Number(v.rating.replace(",", ".")) : Number(v.rating)
+  if (!Number.isFinite(ratingRaw) || ratingRaw <= 0) return null
+  const source = clean(v.source, 40)
+  if (!source) return null
+  return {
+    rating: Math.round(Math.min(ratingRaw, scale) * 10) / 10,
+    scale,
+    source,
+    url: httpsUrl(v.url),
+    icon: referenceIcon(v.icon),
+    quote: localized(v.quote, 600),
+    author: clean(v.author, 80),
+  }
+}
+
 export function resolveReferences(value: unknown): ResolvedReference[] {
   if (!Array.isArray(value)) return []
   const out: ResolvedReference[] = []
@@ -119,7 +168,16 @@ export function resolveReferences(value: unknown): ResolvedReference[] {
       })
       .filter((l): l is { label: LocalizedText; url: string } => l !== null)
       .slice(0, MAX_ITEMS)
-    out.push({ name, url, icon: referenceIcon(r.icon), description: localized(r.description, 400), since: sinceMonth(r.since), metrics, links })
+    out.push({
+      name,
+      url,
+      icon: referenceIcon(r.icon),
+      description: localized(r.description, 400),
+      since: sinceMonth(r.since),
+      metrics,
+      links,
+      review: normalizeReview(r.review),
+    })
   }
   return out
 }

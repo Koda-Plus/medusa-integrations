@@ -563,7 +563,7 @@ const pl: typeof en = {
       },
       connect: {
         title: "Połącz konto OLX",
-        body1: "W panelu kliknij „Połącz konto OLX”. Sprzedawca, zalogowany w OLX, zatwierdza dostęp na stronie zgody; link jest ważny 15 minut, a kod autoryzacji zwrócony przez OLX 10 minut.",
+        body1: "W Ustawieniach (zębatka w nagłówku), w zakładce Konto OLX kliknij „Połącz konto OLX”. Sprzedawca, zalogowany w OLX, zatwierdza dostęp na stronie zgody; link jest ważny 15 minut, a kod autoryzacji zwrócony przez OLX 10 minut.",
         body2: "Zgoda obejmuje odczyt, a zapis wtedy, gdy opcje dopuszczają któryś zapis. Tokeny są przechowywane zaszyfrowane. Token dostępu żyje dobę, refresh token miesiąc; oba odnawia cogodzinna synchronizacja.",
         check: "Odznaka pokazuje Połączone. Jeśli dopuściłeś zapis, przyznany zakres obejmuje write.",
       },
@@ -585,7 +585,7 @@ const pl: typeof en = {
       },
       writers: {
         title: "Uzbrajaj zapisy pojedynczo, po przebiegu próbnym",
-        body1: "Dla każdego potrzebnego zapisu: dopuść go w opcjach, połącz konto ponownie dla zakresu zapisu, kliknij „Przebieg próbny” i przeczytaj każdą pozycję, potem „Uzbrój”. Zacznij od cyklu życia ogłoszeń.",
+        body1: "Dla każdego potrzebnego zapisu: dopuść go w opcjach, połącz konto ponownie dla zakresu zapisu, a potem w Ustawieniach, w zakładce Zapisy kliknij „Przebieg próbny”, przeczytaj każdą pozycję i kliknij „Uzbrój”. Zacznij od cyklu życia ogłoszeń.",
         body2: "Każdy przebieg wykonuje najwyżej swój limit. Trzy porażki z rzędu wysyłają pozycję do kwarantanny, dopóki jej nie zwolnisz. Niejasna odpowiedź jest sprawdzana na OLX, zanim cokolwiek pójdzie ponownie. Plan cyklu życia, który zakończyłby ponad ćwierć aktywnych ogłoszeń, czeka na Ciebie.",
         check: "Karta zapisu pokazuje „Uzbrojony”, Twoje nazwisko i godzinę.",
       },
@@ -659,7 +659,7 @@ const pl: typeof en = {
       },
       price: {
         q: "Zmiana ceny się nie udała",
-        a: "Aktualizacja zastępuje całe ogłoszenie, więc OLX sprawdza je od nowa: odrzucić ją może atrybut, którego kategoria wymaga dopiero teraz, albo zasada tekstu. Po trzech porażkach pozycja trafia do kwarantanny. Popraw ogłoszenie na OLX, a potem zwolnij pozycję w Planach.",
+        a: "Aktualizacja zastępuje całe ogłoszenie, więc OLX sprawdza je od nowa: odrzucić ją może atrybut, którego kategoria wymaga dopiero teraz, albo zasada tekstu. Po trzech porażkach pozycja trafia do kwarantanny. Popraw ogłoszenie na OLX, a potem zwolnij pozycję w Ustawieniach, w zakładce Plany.",
       },
       unknown: {
         q: "Pozycja ma stan „niejasne”",

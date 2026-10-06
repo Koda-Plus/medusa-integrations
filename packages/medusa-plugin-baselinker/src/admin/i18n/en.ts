@@ -7,6 +7,17 @@ const en = {
     panel: "Panel",
     guide: "Setup guide",
   },
+  settings: {
+    title: "Settings",
+    subtitle: "The technical side of the integration: the directions with their writers, the BaseLinker account, the plans, invoice numbers and the sync history.",
+    tab: {
+      directions: "Directions",
+      account: "BaseLinker account",
+      plans: "Plans",
+      invoices: "Invoice numbers",
+      runs: "Sync history",
+    },
+  },
   mode: {
     demo: "Demo data",
     connected: "Connected",
@@ -25,6 +36,8 @@ const en = {
     track: "Track parcel",
     importOrders: "Import orders now",
     readReturns: "Read returns",
+    openProduct: "Open product",
+    openOrder: "Open order",
   },
   demo: {
     label: "Demo mode",
@@ -32,7 +45,7 @@ const en = {
   },
   missing: {
     label: "Configuration",
-    text: "Missing plugin options: {{missing}}. The token is in BaseLinker under My account, API; catalog, warehouse and status ids come from the connection check below or from getInventories and getOrderStatusList.",
+    text: "Missing plugin options: {{missing}}. The token is in BaseLinker under My account, API; catalog, warehouse and status ids come from the connection check in Settings (the BaseLinker account tab) or from getInventories and getOrderStatusList.",
   },
   stats: {
     cards: "BaseLinker cards",
@@ -140,8 +153,9 @@ const en = {
   },
   cards: {
     title: "Cards",
-    subtitle:
-      "Every card of the BaseLinker catalog and the variant it is linked to. SKU first, then EAN, unique on both sides; duplicates are reported and never linked. Main cards with variants are shown, their variants are linked. Nothing is created or imported here: that is the job of armed writers.",
+    subtitle: "Product cards of your BaseLinker catalog next to the store products they are linked to. A linked card shows its product in Medusa, one click away.",
+    matching:
+      "Matching key: SKU first, then EAN, unique on both sides; duplicates are reported and never linked. Main cards with variants are shown, their variants are linked. Nothing is created or imported here: that is the job of armed writers.",
     search: "Search name, SKU, EAN or card id",
     filter: {
       all: "All",
@@ -152,9 +166,8 @@ const en = {
     },
     col: {
       card: "Card",
-      key: "SKU / EAN",
       stock: "BaseLinker stock",
-      product: "Medusa product",
+      product: "Product in the store",
     },
     conflict: {
       duplicate_sku: "SKU on several cards",
@@ -175,7 +188,8 @@ const en = {
   orders: {
     title: "Orders to BaseLinker",
     subtitle:
-      "Every placed order goes out once: a marker in admin_comments lets the plugin find an order BaseLinker already has before it writes. Failures retry with backoff, then wait here.",
+      "Orders placed in your store, each sent to BaseLinker once, with the status and parcel number it received there. An order that could not be sent waits here with the reason.",
+    how: "Every placed order goes out once: a marker in admin_comments lets the plugin find an order BaseLinker already has before it writes. Failures retry with backoff, then wait here.",
     search: "Order number or BaseLinker id",
     filter: {
       all: "All",
@@ -185,7 +199,7 @@ const en = {
       skipped: "Skipped",
     },
     col: {
-      order: "Order",
+      order: "Order in the store",
       status: "Status",
       bl: "BaseLinker order",
       blStatus: "BaseLinker status",
@@ -307,6 +321,9 @@ const en = {
     subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
     since: "Since {{date}}",
+    badgeOne: "Running in 1 store",
+    badgeMany: "Running in {{count}} stores",
+    review: "Read the review",
   },
   directions: {
     title: "Source of truth and writers",
@@ -491,8 +508,8 @@ const en = {
   },
   imports: {
     title: "Marketplace orders from BaseLinker",
-    subtitle:
-      "Orders of the chosen sources (Allegro, Amazon, eBay, Erli...) that BaseLinker collected. Found every 5 minutes; turned into Medusa orders, exactly once each, only while the order import writer is armed. Our own orders sent to BaseLinker never come back.",
+    subtitle: "Marketplace orders (Allegro, Amazon, eBay, Erli and others) that BaseLinker collected, next to the store orders they became.",
+    how: "Found every 5 minutes; turned into Medusa orders, exactly once each, only while the order import writer is armed. Our own orders sent to BaseLinker never come back.",
     waiting: "{{count}} order(s) wait for the order import writer.",
     off: "Order import is off: set orderImportSources to import marketplace orders.",
     emailNote:
@@ -508,11 +525,16 @@ const en = {
     col: {
       order: "BaseLinker order",
       source: "Source",
-      medusa: "Medusa order",
+      medusa: "Order in the store",
       total: "Total",
       payment: "Payment",
       blStatus: "BaseLinker status",
       details: "Details",
+    },
+    noOrder: {
+      pending: "Waiting for import",
+      skipped: "Skipped, not imported",
+      failed: "Import failed",
     },
     statuses: {
       pending: "Waiting",
@@ -537,18 +559,19 @@ const en = {
   },
   returns: {
     title: "Returns",
-    subtitle: "The BaseLinker return manager, read only, linked to the Medusa order when the order is one this plugin sent or imported. No buyer data is stored.",
+    subtitle: "Returns from the BaseLinker return manager, next to the store order they belong to.",
+    how: "Read only. A return is linked to the store order when this plugin sent or imported that order. No buyer data is stored.",
     off: "Returns are off (returnsSync: false).",
     col: {
       return: "Return",
-      order: "Order",
+      order: "Order in the store",
       source: "Source",
       status: "Status",
       items: "Items",
       refunded: "Refunded",
       created: "Created",
     },
-    noOrder: "not ours",
+    noOrder: "Not a store order",
     empty: "No returns in the last {{days}} days.",
     search: "Return id, BaseLinker order or order number",
   },
@@ -635,7 +658,7 @@ const en = {
         title: "Create the API token",
         body: "In BaseLinker open Account & other, My account, then the API tab, and generate a token named after this store. Copy it once and keep it on the server: the plugin masks it in every log, error and screen.",
         link: "BaseLinker API documentation",
-        check: "Check connection on the Panel says the token works.",
+        check: "Check connection (Settings, BaseLinker account) says the token works.",
       },
       options: {
         title: "Configure the plugin",
@@ -664,7 +687,7 @@ const en = {
       },
       dryRun: {
         title: "Read the plans (dry run)",
-        body: "Sync cards now reads BaseLinker and makes every plan of the directions in force: catalog import or card plan, stock plan, price plan. Nothing is written. Read them on the Panel, item by item and field by field.",
+        body: "Sync cards now reads BaseLinker and makes every plan of the directions in force: catalog import or card plan, stock plan, price plan. Nothing is written. Read them in Settings, under Plans, item by item and field by field.",
         check: "Each plan you need shows its last run in the History.",
       },
       arm: {

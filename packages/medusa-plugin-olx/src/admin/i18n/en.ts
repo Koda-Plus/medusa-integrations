@@ -561,7 +561,7 @@ const en = {
       },
       connect: {
         title: "Connect the OLX account",
-        body1: "On the Panel click Connect OLX account. The seller, logged in to OLX, approves access on the consent page; the link is valid 15 minutes and the authorization code OLX returns 10 minutes.",
+        body1: "In Settings (the cog in the header), on the OLX account tab, click Connect OLX account. The seller, logged in to OLX, approves access on the consent page; the link is valid 15 minutes and the authorization code OLX returns 10 minutes.",
         body2: "The consent asks for read access, plus write access when a writer is allowed in the options. Tokens are stored encrypted. The access token lives 24 hours and the refresh token one month; the hourly sync renews both.",
         check: "The badge says Connected. If you allowed a writer, the granted scope includes write.",
       },
@@ -583,7 +583,7 @@ const en = {
       },
       writers: {
         title: "Arm writers one at a time, after a dry run",
-        body1: "For each writer you want: allow it in the options, connect the account again for the write scope, click Dry run and read every line, then Arm. Start with the lifecycle writer.",
+        body1: "For each writer you want: allow it in the options, connect the account again for the write scope, then in Settings, on the Writers tab, click Dry run and read every line, then Arm. Start with the lifecycle writer.",
         body2: "Every run applies at most its cap. Three failures in a row quarantine an item until you release it. An unclear answer is looked up on OLX before anything is sent again. A lifecycle plan that would end more than a quarter of the live adverts is held for you.",
         check: "The writer card says Armed, with your name and the time.",
       },
@@ -657,7 +657,7 @@ const en = {
       },
       price: {
         q: "A price update failed",
-        a: "An update replaces the whole advert, so OLX checks it again: an attribute the category requires now, or a text rule, can fail it. After three failures the item is quarantined. Fix the advert on OLX, then release it on the Plans tab.",
+        a: "An update replaces the whole advert, so OLX checks it again: an attribute the category requires now, or a text rule, can fail it. After three failures the item is quarantined. Fix the advert on OLX, then release it in Settings, on the Plans tab.",
       },
       unknown: {
         q: "An item says \"unclear\"",
