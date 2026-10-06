@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { resolveOptions, wantsWriteScope } from "../src/modules/olx/lib/options.ts"
-import { fmtMonth, normalizeReferences, pickText, validSince } from "../src/modules/olx/lib/references.ts"
+import { fmtMonth, normalizeReferences, normalizeReview, pickText, validSince } from "../src/modules/olx/lib/references.ts"
 
 test("writers: off by default in live mode, on in demo mode, explicit false always wins", () => {
   const live = resolveOptions({ clientId: "x" })
@@ -89,6 +89,23 @@ test("references: entries without a name or an https URL are dropped, parts are 
   assert.deepEqual(normalizeReferences("nope"), [])
   assert.deepEqual(normalizeReferences(undefined), [])
   assert.equal(resolveOptions({ references: [{ name: "A", url: "https://a.pl" }] }).references.length, 1)
+})
+
+test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {
+  const review = normalizeReview({ rating: "4,8", source: "Clutch", url: "https://clutch.co/review/1", icon: "javascript:alert(1)", quote: { pl: "Polecam" } })
+  assert.deepEqual(review, { rating: 4.8, scale: 5, source: "Clutch", url: "https://clutch.co/review/1", icon: null, quote: { pl: "Polecam" }, author: null })
+  assert.equal(normalizeReview({ rating: 9, source: "Clutch" })?.rating, 5)
+  assert.equal(normalizeReview({ rating: 9, scale: 10, source: "Google" })?.scale, 10)
+  assert.equal(normalizeReview({ rating: 5, source: "Clutch", url: "http://clutch.co" })?.url, null)
+  assert.equal(normalizeReview({ rating: 0, source: "Clutch" }), null)
+  assert.equal(normalizeReview({ rating: 5 }), null)
+  assert.equal(normalizeReview("5 stars"), null)
+  const [withReview, without] = normalizeReferences([
+    { name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch" } },
+    { name: "B", url: "https://b.pl", review: { rating: "great" } },
+  ])
+  assert.equal(withReview.review?.rating, 5)
+  assert.equal(without.review, null)
 })
 
 test("references: the admin language with a fallback to the other one", () => {

@@ -89,10 +89,10 @@ export function ActivityCounters({ status, lang, onAlert }: { status: OlxStatusR
 }
 
 /* ------------------------------------------------------------------ */
-/* Demo note                                                           */
+/* Demo note, shown in the popover of the mode badge                   */
 /* ------------------------------------------------------------------ */
 
-export function SimulationNote({ status }: { status: OlxStatusResponse }) {
+export function DemoDetails({ status }: { status: OlxStatusResponse }) {
   const { t } = useTranslation("olx")
   const prompt = usePrompt()
   const reset = useOlxDemoReset()
@@ -115,29 +115,25 @@ export function SimulationNote({ status }: { status: OlxStatusResponse }) {
     }
   }
   return (
-    <div className="flex flex-col gap-3 px-6 py-4">
-      <InlineTip variant="info" label={t("demo.label")}>
-        <span className="flex flex-col gap-y-2">
-          <span>{t("demo.text")}</span>
-          {sim ? (
-            <span className="text-ui-fg-muted">
-              {t("demo.simulated", {
-                soldOut: list(sim.soldOut),
-                unpublished: list(sim.unpublished),
-                paused: list(sim.paused),
-                missing: sim.missingAttribute ?? t("demo.none"),
-              })}
-            </span>
-          ) : null}
+    <>
+      <span>{t("demo.text")}</span>
+      {sim ? (
+        <span className="text-ui-fg-muted">
+          {t("demo.simulated", {
+            soldOut: list(sim.soldOut),
+            unpublished: list(sim.unpublished),
+            paused: list(sim.paused),
+            missing: sim.missingAttribute ?? t("demo.none"),
+          })}
         </span>
-      </InlineTip>
+      ) : null}
       <div>
         <Button size="small" variant="secondary" isLoading={reset.isPending} onClick={() => void onReset()}>
           <ArrowPath />
           {t("demo.reset")}
         </Button>
       </div>
-    </div>
+    </>
   )
 }
 

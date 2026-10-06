@@ -9,6 +9,17 @@ const pl: typeof en = {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
   },
+  settings: {
+    title: "Ustawienia",
+    subtitle: "Techniczna strona integracji: konto OLX, alerty, zapisy z planami i historia synchronizacji.",
+    tab: {
+      account: "Konto OLX",
+      alerts: "Alerty",
+      writers: "Zapisy",
+      plans: "Plany",
+      runs: "Historia synchronizacji",
+    },
+  },
   mode: {
     demo: "Dane demo",
     connected: "Połączone",
@@ -65,6 +76,9 @@ const pl: typeof en = {
     subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
     open: "Otwórz sklep",
     since: "Od {{date}}",
+    badgeOne: "Działa w 1 sklepie",
+    badgeMany: "Działa w {{count}} sklepach",
+    review: "Zobacz opinię",
   },
   connection: {
     title: "Konto OLX",
@@ -377,7 +391,9 @@ const pl: typeof en = {
   },
   adverts: {
     title: "Ogłoszenia",
-    subtitle: "Klucz dopasowania: najpierw external_id, potem wiersz z SKU w opisie. Jedno ogłoszenie główne na wariant: aktywne wygrywa z ponad limitem, a to z zakończonym.",
+    subtitle: "Ogłoszenia z OLX obok produktów, które sprzedają w sklepie. Przy połączonym ogłoszeniu widać jego produkt w Medusie, jeden klik dalej.",
+    matching: "Klucz dopasowania: najpierw external_id, potem wiersz z SKU w opisie. Jedno ogłoszenie główne na wariant: aktywne wygrywa z ponad limitem, a to z zakończonym.",
+    openProduct: "Otwórz produkt",
     statsLine: "Statystyki aktywnych ogłoszeń: {{count}}, odświeżane co godzinę, każde ogłoszenie najwyżej co 6 godzin. Najstarsze: {{when}}.",
     statsNone: "Statystyki nie zostały jeszcze odczytane.",
     search: "Szukaj: tytuł, SKU, numer",
@@ -394,7 +410,7 @@ const pl: typeof en = {
       status: "Status",
       price: "Cena",
       key: "Klucz",
-      product: "Produkt",
+      product: "Produkt w sklepie",
       stats: "Wyświetlenia, telefon, obserwujący",
     },
     empty: "Brak ogłoszeń w tym widoku.",

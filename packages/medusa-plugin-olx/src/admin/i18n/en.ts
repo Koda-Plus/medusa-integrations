@@ -7,6 +7,17 @@ const en = {
     panel: "Panel",
     guide: "Setup guide",
   },
+  settings: {
+    title: "Settings",
+    subtitle: "The technical side of the integration: the OLX account, alerts, writers with their plans and the sync history.",
+    tab: {
+      account: "OLX account",
+      alerts: "Alerts",
+      writers: "Writers",
+      plans: "Plans",
+      runs: "Sync history",
+    },
+  },
   mode: {
     demo: "Demo data",
     connected: "Connected",
@@ -63,6 +74,9 @@ const en = {
     subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
     open: "Open the store",
     since: "Since {{date}}",
+    badgeOne: "Running in 1 store",
+    badgeMany: "Running in {{count}} stores",
+    review: "Read the review",
   },
   connection: {
     title: "OLX account",
@@ -375,7 +389,9 @@ const en = {
   },
   adverts: {
     title: "Adverts",
-    subtitle: "Matching key: external_id first, then the SKU line in the description. One primary advert per variant: live beats over the limit beats ended.",
+    subtitle: "Your OLX adverts next to the store products they sell. A linked advert shows its product in Medusa, one click away.",
+    matching: "Matching key: external_id first, then the SKU line in the description. One primary advert per variant: live beats over the limit beats ended.",
+    openProduct: "Open product",
     statsLine: "Statistics of {{count}} live adverts, refreshed every hour, each advert at most every 6 hours. Oldest: {{when}}.",
     statsNone: "Statistics have not been read yet.",
     search: "Search title, SKU or advert id",
@@ -392,7 +408,7 @@ const en = {
       status: "Status",
       price: "Price",
       key: "Key",
-      product: "Product",
+      product: "Product in the store",
       stats: "Views, phone, observers",
     },
     empty: "No adverts in this view.",
