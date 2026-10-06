@@ -18,7 +18,7 @@ import {
   useBaseLinkerStock,
   useBaseLinkerSync,
 } from "../../lib/baselinker-api"
-import { AddStoreButton, HelpButtons, ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, communityLabels, usePageNav, type PageNav } from "../../lib/baselinker-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/baselinker-guide"
 import { GuideView, usePromptSpec } from "../../lib/baselinker-guide-view"
 import { BaseLinkerIcon } from "../../lib/baselinker-icon"
 import {
@@ -213,25 +213,38 @@ function Header({
     }
   }
 
+  const panel = nav.view !== "guide"
+  /* One main action (the card sync); the order runs, statuses and returns wait under "More actions". */
+  const step = (what: SyncWhat, label: string, enabled = true): HeaderAction => ({
+    key: what,
+    label: running.has(what) ? t("actions.running") : label,
+    disabled: !enabled || running.has(what),
+    onClick: () => void start(what),
+  })
+  const more: HeaderAction[] = panel
+    ? [
+        step("orders", t("actions.sendQueue"), Boolean(f?.orders)),
+        ...(f2?.orderImport ? [step("imports", t("actions.importOrders"))] : []),
+        step("statuses", t("actions.syncStatuses"), Boolean(f?.statuses)),
+        ...(f2?.returns ? [step("returns", t("actions.readReturns"))] : []),
+      ]
+    : []
+
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex min-w-0 flex-col gap-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <BaseLinkerIcon width={24} height={24} className="shrink-0" />
-          <Heading level="h1">{t("title")}</Heading>
-          <Badge size="2xsmall" color="grey">
-            {t("by")}
-          </Badge>
-          {status ? (
-            <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
-              {status.mode === "demo" ? <DemoDetails status={status} /> : null}
-            </ModeBadge>
-          ) : null}
-        </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("subtitle")}
-        </Text>
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+    <IntegrationHeader
+      icon={<BaseLinkerIcon width={28} height={28} />}
+      title={t("title")}
+      by={t("by")}
+      badges={
+        status ? (
+          <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
+            {status.mode === "demo" ? <DemoDetails status={status} /> : null}
+          </ModeBadge>
+        ) : null
+      }
+      description={t("subtitle")}
+      social={
+        <>
           <ReferencesBadge
             items={references}
             labels={{
@@ -245,46 +258,26 @@ function Header({
             }}
           />
           <AddStoreButton labels={community.addStore} />
-        </div>
-      </div>
-      <div className="flex flex-col items-start gap-3 lg:items-end">
-        <div className="flex flex-wrap items-center gap-2">
-          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
-        </div>
-        {nav.view !== "guide" ? (
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            {f2?.returns ? (
-              <Button size="small" variant="secondary" disabled={running.has("returns")} onClick={() => void start("returns")}>
-                {running.has("returns") ? t("actions.running") : t("actions.readReturns")}
-              </Button>
-            ) : null}
-            {f2?.orderImport ? (
-              <Button size="small" variant="secondary" disabled={running.has("imports")} onClick={() => void start("imports")}>
-                {running.has("imports") ? t("actions.running") : t("actions.importOrders")}
-              </Button>
-            ) : null}
-            <Button size="small" variant="secondary" disabled={!f?.statuses || running.has("statuses")} onClick={() => void start("statuses")}>
-              {running.has("statuses") ? t("actions.running") : t("actions.syncStatuses")}
-            </Button>
-            <Button size="small" variant="secondary" disabled={!f?.orders || running.has("orders")} onClick={() => void start("orders")}>
-              {running.has("orders") ? t("actions.running") : t("actions.sendQueue")}
-            </Button>
-            <Button
-              size="small"
-              variant="primary"
-              isLoading={sync.isPending && sync.variables === "catalog"}
-              disabled={!f?.catalog || running.has("catalog")}
-              onClick={() => void start("catalog")}
-            >
-              <ArrowPath />
-              {running.has("catalog") ? t("actions.running") : t("actions.syncCatalog")}
-            </Button>
-          </div>
-        ) : null}
-        <HelpButtons spec={promptSpec} lang={lang} labels={community} />
-      </div>
-    </div>
+        </>
+      }
+      help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
+      view={nav.view}
+      onView={(v) => nav.go(v)}
+      labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
+      primary={
+        panel
+          ? {
+              key: "catalog",
+              label: running.has("catalog") ? t("actions.running") : t("actions.syncCatalog"),
+              icon: <ArrowPath />,
+              loading: sync.isPending && sync.variables === "catalog",
+              disabled: !f?.catalog || running.has("catalog"),
+              onClick: () => void start("catalog"),
+            }
+          : null
+      }
+      actions={more}
+    />
   )
 }
 

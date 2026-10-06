@@ -29,6 +29,7 @@ const en = {
     writersArmed: "Writers armed: {{count}}",
   },
   actions: {
+    moreActions: "More actions",
     sync: "Sync now",
     syncing: "Syncing",
     connect: "Connect Allegro account",

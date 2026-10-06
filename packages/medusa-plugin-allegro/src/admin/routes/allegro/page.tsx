@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Container, Copy, Heading, InlineTip, Input, StatusBadge, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import { Badge, Button, Container, Copy, InlineTip, Input, StatusBadge, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type {
   AllegroImportFilter,
   AllegroIssueFilter,
@@ -28,7 +28,7 @@ import {
   useAllegroStatus,
   useAllegroSync,
 } from "../../lib/allegro-api"
-import { AddStoreButton, HelpButtons, ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, communityLabels, usePageNav, type PageNav } from "../../lib/allegro-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/allegro-guide"
 import { GuideView, referencesFor, usePromptSpec } from "../../lib/allegro-guide-view"
 import { AllegroIcon } from "../../lib/allegro-icon"
 import { ImportsSection } from "../../lib/allegro-imports"
@@ -285,14 +285,12 @@ function Header({
   }
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex min-w-0 flex-col gap-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <AllegroIcon width={24} height={24} className="shrink-0" />
-          <Heading level="h1">{t("title")}</Heading>
-          <Badge size="2xsmall" color="grey">
-            {t("by")}
-          </Badge>
+    <IntegrationHeader
+      icon={<AllegroIcon width={28} height={28} />}
+      title={t("title")}
+      by={t("by")}
+      badges={
+        <>
           {!loading ? (
             <ModeBadge color={badge.color} label={t(badge.key)} title={t("demo.label")}>
               {status?.mode === "demo" ? <span>{t("demo.text")}</span> : null}
@@ -308,11 +306,11 @@ function Header({
               {t("connection.sandbox")}
             </Badge>
           ) : null}
-        </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("subtitle")}
-        </Text>
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        </>
+      }
+      description={t("subtitle")}
+      social={
+        <>
           <ReferencesBadge
             items={references}
             labels={{
@@ -326,22 +324,25 @@ function Header({
             }}
           />
           <AddStoreButton labels={community.addStore} />
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-col gap-2 lg:items-end">
-        <div className="flex flex-wrap items-center gap-2">
-          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
-          {nav.view !== "guide" ? (
-            <Button size="small" variant="primary" isLoading={sync.isPending || running} disabled={!canSync} onClick={() => void onSync()}>
-              <ArrowPath />
-              {running ? t("actions.syncing") : t("actions.sync")}
-            </Button>
-          ) : null}
-        </div>
-        <HelpButtons spec={promptSpec} lang={lang} labels={community} />
-      </div>
-    </div>
+        </>
+      }
+      help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
+      view={nav.view}
+      onView={(v) => nav.go(v)}
+      labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
+      primary={
+        nav.view !== "guide"
+          ? {
+              key: "sync",
+              label: running ? t("actions.syncing") : t("actions.sync"),
+              icon: <ArrowPath />,
+              loading: sync.isPending || running,
+              disabled: !canSync,
+              onClick: () => void onSync(),
+            }
+          : null
+      }
+    />
   )
 }
 

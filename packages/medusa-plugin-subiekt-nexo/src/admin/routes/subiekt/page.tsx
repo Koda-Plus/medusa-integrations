@@ -16,7 +16,7 @@ import {
   useSubiektSync,
   useSubiektTasks,
 } from "../../lib/subiekt-api"
-import { AddStoreButton, HelpButtons, ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, communityLabels, usePageNav, type PageNav } from "../../lib/subiekt-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/subiekt-guide"
 import { GuideView, usePromptSpec } from "../../lib/subiekt-guide-view"
 import { SubiektIcon } from "../../lib/subiekt-icon"
 import { BridgeSection, ProductsSection, WritersSection } from "../../lib/subiekt-panels"
@@ -192,25 +192,25 @@ function Header({
     }
   }
 
+  const panel = nav.view !== "guide"
+  /* Checking the bridge stays reachable from the guide too: its steps ask for it. */
+  const checkAction: HeaderAction = { key: "check", label: t("actions.check"), loading: check.isPending, disabled: !ready, onClick: () => void onCheck() }
+
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex min-w-0 flex-col gap-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <SubiektIcon width={24} height={24} className="shrink-0" />
-          <Heading level="h1">{t("title")}</Heading>
-          <Badge size="2xsmall" color="grey">
-            {t("by")}
-          </Badge>
-          {!loading ? (
-            <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
-              {status?.mode === "demo" ? <span>{t("demo.text")}</span> : null}
-            </ModeBadge>
-          ) : null}
-        </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("subtitle")}
-        </Text>
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+    <IntegrationHeader
+      icon={<SubiektIcon width={28} height={28} />}
+      title={t("title")}
+      by={t("by")}
+      badges={
+        !loading ? (
+          <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
+            {status?.mode === "demo" ? <span>{t("demo.text")}</span> : null}
+          </ModeBadge>
+        ) : null
+      }
+      description={t("subtitle")}
+      social={
+        <>
           <ReferencesBadge
             items={references}
             labels={{
@@ -224,32 +224,37 @@ function Header({
             }}
           />
           <AddStoreButton labels={community.addStore} />
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
-        <div className="flex flex-wrap items-center gap-2">
-          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="small" variant="secondary" disabled={!ready} isLoading={check.isPending} onClick={onCheck}>
-            {t("actions.check")}
-          </Button>
-          {nav.view !== "guide" ? (
-            <>
-              <Button size="small" variant="secondary" disabled={!ready || running.has("events")} onClick={() => start("events")}>
-                {running.has("events") ? t("actions.running") : t("actions.events")}
-              </Button>
-              <Button size="small" variant="primary" disabled={!ready || running.has("stock")} onClick={() => start("stock")}>
-                <ArrowPath />
-                {running.has("stock") ? t("actions.running") : t("actions.stock")}
-              </Button>
-            </>
-          ) : null}
-        </div>
-        <HelpButtons spec={promptSpec} lang={lang} labels={community} />
-      </div>
-    </div>
+        </>
+      }
+      help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
+      view={nav.view}
+      onView={(v) => nav.go(v)}
+      labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
+      primary={
+        panel
+          ? {
+              key: "stock",
+              label: running.has("stock") ? t("actions.running") : t("actions.stock"),
+              icon: <ArrowPath />,
+              disabled: !ready || running.has("stock"),
+              onClick: () => void start("stock"),
+            }
+          : null
+      }
+      actions={
+        panel
+          ? [
+              {
+                key: "events",
+                label: running.has("events") ? t("actions.running") : t("actions.events"),
+                disabled: !ready || running.has("events"),
+                onClick: () => void start("events"),
+              },
+              checkAction,
+            ]
+          : [checkAction]
+      }
+    />
   )
 }
 

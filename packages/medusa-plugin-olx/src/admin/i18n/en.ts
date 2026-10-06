@@ -28,6 +28,7 @@ const en = {
     writing: "Writers armed: {{count}}",
   },
   actions: {
+    moreActions: "More actions",
     sync: "Sync now",
     syncing: "Syncing",
     connect: "Connect OLX account",

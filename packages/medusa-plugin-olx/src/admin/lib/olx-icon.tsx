@@ -22,10 +22,10 @@ export function OlxIcon({ width = 15, height = 15, ...props }: SVGProps<SVGSVGEl
       <rect width="192" height="192" rx="40" fill="#23E5DB" />
       <circle cx="58.5" cy="96" r="20.9" stroke="#002F34" strokeWidth="21.8" />
       <rect x="98" y="57" width="18" height="78" fill="#002F34" />
-      <path
-        fill="#002F34"
-        d="M133.76 77 163 105.67V115h-9.76L124 86.34V77zM153.24 77 124 105.67V115h9.76L163 86.34V77z"
-      />
+      {/* The two strokes of the "x" as separate shapes: drawn as one path they wound in opposite
+          directions and the crossing came out empty. */}
+      <path fill="#002F34" d="M133.76 77 163 105.67V115h-9.76L124 86.34V77z" />
+      <path fill="#002F34" d="M153.24 77 124 105.67V115h9.76L163 86.34V77z" />
     </svg>
   )
 }

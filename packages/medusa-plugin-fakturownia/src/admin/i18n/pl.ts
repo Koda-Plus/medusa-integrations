@@ -28,6 +28,7 @@ const pl: typeof en = {
     unknown: "Jeszcze nie sprawdzono",
   },
   actions: {
+    moreActions: "Więcej akcji",
     issuePending: "Wystaw oczekujące teraz",
     refreshStatuses: "Odśwież statusy",
     running: "Trwa",

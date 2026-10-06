@@ -16,7 +16,7 @@ import {
 } from "../../lib/fakturownia-api"
 import { CorrectionsSection } from "../../lib/fakturownia-corrections"
 import { DocumentDrawer } from "../../lib/fakturownia-document"
-import { AddStoreButton, HelpButtons, ModeBadge, ReferencesBadge, SettingsButton, SettingsView, ViewSwitch, communityLabels, usePageNav, type PageNav } from "../../lib/fakturownia-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/fakturownia-guide"
 import { GuideView, usePromptSpec } from "../../lib/fakturownia-guide-view"
 import { FakturowniaIcon } from "../../lib/fakturownia-icon"
 import { DemoDetails, MailboxSection, SummarySection, UnpaidSection, WritersSection } from "../../lib/fakturownia-panels"
@@ -197,25 +197,23 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
     }
   }
 
+  const panel = nav.view !== "guide"
+
   return (
-    <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex min-w-0 flex-col gap-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <FakturowniaIcon width={24} height={24} className="shrink-0" />
-          <Heading level="h1">{t("title")}</Heading>
-          <Badge size="2xsmall" color="grey">
-            {t("by")}
-          </Badge>
-          {status ? (
-            <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
-              {status.mode === "demo" ? <DemoDetails status={status} /> : null}
-            </ModeBadge>
-          ) : null}
-        </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("subtitle")}
-        </Text>
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+    <IntegrationHeader
+      icon={<FakturowniaIcon width={28} height={28} />}
+      title={t("title")}
+      by={t("by")}
+      badges={
+        status ? (
+          <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
+            {status.mode === "demo" ? <DemoDetails status={status} /> : null}
+          </ModeBadge>
+        ) : null
+      }
+      description={t("subtitle")}
+      social={
+        <>
           <ReferencesBadge
             items={references}
             labels={{
@@ -229,27 +227,37 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
             }}
           />
           <AddStoreButton labels={community.addStore} />
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
-        <div className="flex items-center gap-2">
-          <ViewSwitch value={nav.view} onChange={(v) => nav.go(v)} labels={{ panel: t("view.panel"), guide: t("view.guide") }} />
-          <SettingsButton active={nav.view === "settings"} onClick={() => nav.go(nav.view === "settings" ? "panel" : "settings")} label={t("settings.title")} />
-        </div>
-        {nav.view !== "guide" ? (
-          <div className="flex flex-wrap gap-2">
-            <Button size="small" variant="secondary" disabled={!ready || running.has("statuses")} onClick={() => void start("statuses")}>
-              {running.has("statuses") ? t("actions.running") : t("actions.refreshStatuses")}
-            </Button>
-            <Button size="small" variant="primary" isLoading={sync.isPending && sync.variables === "issue"} disabled={!ready || running.has("issue")} onClick={() => void start("issue")}>
-              <ArrowPath />
-              {running.has("issue") ? t("actions.running") : t("actions.issuePending")}
-            </Button>
-          </div>
-        ) : null}
-        <HelpButtons spec={promptSpec} lang={lang} labels={community} />
-      </div>
-    </div>
+        </>
+      }
+      help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
+      view={nav.view}
+      onView={(v) => nav.go(v)}
+      labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
+      primary={
+        panel
+          ? {
+              key: "issue",
+              label: running.has("issue") ? t("actions.running") : t("actions.issuePending"),
+              icon: <ArrowPath />,
+              loading: sync.isPending && sync.variables === "issue",
+              disabled: !ready || running.has("issue"),
+              onClick: () => void start("issue"),
+            }
+          : null
+      }
+      actions={
+        panel
+          ? [
+              {
+                key: "statuses",
+                label: running.has("statuses") ? t("actions.running") : t("actions.refreshStatuses"),
+                disabled: !ready || running.has("statuses"),
+                onClick: () => void start("statuses"),
+              },
+            ]
+          : []
+      }
+    />
   )
 }
 

@@ -24,6 +24,7 @@ const en = {
     unknown: "Not checked yet",
   },
   actions: {
+    moreActions: "More actions",
     check: "Check connection",
     checking: "Checking",
     stock: "Sync stock",

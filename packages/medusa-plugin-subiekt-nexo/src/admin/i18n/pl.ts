@@ -27,6 +27,7 @@ const pl: typeof en = {
     unknown: "Jeszcze nie sprawdzono",
   },
   actions: {
+    moreActions: "Więcej akcji",
     check: "Sprawdź połączenie",
     checking: "Sprawdzam",
     stock: "Synchronizuj stany",

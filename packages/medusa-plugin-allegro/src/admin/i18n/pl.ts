@@ -32,6 +32,7 @@ const pl: typeof en = {
     writersArmed: "Uzbrojone zapisy: {{count}}",
   },
   actions: {
+    moreActions: "Więcej akcji",
     sync: "Synchronizuj teraz",
     syncing: "Synchronizacja trwa",
     connect: "Połącz konto Allegro",

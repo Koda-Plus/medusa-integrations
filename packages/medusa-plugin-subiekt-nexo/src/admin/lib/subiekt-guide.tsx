@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ArrowUpRightOnBox, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, IconButton, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
+import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
+import { Badge, Button, Container, DropdownMenu, Heading, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
 
 /*
  * The page kit of the Koda Plus integrations: the same components in every
@@ -10,8 +10,9 @@ import { Badge, Button, Container, Heading, IconButton, Input, Label, Popover, S
  *
  * Header
  *   usePageNav       Panel, Setup guide or Settings, and the settings tab, kept in ?view= and ?tab=
- *   ViewSwitch       "Panel | Setup guide"
- *   SettingsButton   the cog that opens Settings, where the technical parts live
+ *   IntegrationHeader the whole header in three places: who (name, badges, help), why
+ *                    (description, stores), toolbar (view tabs, one main action, the others)
+ *   PageTabs         Panel | Setup guide | Settings, every tab with its name
  *   ModeBadge        the mode of the module; in demo mode it opens a note on what is simulated
  *   ReferencesBadge  "Running in N stores", with the rating and its source; opens the list
  *   AddStoreButton   "Add your store" next to it: a request to Koda Plus, by mail
@@ -99,41 +100,152 @@ export function usePageView(): [PageView, (v: PageView) => void] {
   return [nav.view, (v) => nav.go(v)]
 }
 
-export function ViewSwitch({ value, onChange, labels }: { value: PageView; onChange: (v: "panel" | "guide") => void; labels: Record<"panel" | "guide", string> }) {
+const VIEWS: PageView[] = ["panel", "guide", "settings"]
+const VIEW_ICON: Record<PageView, ReactNode> = { panel: <ChartBar />, guide: <BookOpen />, settings: <CogSixTooth /> }
+
+/** Panel, Setup guide and Settings as tabs, each with its icon and its name (never an icon alone). */
+export function PageTabs({ value, onChange, labels }: { value: PageView; onChange: (v: PageView) => void; labels: Record<PageView, string> }) {
   return (
-    <div className="inline-flex rounded-full border border-ui-border-base bg-ui-bg-component p-0.5" role="tablist">
-      {(["panel", "guide"] as const).map((v) => (
-        <button
-          key={v}
-          type="button"
-          role="tab"
-          aria-selected={value === v}
-          onClick={() => onChange(v)}
-          className={clx(
-            "txt-compact-small-plus rounded-full px-3 py-1 transition-fg",
-            value === v ? "bg-ui-bg-interactive text-ui-fg-on-color" : "text-ui-fg-subtle hover:text-ui-fg-base",
-          )}
-        >
-          {labels[v]}
-        </button>
-      ))}
+    <div role="tablist" className="flex flex-wrap items-center gap-1">
+      {VIEWS.map((v) => {
+        const on = v === value
+        return (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(v)}
+            className={clx(
+              "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-md px-2.5 py-1.5 outline-none transition-fg focus-visible:shadow-borders-focus",
+              on ? "bg-ui-bg-base text-ui-fg-base shadow-borders-base" : "text-ui-fg-subtle hover:bg-ui-bg-base-hover hover:text-ui-fg-base",
+            )}
+          >
+            <span className={clx("flex", on ? "text-ui-fg-interactive" : "text-ui-fg-muted")}>{VIEW_ICON[v]}</span>
+            {labels[v]}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-export function SettingsButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+/** One action of the page: the main one gets the dark button, the others sit next to it or under "More actions". */
+export type HeaderAction = {
+  key: string
+  label: string
+  onClick: () => void
+  icon?: ReactNode
+  disabled?: boolean
+  loading?: boolean
+}
+
+export type HeaderLabels = Record<PageView, string> & {
+  /** The menu with the other actions, e.g. "More actions". */
+  more: string
+}
+
+/** The other actions: a plain button when there is one, a menu when there are more. */
+function OtherActions({ items, label }: { items: HeaderAction[]; label: string }) {
+  if (items.length === 1) {
+    const a = items[0]
+    return (
+      <Button size="small" variant="secondary" isLoading={a.loading} disabled={a.disabled} onClick={a.onClick}>
+        {a.icon}
+        {a.label}
+      </Button>
+    )
+  }
   return (
-    <IconButton
-      type="button"
-      size="small"
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      onClick={onClick}
-      className={clx(active && "bg-ui-bg-component-pressed text-ui-fg-base shadow-borders-interactive-with-active")}
-    >
-      <CogSixTooth />
-    </IconButton>
+    <DropdownMenu>
+      <DropdownMenu.Trigger asChild>
+        <Button size="small" variant="secondary">
+          {label}
+          <ChevronDownMini />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end">
+        {items.map((a) => (
+          <DropdownMenu.Item key={a.key} disabled={a.disabled || a.loading} onClick={a.onClick} className="gap-x-2">
+            {a.icon}
+            {a.label}
+          </DropdownMenu.Item>
+        ))}
+      </DropdownMenu.Content>
+    </DropdownMenu>
+  )
+}
+
+/**
+ * The header of an integration page, the same in all five. Three places, each
+ * with one job:
+ *   who      icon, name, "by Koda Plus", the state badges; on the right the help
+ *            about the integration itself (Copy prompt, Discord)
+ *   why      the description, then the stores running it and "Add your store"
+ *   toolbar  the views as tabs (Panel, Setup guide, Settings) and the page's
+ *            actions: one main button, the others beside it or in "More actions"
+ */
+export function IntegrationHeader({
+  icon,
+  title,
+  by,
+  badges,
+  description,
+  social,
+  help,
+  view,
+  onView,
+  labels,
+  primary,
+  actions = [],
+}: {
+  icon: ReactNode
+  title: string
+  by: string
+  badges?: ReactNode
+  description: string
+  social?: ReactNode
+  help?: ReactNode
+  view: PageView
+  onView: (v: PageView) => void
+  labels: HeaderLabels
+  primary?: HeaderAction | null
+  actions?: HeaderAction[]
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex flex-col gap-y-3 px-6 pb-5 pt-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <span className="flex shrink-0">{icon}</span>
+            <Heading level="h1">{title}</Heading>
+            <Text size="small" className="text-ui-fg-muted">
+              {by}
+            </Text>
+            {badges ? <span className="flex flex-wrap items-center gap-1.5">{badges}</span> : null}
+          </div>
+          {help ? <div className="flex shrink-0">{help}</div> : null}
+        </div>
+        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
+          {description}
+        </Text>
+        {social ? <div className="flex flex-wrap items-center gap-2 pt-0.5">{social}</div> : null}
+      </div>
+      <div className="flex flex-col gap-3 border-t border-ui-border-base bg-ui-bg-subtle px-6 py-2.5 md:flex-row md:items-center md:justify-between">
+        <PageTabs value={view} onChange={onView} labels={labels} />
+        {primary || actions.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {actions.length ? <OtherActions items={actions} label={labels.more} /> : null}
+            {primary ? (
+              <Button size="small" variant="primary" isLoading={primary.loading} disabled={primary.disabled} onClick={primary.onClick}>
+                {primary.icon}
+                {primary.label}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -510,7 +622,7 @@ export function AddStoreButton({ labels }: { labels: AddStoreLabels }) {
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="txt-compact-small-plus inline-flex h-9 items-center gap-x-1.5 rounded-full border border-dashed border-ui-border-strong px-3.5 text-ui-fg-subtle outline-none transition-fg hover:border-ui-border-interactive hover:bg-ui-bg-component-hover hover:text-ui-fg-base focus-visible:shadow-borders-focus"
+          className="txt-compact-small-plus inline-flex h-9 items-center gap-x-1.5 rounded-full px-3 text-ui-fg-subtle outline-none transition-fg hover:bg-ui-bg-base-hover hover:text-ui-fg-base focus-visible:shadow-borders-focus"
         >
           <PlusMini />
           {labels.button}
