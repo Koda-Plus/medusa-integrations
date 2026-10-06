@@ -25,6 +25,7 @@ const en = {
     unknown: "Not checked yet",
   },
   actions: {
+    moreActions: "More actions",
     issuePending: "Issue pending now",
     refreshStatuses: "Refresh statuses",
     running: "Running",

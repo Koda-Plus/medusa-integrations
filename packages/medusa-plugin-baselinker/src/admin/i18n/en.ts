@@ -26,6 +26,7 @@ const en = {
     unknown: "Not read yet",
   },
   actions: {
+    moreActions: "More actions",
     syncCatalog: "Sync cards now",
     syncStatuses: "Read statuses",
     sendQueue: "Send queue now",

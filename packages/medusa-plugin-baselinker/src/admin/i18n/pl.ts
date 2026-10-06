@@ -29,6 +29,7 @@ const pl: typeof en = {
     unknown: "Jeszcze nie odczytano",
   },
   actions: {
+    moreActions: "Więcej akcji",
     syncCatalog: "Synchronizuj karty",
     syncStatuses: "Pobierz statusy",
     sendQueue: "Wyślij kolejkę teraz",
