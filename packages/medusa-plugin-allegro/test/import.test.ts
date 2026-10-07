@@ -8,6 +8,7 @@ import {
   importDetails,
   planImport,
   processImport,
+  transientFailure,
   sameTotal,
   type ImportContext,
   type ImportPorts,
@@ -666,4 +667,14 @@ test("cancellation: cancel only when nothing is fulfilled, otherwise ask a perso
   assert.equal(cancelDecision({ status: "completed", activeFulfillments: 0 }).kind, "attention")
   assert.equal(cancelDecision({ status: "canceled", activeFulfillments: 0 }).kind, "already")
   assert.equal(cancelDecision(null).kind, "gone")
+})
+
+test("import breaker: a short Allegro or network outage never counts, a refusal does", async () => {
+  const { AllegroApiError } = await import("../src/modules/allegro/lib/client.ts")
+  assert.equal(transientFailure(new AllegroApiError(0, "fetch failed", true)), true)
+  assert.equal(transientFailure(new AllegroApiError(503, "Service Unavailable", true)), true)
+  assert.equal(transientFailure(new AllegroApiError(429, "Too Many Requests", false)), true)
+  assert.equal(transientFailure(new AllegroApiError(403, "Forbidden", false)), false)
+  assert.equal(transientFailure(new AllegroApiError(0, "The Allegro account is not connected.", false)), false)
+  assert.equal(transientFailure(new Error("relation does not exist")), false)
 })

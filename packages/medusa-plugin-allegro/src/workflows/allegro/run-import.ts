@@ -54,6 +54,7 @@ import {
   importDetails,
   planImport,
   processImport,
+  transientFailure,
   type ImportContext,
   type ImportDecision,
   type ImportOutcome,
@@ -721,7 +722,8 @@ export async function runOrderImport(container: MedusaContainer, input: ImportRu
     } catch (err) {
       failed = true
       message = errorText(svc, err)
-      await recordOutcome(svc, "orders", { kind: "systemic", message })
+      /* A short Allegro or network outage is retried by the next run (every two minutes) and never disarms the import. */
+      await recordOutcome(svc, "orders", transientFailure(err) ? { kind: "item", message: `Allegro did not answer; the next run tries again. ${message}` } : { kind: "systemic", message })
     }
     /*
      * The import runs every two minutes: a run that only found nothing to do

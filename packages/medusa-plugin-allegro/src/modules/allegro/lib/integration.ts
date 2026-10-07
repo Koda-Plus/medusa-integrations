@@ -84,12 +84,12 @@ export interface OrderSummaryContext {
   money: (amount: number, currency: string) => string
 }
 
-/** The facts of an imported order, from its import row only. */
+/** The facts of an imported order, from its import row only; links open that row in the list that shows it. */
 export function orderFacts(row: ImportRow): FactDraft[] {
   const d = detailsOf(row)
   const login = text(d.buyer_login)
   const facts: FactDraft[] = []
-  const link = pageLink("imported", row.checkout_form_id)
+  const link = pageLink(importLine(row).filter, row.checkout_form_id)
   facts.push({
     slot: "channel",
     priority: 80,

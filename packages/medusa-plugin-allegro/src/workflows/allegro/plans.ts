@@ -94,7 +94,7 @@ export async function updatePlanRows(svc: AllegroModuleService, updates: Readonl
 
 export async function planSummary(svc: AllegroModuleService, kind: AllegroPlanKind): Promise<AllegroPlanSummaryDto> {
   const s = await getState<SummaryState>(svc, summaryId(svc, kind))
-  const rows = (await svc.listAllegroPlanItems({ kind } as never, { take: null, select: ["status"] })) as unknown as Array<{ status: string }>
+  const rows = (await svc.listAllegroPlanItems({ kind, demo: svc.isDemo() } as never, { take: null, select: ["status"] })) as unknown as Array<{ status: string }>
   const counts: Record<string, number> = {}
   for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1
   return { kind, plannedAt: s?.plannedAt ?? null, refused: s?.refused ?? null, refusedCode: s?.refusedCode ?? null, counts, lastApply: s?.lastApply ?? null }
