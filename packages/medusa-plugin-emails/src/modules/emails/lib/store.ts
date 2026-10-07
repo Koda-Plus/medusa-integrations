@@ -172,6 +172,8 @@ export interface MessageStore {
   /** The messages of these customers: by customer id, or by the hash of their current address (guest orders). One statement. */
   forCustomers(customerIds: readonly string[], hashes: readonly string[], demo: boolean): Promise<SummaryRow[]>
   boardCounts(demo: boolean, since: Date): Promise<BoardCounts>
+  /** Test sends in the log: by one person since `mineSince`, by everyone since `allSince` (the limits hold across restarts and instances). */
+  testCounts(demo: boolean, by: string, mineSince: Date, allSince: Date): Promise<{ mine: number; all: number }>
   /** The log has the columns of this version (false before `npx medusa db:migrate`, or without the table). */
   schemaReady(): Promise<boolean>
   settings(): Promise<SettingRow[]>
@@ -523,6 +525,16 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       )
       const r = rowsOf<Record<string, unknown>>(result)[0] ?? {}
       return { orderFailed: Number(r.orderFailed) || 0, refusedAddresses: Number(r.refusedAddresses) || 0 }
+    },
+
+    async testCounts(demo, by, mineSince, allSince) {
+      const result = await sql.raw(
+        `select count(*) filter (where "requested_by" = ? and "created_at" >= ?)::int as "mine", count(*)::int as "all"
+         from "${MESSAGE_TABLE}" where "kind" = 'test' and "demo" = ? and "created_at" >= ? and "deleted_at" is null`,
+        [by, mineSince, demo, allSince],
+      )
+      const r = rowsOf<Record<string, unknown>>(result)[0] ?? {}
+      return { mine: Number(r.mine) || 0, all: Number(r.all) || 0 }
     },
 
     async schemaReady() {

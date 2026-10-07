@@ -269,3 +269,14 @@ test("SQL: the log of an older version (no customer_id or recipient_hash yet) is
   const old = { raw: async () => Promise.reject(Object.assign(new Error('column "customer_id" does not exist'), { code: "42703" })) }
   assert.equal(await createSqlStore({ sql: old, newId: (p) => p }).schemaReady(), false)
 })
+
+test("SQL: test sends are counted in the log per person and for the store, in one statement", async () => {
+  const r = runner()
+  r.set({ rows: [{ mine: 2, all: 7 }] })
+  const mineSince = new Date("2026-10-07T09:50:00Z")
+  const allSince = new Date("2026-10-07T09:00:00Z")
+  assert.deepEqual(await createSqlStore({ sql: r.sql, newId: (p) => p }).testCounts(false, "user_1", mineSince, allSince), { mine: 2, all: 7 })
+  assert.match(r.calls[0].sql, /count\(\*\) filter \(where "requested_by" = \? and "created_at" >= \?\)/)
+  assert.match(r.calls[0].sql, /"kind" = 'test' and "demo" = \?/)
+  assert.deepEqual(r.calls[0].bindings, ["user_1", mineSince, false, allSince])
+})

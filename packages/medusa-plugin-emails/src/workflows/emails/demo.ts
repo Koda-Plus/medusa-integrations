@@ -24,8 +24,9 @@
  */
 
 import { MAX_STORED_BODY_CHARS, TEMPLATES } from "../../modules/emails/lib/constants"
-import { orderData, orderSkipReason, shipmentData, welcomeData, type CustomerRecord, type FulfillmentRecord, type OrderRecord } from "../../modules/emails/lib/data"
+import { anonymize, orderData, orderSkipReason, shipmentData, welcomeData, type CustomerRecord, type FulfillmentRecord, type OrderRecord } from "../../modules/emails/lib/data"
 import { addressHash, customerIdOf, eventKey } from "../../modules/emails/lib/keys"
+import { normalizeLocale } from "../../modules/emails/lib/locale"
 import { resolveTemplate } from "../../modules/emails/lib/registry"
 import { renderTemplate } from "../../modules/emails/lib/render"
 import { providerNote } from "../../modules/emails/lib/provider-status"
@@ -150,6 +151,8 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
   const hoursAgo = (h: number) => new Date(anchor - Math.round(h * 60) * MINUTE)
   const iso = (d: Date, minutes = 0) => new Date(d.getTime() + minutes * MINUTE).toISOString()
   const rows: SeedMessage[] = []
+  /* The products, amounts and numbers of the store, the person of the samples: a copy of a live database never puts customers' names in the outbox. */
+  const sampled = <T extends Parameters<typeof anonymize>[0] & { locale?: string | null }>(data: T): T => anonymize(data, normalizeLocale(data.locale) ?? o.defaultLocale)
 
   const add = (
     template: string,
@@ -198,7 +201,7 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
     const at = hoursAgo(SEED_SLOTS.orders[i])
     confirmedAt.set(order.id, at)
     /* The message dates the order a minute before it was sent. */
-    add(TEMPLATES.orderPlaced, String(order.email), { ...orderData(order, o), order_date: iso(at, -1) }, {
+    add(TEMPLATES.orderPlaced, String(order.email), { ...sampled(orderData(order, o)), order_date: iso(at, -1) }, {
       key: eventKey(TEMPLATES.orderPlaced, order.id),
       resourceType: "order",
       resourceId: order.id,
@@ -231,7 +234,7 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
     const confirmed = confirmedAt.get(order.id)
     let at = hoursAgo(SEED_SLOTS.shipment)
     if (confirmed && at.getTime() <= confirmed.getTime()) at = new Date(Math.min(confirmed.getTime() + 20 * MINUTE, anchor - MINUTE))
-    add(TEMPLATES.orderShipped, String(order.email), { ...shipmentData(order, parcel, o), order_date: confirmed ? iso(confirmed, -1) : iso(at, -2 * 24 * 60), shipped_at: iso(at, -1) }, {
+    add(TEMPLATES.orderShipped, String(order.email), { ...sampled(shipmentData(order, parcel, o)), order_date: confirmed ? iso(confirmed, -1) : iso(at, -2 * 24 * 60), shipped_at: iso(at, -1) }, {
       key: eventKey(TEMPLATES.orderShipped, parcel.id),
       resourceType: "fulfillment",
       resourceId: parcel.id,
@@ -247,7 +250,7 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
   let slot = 0
   for (const [i, c] of customers.entries()) {
     const at = hoursAgo(i === failing ? SEED_SLOTS.failedWelcome : SEED_SLOTS.welcomes[Math.min(slot++, SEED_SLOTS.welcomes.length - 1)])
-    add(TEMPLATES.customerWelcome, String(c.email), { ...welcomeData(c, o), customer_since: iso(at, -1) }, {
+    add(TEMPLATES.customerWelcome, String(c.email), { ...sampled(welcomeData(c, o)), customer_since: iso(at, -1) }, {
       key: eventKey(TEMPLATES.customerWelcome, String(c.id)),
       resourceType: "customer",
       resourceId: String(c.id),

@@ -273,6 +273,13 @@ export function memoryStore(): MemoryStore {
       const refused = new Set(mine.filter((r) => r.status === "failed" && r.error_code === "INVALID_RECIPIENT").map((r) => r.recipient_hash ?? r.id))
       return { orderFailed: mine.filter((r) => (r.status === "failed" || r.status === "unknown") && r.order_id).length, refusedAddresses: refused.size }
     },
+    async testCounts(demo, by, mineSince, allSince) {
+      const tests = rows.filter((r) => r.kind === "test" && r.demo === demo)
+      return {
+        mine: tests.filter((r) => r.requested_by === by && new Date(r.created_at).getTime() >= mineSince.getTime()).length,
+        all: tests.filter((r) => new Date(r.created_at).getTime() >= allSince.getTime()).length,
+      }
+    },
     async schemaReady() {
       return !store.failWith
     },
