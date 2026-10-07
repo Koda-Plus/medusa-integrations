@@ -286,7 +286,7 @@ Built and maintained by [Koda Plus](https://koda.plus), a Medusa agency from Pol
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-negotiations/LICENSE).
 
 ## Changelog
 

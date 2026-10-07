@@ -79,7 +79,7 @@ export function usePromptSpec(s: OlxStatusResponse | undefined): SetupPromptSpec
       summary: t("subtitle"),
       needs: NEEDS.map((k) => t(`guide.intro.needs.${k}`)),
       config: setupCode(t("missing.redirectFallback"), market),
-      demo: 'demo: process.env.OLX_DEMO === "true" || !process.env.OLX_CLIENT_ID,',
+      demo: 'demo: process.env.OLX_DEMO === "true",',
     }),
     [t, market],
   )

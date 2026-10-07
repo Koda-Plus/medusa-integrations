@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+### Fixed
+
+- Admin pages work when the plugin is installed from npm: the admin libraries are optional peers, so the app keeps the copies of Medusa's dashboard instead of a second, newer copy.
+
+### Changed
+
+- The admin page runs on the shared Koda Plus kit 1.0.1: the setup prompt pins this exact version, checks the package signatures (`npm audit signatures`) and shows the note before saving it; the prompt is copied only with its Copy button.
+- `prepublishOnly` runs the typecheck too.
+- README links are absolute, so they work on npm and medusajs.com.
+
 ## 0.1.0 (2026-10-06)
 
 First public release, a generic version of the negotiations module Koda Plus built for its B2B demo store (medusa.koda.plus).
