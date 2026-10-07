@@ -346,7 +346,7 @@ Order metadata the plugin writes in live mode, readable by your storefront throu
 
 - **Write barrier by method name**, as described above: nothing outside the permitted methods leaves the process, and a writer that is not armed cannot use its method.
 - **One HTTP client:** the BaseLinker URL appears in one file, behind the barrier, a process-wide rate limiter and a timeout.
-- **Masked token:** the token and every token-like run of characters are masked in logs, stored errors and the admin. The token never leaves the server: the admin only learns whether it is set.
+- **Masked token:** the token and every token-like run of characters are masked in logs, stored errors and the admin, and so are e-mail addresses and international phone numbers an error may echo. The token never leaves the server: the admin only learns whether it is set.
 - **Personal data:** the plugin's own tables hold ids, statuses, totals and tracking, never buyer data. The order payload sent to BaseLinker is built at send time and not stored. An imported marketplace order carries the buyer's name, address, e-mail and phone on the Medusa order itself, as any order does, because the store has to ship it. Returns are stored without the buyer's data.
 - **Reads only while rendering:** the admin never calls BaseLinker and never writes to draw a page; network calls and the demo snapshot sit behind jobs and clicks.
 - **One worker per item:** leases in the plugin's own table (per job, per store order, per marketplace order, per invoice document) that hold across processes, plus the Medusa Locking module for the shared `marketplace-order-ref:<ref>` key, plus the lookups before every create.
