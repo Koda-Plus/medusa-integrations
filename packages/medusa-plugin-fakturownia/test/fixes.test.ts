@@ -202,14 +202,19 @@ test("stored texts: the token, token-like values and e-mail addresses are masked
   assert.match(text, /FV 12\/10\/2026/)
 })
 
-test("routes: writes need JSON or the Koda header; RBAC policies on every admin route, stronger ones for the risky writes", async () => {
+test("routes: writes need JSON or the Koda header; with RBAC on, policies on every admin route and stronger ones for the risky writes", async () => {
   assert.equal(isTrustedWrite({ method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" } }), false)
   assert.equal(isTrustedWrite({ method: "POST", headers: { "content-type": "text/plain" } }), false)
   assert.equal(isTrustedWrite({ method: "POST", headers: { "content-type": "application/json" } }), true)
   assert.equal(isTrustedWrite({ method: "GET", headers: {} }), true)
-  const { default: config } = await import("../src/api/middlewares.ts")
-  const routes = (config as { routes: Array<{ matcher: string; methods?: string[]; policies?: unknown[]; middlewares?: unknown[] }> }).routes
-  const admin = routes.filter((r) => r.matcher.startsWith("/admin/fakturownia"))
+  const mw = await import("../src/api/middlewares.ts")
+  type Route = { matcher: string; methods?: string[]; policies?: unknown[]; middlewares?: unknown[] }
+  const routes = (mw.default as { routes: Route[] }).routes
+  /* With RBAC off (the default, and the only state Medusa 2.12 knows how to live with), no route declares policies. */
+  assert.equal(mw.rbacEnabled(), false)
+  const plain = routes.filter((r) => r.matcher.startsWith("/admin/fakturownia"))
+  assert.deepEqual(plain.map((r) => [r.matcher, r.middlewares?.length ?? 0, r.policies ?? null]), [["/admin/fakturownia*", 1, null]])
+  const admin = mw.adminRoutes(true) as Route[]
   const all = admin.find((r) => r.matcher === "/admin/fakturownia*" && !r.methods)
   assert.ok(all && (all.middlewares?.length ?? 0) === 1, "the write guard on every admin route")
   assert.deepEqual(all?.policies, [POLICY.read])
