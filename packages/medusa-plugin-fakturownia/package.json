@@ -94,5 +94,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "fakturownia",
+    "moduleDir": "fakturownia",
+    "brand": "Fakturownia",
+    "title": "Fakturownia by Koda Plus",
+    "kind": "integration",
+    "catalog": "other"
   }
 }

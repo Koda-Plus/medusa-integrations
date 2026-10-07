@@ -96,5 +96,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "olx",
+    "moduleDir": "olx",
+    "brand": "OLX",
+    "title": "OLX by Koda Plus",
+    "kind": "integration",
+    "catalog": "other"
   }
 }

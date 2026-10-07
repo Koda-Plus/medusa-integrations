@@ -95,5 +95,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "subiekt",
+    "moduleDir": "subiekt",
+    "brand": "Subiekt nexo",
+    "title": "Subiekt nexo by Koda Plus",
+    "kind": "integration",
+    "catalog": "erp"
   }
 }

@@ -96,5 +96,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "emails",
+    "moduleDir": "emails",
+    "brand": "E-mails",
+    "title": "E-mails by Koda Plus",
+    "kind": "integration",
+    "catalog": "notification"
   }
 }

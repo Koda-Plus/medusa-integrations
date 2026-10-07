@@ -78,13 +78,37 @@ test("courier with cash on delivery: insurance required by ShipX, equal to the a
   assert.equal(JSON.stringify(exact.request?.cod), '{"amount":249.9,"currency":"PLN"}')
 })
 
-test("cash on delivery needs PLN, a known total above zero; a paid order is a warning", () => {
+test("cash on delivery needs PLN and collects only what is still due, once per order, never after an online payment", () => {
   assert.deepEqual(buildPlan(row({ cod: true }), order({ currency_code: "eur" }) as PlanOrder, ctx()).problems.map((x) => x.code), ["cod_currency"])
   assert.deepEqual(buildPlan(row({ cod: true }), order({ total: 0 }) as PlanOrder, ctx()).problems.map((x) => x.code), ["cod_zero"])
   assert.deepEqual(buildPlan(row({ cod: true }), order({ total: undefined }) as PlanOrder, ctx()).problems.map((x) => x.code), ["cod_amount_unknown"])
-  const paid = buildPlan(row({ cod: true }), order({ payment_collections: [{ captured_amount: 199.99 }] }) as PlanOrder, ctx())
-  assert.equal(paid.ok, true)
-  assert.ok(paid.warnings.some((w) => w.code === "order_paid"))
+  /* Paid in full (captured): nothing to collect. */
+  const full = buildPlan(row({ cod: true }), order({ payment_collections: [{ captured_amount: 199.99 }] }) as PlanOrder, ctx())
+  assert.deepEqual(full.problems.map((x) => x.code), ["cod_zero"])
+  /* A part paid: the rest is collected, with a warning. */
+  const part = buildPlan(row({ cod: true }), order({ payment_collections: [{ captured_amount: 50 }] }) as PlanOrder, ctx())
+  assert.equal(part.ok, true)
+  assert.equal(part.cod?.amount, "149.99")
+  assert.equal(part.request?.cod?.amount, 149.99)
+  assert.ok(part.warnings.some((w) => w.code === "order_paid"))
+  /* Paid online (authorized by a card provider, nothing captured yet): never collect again. */
+  const online = buildPlan(row({ cod: true }), order({ payment_collections: [{ captured_amount: 0, payments: [{ provider_id: "pp_stripe_stripe", canceled_at: null }] }] }) as PlanOrder, ctx())
+  assert.deepEqual(online.problems.map((x) => x.code), ["cod_paid_online"])
+  /* The manual provider is the "pay at the door" one: fine. */
+  const manual = buildPlan(row({ cod: true }), order({ payment_collections: [{ captured_amount: 0, payments: [{ provider_id: "pp_system_default", canceled_at: null }] }] }) as PlanOrder, ctx())
+  assert.equal(manual.ok, true)
+  assert.equal(manual.cod?.amount, "199.99")
+  /* The second parcel of the same order goes without cash on delivery. */
+  const second = buildPlan(row({ cod: true, parcel_no: 2 }), order() as PlanOrder, { ...ctx(), codCarrier: false })
+  assert.equal(second.ok, true)
+  assert.equal(second.cod, null)
+  assert.equal(second.request?.cod, undefined)
+  assert.ok(second.warnings.some((w) => w.code === "cod_on_other_parcel"))
+})
+
+test("a fulfillment Medusa already marks shipped or delivered gets no shipment", () => {
+  assert.deepEqual(buildPlan(row({ fulfillment_shipped_at: "2026-10-06T10:00:00Z" }), order() as PlanOrder, ctx()).problems.map((x) => x.code), ["fulfillment_shipped"])
+  assert.deepEqual(buildPlan(row({ fulfillment_delivered_at: "2026-10-06T10:00:00Z", fulfillment_shipped_at: "2026-10-05T10:00:00Z" }), order() as PlanOrder, ctx()).problems.map((x) => x.code), ["fulfillment_delivered"])
 })
 
 test("problems stop the request: locker, phone, e-mail, name, address, country, canceled order, shipped outside", () => {

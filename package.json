@@ -4,11 +4,13 @@
   "description": "Medusa v2 plugins for Polish stores by Koda Plus: OLX, Allegro, BaseLinker, Subiekt nexo, Fakturownia, InPost, Stripe, transactional e-mails, B2B negotiations and a task board. Every package is published to npm on its own.",
   "license": "MIT",
   "scripts": {
-    "install:all": "node scripts/each.mjs npm ci",
-    "test": "node scripts/each.mjs npm test",
-    "typecheck": "node scripts/each.mjs npm run typecheck",
+    "install:all": "node scripts/each.mjs npm install --no-audit --no-fund",
+    "test": "node scripts/each.mjs --keep-going npm test",
+    "typecheck": "node scripts/each.mjs --keep-going npm run typecheck",
     "build": "node scripts/each.mjs npm run build",
-    "check": "node scripts/each.mjs npm test && node scripts/each.mjs npm run typecheck",
+    "kit:sync": "node scripts/kit.mjs sync",
+    "kit:check": "node scripts/kit.mjs check",
+    "check": "node scripts/kit.mjs check && node scripts/each.mjs --keep-going npm test && node scripts/each.mjs --keep-going npm run typecheck",
     "vendor": "node scripts/vendor-into-app.mjs ../koda-plus-demo/medusa-backend",
     "release": "node scripts/publish-all.mjs"
   },

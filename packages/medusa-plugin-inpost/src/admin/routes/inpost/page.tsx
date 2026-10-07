@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
@@ -28,6 +29,7 @@ import { StatTile, fmtNumber, fmtRating, kitReferences, modeOf } from "../../lib
  * The demo note and the stores running the integration sit in header badges.
  */
 const SETTINGS_TABS = ["account", "shipping", "writers", "history"] as const
+const FILTERS = ["all", "to_create", "waiting", "in_transit", "in_locker", "delivered", "problems", "canceled", "skipped"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
 const GROUPS: Array<{ key: PanelGroup; tone: "default" | "green" | "orange" | "red" | "blue" | "purple" }> = [
@@ -47,7 +49,13 @@ const InpostPage = () => {
   const [pollUntil, setPollUntil] = useState(0)
   const status = useInpostStatus(pollUntil)
   const s = status.data
-  const [filter, setFilter] = useState<ParcelFilter>("all")
+  /* Deep links from hosts and boards: /inpost?filter=to_create, /inpost?q=1042. */
+  const [params] = useSearchParams()
+  const [filter, setFilter] = useState<ParcelFilter>(() => {
+    const asked = params.get("filter")
+    return asked && (FILTERS as readonly string[]).includes(asked) ? (asked as ParcelFilter) : "all"
+  })
+  const initialQuery = (params.get("q") ?? "").slice(0, 100)
   const polling = Boolean(s?.running) || Date.now() < pollUntil
 
   /* A finished status pass refreshes the lists. */
@@ -88,7 +96,7 @@ const InpostPage = () => {
 
       {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
 
-      {s && nav.view === "panel" ? <ParcelsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} onSettings={() => nav.go("settings", "writers")} /> : null}
+      {s && nav.view === "panel" ? <ParcelsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} initialQuery={initialQuery} onSettings={() => nav.go("settings", "writers")} /> : null}
 
       {s && nav.view === "settings" ? (
         <SettingsView

@@ -53,7 +53,7 @@ test("the simulated timeline: forward only, seeded rows and problems never move"
 })
 
 test("the seed: built once from the newest orders, with history; live rows never touched; nothing sent to InPost", async () => {
-  const s = setup({}, orders(20))
+  const s = setup({ demo: true }, orders(20))
   assert.equal(await ensureDemoSeed(s.container), 16)
   assert.equal(await ensureDemoSeed(s.container), 0)
   assert.equal(s.parcels.rows.length, 16)
@@ -62,13 +62,13 @@ test("the seed: built once from the newest orders, with history; live rows never
   assert.equal(s.fake.calls.length, 0)
   const live = setup({ apiToken: "x".repeat(40), organizationId: "1" }, orders(5))
   assert.equal(await ensureDemoSeed(live.container), 0)
-  const empty = setup({}, [])
+  const empty = setup({ demo: true }, [])
   assert.equal(await ensureDemoSeed(empty.container), 0)
   assert.equal(empty.settings.rows.length, 0, "no orders: nothing claimed, the next visit tries again")
 })
 
 test("a person in the demo: arm, read the plan, create, the label, the simulation moves on; buy and cancel too", async () => {
-  const s = setup({}, orders(16))
+  const s = setup({ demo: true }, orders(16))
   await ensureDemoSeed(s.container)
   await arm(s, "shipment", true)
   const pending = s.parcels.rows.find((r) => r.state === "pending" && r.locker_code)
@@ -97,7 +97,7 @@ test("a person in the demo: arm, read the plan, create, the label, the simulatio
 })
 
 test("reset: the demo starts over, toggles off, the sample rows back", async () => {
-  const s = setup({}, orders(4))
+  const s = setup({ demo: true }, orders(4))
   await ensureDemoSeed(s.container)
   await arm(s, "shipment", true)
   s.parcels.rows[0].state = "canceled"

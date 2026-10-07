@@ -103,6 +103,7 @@ export function ParcelsSection({
   filter,
   onFilter,
   poll,
+  initialQuery = "",
   onSettings,
 }: {
   status: StatusResponse
@@ -110,10 +111,12 @@ export function ParcelsSection({
   filter: ParcelFilter
   onFilter: (f: ParcelFilter) => void
   poll: boolean
+  /** From the page URL (?q=), e.g. the order number a host links to. */
+  initialQuery?: string
   onSettings: () => void
 }) {
   const { t } = useTranslation("inpost")
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState<string | null>(null)

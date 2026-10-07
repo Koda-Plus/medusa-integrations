@@ -1,12 +1,15 @@
+// GENERATED from kit/admin/guide.tsx (kit 1.0.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
 import { Badge, Button, Container, DropdownMenu, Heading, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
+import { KIT_META } from "./emails-kit-meta"
 
 /*
  * The page kit of the Koda Plus integrations: the same components in every
- * package (copied as src/admin/lib/<ns>-guide.tsx), so the five integration
- * pages share one look.
+ * package, so all integration pages share one look. GENERATED into each
+ * package as src/admin/lib/<ns>-guide.tsx from kit/admin/guide.tsx by
+ * `npm run kit:sync`: edit the kit, never a copy.
  *
  * Header
  *   usePageNav       Panel, Setup guide or Settings, and the settings tab, kept in ?view= and ?tab=
@@ -554,8 +557,13 @@ export function ReferencesBadge({ items, labels }: { items: Reference[]; labels:
 /* ------------------------------------------------------------------ */
 /* Community: add your store, the setup prompt for an AI agent, help on Discord */
 
-/** Koda Plus support: the Discord server, and the address store requests go to. */
-export const KODA_DISCORD = "https://discord.gg/WzUUKYzu8"
+/**
+ * Koda Plus support: the Discord server, and the address store requests go to.
+ * The Discord link is our own redirect, never an invite code: a published
+ * version lives forever, an invite does not (and an expired code can be taken
+ * over by another server).
+ */
+export const KODA_DISCORD = "https://koda.plus/discord"
 export const KODA_EMAIL = "hello@koda.plus"
 /** The Koda Plus demo store, where every integration runs on sample data. */
 const KODA_DEMO = "https://medusa.koda.plus"
@@ -725,6 +733,8 @@ export type SetupPromptSpec = {
   service: string
   /** The npm package, e.g. "@koda-plus/medusa-plugin-allegro". */
   pkg: string
+  /** The version to install; defaults to the version of this build when `pkg` is this package. */
+  version?: string
   /** The admin page, e.g. "/app/allegro". */
   route: string
   /** What the integration does: the page subtitle. */
@@ -751,8 +761,15 @@ function envNames(code: string): string[] {
  * the guide shows with the demo switch of the demo store, keeps every writer
  * off, and leaves notes (CLAUDE.md or AGENTS.md) for the sessions after it.
  */
+/** "@koda-plus/medusa-plugin-x@0.2.0": a pinned version, never whatever `latest` is when the prompt is pasted. */
+export function pinnedPackage(spec: SetupPromptSpec): string {
+  const version = spec.version ?? (spec.pkg === KIT_META.pkg ? KIT_META.version : null)
+  return version && /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version) ? `${spec.pkg}@${version}` : spec.pkg
+}
+
 export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
   const code = (text: string) => "`" + text + "`"
+  const pinned = pinnedPackage(spec)
   const env = envNames(`${spec.config}\n${spec.demo}`).map(code).join(", ")
   const needs = spec.needs.map((n) => `- ${plain(n)}`)
   const demoPage = `${KODA_DEMO}${spec.route}`
@@ -773,7 +790,7 @@ export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
       "",
       "## Kroki",
       "1. Zanim cokolwiek zmienisz, sprawdź projekt: Medusa 2.12 albo nowsza (tego wymagają strony i tłumaczenia panelu we wtyczce), menedżer pakietów projektu i medusa-config.ts. Jeśli coś blokuje instalację, zatrzymaj się i napisz mi, co.",
-      `2. Zainstaluj wtyczkę menedżerem pakietów projektu, na przykład ${code(`npm install ${spec.pkg}`)}. Jeśli rejestr jej nie znajduje, zatrzymaj się i daj mi znać: dostęp daje Koda Plus (${KODA_EMAIL}, Discord ${KODA_DISCORD}).`,
+      `2. Zainstaluj wtyczkę w tej wersji menedżerem pakietów projektu, na przykład ${code(`npm install ${pinned}`)}. Potem sprawdź pochodzenie paczki: ${code(`npm view ${spec.pkg} dist-tags.latest`)} i ${code("npm audit signatures")}. Jeśli rejestr jej nie znajduje albo podpisy się nie zgadzają, zatrzymaj się i daj mi znać: pomaga Koda Plus (${KODA_EMAIL}, Discord ${KODA_DISCORD}).`,
       "3. Zarejestruj wtyczkę w medusa-config.ts, nie ruszając tego, co już tam jest. Użyj konfiguracji z Przewodnika wdrożenia:",
       "",
       ...config,
@@ -782,7 +799,7 @@ export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
       `5. Wpisz zmienne do .env i do środowiska hostingu, nigdy do kodu ani do gita: ${env}. Jeśli nie podałem Ci wartości, zostaw ją pustą i wypisz mi ją na końcu.`,
       `6. Uruchom migracje bazy (${code("npx medusa db:migrate")}), potem sklep, i otwórz ${spec.route} w panelu admina. Sprawdź, czy Panel, Przewodnik wdrożenia i Ustawienia otwierają się bez błędów w konsoli przeglądarki i w logu serwera.`,
       `7. Nie włączaj żadnego zapisu, czyli niczego, co zmienia dane w ${service} albo w sklepie. Każdy zapis uzbraja człowiek w Ustawieniach, po próbie na sucho; opcje tylko na to pozwalają.`,
-      `8. Dopisz sekcję o tej integracji do notatek projektu dla agentów AI (CLAUDE.md albo AGENTS.md, zależnie od tego, czego używa projekt; jeśli nie ma żadnego, załóż CLAUDE.md): pakiet i jego wersja, gdzie są jego opcje w medusa-config.ts, zmienne środowiskowe, przełącznik demo, to, że zapisy uzbraja człowiek w Ustawieniach, że wdrożenie krok po kroku jest w panelu w Przewodniku wdrożenia, że pomoc jest na Discordzie (${KODA_DISCORD}) i że wtyczka zmienia się aktualizacją pakietu, nigdy edycją node_modules.`,
+      `8. Zaproponuj sekcję o tej integracji do notatek projektu dla agentów AI (CLAUDE.md albo AGENTS.md, zależnie od tego, czego używa projekt; jeśli nie ma żadnego, zaproponuj CLAUDE.md) i pokaż mi jej treść, zanim ją zapiszesz: pakiet i jego wersja, gdzie są jego opcje w medusa-config.ts, zmienne środowiskowe, przełącznik demo, to, że zapisy uzbraja człowiek w Ustawieniach, że wdrożenie krok po kroku jest w panelu w Przewodniku wdrożenia, że pomoc jest na Discordzie (${KODA_DISCORD}) i że wtyczka zmienia się aktualizacją pakietu, nigdy edycją node_modules.`,
       "",
       "Na koniec napisz mi, co zmieniłeś i co zostało po mojej stronie: konta i klucze, pierwsze połączenie w Ustawieniach i uzbrojenie zapisów.",
     ].join("\n")
@@ -801,7 +818,7 @@ export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
     "",
     "## Steps",
     "1. Before you change anything, check the project: Medusa 2.12 or newer (the plugin's admin pages and translations need it), the project's package manager and medusa-config.ts. If something blocks the install, stop and tell me what.",
-    `2. Install the plugin with the project's package manager, for example ${code(`npm install ${spec.pkg}`)}. If the registry cannot find it, stop and tell me: Koda Plus gives access (${KODA_EMAIL}, Discord ${KODA_DISCORD}).`,
+    `2. Install this version of the plugin with the project's package manager, for example ${code(`npm install ${pinned}`)}. Then check where the package comes from: ${code(`npm view ${spec.pkg} dist-tags.latest`)} and ${code("npm audit signatures")}. If the registry cannot find it or the signatures do not verify, stop and tell me: Koda Plus helps (${KODA_EMAIL}, Discord ${KODA_DISCORD}).`,
     "3. Register the plugin in medusa-config.ts without touching what is already there. Use the setup from the Setup guide:",
     "",
     ...config,
@@ -810,16 +827,16 @@ export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
     `5. Put the variables in .env and in the hosting's environment, never in code or in git: ${env}. If I did not give you a value, leave it empty and list it for me at the end.`,
     `6. Run the database migrations (${code("npx medusa db:migrate")}), then the store, and open ${spec.route} in the admin. Check that the Panel, the Setup guide and Settings open with no errors in the browser console or the server log.`,
     `7. Do not turn on any writer, that is anything that changes data in ${service} or in the store. A person arms each writer in Settings, after a dry run; the options only allow it.`,
-    `8. Add a section about this integration to the project's notes for AI agents (CLAUDE.md or AGENTS.md, whichever the project uses; if neither exists, create CLAUDE.md): the package and its version, where its options sit in medusa-config.ts, the environment variables, the demo switch, that a person arms writers in Settings, that the step by step setup is in the admin under Setup guide, that help is on Discord (${KODA_DISCORD}), and that the plugin changes through package updates, never through edits in node_modules.`,
+    `8. Propose a section about this integration for the project's notes for AI agents (CLAUDE.md or AGENTS.md, whichever the project uses; if neither exists, propose CLAUDE.md) and show me its text before you save it: the package and its version, where its options sit in medusa-config.ts, the environment variables, the demo switch, that a person arms writers in Settings, that the step by step setup is in the admin under Setup guide, that help is on Discord (${KODA_DISCORD}), and that the plugin changes through package updates, never through edits in node_modules.`,
     "",
     "When you are done, tell me what you changed and what is left for me: accounts and keys, the first connection in Settings and arming the writers.",
   ].join("\n")
 }
 
 /**
- * "Copy prompt": one click puts the setup prompt on the clipboard, for Claude
- * Code, Cursor or another AI agent opened in the reader's Medusa project. The
- * popover says it was copied and shows the text.
+ * "Copy prompt": the button opens the setup prompt for Claude Code, Cursor or
+ * another AI agent opened in the reader's Medusa project; the text goes to the
+ * clipboard only from the Copy button under it, after the reader has seen it.
  */
 export function PromptButton({ spec, lang, labels }: { spec: SetupPromptSpec; lang: string; labels: PromptLabels }) {
   const prompt = useMemo(() => buildSetupPrompt(spec, lang), [spec, lang])
@@ -836,7 +853,7 @@ export function PromptButton({ spec, lang, labels }: { spec: SetupPromptSpec; la
   return (
     <Popover>
       <Popover.Trigger asChild>
-        <Button size="small" variant="secondary" onClick={() => void copy()}>
+        <Button size="small" variant="secondary" onClick={() => setState("idle")}>
           <Sparkles />
           {labels.button}
         </Button>

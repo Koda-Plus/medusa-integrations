@@ -98,5 +98,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "inpost",
+    "moduleDir": "inpost",
+    "brand": "InPost",
+    "title": "InPost by Koda Plus",
+    "kind": "integration",
+    "catalog": "shipping"
   }
 }

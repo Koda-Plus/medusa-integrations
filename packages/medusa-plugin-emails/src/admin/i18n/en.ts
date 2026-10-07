@@ -1,3 +1,5 @@
+import { communityEn } from "../lib/emails-kit-community"
+
 const en = {
   /* The sidebar label: the key is the English name, so it reads right even where the admin cannot translate route labels. */
   "E-mails": "E-mails",
@@ -67,34 +69,7 @@ const en = {
     soonMore: "+{{count}} soon",
     review: "Read the review",
   },
-  community: {
-    addStore: {
-      button: "Add your store",
-      title: "Does your store run on this integration?",
-      text: "Tell us about it. Once we check it, the store joins this list with a link and its rating.",
-      name: "Store name",
-      url: "Store address",
-      note: "A few words about the setup (optional)",
-      send: "Send the request",
-      copy: "Copy the text",
-      copied: "Request copied, paste it into a mail to hello@koda.plus",
-      hint: "Your mail app opens with the message to {{email}} ready to send.",
-      subject: "A store for {{integration}}",
-      greeting: "Hello, my store runs on {{integration}}. Please add it to the list of stores.",
-    },
-    prompt: {
-      button: "Copy prompt",
-      title: "Add this integration to your store",
-      text: "Paste it into Claude Code, Cursor or another AI agent opened in your Medusa project. The agent installs the plugin, sets it up like here and leaves notes for further work.",
-      copy: "Copy again",
-      copied: "Prompt copied",
-      failed: "Could not copy. Select the text and copy it by hand.",
-    },
-    discord: {
-      button: "Help on Discord",
-      title: "Join the Koda Plus server on Discord",
-    },
-  },
+  community: communityEn,
   gallery: {
     title: "Templates",
     subtitle: "Every template rendered exactly as customers get it, with your branding. Check it on a desktop and a phone, in light and dark mode, in both languages, on sample data or on your newest order.",

@@ -134,7 +134,7 @@ test("a fulfillment records the choice and the cash on delivery amount, and send
 })
 
 test("documents: the label of a fulfillment with a shipment id; a generated PDF in demo mode", async () => {
-  const demo = provider({})
+  const demo = provider({ demo: true })
   assert.deepEqual(await demo.getFulfillmentDocuments({}), [])
   assert.deepEqual(await demo.getFulfillmentDocuments({ inpost_shipment_id: "9123" }), [{ type: "label", shipment_id: "9123", formats: ["A6", "A4"] }])
   const doc = (await demo.retrieveDocuments({ inpost_shipment_id: "9123" }, "label")) as unknown as Record<string, string>

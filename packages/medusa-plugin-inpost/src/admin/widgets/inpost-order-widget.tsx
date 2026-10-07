@@ -3,10 +3,11 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Container, Heading, Text } from "@medusajs/ui"
+import { Badge, Heading, Text } from "@medusajs/ui"
 import type { ParcelDto } from "../../modules/inpost/lib/contract"
 import { useInpostOrder } from "../lib/inpost-api"
 import { InpostIcon } from "../lib/inpost-icon"
+import { WidgetFrame, hostable } from "../lib/inpost-kit"
 import { History, ParcelActions } from "../lib/inpost-plan"
 import { KindBadges, LockerLines, ParcelStatus, ProblemList, TrackingCell, fmtDateTime, fmtMoney } from "../lib/inpost-ui"
 
@@ -17,18 +18,24 @@ import { KindBadges, LockerLines, ParcelStatus, ProblemList, TrackingCell, fmtDa
  * "Create" (when the shipment writer is armed), the cancel while ShipX allows
  * it, a new locker before sending, and the history. Hidden on orders that do
  * not go with InPost.
+ *
+ * A host (an app that shows every integration as tabs of one card) embeds it
+ * with `embedded`: no frame and header of its own, a line while loading and
+ * an empty state instead of nothing.
  */
-const InpostOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
+const InpostOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { embedded?: boolean }) => {
   const { t, i18n } = useTranslation("inpost")
   const lang = i18n.language || "en"
   const q = useInpostOrder(data.id)
   const info = q.data
-  if (q.isLoading || !info) return null
-  if (!info.chosen && info.parcels.length === 0) return null
+  if (q.isLoading || !info) return embedded ? <Quiet>{q.isError ? t("widget.failed") : t("widget.loading")}</Quiet> : null
+  if (!info.chosen && info.parcels.length === 0) return embedded ? <Quiet>{t("widget.notInpost")}</Quiet> : null
   const chosen = info.chosen
 
   return (
-    <Container className="divide-y p-0">
+    <WidgetFrame
+      embedded={embedded}
+      header={
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-x-2">
           <InpostIcon width={18} height={18} className="shrink-0" />
@@ -39,10 +46,19 @@ const InpostOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
             </Badge>
           ) : null}
         </div>
-        <Link to="/inpost" className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+        <Link to={`/inpost?q=${data.display_id ?? ""}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
           {t("widget.more")}
         </Link>
       </div>
+      }
+    >
+      {embedded && info.mode === "demo" ? (
+        <div className="px-6 py-2">
+          <Badge size="2xsmall" color="purple">
+            {t("demo.badge")}
+          </Badge>
+        </div>
+      ) : null}
 
       {chosen ? (
         <div className="flex flex-col gap-y-2 px-6 py-4">
@@ -82,7 +98,17 @@ const InpostOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
       ) : (
         info.parcels.map((p) => <ParcelBlock key={p.id} parcel={p} lang={lang} writers={info.writers} events={info.events.filter((e) => e.parcelId === p.id)} />)
       )}
-    </Container>
+    </WidgetFrame>
+  )
+}
+
+function Quiet({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-6 py-4">
+      <Text size="small" className="text-ui-fg-subtle">
+        {children}
+      </Text>
+    </div>
   )
 }
 
@@ -159,4 +185,7 @@ export const config = defineWidgetConfig({
   zone: "order.details.side.after",
 })
 
-export default InpostOrderWidget
+export default hostable(
+  { id: "inpost.order", ns: "inpost", zone: "order.details", name: "InPost", order: 40, Icon: InpostIcon, hideWhenNone: true },
+  InpostOrderCard,
+)

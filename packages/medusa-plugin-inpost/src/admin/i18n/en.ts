@@ -1,3 +1,6 @@
+import { communityEn } from "../lib/inpost-kit-community"
+import { integrationEn } from "../../modules/inpost/lib/integration-texts"
+
 const en = {
   title: "InPost",
   by: "by Koda Plus",
@@ -248,7 +251,10 @@ const en = {
     country_unsupported: "InPost couriers deliver in Poland only (the address is in {{detail}}).",
     cod_currency: "Cash on delivery is possible in PLN only (the order is in {{detail}}).",
     cod_amount_unknown: "The order total cannot be read for the cash on delivery.",
-    cod_zero: "The order total is zero: there is nothing to collect.",
+    cod_zero: "Nothing is left to collect: the order total is zero or already paid.",
+    cod_paid_online: "The order was paid online ({{detail}}): cash on delivery would make the buyer pay twice. Change the shipping option or refund first.",
+    fulfillment_shipped: "Medusa already marks this fulfillment as shipped: a shipment now would be a second, paid parcel. Link the existing one or skip.",
+    fulfillment_delivered: "Medusa already marks this fulfillment as delivered: there is nothing to send.",
     too_heavy: "Too heavy for one parcel ({{detail}}). Split the items into more fulfillments.",
     pickup_sender_missing: "A courier pickup needs the sender's name, phone and full address (Settings, Sender and parcel).",
   },
@@ -258,6 +264,7 @@ const en = {
     sender_organization: "No sender is sent: InPost uses your organization's data from InPost Manager.",
     sample_contact: "Demo: the order has no phone or e-mail, sample ones are shown.",
     parcel_size_default: "The default size of Settings applies.",
+    cod_on_other_parcel: "Cash on delivery is collected once per order, on its first parcel: this one goes without it.",
   },
   plan: {
     title: "Plan of the shipment",
@@ -528,6 +535,9 @@ const en = {
     waitingForArm: "Waiting for a person: read the plan, then create it once the shipment writer is armed.",
     showHistory: "History ({{count}})",
     hideHistory: "Hide the history",
+    loading: "Reading the InPost shipments of this order",
+    failed: "Could not read the InPost shipments of this order",
+    notInpost: "This order does not go with InPost.",
   },
   references: {
     title: "Running in stores built by Koda Plus",
@@ -541,34 +551,8 @@ const en = {
     soonMore: "+{{count}} soon",
     review: "Read the review",
   },
-  community: {
-    addStore: {
-      button: "Add your store",
-      title: "Does your store run on this integration?",
-      text: "Tell us about it. Once we check it, the store joins this list with a link and its rating.",
-      name: "Store name",
-      url: "Store address",
-      note: "A few words about the setup (optional)",
-      send: "Send the request",
-      copy: "Copy the text",
-      copied: "Request copied, paste it into a mail to hello@koda.plus",
-      hint: "Your mail app opens with the message to {{email}} ready to send.",
-      subject: "A store for {{integration}}",
-      greeting: "Hello, my store runs on {{integration}}. Please add it to the list of stores.",
-    },
-    prompt: {
-      button: "Copy prompt",
-      title: "Add this integration to your store",
-      text: "Paste it into Claude Code, Cursor or another AI agent opened in your Medusa project. The agent installs the plugin, sets it up like here and leaves notes for further work.",
-      copy: "Copy again",
-      copied: "Prompt copied",
-      failed: "Could not copy. Select the text and copy it by hand.",
-    },
-    discord: {
-      button: "Help on Discord",
-      title: "Join the Koda Plus server on Discord",
-    },
-  },
+  community: communityEn,
+  integration: integrationEn,
   guide: {
     demoNote: "This store runs the plugin in demo mode: the steps below show the setup of a real InPost account, their states stay at to do.",
     intro: {

@@ -64,6 +64,10 @@ export interface InpostPluginOptions {
   fulfillmentStatusWriter?: boolean | string
   /** With the shipment writer armed: create the shipment as soon as a fulfillment is created (true), or only by the button (false, default). */
   autoCreate?: boolean | string
+  /** autoCreate takes only fulfillments recorded within this many hours (default 48), never a backlog. */
+  autoCreateMaxAgeHours?: number | string
+  /** Payment providers that mean "pay at the door" (default ["pp_system_default"]); a payment by any other provider blocks cash on delivery. */
+  codPaymentProviders?: string[] | string
   /** Default parcel size: "small" (A), "medium" (B, default) or "large" (C). Changeable per shipment. */
   defaultParcelSize?: ParcelSize | "A" | "B" | "C" | string
   /** Label size: "A6" (default) or "A4". Courier labels exist only as A6. */
@@ -121,6 +125,8 @@ export interface ResolvedInpostOptions {
   demoReason: "option" | "no_token" | null
   writers: { shipment: boolean; fulfillmentStatus: boolean }
   autoCreate: boolean
+  autoCreateMaxAgeHours: number
+  codPaymentProviders: string[]
   defaultParcelSize: ParcelSize
   labelFormat: LabelSize
   sender: ResolvedSender
@@ -231,7 +237,8 @@ export function resolveOptions(o: InpostPluginOptions | undefined | null): Resol
   const problems: string[] = []
   const apiToken = str(opts.apiToken)
   const demoOption = boolOrNull(opts.demo)
-  const demo = demoOption === true || (demoOption === null && !apiToken)
+  /* Demo only when asked for: a missing token on production must never turn real fulfillments into sample rows. */
+  const demo = demoOption === true
   const writerSwitch = (v: unknown, name: string): boolean => {
     const b = boolOrNull(v)
     if (v !== undefined && v !== null && v !== "" && b === null) problems.push(`${name} (true or false)`)
@@ -261,12 +268,14 @@ export function resolveOptions(o: InpostPluginOptions | undefined | null): Resol
     organizationId: org,
     sandbox: boolOrNull(opts.sandbox) === true,
     demo,
-    demoReason: !demo ? null : demoOption === true ? "option" : "no_token",
+    demoReason: demo ? "option" : null,
     writers: {
       shipment: writerSwitch(opts.shipmentWriter, "shipmentWriter"),
       fulfillmentStatus: writerSwitch(opts.fulfillmentStatusWriter, "fulfillmentStatusWriter"),
     },
     autoCreate: boolOrNull(opts.autoCreate) === true,
+    autoCreateMaxAgeHours: bounded(opts.autoCreateMaxAgeHours, 48, 1, 720),
+    codPaymentProviders: opts.codPaymentProviders === undefined ? ["pp_system_default"] : textList(opts.codPaymentProviders),
     defaultParcelSize: size ?? DEFAULT_PARCEL_SIZE,
     labelFormat: label ?? DEFAULT_LABEL_SIZE,
     sender: resolveSender(opts.sender),

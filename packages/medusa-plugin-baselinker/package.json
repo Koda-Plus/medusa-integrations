@@ -94,5 +94,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "baselinker",
+    "moduleDir": "baselinker",
+    "brand": "BaseLinker",
+    "title": "BaseLinker by Koda Plus",
+    "kind": "integration",
+    "catalog": "erp"
   }
 }

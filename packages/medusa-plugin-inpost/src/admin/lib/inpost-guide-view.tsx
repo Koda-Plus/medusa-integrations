@@ -102,7 +102,7 @@ export function usePromptSpec(): SetupPromptSpec {
       summary: t("subtitle"),
       needs: NEEDS.map((k) => t(`guide.intro.needs.${k}`)),
       config: `${ENV}\n\n${CONFIG}`,
-      demo: 'demo: process.env.INPOST_DEMO === "true" || !process.env.INPOST_API_TOKEN,',
+      demo: 'demo: process.env.INPOST_DEMO === "true",',
     }),
     [t],
   )

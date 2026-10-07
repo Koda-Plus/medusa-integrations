@@ -95,5 +95,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "negotiations",
+    "moduleDir": "negotiations",
+    "brand": "Negotiations",
+    "title": "Negotiations by Koda Plus",
+    "kind": "module",
+    "catalog": null
   }
 }

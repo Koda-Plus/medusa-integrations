@@ -95,7 +95,7 @@ test("deliveries of another organization, of unknown shipments, and in demo mode
   assert.ok(foreign.ok)
   if (foreign.ok) assert.equal(await handleWebhookCall(s.container, foreign.call), "foreign")
   assert.equal(await handleWebhookCall(s.container, call("424242", "delivered")), "unmatched")
-  const demo = setup({}, [])
+  const demo = setup({ demo: true }, [])
   assert.equal(await handleWebhookCall(demo.container, call("1", "delivered")), "demo")
 })
 
