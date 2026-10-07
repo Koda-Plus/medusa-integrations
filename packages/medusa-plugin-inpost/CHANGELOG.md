@@ -6,6 +6,7 @@ First npm release.
 
 ### Fixed
 
+- Admin pages work when the plugin is installed from npm: the admin libraries are optional peers, so the app keeps the copies of Medusa's dashboard instead of a second, newer copy (which ran the pages in another React context: "No QueryClient set").
 - Cash on delivery is collected once per order: the amount still due (the order total minus what was captured) goes on the first live cash on delivery parcel, further parcels of the same order go without it (`cod_on_other_parcel`), and an order paid by any provider outside `codPaymentProviders` gets no cash on delivery (`cod_paid_online`).
 - The status pass picks open shipments in the database (not in a final status, younger than `pollMaxAgeDays`, not read for 25 minutes, never read first): delivered parcels no longer fill its batch, so the fallback keeps reading after hundreds of parcels. `autoCreate` asks the database for pending rows without problems.
 - `autoCreate` never takes a backlog: only fulfillments recorded after the shipment writer was armed and within `autoCreateMaxAgeHours` (default 48). A fulfillment Medusa already marks shipped or delivered gets no shipment (`fulfillment_shipped`, `fulfillment_delivered`).
