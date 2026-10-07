@@ -105,7 +105,8 @@ export async function setWriterArmed(
     if (refusal) throw new WriterRefusedError(refusal)
   }
   await upsertWriter(svc, key, toggledPatch(armed, actor, new Date(), ctx.mode))
-  svc.getLogger().info(`[allegro] writer ${key} ${armed ? "armed" : "disarmed"} by ${actor.name}`)
+  /* The user id only: names and e-mails of the team stay out of the logs (the admin shows who). */
+  svc.getLogger().info(`[allegro] writer ${key} ${armed ? "armed" : "disarmed"} by ${actor.id ?? "an admin"}`)
   const fresh = await loadWriterRows(svc)
   return toWriterDto(stateOf(svc, key, fresh.get(key) ?? null, ctx), fresh.get(key) ?? null)
 }

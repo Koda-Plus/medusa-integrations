@@ -60,7 +60,8 @@ export function skippedResult(skipped: WriterRunResult["skipped"], message: stri
 async function raiseInfo(svc: AllegroModuleService, armed: ReadonlySet<string>): Promise<{ allowed: boolean; reason: string | null }> {
   /* The last healthy import drain (never a dry run): the orders writer records it on every run. */
   const orders = (await loadWriterRows(svc)).get("orders")
-  const [, held] = (await svc.listAndCountAllegroOrderImports({ status: "held" } as never, { take: 1, select: ["id"] })) as unknown as [unknown[], number]
+  /* Held imports of this mode only: leftovers of a demo never block a live store. */
+  const [, held] = (await svc.listAndCountAllegroOrderImports({ status: "held", demo: svc.isDemo() } as never, { take: 1, select: ["id"] })) as unknown as [unknown[], number]
   const last = orders?.last_success_at ? new Date(orders.last_success_at) : null
   return raiseGuard({ importArmed: armed.has("orders"), lastImportOkAt: last, heldImports: held, now: new Date() })
 }

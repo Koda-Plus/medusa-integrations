@@ -380,6 +380,18 @@ export type ImportOutcome =
   | { kind: "retry"; reason: string; transient: boolean }
   | { kind: "lost"; reason: string }
 
+/**
+ * Allegro or the network was away for a moment (no answer, a timeout, 5xx,
+ * 429): the next run tries again, and it never counts towards the circuit
+ * breaker of the import. Ten minutes of an Allegro outage must not disarm it.
+ */
+export function transientFailure(err: unknown): boolean {
+  const e = err as { name?: unknown; transient?: unknown; status?: unknown } | null
+  if (!e || e.name !== "AllegroApiError") return false
+  const status = Number(e.status)
+  return e.transient === true || status === 429 || status >= 500
+}
+
 /** Errors Medusa raises for data it refuses: a person has to act, retrying changes nothing. */
 export function isDataError(err: unknown): boolean {
   const e = err as { type?: unknown; name?: unknown } | null

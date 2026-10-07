@@ -15,6 +15,9 @@
 - A change of the delivery address, the pickup point or the invoice data on Allegro after the import asks a person to compare (it only refreshed the status before).
 - A server error answers a plain message; the exception text goes to the server log, masked.
 - The User-Agent and the status report the package version (they said 0.2.0).
+- A short Allegro or network outage no longer disarms the order import: no answer, 5xx and 429 are retried by the next run and do not count towards the circuit breaker.
+- Held imports and plan counts of the other mode (demo or live) no longer block the mirror stock push or show in the plan summary.
+- The log line of an armed or disarmed writer names the user id, not the person's name and e-mail.
 
 ### Changed
 
