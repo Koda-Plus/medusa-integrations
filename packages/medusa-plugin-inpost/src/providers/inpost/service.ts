@@ -164,9 +164,13 @@ class InpostFulfillmentProvider extends AbstractFulfillmentProviderService {
     return {}
   }
 
-  /** Returns go through InPost Manager or the InPost returns service; nothing is created here. */
+  /**
+   * Returns go through InPost Manager or the InPost returns service. Refused
+   * here with a clear error, so a return option on this provider never looks
+   * like a return that was sent.
+   */
   async createReturnFulfillment(_fulfillment: Record<string, unknown>): Promise<CreateFulfillmentResult> {
-    return { data: {}, labels: [] }
+    throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "InPost returns are not supported by this provider yet: use InPost Manager or the InPost returns service.")
   }
 
   /**

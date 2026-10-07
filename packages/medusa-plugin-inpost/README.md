@@ -33,15 +33,15 @@ Ship with InPost from Medusa: Paczkomat parcel lockers and the InPost courier, b
 - **No second parcel for orders shipped elsewhere**: `skipMetadataKeys` names the order metadata keys another system writes when it ships an order; such orders are skipped, and a key holding `{ shipment_id }` is tracked instead.
 - **Webhook with a fallback**: the webhook only says which shipment changed; the plugin reads the shipment from ShipX itself. Every change is applied once (compare and set), whether the webhook or the status pass sees it first.
 - **Events** other plugins build on: `inpost.shipment.created`, `inpost.shipment.status_changed`, `inpost.shipment.delivered`, a documented payload without personal data.
-- **Never breaks the boot**: missing or broken options are listed in the admin; without a token the plugin runs in demo mode.
+- **Never breaks the boot**: missing or broken options are listed in the admin; without a token the plugin records fulfillments and says "Not configured"; demo mode runs only with `demo: true`.
 - **Demo mode** from the store's own orders, through the same plans, writers and events, with zero requests to InPost.
 - **Admin in English and Polish**, with "Copy prompt" for an AI agent and help on the Koda Plus Discord.
 
 ## Requirements
 
-- Medusa 2.12 or newer (tested on 2.15.3) and Node.js 20+.
+- Medusa 2.12 or newer and Node.js 20+ (see Compatibility).
 - An InPost business account in InPost Manager with ShipX API access: the API token and the organization id. For tests, an account in the ShipX sandbox.
-- Shipping to Poland. Cash on delivery needs orders in PLN and a payment method that does not take the money online (Medusa's manual provider, or one for payment on delivery).
+- Shipping to Poland. Cash on delivery needs orders in PLN and a payment method that does not take the money online (Medusa's manual provider, or one for payment on delivery, listed in `codPaymentProviders`).
 - **Only one InPost plugin per store.** Do not install this plugin next to another InPost fulfillment plugin for Medusa: both would answer the same orders and could send two parcels for one. Remove the other one first. This plugin keeps its data in its own tables (`inpost_parcel`, `inpost_parcel_event`, `inpost_setting`) and never reads or writes the tables of another plugin.
 
 ## Installation
@@ -116,13 +116,15 @@ Connection:
 - `apiToken` (default none): the ShipX API token from InPost Manager (My account, API). Only in the `Authorization` header of the server's requests; masked in every log, error and admin screen. The Geowidget token of the same page is another, public token: ShipX answers it with 401.
 - `organizationId` (default none): the organization id shown next to the token, digits only.
 - `sandbox` (default `false`): the ShipX sandbox instead of production, for the API, the points and the Geowidget.
-- `demo` (default `true` when `apiToken` is missing, else `false`): sample shipments built from the store's orders; nothing is sent to InPost. With `demo: false` and no token the plugin records fulfillments, says "Not configured" in the admin and sends nothing.
+- `demo` (default `false`): sample shipments built from the store's orders; nothing is sent to InPost. Only `true` turns it on: a missing token never does, so a variable lost on production cannot turn real fulfillments into sample rows. Without a token the plugin records fulfillments, says "Not configured" in the admin and sends nothing.
 
 Writes:
 
 - `shipmentWriter` (default `false`; in demo mode `true`, acting on the simulation only): allows the ShipX writes: create a shipment, buy the offer of a prepaid account, order a courier pickup, cancel a shipment ShipX still allows to cancel. The admin cannot arm it while this is not `true`.
 - `fulfillmentStatusWriter` (default `false`; in demo mode `true`, simulated): allows marking Medusa fulfillments shipped and delivered.
 - `autoCreate` (default `false`): with the shipment writer armed, create the shipment as soon as its fulfillment is created, from its plan, without a click, and let the status pass order the courier pickup of confirmed `dispatch_order` shipments. Plans with problems wait for a person either way.
+- `autoCreateMaxAgeHours` (default `48`, 1 to 720): the status pass creates only fulfillments recorded after the shipment writer was armed and within these hours. A backlog (fulfillments shipped by hand while the writer was off) is never turned into new, paid labels.
+- `codPaymentProviders` (default `["pp_system_default"]`): the payment providers that mean "pay at the door". When an order has a payment by any other provider (a card, BLIK, Przelewy24), its cash on delivery plan stops with `cod_paid_online`: the buyer never pays twice.
 
 Shipments:
 
@@ -208,7 +210,7 @@ The provider stores the method data in one shape, with the earlier fields first 
 
 The answer is `{ points, mode, demo }`. Each point has `code`, `name`, `type`, `status`, `address` (`line1`, `line2`, `street`, `building_number`, `city`, `post_code`, `province`), `location` (`lat`, `lng`), `description`, `opening_hours`, `is_24_7`, `payment_available` and `distance` in metres when the search had a place. Store the chosen one as `machine_id: code`, `machine_name: code`, `machine_address: { line1, line2, city, post_code }`.
 
-Only InPost's public points data is returned. Answers are cached for ten minutes on the server and may be cached for five in the browser. Each IP may send `pointsPerMinute` searches a minute; above that the route answers 429 with `Retry-After`. A search that is neither a code, a postal code, a city nor a place in Poland answers 400; when InPost's list does not answer, 502. Demo mode answers with the demo lockers.
+Only InPost's public points data is returned. Answers are cached for ten minutes on the server and may be cached for five in the browser. Each client address (as Medusa resolves it behind your proxy) may send `pointsPerMinute` searches a minute; above that the route answers 429 with `Retry-After`. A search that is neither a code, a postal code, a city nor a place in Poland answers 400; when InPost's list does not answer, 502. Demo mode answers with the demo lockers.
 
 ## Webhook
 
@@ -287,7 +289,8 @@ The admin has the full guide (**InPost**, **Setup guide**, or `/app/inpost?view=
 
 - **Two switches per writer.** The option (`shipmentWriter`, `fulfillmentStatusWriter`) is the hard one: `false` wins and the admin cannot override it. The switch in Settings is the runtime one, stored with who flipped it and when. Demo and live toggles are separate.
 - **Plan first.** A person creates a shipment from its plan and sends the plan's hash with the click; when the order, the settings or the shipment changed since the plan was read, the create is refused and the new plan is shown. A plan with problems sends nothing.
-- **Auto or button.** With `autoCreate`, an armed writer creates the shipment when its fulfillment is created, from a plan without problems, and the status pass orders the courier pickups; otherwise every shipment and every pickup waits for its button.
+- **Auto or button.** With `autoCreate`, an armed writer creates the shipment when its fulfillment is created, from a plan without problems, and the status pass orders the courier pickups; otherwise every shipment and every pickup waits for its button. The pass never takes a backlog (`autoCreateMaxAgeHours`), and a fulfillment Medusa already marks shipped or delivered gets no shipment.
+- **Cash on delivery once per order.** The amount is what is still due (the order total minus what was captured), on the first live cash on delivery parcel of the order; further parcels of the same order go without it. An order paid online (`codPaymentProviders`) gets no cash on delivery at all.
 - **One shipment per fulfillment**: a unique row before anything goes out, an atomic claim with a lease, and the `unknown` state after an unclear answer, resolved by a lookup in ShipX (by the receiver and the reference) before anything is sent again. Only a lookup a quarter of an hour later that still finds nothing lets a person try again.
 - **Cancel only while ShipX allows it**: the status is read first, and only `created`, `offers_prepared` and `offer_selected` can be canceled. Later, the admin says to cancel in InPost Manager (lockers) or WebTrucker (courier). Shipments the plugin did not create (linked, or found under `skipMetadataKeys`) are only tracked, never canceled or paid.
 - **Prepaid offers once**: one purchase per shipment at a time (an atomic claim), whoever asks first, the webhook, the status pass or a person.
@@ -301,7 +304,11 @@ The admin has the full guide (**InPost**, **Setup guide**, or `/app/inpost?view=
 - **Personal data stays where it lives**: the receiver's name, phone, e-mail and address are read from the order when a plan is built and sent to ShipX only when a shipment is created. The plugin's tables keep the order and fulfillment ids, the option, the locker (public data), the parcel, the cash on delivery amount, the reference and the statuses; problems name what is wrong, never the value. Events carry no personal data.
 - **Rate limited** towards ShipX (`requestsPerMinute`), with retries only for reads (network errors, 5xx, 429 with `Retry-After`); writes are sent once.
 - **History**: status passes, webhook deliveries, actions and statuses are kept for 120 days.
-- **Admin routes** sit behind Medusa's admin authentication. `GET /store/inpost/points` serves public locker data only, limited per IP.
+- **Admin routes** sit behind Medusa's admin authentication. Writes to `/admin/inpost/*` take a JSON body or the `x-koda-request` header and answer 415 otherwise: Medusa's session cookie is `SameSite=None` in production, so a form on another site could otherwise post with it (shipments, offers and pickups cost money). The plugin's admin sends both.
+- **Shopper metadata is not state.** A shopper may not set `inpost_*` keys or the keys of `skipMetadataKeys` on a cart or the account through the Store API (400 `reserved_metadata_key`); those are written by the store's own systems through the admin API.
+- **Reads do not write**: `GET` routes only read; demo samples are built by `POST /admin/inpost/demo/seed` and by the status pass.
+- `GET /store/inpost/points` serves public locker data only, limited per client address as Medusa resolves it behind your proxy (`trust proxy`), never by a header the client sends.
+- **Errors**: unexpected server errors answer a plain sentence; the details stay in the server log, masked.
 
 ## What this plugin does not do (yet)
 
@@ -339,7 +346,33 @@ Every route is behind Medusa's admin authentication. Writes answer 409 while the
 - `POST /admin/inpost/settings`: the sender, the default parcel size and the label size of the current mode.
 - `POST /admin/inpost/writers` `{ writer: "shipment" | "fulfillmentStatus", on }`: arms or disarms a writer.
 - `POST /admin/inpost/sync`: a status pass now (202). `POST /admin/inpost/check`: checks the token and the organization.
-- `GET /admin/inpost/events`: the history. `POST /admin/inpost/demo/reset`: demo mode only, starts the simulation over.
+- `GET /admin/inpost/events`: the history. `POST /admin/inpost/demo/seed`: demo mode only, builds the sample shipments once. `POST /admin/inpost/demo/reset`: demo mode only, starts the simulation over.
+- `GET /admin/inpost/integration`, `/integration/summary`, `/integration/attention`: the koda.integration/1 contract, see below.
+
+## Works with Koda Plus hosts
+
+An app that shows every Koda Plus plugin in one place (like [medusa.koda.plus](https://medusa.koda.plus/app/orders?demo=en)) reads InPost through the shared contract `koda.integration/1` and never needs to know its tables:
+
+- `GET /admin/inpost/integration`: the manifest (mode, configuration, writers armed, widgets).
+- `GET /admin/inpost/integration/summary?entity=order&id=order_...` (or `ids=`, up to 50): one line per order, the worst parcel speaking (not created, a delivery problem or a return is red; to ship, an offer to pay or a canceled shipment with an open fulfillment is orange; on the way is blue; delivered is green), with the facts `delivery` (Paczkomat or courier, tracking number and link) and `payment` (cash on delivery with the amount). Facts come from the plugin's rows and the shipping method data the provider validated, never from order metadata.
+- `GET /admin/inpost/integration/attention?scope=orders`: counters `parcels_failed`, `parcels_problems`, `parcels_to_create`, `parcels_awaiting_payment`, each with a link to its filtered list (`/inpost?filter=...`).
+- The order card registers as `inpost.order` for the zone `order.details`; a host that claims the zone shows it as a tab (`embedded`) and Medusa's own spot stays empty. Without a host nothing changes.
+- The page opens on deep links: `/inpost?filter=to_create`, `/inpost?q=1042`.
+
+## Public API
+
+What other code may import: `@koda-plus/medusa-plugin-inpost/workflows`, `@koda-plus/medusa-plugin-inpost/modules/inpost` (the module, its options and event types), `@koda-plus/medusa-plugin-inpost/providers/inpost` (the fulfillment provider) and `/admin`. Type declarations ship with the package. Every other path is internal and may change in any release.
+
+## Uninstall
+
+1. Move the shipping options off the InPost provider (`inpost_inpost`) or delete them, so no new fulfillment uses it.
+2. Remove the webhook URL in InPost Manager (My account, API, Webhook).
+3. Remove the plugin and the provider from `medusa-config.ts` and the package from `package.json`.
+4. The tables `inpost_parcel`, `inpost_parcel_event` and `inpost_setting` stay with your data; drop them by hand when you no longer need the history.
+
+## Compatibility
+
+Medusa 2.12 to 2.21 (peer range `^2.12.0`) and Node.js 20+. The release of each version runs the smoke test on a fresh Medusa 2.12.6 and 2.21.2 app: migrations, build, start and the admin pages. Developing the plugin needs Node.js 22.6+ (the tests run the TypeScript sources directly).
 
 ## Workflows
 
@@ -357,7 +390,7 @@ The same rules as the admin: creating needs the shipment writer allowed and arme
 
 ## Demo mode
 
-`demo: true`, or no `apiToken`, builds 16 sample shipments from the store's newest orders: three to create (one without a locker), two waiting for pickup, one waiting for the payment of a prepaid offer, two in transit, two in the locker (one after a pickup reminder), three delivered, one not collected in time, one returned to the sender, and one skipped because another system shipped the order. The lockers are invented (KSP01M to KSP05G), tracking numbers start with 99 and never link to inpost.pl, labels say they are simulated. Arm the shipment writer in Settings and create a shipment from its plan: it moves along by itself, from the label to the locker. Demo rows never meet real ones, Medusa's fulfillments are never touched, and nothing is sent to InPost.
+`demo: true` builds 16 sample shipments from the store's newest orders: three to create (one without a locker), two waiting for pickup, one waiting for the payment of a prepaid offer, two in transit, two in the locker (one after a pickup reminder), three delivered, one not collected in time, one returned to the sender, and one skipped because another system shipped the order. The lockers are invented (KSP01M to KSP05G), tracking numbers start with 99 and never link to inpost.pl, labels say they are simulated. Arm the shipment writer in Settings and create a shipment from its plan: it moves along by itself, from the label to the locker. Demo rows never meet real ones, Medusa's fulfillments are never touched, and nothing is sent to InPost.
 
 ## Development
 
@@ -368,7 +401,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the plan and the exact ShipX request for each option, cash on delivery in grosze, the address and locker parsing, the options and references, the ShipX client (hosts, retries of reads only, errors, masking), the points search, the SQL of the claims and the compare and set of statuses, the flows end to end against a fake Medusa and a scripted ShipX (create once, unclear answers, prepaid offers, pickups, cancel rules, the fulfillment status writer), the webhook, the demo generator and the house rules of the copy. With `INPOST_TEST_PG_URL=postgres://...` it also runs the migration (twice) and every SQL statement of the store on a real Postgres, in a scratch schema it drops afterwards. What the plugin relies on from InPost's documentation is in [docs/shipx-api-notes.md](./docs/shipx-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-inpost` in the app.
+`npm test` covers the plan and the exact ShipX request for each option, cash on delivery in grosze, the address and locker parsing, the options and references, the ShipX client (hosts, retries of reads only, errors, masking), the points search, the SQL of the claims and the compare and set of statuses, the flows end to end against a fake Medusa and a scripted ShipX (create once, unclear answers, prepaid offers, pickups, cancel rules, the fulfillment status writer), the webhook, the demo generator and the house rules of the copy. With `INPOST_TEST_PG_URL=postgres://...` it also runs the migration (twice) and every SQL statement of the store on a real Postgres, in a scratch schema it drops afterwards. What the plugin relies on from InPost's documentation is in [docs/shipx-api-notes.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost/docs/shipx-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-inpost` in the app.
 
 ## Commercial support
 
@@ -380,10 +413,10 @@ InPost, Paczkomat and the InPost logo are trademarks of InPost, used here only t
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost/LICENSE).
 
 ## Changelog
 
-### 0.1.0 (2026-10-07)
+### 0.2.0 (first npm release)
 
-First public release: the fulfillment provider with four options (Paczkomat and courier, both with cash on delivery), checkout checks, shipments from a plan with two switches per writer, prepaid offers, courier pickups, labels, webhook with a fallback status pass, events, the Panel, the order widget, the setup guide, settings, demo mode, English and Polish. Full list in [CHANGELOG.md](./CHANGELOG.md).
+Demo mode only with `demo: true`; cash on delivery collected once per order and never after an online payment; the status pass picks open shipments in the database; no backlog for `autoCreate`; writes only from the admin or a server (JSON or `x-koda-request`); reads never write; the koda.integration/1 contract for Koda Plus hosts with an embeddable order card; type declarations. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost/CHANGELOG.md).

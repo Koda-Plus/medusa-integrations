@@ -73,7 +73,8 @@ export function eventData(row: EventSourceRow, previousStatus: string | null): I
     fulfillment_id: row.fulfillment_id ?? null,
     shipment_id: row.shipment_id,
     tracking_number: row.tracking_number ?? null,
-    tracking_url: row.tracking_number ? trackingUrl(row.tracking_number) : null,
+    /* Demo numbers never lead to inpost.pl. */
+    tracking_url: row.tracking_number && !row.demo ? trackingUrl(row.tracking_number) : null,
     status: row.status,
     previous_status: previousStatus,
     stage: shipmentStage(row.status),

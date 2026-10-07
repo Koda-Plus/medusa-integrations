@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+First npm release.
+
+### Fixed
+
+- Cash on delivery is collected once per order: the amount still due (the order total minus what was captured) goes on the first live cash on delivery parcel, further parcels of the same order go without it (`cod_on_other_parcel`), and an order paid by any provider outside `codPaymentProviders` gets no cash on delivery (`cod_paid_online`).
+- The status pass picks open shipments in the database (not in a final status, younger than `pollMaxAgeDays`, not read for 25 minutes, never read first): delivered parcels no longer fill its batch, so the fallback keeps reading after hundreds of parcels. `autoCreate` asks the database for pending rows without problems.
+- `autoCreate` never takes a backlog: only fulfillments recorded after the shipment writer was armed and within `autoCreateMaxAgeHours` (default 48). A fulfillment Medusa already marks shipped or delivered gets no shipment (`fulfillment_shipped`, `fulfillment_delivered`).
+- A prepaid offer is bought only for the shipment's own service; without it a person decides.
+- A 429 on a write is a clear refusal, not an unclear answer: the shipment no longer waits a quarter of an hour in `unknown`.
+- The storefront locker search limits by the client address Medusa resolved, not by a header the client sends.
+- Demo events carry no inpost.pl tracking link.
+
+### Changed
+
+- Demo mode only with `demo: true`. Without a token the plugin records fulfillments, says "Not configured" and sends nothing; a missing variable on production never turns real fulfillments into sample rows.
+- Writes to `/admin/inpost/*` take a JSON body or the `x-koda-request` header (415 otherwise).
+- A shopper may not set `inpost_*` metadata or the keys of `skipMetadataKeys` through the Store API.
+- Reads never write: `GET /admin/inpost` no longer builds the demo samples; `POST /admin/inpost/demo/seed` does, asked by the page.
+- A return on the InPost provider is refused with a clear error instead of an empty success.
+- Unexpected server errors answer a plain sentence; the details stay in the server log.
+
+### Added
+
+- The koda.integration/1 contract: `GET /admin/inpost/integration`, `/integration/summary` (one line per order with the delivery and cash on delivery facts) and `/integration/attention` (board counters with links to filtered lists).
+- The order card can be embedded by a host (`embedded`): no header of its own, a line while loading and when the order does not go with InPost.
+- Deep links into the page: `?filter=` and `?q=`.
+- Options `autoCreateMaxAgeHours` and `codPaymentProviders`.
+- The admin works with Medusa's JWT auth (`__AUTH_TYPE__ = "jwt"`), through the shared kit.
+- Type declarations in the package; the setup prompt installs this exact version.
+
 ## 0.1.0 (2026-10-07)
 
 First public release: InPost Paczkomat lockers and the InPost courier for Medusa, both with cash on delivery, on the ShipX API, with every write off by default.
