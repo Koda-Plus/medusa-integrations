@@ -1,8 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { AllegroWriterToggleResponse } from "../../../../../modules/allegro/lib/contract"
 import { isWriterKey } from "../../../../../modules/allegro/lib/writers"
-import { WriterRefusedError, setWriterArmed } from "../../../../../workflows/allegro/writers"
-import { actorOf, allegroService, errorOf } from "../../helpers"
+import { setWriterArmed } from "../../../../../workflows/allegro/writers"
+import { actorOf, allegroService, sendError } from "../../helpers"
 
 /**
  * POST /admin/allegro/writers/:key  { armed: boolean }
@@ -30,6 +30,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     const answer: AllegroWriterToggleResponse = { writer }
     res.json(answer)
   } catch (err) {
-    res.status(err instanceof WriterRefusedError ? 409 : 500).json({ message: errorOf(svc, err) })
+    sendError(res, svc, err, `writer ${key}`)
   }
 }

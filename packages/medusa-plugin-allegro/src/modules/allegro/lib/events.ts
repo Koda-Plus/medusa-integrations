@@ -7,6 +7,13 @@
  * `allegro_order_import`, unique by the form id. The cursor moves only after
  * those rows are written, so an event can be read twice but never lost, and
  * reading it twice changes nothing.
+ *
+ * EVENT IDS ARE OPAQUE. Allegro documents them as strings, and the id in its
+ * own example (`MTEzMjQzODU2ODEwMTUzMQ`) is a number in base64, whose text
+ * order is not the order of the events. So the plugin never compares ids:
+ * the order is the order of the answer, the cursor is the last event of a
+ * page, and the only events left out are the cursor itself (when an answer
+ * repeats it, with whatever came before it) and repeats inside one page.
  */
 
 export interface OrderEvent {
@@ -64,16 +71,24 @@ export function intentOf(type: string): EventIntent {
   }
 }
 
-/** Ids are numeric strings that grow; compared as numbers when they are, as text otherwise. */
-export function compareEventIds(a: string, b: string): number {
-  if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
-    if (a.length !== b.length) return a.length < b.length ? -1 : 1
-    return a < b ? -1 : a > b ? 1 : 0
+/**
+ * The new events of one page of the journal, in the order Allegro returned
+ * them. Ids are never compared: when the page repeats the cursor, only what
+ * follows it counts; a repeated id inside the page counts once.
+ */
+export function eventsAfter(page: readonly OrderEvent[], from: string | null): OrderEvent[] {
+  const at = from ? page.findIndex((e) => e.id === from) : -1
+  const seen = new Set<string>()
+  const out: OrderEvent[] = []
+  for (const e of page.slice(at + 1)) {
+    if (seen.has(e.id)) continue
+    seen.add(e.id)
+    out.push(e)
   }
-  return a < b ? -1 : a > b ? 1 : 0
+  return out
 }
 
-/** The intents of a batch, merged per checkout form (a cancellation wins over an import). */
+/** The intents of a batch, merged per checkout form (a cancellation wins over an import); the last event of a form is the last one in the batch. */
 export function intentsByForm(events: readonly OrderEvent[]): Map<string, { intent: EventIntent; lastEventId: string; lastType: string }> {
   const rank: Record<EventIntent, number> = { ignore: 0, refresh: 1, import: 2, cancel: 3 }
   const out = new Map<string, { intent: EventIntent; lastEventId: string; lastType: string }>()
@@ -81,17 +96,57 @@ export function intentsByForm(events: readonly OrderEvent[]): Map<string, { inte
     if (!e.checkoutFormId) continue
     const intent = intentOf(e.type)
     const prev = out.get(e.checkoutFormId)
-    if (!prev) {
-      out.set(e.checkoutFormId, { intent, lastEventId: e.id, lastType: e.type })
-      continue
-    }
     out.set(e.checkoutFormId, {
-      intent: rank[intent] >= rank[prev.intent] ? intent : prev.intent,
-      lastEventId: compareEventIds(e.id, prev.lastEventId) > 0 ? e.id : prev.lastEventId,
-      lastType: compareEventIds(e.id, prev.lastEventId) > 0 ? e.type : prev.lastType,
+      intent: prev && rank[prev.intent] > rank[intent] ? prev.intent : intent,
+      lastEventId: e.id,
+      lastType: e.type,
     })
   }
   return out
+}
+
+export interface JournalCursor {
+  id: string
+  /** When the event at the cursor happened (Allegro keeps 60 days). */
+  at: string | null
+}
+
+export interface DrainInput {
+  /** The stored cursor; "0" when the account had no event when the import started. */
+  from: string
+  pageSize: number
+  maxPages: number
+  /** One page of `GET /order/events?from=` (null: from the start of the journal). */
+  fetchPage(from: string | null): Promise<OrderEvent[]>
+  /** Writes the rows of a page; returns how many rows it touched. */
+  apply(events: OrderEvent[]): Promise<number>
+  /** Stores the cursor, called only after `apply` of the same page succeeded. */
+  save(cursor: JournalCursor): Promise<void>
+}
+
+/**
+ * Drains the journal page by page: the rows of a page are written first, then
+ * the cursor moves to the last event of that page. A crash between the two
+ * reads the page again, which changes nothing. A page with nothing new stops
+ * the drain without moving the cursor.
+ */
+export async function drainJournal(input: DrainInput): Promise<{ read: number; touched: number; cursor: string }> {
+  let from = input.from
+  let read = 0
+  let touched = 0
+  for (let page = 0; page < input.maxPages; page += 1) {
+    const after = from === "0" ? null : from
+    const raw = await input.fetchPage(after)
+    const events = eventsAfter(raw, after)
+    if (events.length === 0) break
+    read += events.length
+    touched += await input.apply(events)
+    const last = events[events.length - 1]
+    await input.save({ id: last.id, at: last.occurredAt })
+    from = last.id
+    if (raw.length < input.pageSize) break
+  }
+  return { read, touched, cursor: from }
 }
 
 /** A stored cursor older than Allegro's retention points at events that are gone. */

@@ -68,3 +68,19 @@ export function decrypt(stored: string, key: Buffer): string {
     throw new AllegroCryptoError("Cannot decrypt the stored token: different key or damaged value.")
   }
 }
+
+/**
+ * Decrypts with the current key first, then with the previous ones
+ * (`previousEncryptionKeys`, for a key rotation). `rotated` says an old key
+ * opened it, so the caller stores it again under the current key.
+ */
+export function decryptAny(stored: string, keys: readonly Buffer[]): { plain: string; rotated: boolean } {
+  for (let i = 0; i < keys.length; i += 1) {
+    try {
+      return { plain: decrypt(stored, keys[i]), rotated: i > 0 }
+    } catch {
+      /* the next key */
+    }
+  }
+  throw new AllegroCryptoError("Cannot decrypt the stored token: different key or damaged value.")
+}

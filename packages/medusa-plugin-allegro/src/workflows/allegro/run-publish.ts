@@ -24,7 +24,7 @@ import type { PlanItemRow } from "../../modules/allegro/lib/dto"
 import { publishProblems } from "../../modules/allegro/lib/options"
 import { catalogMatchFromApi, draftOfferBody, planPublish, validGtin, type CatalogMatch } from "../../modules/allegro/lib/publish"
 import { releaseLease, takeLease } from "../../modules/allegro/lib/store"
-import { loadCatalog, loadPublishCandidates, loadVariantPrices } from "./catalog"
+import { TAX_EXCLUSIVE_MESSAGE, TAX_EXCLUSIVE_PRICES, loadCatalog, loadPublishCandidates, loadVariantPrices, plnPricesIncludeTax } from "./catalog"
 import { demoPicked, updateOverlay } from "./demo-sim"
 import { failurePatch, loadPlanRows, planSummary, savePlan, setPlanSummary, updatePlanRows } from "./plans"
 import { allegroOf, errorText, exclusive, getState, queryOf, recordRun, setState, sqlOf } from "./runtime"
@@ -128,6 +128,22 @@ export async function runPublish(container: MedusaContainer, input: WriterRunInp
     if (sql && !(await takeLease(sql, "publish", owner, RUN_LEASE_MS).catch(() => true))) return skippedResult("lease", "Another process is planning drafts.")
     try {
       const query = queryOf(container)
+      /* Drafts carry the Medusa price: only gross prices go to Allegro. */
+      if (!(await plnPricesIncludeTax(query, o.prices.taxInclusive))) {
+        await savePlan(svc, "publish", [], o.demo)
+        await setPlanSummary(svc, "publish", { plannedAt: new Date().toISOString(), refused: TAX_EXCLUSIVE_MESSAGE, refusedCode: TAX_EXCLUSIVE_PRICES, counts: {} })
+        const run = await recordRun(svc, {
+          kind: "publish",
+          source: o.demo ? "demo" : "api",
+          trigger: input.trigger ?? "manual",
+          status: "error",
+          dryRun: true,
+          items: 0,
+          message: TAX_EXCLUSIVE_MESSAGE,
+          startedAt,
+        })
+        return { skipped: null, summary: await planSummary(svc, "publish"), applied: 0, failed: 0, message: TAX_EXCLUSIVE_MESSAGE, run }
+      }
       const candidates = await loadPublishCandidates(query)
       const stock = await loadCatalog(query, o.stockLocationIds)
       const available = new Map(stock.map((v) => [v.id, v.available]))
@@ -203,7 +219,7 @@ export async function runPublish(container: MedusaContainer, input: WriterRunInp
       )
       const counts: Record<string, number> = {}
       for (const e of plan) counts[e.status] = (counts[e.status] ?? 0) + 1
-      await setPlanSummary(svc, "publish", { plannedAt: new Date().toISOString(), refused: null, counts })
+      await setPlanSummary(svc, "publish", { plannedAt: new Date().toISOString(), refused: null, refusedCode: null, counts })
 
       const armed = await armedWriters(svc)
       const wantApply = mode === "apply" || (mode === "auto" && armed.has("publish"))

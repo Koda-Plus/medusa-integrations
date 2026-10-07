@@ -5,9 +5,10 @@
  */
 
 import type { MedusaContainer } from "@medusajs/framework/types"
-import { ContainerRegistrationKeys, generateEntityId } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules, generateEntityId } from "@medusajs/framework/utils"
 import type AllegroModuleService from "../../modules/allegro/service"
 import { bindDb } from "../../modules/allegro/lib/connection"
+import { bindEventBus } from "../../modules/allegro/lib/notify"
 import { ALLEGRO_MODULE, RUNS_TO_KEEP } from "../../modules/allegro/lib/constants"
 import type { AllegroRunKind } from "../../modules/allegro/lib/contract"
 import { toRunDto, type RunRow } from "../../modules/allegro/lib/dto"
@@ -25,10 +26,15 @@ export function sqlOf(scope: Scope): SqlRunner | null {
   }
 }
 
-/** The module service, with the database bound for the refresh lease. */
+/** The module service, with the database bound for the refresh lease and the event bus for the plugin's events. */
 export function allegroOf(scope: Scope): AllegroModuleService {
   const svc = scope.resolve<AllegroModuleService>(ALLEGRO_MODULE)
   bindDb(svc, sqlOf(scope))
+  try {
+    bindEventBus(svc, scope.resolve(Modules.EVENT_BUS))
+  } catch {
+    /* no event bus in this container: the events are skipped */
+  }
   return svc
 }
 

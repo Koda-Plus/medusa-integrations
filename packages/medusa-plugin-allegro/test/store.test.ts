@@ -76,12 +76,17 @@ test("store: run leases and the refresh lease are taken atomically", async () =>
   assert.equal(await takeLease(none.sql, "stock", "owner-2", 60_000), false)
 })
 
-test("store: the marketplace reference is looked up in every Medusa order, ours or not", async () => {
+test("store: the marketplace reference is looked up in every Medusa order, ours only by our own record", async () => {
   const r = recorder([{ id: "order_1", display_id: "12", ref: "allegro:F", ours: false, draft: true }])
   const rows = await ordersByRef(r.sql, ["allegro:F"])
   assert.deepEqual(rows, [{ id: "order_1", ref: "allegro:F", display_id: 12, ours: false, draft: true }])
-  assert.match(r.calls[0].sql, /"metadata"->>'marketplace_order_ref' in \(\?\)/)
+  const sql = r.calls[0].sql.replace(/\s+/g, " ")
+  assert.match(sql, /o\."metadata"->>'marketplace_order_ref' in \(\?\)/)
   /* A draft counts as existing: drafts left by a crash are finished, never created again. */
-  assert.match(r.calls[0].sql, /"status" = 'draft' or coalesce\("is_draft_order", false\)/)
+  assert.match(sql, /o\."status" = 'draft' or coalesce\(o\."is_draft_order", false\)/)
+  /* Ours: an import row names the order (never a duplicate of another integration), or a draft no cart placed. */
+  assert.match(sql, /exists \(select 1 from "allegro_order_import" i where i\."order_id" = o\."id" and i\."deleted_at" is null and i\."reason_code" is distinct from 'duplicate_ref'\)/)
+  assert.match(sql, /not exists \(select 1 from "order_cart" oc where oc\."order_id" = o\."id"/)
+  assert.doesNotMatch(sql, /\("metadata"->>'allegro_checkout_form_id'\) is not null as "ours"/)
   assert.deepEqual(await ordersByRef(r.sql, []), [])
 })

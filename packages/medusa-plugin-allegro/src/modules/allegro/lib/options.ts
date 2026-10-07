@@ -34,9 +34,18 @@ export interface AllegroPluginOptions {
   clientSecret?: string
   /** 32 random bytes in base64 (`openssl rand -base64 32`). Encrypts Allegro tokens at rest. */
   encryptionKey?: string
+  /**
+   * Keys used before `encryptionKey`, for a key rotation: stored tokens are
+   * read with them and stored again under the current key. Remove them once
+   * the account has refreshed its token (the status shows when).
+   */
+  previousEncryptionKeys?: string[]
   /** `production` (default) or `sandbox` (allegro.pl.allegrosandbox.pl, free test accounts). */
   environment?: AllegroEnvironment
-  /** Simulated Allegro account built from your catalog, no Allegro account needed. */
+  /**
+   * A simulated Allegro account built from your catalog, no Allegro account
+   * needed. Only when this is `true`: missing keys never switch it on.
+   */
   demo?: boolean
   /** Hourly offer sync. Default true. */
   syncEnabled?: boolean
@@ -61,7 +70,9 @@ export interface AllegroPluginOptions {
    * THE HARD SWITCHES of the writers. A writer can be armed in the admin only
    * when its switch is true here; `false` cannot be overridden from the admin.
    * Default: all false in live mode. In demo mode a writer you do not mention
-   * is allowed, because demo writers only touch the simulation.
+   * is allowed, because demo writers only touch the simulation, except the
+   * order import: it creates orders in this Medusa store, so in demo mode too
+   * it needs `orders: true` here.
    */
   writes?: Partial<Record<WriterKey, boolean>>
   /** Consecutive systemic failures after which a writer disarms itself. Default 5. */
@@ -111,6 +122,13 @@ export interface AllegroPluginOptions {
     maxChangePercent?: number
     /** Offers one price run may change. Default 20. */
     cap?: number
+    /**
+     * Allegro takes gross prices. Unset: the plugin reads the Medusa price
+     * preference of PLN and plans nothing while those prices exclude tax
+     * (Medusa's default). `true`: your PLN prices include tax. `false`: they
+     * do not, so price and draft plans are refused.
+     */
+    taxInclusive?: boolean
   }
   /** Publish by EAN: draft offers for variants with an EAN and no offer. */
   publish?: {
@@ -140,6 +158,8 @@ export interface ResolvedAllegroOptions {
   clientId: string
   clientSecret: string
   encryptionKey: string
+  /** Valid previous keys only, newest first. */
+  previousEncryptionKeys: string[]
   environment: AllegroEnvironment
   demo: boolean
   syncEnabled: boolean
@@ -170,6 +190,8 @@ export interface ResolvedAllegroOptions {
     requireFloor: boolean
     maxChangePercent: number
     cap: number
+    /** null: read from the PLN price preference in Medusa. */
+    taxInclusive: boolean | null
   }
   publish: {
     shippingRatesId: string | null
@@ -251,9 +273,9 @@ export function resolveOptions(o: AllegroPluginOptions | undefined | null): Reso
   const rpm = Number(opts.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE)
   const timeout = Number(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
 
-  /* Hard switches: false wins. Live default false, demo default true. */
+  /* Hard switches: false wins. Live default false; demo default true, except the order import, which creates Medusa orders. */
   const rawWrites = obj(opts.writes)
-  const writes = Object.fromEntries(WRITER_KEYS.map((k) => [k, bool(rawWrites[k], demo)])) as Record<WriterKey, boolean>
+  const writes = Object.fromEntries(WRITER_KEYS.map((k) => [k, bool(rawWrites[k], demo && k !== "orders")])) as Record<WriterKey, boolean>
 
   const imp = obj(opts.orderImport)
   const prices = obj(opts.prices)
@@ -273,6 +295,7 @@ export function resolveOptions(o: AllegroPluginOptions | undefined | null): Reso
     clientId: str(opts.clientId),
     clientSecret: str(opts.clientSecret),
     encryptionKey: str(opts.encryptionKey),
+    previousEncryptionKeys: list(opts.previousEncryptionKeys).filter((k) => k !== str(opts.encryptionKey) && isValidKey(k)),
     environment: isAllegroEnvironment(opts.environment) ? opts.environment : "production",
     demo,
     syncEnabled: bool(opts.syncEnabled, true),
@@ -303,6 +326,7 @@ export function resolveOptions(o: AllegroPluginOptions | undefined | null): Reso
       requireFloor: bool(prices.requireFloor, true),
       maxChangePercent: int(prices.maxChangePercent, DEFAULT_MAX_PRICE_CHANGE_PERCENT, 1, 1000),
       cap: int(prices.cap, DEFAULT_PRICE_CAP, 1, 10_000),
+      taxInclusive: typeof prices.taxInclusive === "boolean" || typeof prices.taxInclusive === "string" ? bool(prices.taxInclusive, false) : null,
     },
     publish: {
       shippingRatesId: str(publish.shippingRatesId) || null,

@@ -179,14 +179,22 @@ export function planPrices(input: {
   return { entries, counts }
 }
 
-/** Right before the command: the price Allegro shows NOW still differs from the target. */
+/**
+ * Right before the command: the offer is still live, the price Allegro shows
+ * NOW still differs from the target, and it is still the price the plan
+ * started from. A price somebody changed on Allegro after the plan is not
+ * overwritten: the floor, the ceiling and the change limit were checked
+ * against the old one, so the item waits for the next plan.
+ */
 export function recheckPrice(
   target: { amount: string; currency: string },
   fresh: { status: string; price: { value: number; currency: string } | null } | null,
+  planned: { amount: string; currency: string } | null = null,
 ): boolean {
   if (!fresh || !fresh.price) return false
   const s = fresh.status.toUpperCase()
   if (s !== "ACTIVE" && s !== "ACTIVATING") return false
   if (fresh.price.currency.toUpperCase() !== target.currency) return false
+  if (planned && (planned.currency.toUpperCase() !== target.currency || toCents(fresh.price.value) !== toCents(Number(planned.amount)))) return false
   return toCents(fresh.price.value) !== toCents(Number(target.amount))
 }

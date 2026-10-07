@@ -20,7 +20,15 @@ function WriterRow({ writer, status, lang }: { writer: AllegroWriterDto; status:
   const onChange = async (armed: boolean) => {
     const ok = await prompt({
       title: armed ? t("writers.armTitle", { name }) : t("writers.disarmTitle", { name }),
-      description: armed ? (demo ? t("writers.armTextDemo") : writer.key === "orders" ? t("writers.armTextOrders") : t("writers.armText")) : t("writers.disarmText"),
+      description: armed
+        ? demo
+          ? writer.key === "orders"
+            ? t("writers.armTextDemoOrders")
+            : t("writers.armTextDemo")
+          : writer.key === "orders"
+            ? t("writers.armTextOrders")
+            : t("writers.armText")
+        : t("writers.disarmText"),
       confirmText: armed ? t("writers.armConfirm") : t("writers.disarmConfirm"),
       cancelText: t("writers.cancel"),
     })

@@ -248,6 +248,18 @@ export function demoEventsRaw(seeds: readonly DemoFormSeed[], now: Date): Array<
     .map((e) => ({ id: e.id, type: e.type, occurredAt: e.at.toISOString(), order: { checkoutForm: { id: e.form } } }))
 }
 
+/**
+ * The simulated `GET /order/events?from=&limit=`: the events after `from`, in
+ * journal order. Only the simulator reads its ids (fixed width, so their text
+ * order is their time order); the import treats them as opaque, like
+ * Allegro's. `from` may be a position that is no event (the start of a day).
+ */
+export function demoEventsAfter(seeds: readonly DemoFormSeed[], now: Date, from: string | null, limit: number): Array<Record<string, unknown>> {
+  const all = demoEventsRaw(seeds, now)
+  const after = from === null ? all : all.filter((e) => String(e.id) > from)
+  return after.slice(0, Math.max(1, limit))
+}
+
 /** The simulated carriers: only ids the Allegro documentation shows. */
 export function demoCarriersRaw(): Record<string, unknown> {
   return {

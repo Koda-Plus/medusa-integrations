@@ -14,7 +14,7 @@ import {
   demoWaybill,
 } from "../src/modules/allegro/lib/demo-stream.ts"
 import { checkoutFormFromApi } from "../src/modules/allegro/lib/checkout.ts"
-import { eventsFromApi, compareEventIds } from "../src/modules/allegro/lib/events.ts"
+import { eventsFromApi } from "../src/modules/allegro/lib/events.ts"
 import { planImport } from "../src/modules/allegro/lib/import.ts"
 import { issuesFromApi, returnsFromApi, unreadThreads } from "../src/modules/allegro/lib/issues.ts"
 import { validGtin } from "../src/modules/allegro/lib/publish.ts"
@@ -90,7 +90,8 @@ test("demo events: ids grow with time across days, only what already happened", 
   const seeds = demoSeedsUntil(offers, days, now)
   const events = eventsFromApi({ events: demoEventsRaw(seeds, now) })
   assert.ok(events.length >= 6)
-  for (let i = 1; i < events.length; i += 1) assert.equal(compareEventIds(events[i].id, events[i - 1].id), 1)
+  /* Only the simulator reads its own ids: fixed width, so their text order is their time order. */
+  for (let i = 1; i < events.length; i += 1) assert.ok(events[i].id > events[i - 1].id)
   assert.ok(events.every((e) => e.occurredAt && Date.parse(e.occurredAt) <= now.getTime()))
   assert.ok(dayIndex(day) > 0)
 })

@@ -1,5 +1,5 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
-import type { MedusaRequest } from "@medusajs/framework/http"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import type AllegroModuleService from "../../../modules/allegro/service"
 import {
@@ -16,7 +16,8 @@ import {
   allegroUrls,
   sellerPanel,
 } from "../../../modules/allegro/lib/constants"
-import { activeConnecting, environmentMismatch, getConnectionRow } from "../../../modules/allegro/lib/connection"
+import { AllegroApiError } from "../../../modules/allegro/lib/client"
+import { activeConnecting, environmentMismatch, getConnectionRow, oauthHint, tokensReadable, unreadableTokens } from "../../../modules/allegro/lib/connection"
 import type { AllegroRunKind, AllegroStatusResponse } from "../../../modules/allegro/lib/contract"
 import { iso, toRunDto, type RunRow } from "../../../modules/allegro/lib/dto"
 import { issueCounts } from "../../../modules/allegro/lib/issues"
@@ -30,10 +31,8 @@ import { cursorId, resolveTarget } from "../../../workflows/allegro/run-import"
 import { isOffersSyncRunning } from "../../../workflows/allegro/run-offers"
 import { isOrdersSyncRunning } from "../../../workflows/allegro/run-orders"
 import { allegroOf, getState, isRunning as isRunRunning } from "../../../workflows/allegro/runtime"
-import { syncAllegroOffersWorkflow } from "../../../workflows/allegro/sync-allegro-offers"
-import { syncAllegroOrdersWorkflow } from "../../../workflows/allegro/sync-allegro-orders"
-import { pushAllegroPricesWorkflow, pushAllegroStockWorkflow, publishAllegroOffersWorkflow, syncAllegroIssuesWorkflow } from "../../../workflows/allegro/writer-workflows"
-import { writerDtos } from "../../../workflows/allegro/writers"
+import { missingDemoKinds } from "../../../workflows/allegro/demo-seed"
+import { WriterRefusedError, writerDtos } from "../../../workflows/allegro/writers"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
 
@@ -100,7 +99,8 @@ export async function buildStatus(scope: MedusaContainer | MedusaRequest["scope"
   const raw = o.demo ? null : await getConnectionRow(svc)
   const mismatch = o.demo ? null : environmentMismatch(svc, raw)
   const row = raw && !mismatch ? raw : null
-  const connected = Boolean(row?.refresh_token_enc) && !o.demo && svc.isConfigured()
+  const connected = !o.demo && svc.isConfigured() && tokensReadable(svc, row)
+  const unreadable = o.demo || !svc.isConfigured() ? null : unreadableTokens(svc, row)
 
   const offers = (await svc.listAllegroOffers({ demo: o.demo } as never, {
     take: null,
@@ -227,7 +227,7 @@ export async function buildStatus(scope: MedusaContainer | MedusaRequest["scope"
       refreshedAt: iso(row?.refreshed_at),
       accessExpiresAt: iso(row?.access_expires_at),
       scope: row?.scope ?? null,
-      lastError: mismatch ?? row?.last_error ?? null,
+      lastError: mismatch ?? unreadable ?? row?.last_error ?? null,
       lastErrorAt: mismatch ? iso(raw?.refreshed_at) : iso(row?.last_error_at),
     },
     connecting: activeConnecting(svc, raw),
@@ -247,6 +247,7 @@ export async function buildStatus(scope: MedusaContainer | MedusaRequest["scope"
         requireFloor: o.prices.requireFloor,
         maxChangePercent: o.prices.maxChangePercent,
         cap: o.prices.cap,
+        taxInclusive: o.prices.taxInclusive,
       },
       publish: { ready: o.demo || publishProblems(o).length === 0, missing: o.demo ? [] : publishProblems(o), cap: o.publish.cap },
       importTarget: {
@@ -288,24 +289,9 @@ export async function buildStatus(scope: MedusaContainer | MedusaRequest["scope"
     },
     panel: sellerPanel(o.environment),
     lastRuns,
+    demoSeed: o.demo ? { missing: missingDemoKinds(o, lastRuns) } : null,
     running: Object.fromEntries(RUN_KINDS.map((k) => [k, isRunning(k)])) as Record<AllegroRunKind, boolean>,
   }
-}
-
-/**
- * Demo mode, first visit: build the sample data right away, so the page
- * opens with data instead of empty tables. Only what never ran yet.
- */
-export async function ensureDemoSnapshot(scope: MedusaContainer, svc: AllegroModuleService): Promise<void> {
-  if (!svc.isDemo()) return
-  const runs = (await svc.listAllegroSyncRuns({}, { take: 200, select: ["kind"] })) as unknown as Array<{ kind: string }>
-  const ran = new Set(runs.map((r) => r.kind))
-  if (!isRunning("offers") && !ran.has("offers")) await syncAllegroOffersWorkflow(scope).run({ input: { trigger: "auto" } })
-  if (svc.getOptions().ordersEnabled && !isRunning("orders") && !ran.has("orders")) await syncAllegroOrdersWorkflow(scope).run({ input: { trigger: "auto" } })
-  if (!isRunning("stock") && !ran.has("stock")) await pushAllegroStockWorkflow(scope).run({ input: { trigger: "auto", mode: "plan" } })
-  if (!isRunning("prices") && !ran.has("prices")) await pushAllegroPricesWorkflow(scope).run({ input: { trigger: "auto", mode: "plan" } })
-  if (!isRunning("issues") && !ran.has("issues")) await syncAllegroIssuesWorkflow(scope).run({ input: { trigger: "auto" } })
-  if (!isRunning("publish") && !ran.has("publish")) await publishAllegroOffersWorkflow(scope).run({ input: { trigger: "auto", mode: "plan" } })
 }
 
 /** Who is clicking: the admin user's name or e-mail, for the writer toggles. */
@@ -341,4 +327,24 @@ export function like(q: string): string {
 
 export function errorOf(svc: AllegroModuleService, err: unknown): string {
   return svc.mask(err instanceof Error ? err.message : String(err))
+}
+
+/**
+ * An error answer without internals: a refusal from Allegro as 502 (its own
+ * masked message, with a hint when a person can fix it in the options), a
+ * writer that may not be armed as 409, anything else as a plain 500 with the
+ * details, masked, in the server log only.
+ */
+export function sendError(res: MedusaResponse, svc: AllegroModuleService, err: unknown, where: string): void {
+  if (err instanceof WriterRefusedError) {
+    res.status(409).json({ code: "writer_refused", message: err.message })
+    return
+  }
+  if (err instanceof AllegroApiError) {
+    const hint = oauthHint(err.code)
+    res.status(502).json({ code: err.code ?? "allegro_error", message: hint ? `${errorOf(svc, err)} ${hint}` : errorOf(svc, err) })
+    return
+  }
+  svc.getLogger().error(`[allegro] ${where}: ${errorOf(svc, err)}`)
+  res.status(500).json({ code: "server_error", message: "The server could not finish this. The details are in the server log." })
 }

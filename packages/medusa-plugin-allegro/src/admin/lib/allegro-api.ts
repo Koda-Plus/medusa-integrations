@@ -24,35 +24,26 @@ import type {
   AllegroWriterToggleResponse,
 } from "../../modules/allegro/lib/contract"
 
-declare const __BACKEND_URL__: string | undefined
+import { backendUrl, kitRequestInit } from "./allegro-kit"
 
-/** Same origin by default; the admin build defines `__BACKEND_URL__` when the backend lives elsewhere. */
-function backendUrl(): string {
-  try {
-    if (typeof __BACKEND_URL__ !== "undefined" && __BACKEND_URL__) return String(__BACKEND_URL__).replace(/\/+$/, "")
-  } catch {
-    /* not defined in this build */
-  }
-  return ""
-}
+/* The backend the dashboard talks to, with its auth (session or JWT): from the kit. */
+export { backendUrl }
 
 export class AllegroRequestError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly code: string | null
+  constructor(status: number, message: string, code: string | null = null) {
     super(message)
     this.name = "AllegroRequestError"
     this.status = status
+    this.code = code
   }
 }
 
 export async function allegroFetch<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
-  const hasBody = init?.body !== undefined
-  const res = await fetch(`${backendUrl()}${path}`, {
-    method: init?.method ?? "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...(hasBody ? { "Content-Type": "application/json" } : {}) },
-    body: hasBody ? JSON.stringify(init?.body) : undefined,
-  })
+  /* The kit adds the dashboard's auth (session cookie or JWT) and, on writes, the JSON body and the
+     x-koda-request header the server's write guard asks for. */
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: init?.method ?? "GET", body: init?.body }))
   const text = await res.text()
   let json: unknown = null
   try {
@@ -61,9 +52,8 @@ export async function allegroFetch<T>(path: string, init?: { method?: "GET" | "P
     json = null
   }
   if (!res.ok) {
-    const message =
-      json && typeof json === "object" && "message" in json ? String((json as { message: unknown }).message) : `HTTP ${res.status}`
-    throw new AllegroRequestError(res.status, message)
+    const body = (json && typeof json === "object" ? json : {}) as { message?: unknown; code?: unknown }
+    throw new AllegroRequestError(res.status, typeof body.message === "string" ? body.message : `HTTP ${res.status}`, typeof body.code === "string" ? body.code : null)
   }
   return json as T
 }
@@ -89,12 +79,21 @@ function anyRunning(data: AllegroStatusResponse | undefined): boolean {
   return Boolean(data && Object.values(data.running).some(Boolean))
 }
 
-/** Status of the Allegro page. Polls while something runs, and for a while after a click. */
+/** Demo data still being prepared (by the job or "Prepare now"). */
+function seeding(data: AllegroStatusResponse | undefined): boolean {
+  return Boolean(data?.demoSeed && data.demoSeed.missing.length > 0)
+}
+
+/**
+ * Status of the Allegro page. Every 5 s while something runs, for a while
+ * after a click and while the demo data is prepared; never in a hidden tab
+ * (React Query pauses intervals there).
+ */
 export function useAllegroStatus(pollUntil: number) {
   return useQuery<AllegroStatusResponse>({
     queryKey: allegroKeys.status,
     queryFn: () => allegroFetch<AllegroStatusResponse>("/admin/allegro"),
-    refetchInterval: (query) => (anyRunning(query.state.data) || Date.now() < pollUntil ? 2_000 : false),
+    refetchInterval: (query) => (anyRunning(query.state.data) || seeding(query.state.data) || Date.now() < pollUntil ? 5_000 : false),
   })
 }
 
@@ -130,6 +129,8 @@ export function useAllegroProductOffers(productId: string) {
     queryKey: allegroKeys.product(productId),
     queryFn: () => allegroFetch<AllegroProductOffersResponse>(`/admin/allegro/products/${encodeURIComponent(productId)}`),
     enabled: Boolean(productId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   })
 }
 
@@ -154,6 +155,8 @@ function usePost<T>(path: string) {
 }
 
 export const useAllegroConnect = () => usePost<AllegroStatusResponse>("/admin/allegro/connect")
+/** Demo mode: prepare the sample data now (202, the status polls until it is there). */
+export const useAllegroDemoSeed = () => usePost<{ started: boolean }>("/admin/allegro/demo/seed")
 export const useAllegroDisconnect = () => usePost<AllegroStatusResponse>("/admin/allegro/disconnect")
 
 /** One poll of the device login; the page decides when to call it again. */

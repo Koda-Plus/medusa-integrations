@@ -1,5 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { PLUGIN_VERSION } from "../src/modules/allegro/lib/constants.ts"
 import { resolveOptions, scopesFor, userAgentFor } from "../src/modules/allegro/lib/options.ts"
 import {
   BREAKER_ACTOR,
@@ -107,12 +109,38 @@ test("scopes: the consent widens only for writers the options allow", () => {
   assert.ok(scopesFor(issues).includes("allegro:api:messaging"))
 })
 
-test("hard switches: false by default live, allowed by default in demo, explicit false always wins", () => {
+const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
+
+test("hard switches: false by default live, allowed by default in demo except the order import, explicit false always wins", () => {
   assert.deepEqual(Object.values(resolveOptions({}).writes), [false, false, false, false, false, false])
   const demo = resolveOptions({ demo: true, writes: { prices: false } })
   assert.equal(demo.writes.stock, true)
   assert.equal(demo.writes.prices, false)
+  /* Demo orders land in this Medusa store: the import needs its switch even in demo mode. */
+  assert.equal(demo.writes.orders, false)
+  assert.equal(resolveOptions({ demo: true, writes: { orders: true } }).writes.orders, true)
   assert.equal(resolveOptions({ writes: { orders: "true" as unknown as boolean } }).writes.orders, true)
+})
+
+test("demo mode only when switched on: missing keys never start it", () => {
+  assert.equal(resolveOptions({}).demo, false)
+  assert.equal(resolveOptions({ clientId: "" }).demo, false)
+  assert.equal(resolveOptions({ demo: true }).demo, true)
+  assert.equal(resolveOptions({ demo: "false" as unknown as boolean }).demo, false)
+})
+
+test("the version in the User-Agent and the status is the package version", () => {
+  assert.equal(PLUGIN_VERSION, PKG.version)
+})
+
+test("options: previous encryption keys (valid ones only) and the tax switch of prices", () => {
+  const current = Buffer.alloc(32, 1).toString("base64")
+  const old = Buffer.alloc(32, 2).toString("base64")
+  const o = resolveOptions({ encryptionKey: current, previousEncryptionKeys: [old, "short", current] })
+  assert.deepEqual(o.previousEncryptionKeys, [old])
+  assert.equal(resolveOptions({}).prices.taxInclusive, null)
+  assert.equal(resolveOptions({ prices: { taxInclusive: true } }).prices.taxInclusive, true)
+  assert.equal(resolveOptions({ prices: { taxInclusive: false } }).prices.taxInclusive, false)
 })
 
 test("granted scopes parse spaces and commas; missing scopes keep the order needed", () => {
@@ -122,10 +150,10 @@ test("granted scopes parse spaces and commas; missing scopes keep the order need
 })
 
 test("user agent: the registered app name, the version and the docs address", () => {
-  assert.equal(userAgentFor({ appName: "My Store Allegro", docsUrl: "https://shop.example.com/allegro" }), "My-Store-Allegro/0.2.0 (+https://shop.example.com/allegro)")
-  assert.equal(userAgentFor({ appName: "Shop", docsUrl: "http://insecure" }), "Shop/0.2.0 (+https://koda.plus)")
+  assert.equal(userAgentFor({ appName: "My Store Allegro", docsUrl: "https://shop.example.com/allegro" }), `My-Store-Allegro/${PKG.version} (+https://shop.example.com/allegro)`)
+  assert.equal(userAgentFor({ appName: "Shop", docsUrl: "http://insecure" }), `Shop/${PKG.version} (+https://koda.plus)`)
   assert.equal(userAgentFor({ userAgent: "Custom/1.0 (+https://x.example)" }), "Custom/1.0 (+https://x.example)")
-  assert.match(userAgentFor({}), /^KodaPlus-Medusa-Allegro\/0\.2\.0 \(\+https:\/\/koda\.plus\)$/)
+  assert.equal(userAgentFor({}), `KodaPlus-Medusa-Allegro/${PKG.version} (+https://koda.plus)`)
 })
 
 test("options: publish location validates the Polish province, invoice kinds are filtered", () => {

@@ -172,6 +172,28 @@ export async function loadVariantPrices(query: QueryLike, ids: readonly string[]
   return out
 }
 
+/** Why a price or draft plan is refused when the store keeps PLN prices without tax. */
+export const TAX_EXCLUSIVE_PRICES = "tax_exclusive_prices"
+export const TAX_EXCLUSIVE_MESSAGE =
+  "Medusa keeps PLN prices without tax and Allegro takes gross prices, so nothing is planned. Make the PLN price preference tax inclusive in Medusa, or set prices.taxInclusive: true if your PLN prices already include tax."
+
+/**
+ * Whether the Medusa prices the plugin sends are gross. Allegro takes gross
+ * prices; Medusa keeps net prices unless a price preference says otherwise,
+ * and a net price sent as it is sells on Allegro without the VAT. The option
+ * `prices.taxInclusive` wins; otherwise the PLN price preference decides (no
+ * preference: net, Medusa's default).
+ */
+export async function plnPricesIncludeTax(query: QueryLike, option: boolean | null): Promise<boolean> {
+  if (option !== null) return option
+  const { data } = await query.graph({
+    entity: "price_preference",
+    fields: ["id", "attribute", "value", "is_tax_inclusive"],
+    filters: { attribute: "currency_code", value: "pln" },
+  })
+  return (data as Array<{ is_tax_inclusive?: boolean | null }>).some((p) => p.is_tax_inclusive === true)
+}
+
 /** Price bounds from variant metadata, then product metadata. */
 export async function loadVariantBounds(query: QueryLike, ids: readonly string[], minKey: string, maxKey: string): Promise<Map<string, PriceBounds>> {
   const out = new Map<string, PriceBounds>()

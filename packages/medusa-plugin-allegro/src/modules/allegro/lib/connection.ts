@@ -36,7 +36,7 @@ import {
   REFRESH_MARGIN_MS,
   allegroUrls,
 } from "./constants"
-import { AllegroCryptoError, decrypt, encrypt, keyFromBase64 } from "./crypto"
+import { AllegroCryptoError, decryptAny, encrypt, keyFromBase64 } from "./crypto"
 import { offersFromApi, type AllegroOfferInput } from "./offers"
 import { scopesFor } from "./options"
 import { ordersFromApi, type AllegroOrderInput } from "./orders"
@@ -187,11 +187,37 @@ function key(svc: AllegroModuleService): Buffer {
   return keyFromBase64(svc.getOptions().encryptionKey)
 }
 
-/** Whether we hold a refresh token for the configured environment. */
+/** The current key first, then the previous ones of a key rotation. */
+function keys(svc: AllegroModuleService): Buffer[] {
+  return [key(svc), ...svc.getOptions().previousEncryptionKeys.map((k) => keyFromBase64(k))]
+}
+
+/**
+ * Whether the stored refresh token opens with the configured keys. A wrong
+ * key (a mistake in the environment) leaves the tokens where they are: the
+ * account reads as not connected until the right key is back.
+ */
+export function tokensReadable(svc: AllegroModuleService, row: ConnectionRow | null): boolean {
+  if (!row?.refresh_token_enc) return false
+  try {
+    decryptAny(row.refresh_token_enc, keys(svc))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The status line for tokens the configured keys cannot open, or null. */
+export function unreadableTokens(svc: AllegroModuleService, row: ConnectionRow | null): string | null {
+  if (!row?.refresh_token_enc || tokensReadable(svc, row)) return null
+  return "The stored Allegro tokens do not open with encryptionKey. They were kept: put back the key they were saved with (or list it in previousEncryptionKeys), or connect the account again."
+}
+
+/** Whether we hold a refresh token for the configured environment that the configured keys open. */
 export async function isConnected(svc: AllegroModuleService): Promise<boolean> {
   if (svc.isDemo() || !svc.isConfigured()) return false
   const row = await rowOfThisEnvironment(svc)
-  return Boolean(row?.refresh_token_enc)
+  return tokensReadable(svc, row)
 }
 
 /** The scope string of the stored token (what the seller granted), or null. */
@@ -266,7 +292,7 @@ export function pollConnecting(svc: AllegroModuleService): Promise<{ state: Conn
     }
     let deviceCode: string
     try {
-      deviceCode = decrypt(row.device_code_enc, key(svc))
+      deviceCode = decryptAny(row.device_code_enc, keys(svc)).plain
     } catch (err) {
       await clearDevice(svc, `The encryption key changed during the login (${err instanceof Error ? err.message : String(err)}).`)
       return { state: "expired" as const, intervalS: null }
@@ -343,10 +369,28 @@ function freshStoredAccess(svc: AllegroModuleService, row: ConnectionRow | null)
   if (!row?.access_token_enc) return null
   if (expiresAt(row) - Date.now() <= REFRESH_MARGIN_MS) return null
   try {
-    return decrypt(row.access_token_enc, key(svc))
+    return decryptAny(row.access_token_enc, keys(svc)).plain
   } catch {
     return null
   }
+}
+
+/**
+ * Whether a refresh failure ends the connection. Only `invalid_grant`: the
+ * refresh token itself is gone (consent removed, password changed, three
+ * months without a refresh). A wrong client id or secret (`invalid_client`,
+ * `unauthorized_client`) is a configuration mistake: the tokens stay and work
+ * again once the options are right.
+ */
+export function refreshEndsConnection(err: unknown): boolean {
+  return err instanceof AllegroApiError && !err.transient && err.code === "invalid_grant"
+}
+
+/** A hint for an OAuth error code a person can fix in the options or the developer portal, or null. */
+export function oauthHint(code: string | null | undefined): string | null {
+  if (code === "invalid_client") return "Check clientId and clientSecret: Allegro does not know this pair (a typo, or keys of the other environment)."
+  if (code === "unauthorized_client") return "Register the app in the Allegro developer portal as a device app (\"without access to a browser\"); a web app cannot use the device login."
+  return null
 }
 
 async function refreshWith(svc: AllegroModuleService, refresh: string): Promise<string> {
@@ -360,8 +404,7 @@ async function refreshWith(svc: AllegroModuleService, refresh: string): Promise<
     return pair.access_token
   } catch (err) {
     const reason = svc.mask(err instanceof Error ? err.message : String(err))
-    const permanent = err instanceof AllegroApiError && !err.transient && err.status >= 400 && err.status < 500
-    if (permanent) {
+    if (refreshEndsConnection(err)) {
       /* Refresh token revoked: it will not come back by itself, so we
        * disconnect instead of failing every hour. */
       await save(svc, {
@@ -373,7 +416,8 @@ async function refreshWith(svc: AllegroModuleService, refresh: string): Promise<
         last_error_at: new Date(),
       })
     } else {
-      await save(svc, { last_error: `Token refresh: ${reason}`, last_error_at: new Date() })
+      const hint = oauthHint(err instanceof AllegroApiError ? err.code : null)
+      await save(svc, { last_error: `Token refresh: ${reason}${hint ? ` ${hint}` : ""} The tokens were kept.`, last_error_at: new Date() })
     }
     throw err
   }
@@ -412,23 +456,26 @@ function accessToken(svc: AllegroModuleService, force = false): Promise<string> 
   return enqueue(async () => {
     const row = await rowOfThisEnvironment(svc)
     if (!row?.refresh_token_enc) throw new AllegroApiError(0, "The Allegro account is not connected.", false)
-    const k = key(svc)
+    const k = keys(svc)
     let refresh: string
     let access: string | null = null
     try {
-      refresh = decrypt(row.refresh_token_enc, k)
-      if (row.access_token_enc) access = decrypt(row.access_token_enc, k)
+      const r = decryptAny(row.refresh_token_enc, k)
+      refresh = r.plain
+      const a = row.access_token_enc ? decryptAny(row.access_token_enc, k) : null
+      access = a?.plain ?? null
+      /* Opened with a previous key: stored again under the current one. */
+      if (r.rotated || a?.rotated) {
+        await save(svc, {
+          refresh_token_enc: encrypt(refresh, k[0]),
+          access_token_enc: access ? encrypt(access, k[0]) : null,
+        })
+      }
     } catch (err) {
+      /* A wrong key must not cost the seller a new consent: the tokens stay, the reason shows in the status. */
       const reason = err instanceof Error ? err.message : String(err)
-      await save(svc, {
-        refresh_token_enc: null,
-        access_token_enc: null,
-        access_expires_at: null,
-        disconnected_at: new Date(),
-        last_error: `Disconnected: ${reason}`,
-        last_error_at: new Date(),
-      })
-      throw new AllegroApiError(0, `Allegro account disconnected: ${reason}`, false)
+      await save(svc, { last_error: `${reason} The tokens were kept; set the key they were saved with.`, last_error_at: new Date() })
+      throw new AllegroApiError(0, `Allegro tokens cannot be read: ${reason}`, false)
     }
     if (!force && access && expiresAt(row) - Date.now() > REFRESH_MARGIN_MS) return access
 
@@ -453,7 +500,7 @@ function accessToken(svc: AllegroModuleService, force = false): Promise<string> 
           const fresh = freshStoredAccess(svc, latest)
           if (fresh) return fresh
         }
-        return await refreshWith(svc, decrypt(latest.refresh_token_enc, k))
+        return await refreshWith(svc, decryptAny(latest.refresh_token_enc, k).plain)
       } finally {
         await releaseRefreshLease(db, CONNECTION_ID, owner).catch(() => undefined)
       }

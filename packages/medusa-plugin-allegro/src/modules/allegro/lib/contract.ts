@@ -116,6 +116,8 @@ export interface AllegroPlanSummaryDto {
   kind: AllegroPlanKind
   plannedAt: string | null
   refused: string | null
+  /** Why it was refused, as a code the admin translates: "tax_exclusive_prices" (Medusa keeps PLN prices without tax). */
+  refusedCode: string | null
   /** Items per status: planned, deferred, quarantined, skipped, in_sync, applied, failed. */
   counts: Record<string, number>
   lastApply: { at: string | null; applied: number; failed: number; message: string | null } | null
@@ -166,7 +168,8 @@ export interface AllegroStatusResponse {
     importPerRun: number
     invoiceKinds: string[]
     issues: { returns: boolean; disputes: boolean; messages: boolean }
-    prices: { priceListId: string | null; minKey: string; maxKey: string; requireFloor: boolean; maxChangePercent: number; cap: number }
+    /** taxInclusive: the option `prices.taxInclusive`, null when the PLN price preference of Medusa decides. */
+    prices: { priceListId: string | null; minKey: string; maxKey: string; requireFloor: boolean; maxChangePercent: number; cap: number; taxInclusive: boolean | null }
     publish: { ready: boolean; missing: string[]; cap: number }
     importTarget: {
       salesChannelId: string | null
@@ -226,6 +229,8 @@ export interface AllegroStatusResponse {
   }
   panel: { orders: string; returns: string; discussions: string; messages: string }
   lastRuns: Partial<Record<AllegroRunKind, AllegroRunDto | null>>
+  /** Demo mode only: the kinds of sample data not built yet (the job `allegro-demo-seed` or POST /admin/allegro/demo/seed builds them). */
+  demoSeed: { missing: AllegroRunKind[] } | null
   running: Record<AllegroRunKind, boolean>
 }
 

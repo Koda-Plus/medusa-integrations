@@ -16,6 +16,7 @@
  * of hours after it was imported, so the whole path can be watched.
  */
 
+import { emitAllegroEvent } from "../../modules/allegro/lib/notify"
 import { randomUUID } from "node:crypto"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import type AllegroModuleService from "../../modules/allegro/service"
@@ -335,6 +336,9 @@ export async function drainOutbox(
       continue
     }
     counts[outcome.kind] = (counts[outcome.kind] ?? 0) + 1
+    if (outcome.kind === "failed") {
+      await emitAllegroEvent(svc, "allegro.outbox.failed", { outbox_id: row.id, writer, checkout_form_id: row.checkout_form_id, order_id: row.order_id ?? null, demo: svc.isDemo() })
+    }
     const tripped =
       outcome.kind === "done"
         ? await recordOutcome(svc, writer, { kind: "ok" })

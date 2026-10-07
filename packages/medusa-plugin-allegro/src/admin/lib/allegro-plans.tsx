@@ -112,7 +112,7 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
   const onDryRun = async () => {
     try {
       const r = await run.mutateAsync({ kind, mode: "plan" })
-      if (r.summary.refused) toast.warning(r.summary.refused)
+      if (r.summary.refused) toast.warning(r.summary.refusedCode === "tax_exclusive_prices" ? t("plans.taxExclusive") : r.summary.refused)
       else toast.success(t("toast.dryRunDone"))
     } catch (err) {
       toast.error(errorMessage(err))
@@ -170,7 +170,7 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
         </Text>
         {summary.refused ? (
           <InlineTip variant="error" label={t("plans.refused")}>
-            {summary.refused}
+            {summary.refusedCode === "tax_exclusive_prices" ? t("plans.taxExclusive") : summary.refused}
           </InlineTip>
         ) : null}
         {summary.lastApply?.message ? (

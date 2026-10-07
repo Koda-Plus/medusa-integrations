@@ -5,6 +5,10 @@
  *
  * Prices are re-read from Allegro right before the command: a price someone
  * changed since the plan is planned again, never overwritten blindly.
+ *
+ * Only gross prices go out: while Medusa keeps PLN prices without tax (and
+ * `prices.taxInclusive` does not say otherwise) the plan is refused with
+ * `tax_exclusive_prices` and nothing is planned.
  */
 
 import { randomUUID } from "node:crypto"
@@ -18,7 +22,7 @@ import type { OfferRow, PlanItemRow } from "../../modules/allegro/lib/dto"
 import { offersFromApi } from "../../modules/allegro/lib/offers"
 import { planPrices, recheckPrice, type PriceBounds } from "../../modules/allegro/lib/price-plan"
 import { releaseLease, takeLease } from "../../modules/allegro/lib/store"
-import { loadCatalog, loadVariantBounds, loadVariantPrices } from "./catalog"
+import { TAX_EXCLUSIVE_MESSAGE, TAX_EXCLUSIVE_PRICES, loadCatalog, loadVariantBounds, loadVariantPrices, plnPricesIncludeTax } from "./catalog"
 import { runCommand, simulatedCommand } from "./commands-run"
 import { demoOffersRaw, loadOverlay, updateOverlay } from "./demo-sim"
 import { failurePatch, loadPlanRows, planSummary, savePlan, setPlanSummary, updatePlanRows } from "./plans"
@@ -67,7 +71,8 @@ async function applyPrices(container: MedusaContainer, svc: AllegroModuleService
   const go: PlanItemRow[] = []
   for (const r of rows) {
     const target = r.target as { amount: string; currency: string } | null
-    if (target && recheckPrice(target, fresh.get(r.allegro_id as string) ?? null)) go.push(r)
+    const planned = r.current && typeof (r.current as { amount?: unknown }).amount === "string" ? (r.current as { amount: string; currency: string }) : null
+    if (target && recheckPrice(target, fresh.get(r.allegro_id as string) ?? null, planned)) go.push(r)
     else updates.push({ id: r.id, status: "skipped", last_error: "The price changed on Allegro since the plan (or the offer is not live); planned again on the next run." })
   }
   const byOffer = new Map(go.map((r) => [r.allegro_id as string, r]))
@@ -172,25 +177,33 @@ export async function runPricePush(container: MedusaContainer, input: WriterRunI
       const offers = (await svc.listAllegroOffers({ demo: o.demo, is_primary: true } as never, { take: null })) as unknown as OfferRow[]
       const variantIds = [...new Set(offers.map((r) => r.variant_id).filter((x): x is string => Boolean(x)))]
       let refused: string | null = null
+      let refusedCode: string | null = null
       let prices = new Map<string, Map<string, number>>()
       let bounds = new Map<string, PriceBounds>()
       const simulated = new Set<string>()
       try {
-        prices = await loadVariantPrices(query, variantIds, o.prices.priceListId)
-        bounds = await loadVariantBounds(query, variantIds, o.prices.minKey, o.prices.maxKey)
-        if (o.demo) {
-          const demo = demoBounds(prices)
-          for (const [id, b] of demo) {
-            const set = bounds.get(id)
-            if (!set || (set.min === null && set.max === null)) {
-              bounds.set(id, b)
-              simulated.add(id)
+        if (await plnPricesIncludeTax(query, o.prices.taxInclusive)) {
+          prices = await loadVariantPrices(query, variantIds, o.prices.priceListId)
+          bounds = await loadVariantBounds(query, variantIds, o.prices.minKey, o.prices.maxKey)
+          if (o.demo) {
+            const demo = demoBounds(prices)
+            for (const [id, b] of demo) {
+              const set = bounds.get(id)
+              if (!set || (set.min === null && set.max === null)) {
+                bounds.set(id, b)
+                simulated.add(id)
+              }
             }
           }
+        } else {
+          refused = TAX_EXCLUSIVE_MESSAGE
+          refusedCode = TAX_EXCLUSIVE_PRICES
         }
       } catch (err) {
         refused = `Reading Medusa prices failed, nothing is planned: ${errorText(svc, err)}`
       }
+      /* Net prices: the old plan goes too, so nothing planned before can be sent. */
+      if (refusedCode) await savePlan(svc, "prices", [], o.demo)
       const rows = await loadPlanRows(svc, "prices")
       const quarantined = new Set(rows.filter((r) => r.status === "quarantined").map((r) => r.target_key))
       const plan = refused
@@ -239,7 +252,7 @@ export async function runPricePush(container: MedusaContainer, input: WriterRunI
           o.demo,
         )
       }
-      await setPlanSummary(svc, "prices", { plannedAt: new Date().toISOString(), refused, counts: (plan?.counts ?? {}) as unknown as Record<string, number> })
+      await setPlanSummary(svc, "prices", { plannedAt: new Date().toISOString(), refused, refusedCode, counts: (plan?.counts ?? {}) as unknown as Record<string, number> })
 
       const armed = await armedWriters(svc)
       const wantApply = mode === "apply" || (mode === "auto" && armed.has("prices"))

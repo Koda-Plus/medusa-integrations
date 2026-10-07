@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { startConnecting } from "../../../../modules/allegro/lib/connection"
-import { allegroService, buildStatus } from "../helpers"
+import { allegroService, buildStatus, sendError } from "../helpers"
 
 /**
  * POST /admin/allegro/connect
@@ -22,7 +22,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   try {
     await startConnecting(svc)
   } catch (err) {
-    res.status(502).json({ message: svc.mask(err instanceof Error ? err.message : String(err)) })
+    sendError(res, svc, err, "connect")
     return
   }
   res.json(await buildStatus(req.scope))

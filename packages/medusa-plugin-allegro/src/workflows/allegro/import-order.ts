@@ -43,6 +43,14 @@
  *   adds lines, it does not replace them;
  *   one payment collection for the order total, marked paid (captured) when
  *   Allegro holds the money, left not paid for cash on delivery.
+ *
+ * DEMO ORDERS ARE NEVER PLACED OR PAID. A simulated purchase lands in the
+ * store as an order in the "Allegro (demo)" channel with
+ * `metadata.koda_demo`, moved from draft to `pending` in the order module
+ * itself: no reservation takes real stock, no `order.placed` or
+ * `payment.captured` reaches invoicing, the ERP or e-mails, and no payment is
+ * recorded. A cancellation on the simulated account cancels it the same
+ * quiet way (no `order.canceled`, no refund).
  */
 
 import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
@@ -131,9 +139,14 @@ export async function createAllegroDraft(container: MedusaContainer, order: Medu
  * created twice, a paid one is not marked twice, a cancelled order is left
  * alone.
  */
-export async function completeAllegroOrder(container: MedusaContainer, orderId: string, args: { email: string | null; paid: boolean }): Promise<ImportOrderResult> {
+export async function completeAllegroOrder(
+  container: MedusaContainer,
+  orderId: string,
+  args: { email: string | null; paid: boolean; demo?: boolean },
+): Promise<ImportOrderResult> {
   let order = await head(container, orderId)
   if (!order) throw new MedusaError(MedusaError.Types.NOT_FOUND, `Medusa order ${orderId} of this Allegro import no longer exists.`)
+  if (args.demo) return finishDemoOrder(container, order, args.email)
 
   if (order.status === "draft" || order.is_draft_order === true) {
     if (args.email && !order.email) {
@@ -166,4 +179,29 @@ export async function completeAllegroOrder(container: MedusaContainer, orderId: 
     order = (await head(container, orderId)) ?? order
   }
   return resultOf(order)
+}
+
+/**
+ * A simulated order out of draft without placing it: the e-mail and tax lines
+ * as for a real one, then `pending` straight in the order module. Nothing is
+ * reserved, announced or paid. Safe to run again.
+ */
+async function finishDemoOrder(container: MedusaContainer, order: OrderHead, email: string | null): Promise<ImportOrderResult> {
+  if (order.status !== "draft" && order.is_draft_order !== true) return resultOf(order)
+  const orders = container.resolve(Modules.ORDER)
+  const itemIds = untaxedIds(order.items)
+  const shippingIds = untaxedIds(order.shipping_methods)
+  if (itemIds.length > 0 || shippingIds.length > 0) {
+    await coreFlows.updateOrderTaxLinesWorkflow(container).run({
+      input: { order_id: order.id, item_ids: itemIds, shipping_method_ids: shippingIds, force_tax_calculation: true },
+    })
+  }
+  await orders.updateOrders([{ id: order.id, status: "pending" as never, is_draft_order: false, ...(email && !order.email ? { email } : {}) }])
+  return resultOf((await head(container, order.id)) ?? order)
+}
+
+/** Cancels a simulated order in the order module: no `order.canceled`, no refund, nothing to release. */
+export async function cancelDemoOrder(container: MedusaContainer, orderId: string): Promise<void> {
+  const orders = container.resolve(Modules.ORDER) as unknown as { cancel(id: string): Promise<unknown> }
+  await orders.cancel(orderId)
 }

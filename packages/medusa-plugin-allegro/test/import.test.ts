@@ -2,8 +2,10 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { checkoutFormFromApi, isPaid, nipOf, type CheckoutForm } from "../src/modules/allegro/lib/checkout.ts"
 import {
+  buyerChange,
   cancelDecision,
   drainAction,
+  importDetails,
   planImport,
   processImport,
   sameTotal,
@@ -14,7 +16,7 @@ import {
 } from "../src/modules/allegro/lib/import.ts"
 import { refLockKey } from "../src/modules/allegro/lib/constants.ts"
 import { itemQuantity } from "../src/modules/allegro/lib/reservations.ts"
-import { compareEventIds, cursorExpired, eventsFromApi, intentOf, intentsByForm, latestEventId } from "../src/modules/allegro/lib/events.ts"
+import { cursorExpired, drainJournal, eventsAfter, eventsFromApi, intentOf, intentsByForm, latestEventId, type OrderEvent } from "../src/modules/allegro/lib/events.ts"
 
 const FORM_ID = "29738e61-7f6a-11e8-ac45-09db60ede9d6"
 
@@ -128,6 +130,27 @@ test("import plan: lines by the offer link, then by signature; Allegro prices, t
   assert.equal(d.paid, true)
 })
 
+test("import plan: a demo order carries the shared demo marker, a live one does not", () => {
+  const live = planImport(form(), ctx())
+  const demo = planImport(form(), ctx({ demo: true }))
+  assert.equal(live.kind, "create")
+  assert.equal(demo.kind, "create")
+  if (live.kind !== "create" || demo.kind !== "create") return
+  assert.equal(live.order.metadata.koda_demo, undefined)
+  assert.equal(demo.order.metadata.koda_demo, true)
+})
+
+test("buyer changes after the import: noticed by a hash, never by keeping the address", () => {
+  const before = importDetails(form())
+  assert.equal(typeof before.buyer_fp, "string")
+  assert.equal(JSON.stringify(before).includes("Kowalski"), false)
+  assert.equal(buyerChange(before, form()), null)
+  const moved = checkoutFormFromApi(rawForm({ delivery: { ...(rawForm().delivery as Record<string, unknown>), address: { firstName: "Jan", lastName: "Kowalski", street: "Inna 2", city: "Kraków", zipCode: "30-001", countryCode: "PL", phoneNumber: "+48 600 000 000" } } })) as CheckoutForm
+  assert.match(buyerChange(before, moved) ?? "", /changed the delivery address/)
+  /* A row from 0.2 has no hash yet: nothing to compare, nothing flagged. */
+  assert.equal(buyerChange({}, moved), null)
+})
+
 test("import plan: a parcel locker goes to the second address line, never to the company", () => {
   const d = planImport(form(), ctx())
   if (d.kind !== "create") throw new Error("expected create")
@@ -209,13 +232,144 @@ test("events: parsed oldest first, a cancellation wins over an import of the sam
   assert.equal(intentOf("BOUGHT"), "ignore")
   assert.equal(intentOf("AUTO_CANCELLED"), "cancel")
   assert.equal(intentOf("BUYER_MODIFIED"), "refresh")
-  assert.equal(compareEventIds("999", "1000"), -1)
-  assert.equal(compareEventIds("1532603898317500", "1532603898317499"), 1)
   assert.equal(latestEventId({ latestEvent: { id: "42", occurredAt: "x" } }), "42")
   assert.equal(latestEventId({}), null)
   const now = new Date("2026-10-06T00:00:00Z")
   assert.equal(cursorExpired(new Date("2026-08-01T00:00:00Z"), now, 60), true)
   assert.equal(cursorExpired(new Date("2026-09-20T00:00:00Z"), now, 60), false)
+})
+
+/* ------------------------------------------------------------------ */
+/* The journal: opaque event ids                                       */
+/* ------------------------------------------------------------------ */
+
+/* Allegro's own example id is a number in base64; their text order is not the order of the events. */
+const b64 = (n: bigint) => Buffer.from(String(n)).toString("base64").replace(/=+$/, "")
+
+/** A journal that answers `from` by POSITION, as Allegro does: it never compares ids either. */
+function fakeJournal(total: number, start = 1132438568101531n) {
+  const events: OrderEvent[] = Array.from({ length: total }, (_, i) => ({
+    id: b64(start + BigInt(i)),
+    type: "READY_FOR_PROCESSING",
+    occurredAt: new Date(Date.UTC(2026, 9, 6, 8, 0, i)).toISOString(),
+    checkoutFormId: `form-${String(i).padStart(3, "0")}`,
+  }))
+  const calls: Array<string | null> = []
+  return {
+    events,
+    calls,
+    async page(from: string | null, limit: number): Promise<OrderEvent[]> {
+      calls.push(from)
+      const at = from === null ? -1 : events.findIndex((e) => e.id === from)
+      return events.slice(at + 1, at + 1 + limit)
+    },
+  }
+}
+
+test("journal: the documented example id is base64 of a number, and text order would skip events", () => {
+  assert.equal(b64(1132438568101531n), "MTEzMjQzODU2ODEwMTUzMQ")
+  const earlier = b64(1132438568101539n)
+  const later = b64(1132438568101540n)
+  assert.ok(later < earlier, "text order puts the later event first: the reason ids are never compared")
+  const page = eventsFromApi({ events: [later, earlier].map((id, i) => ({ id, type: "READY_FOR_PROCESSING", order: { checkoutForm: { id: `F${i}` } } })) })
+  /* The answer's order is kept and nothing is dropped, whatever the text order says. */
+  assert.deepEqual(eventsAfter(page, null).map((e) => e.id), [later, earlier])
+})
+
+test("journal: every event of every page is applied once and the cursor ends on the last one", async () => {
+  const journal = fakeJournal(25)
+  const applied: string[] = []
+  const saved: string[] = []
+  const r = await drainJournal({
+    from: journal.events[0].id,
+    pageSize: 10,
+    maxPages: 10,
+    fetchPage: (after) => journal.page(after, 10),
+    apply: async (events) => {
+      applied.push(...events.map((e) => e.checkoutFormId as string))
+      return events.length
+    },
+    save: async (c) => {
+      saved.push(c.id)
+    },
+  })
+  assert.equal(r.read, 24)
+  assert.deepEqual(applied, journal.events.slice(1).map((e) => e.checkoutFormId))
+  assert.equal(r.cursor, journal.events[24].id)
+  assert.equal(saved[saved.length - 1], journal.events[24].id)
+  assert.equal(saved.length, 3)
+})
+
+test("journal: a crash before the cursor is saved reads the page again and loses nothing", async () => {
+  const journal = fakeJournal(15)
+  const forms = new Set<string>()
+  let cursor = journal.events[0].id
+  let fail = true
+  const run = () =>
+    drainJournal({
+      from: cursor,
+      pageSize: 5,
+      maxPages: 10,
+      fetchPage: (after) => journal.page(after, 5),
+      apply: async (events) => {
+        for (const e of events) forms.add(e.checkoutFormId as string)
+        return events.length
+      },
+      save: async (c) => {
+        if (fail && c.id === journal.events[10].id) {
+          fail = false
+          throw new Error("the process stopped")
+        }
+        cursor = c.id
+      },
+    })
+  await assert.rejects(run, /the process stopped/)
+  assert.equal(cursor, journal.events[5].id, "the cursor stays on the last saved page")
+  await run()
+  assert.equal(cursor, journal.events[14].id)
+  assert.equal(forms.size, 14)
+})
+
+test("journal: an answer that repeats the cursor or an event, or ignores from, never moves past an unread event", async () => {
+  const journal = fakeJournal(6)
+  const ids = journal.events.map((e) => e.id)
+  /* The cursor itself first, then a repeat inside the page. */
+  const repeated = [journal.events[2], journal.events[3], journal.events[3], journal.events[4]]
+  assert.deepEqual(eventsAfter(repeated, ids[2]).map((e) => e.id), [ids[3], ids[4]])
+  /* Without the cursor in the page, everything in it is new. */
+  assert.deepEqual(eventsAfter(journal.events.slice(3, 5), ids[2]).map((e) => e.id), [ids[3], ids[4]])
+
+  /* A server that always answers from the start: the drain stops, applies what it read and moves nothing backwards past an unread event. */
+  const applied: string[] = []
+  const r = await drainJournal({
+    from: ids[1],
+    pageSize: 3,
+    maxPages: 5,
+    fetchPage: async () => journal.events.slice(0, 3),
+    apply: async (events) => {
+      applied.push(...events.map((e) => e.id))
+      return events.length
+    },
+    save: async () => undefined,
+  })
+  assert.deepEqual(applied, [ids[2]])
+  assert.equal(r.cursor, ids[2])
+})
+
+test("journal: the last event of a form is the last one in the answer, not the biggest id", () => {
+  const first = b64(1132438568101539n)
+  const second = b64(1132438568101540n)
+  const intents = intentsByForm(
+    eventsFromApi({
+      events: [
+        { id: first, type: "READY_FOR_PROCESSING", order: { checkoutForm: { id: "F" } } },
+        { id: second, type: "FULFILLMENT_STATUS_CHANGED", order: { checkoutForm: { id: "F" } } },
+      ],
+    }),
+  )
+  assert.equal(intents.get("F")?.lastEventId, second)
+  assert.equal(intents.get("F")?.lastType, "FULFILLMENT_STATUS_CHANGED")
+  assert.equal(intents.get("F")?.intent, "import")
 })
 
 /* ------------------------------------------------------------------ */
@@ -336,6 +490,11 @@ test("exactly once: a draft is created, placed and paid once; a repeat adopts it
   assert.equal(w.row.status, "imported")
   assert.equal(w.row.order_id, "order_1")
   assert.equal(w.row.total_mismatch, false)
+  /* What the order card shows comes from this row, never from order metadata: the login and the delivery, no personal data beyond the login. */
+  const details = (w.row as { details?: Record<string, unknown> }).details ?? {}
+  assert.equal(details.buyer_login, "kupujacy")
+  assert.ok("delivery_method" in details && "pickup_point_id" in details)
+  assert.equal(JSON.stringify(details).includes("@"), false, "no e-mail on the row")
   assert.deepEqual(w.locks, [`marketplace-order-ref:allegro:${FORM_ID}`], "created under the shared lock")
   /* The process died before the result was written: the row came back as unknown. */
   w.row = { ...w.row, status: "unknown" }
@@ -381,6 +540,9 @@ test("exactly once: an order another integration imported (same marketplace_orde
   assert.equal(w.created, 0)
   assert.equal(w.row.status, "skipped")
   assert.equal(w.row.reason_code, "duplicate_ref")
+  /* order_id names only our own orders: the other integration's order goes to details. */
+  assert.equal(w.row.order_id ?? null, null)
+  assert.deepEqual((w.row as { details?: unknown }).details, { duplicate_order_id: "order_bl", duplicate_display_id: 7 })
 })
 
 test("a race with another plugin: the order it creates right after our first lookup is found again under the shared lock", async () => {

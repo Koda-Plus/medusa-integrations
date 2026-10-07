@@ -56,6 +56,11 @@ const en = {
     label: "Demo mode",
     text: "A simulated Allegro account built from your own catalog: offers, a few purchases a day (buyers at example.com), parcels, returns, disputes and messages. It runs through the same parsers, plans and workflows as a real account. Armed writers change the simulation and create real orders in this store, in the Allegro (demo) sales channel; nothing is ever sent to Allegro. To connect a real account, add clientId, clientSecret and encryptionKey to the plugin options.",
   },
+  demoSeed: {
+    label: "Demo data",
+    text: "The sample offers, orders, plans and issues are being prepared; the job does it within a minute.",
+    action: "Prepare now",
+  },
   missing: {
     label: "Configuration",
     text: "Missing plugin options: {{missing}}. Register a device app (\"without access to a browser\") in the Allegro developer portal of {{host}} for the client id and secret, and generate the encryption key with: openssl rand -base64 32. No redirect URI is needed.",
@@ -195,6 +200,8 @@ const en = {
     armText: "From now on it writes to the real Allegro account on its schedule. Run a dry run first and read the plan.",
     armTextOrders: "From now on Allegro orders become Medusa orders. Run a dry run first and read what it would do with the waiting forms.",
     armTextDemo: "It works against the simulated Allegro account of the demo.",
+    armTextDemoOrders:
+      "The purchases are simulated, but the orders are created in THIS Medusa store: in the \"Allegro (demo)\" sales channel, marked as demo, never placed or paid, so nothing is reserved, invoiced or mailed. Arm it only in a demo or test store.",
     armConfirm: "Arm",
     disarmTitle: "Disarm the {{name}} writer?",
     disarmText: "It stops at once. Nothing already sent is undone.",
@@ -221,6 +228,8 @@ const en = {
     plannedAt: "Planned {{when}}",
     never: "Not planned yet",
     refused: "Plan refused",
+    taxExclusive:
+      "Medusa keeps PLN prices without tax, and Allegro takes gross prices, so nothing is planned. Make the PLN price preference tax inclusive in Medusa, or set prices.taxInclusive: true when your PLN prices already include tax.",
     lastApply: "Last apply {{when}}: {{applied}} changed, {{failed}} failed",
     optionsMissing: "To create drafts set: {{missing}}.",
     filter: {

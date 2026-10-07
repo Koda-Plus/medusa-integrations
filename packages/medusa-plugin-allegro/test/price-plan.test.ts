@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { amountString, boundValue, planPrices, recheckPrice, toCents, type PricePlanOffer } from "../src/modules/allegro/lib/price-plan.ts"
 import { commandVerdict, endCommandBody, groupForCommands, parseReport, parseTasks, priceCommandBody, quantityCommandBody } from "../src/modules/allegro/lib/commands.ts"
+import { plnPricesIncludeTax } from "../src/workflows/allegro/catalog.ts"
 
 const offer = (id: string, price: number, status = "ACTIVE"): PricePlanOffer => ({
   allegroId: id,
@@ -169,4 +170,34 @@ test("commands: tasks name the offer, the status and the first error; the verdic
   assert.equal(commandVerdict([{ offerId: "1", status: "FAIL", message: null }]), "all_failed")
   assert.equal(commandVerdict([{ offerId: "1", status: "SUCCESS", message: null }, { offerId: "2", status: "NEW", message: null }]), "pending")
   assert.equal(commandVerdict([]), "pending")
+})
+
+test("recheck: a price changed on Allegro after the plan is not overwritten", () => {
+  const target = { amount: "99.99", currency: "PLN" }
+  const planned = { amount: "109.99", currency: "PLN" }
+  assert.equal(recheckPrice(target, { status: "ACTIVE", price: { value: 109.99, currency: "PLN" } }, planned), true)
+  /* Somebody set 119.99 in the seller panel: the bounds were checked against 109.99, so the item waits for a new plan. */
+  assert.equal(recheckPrice(target, { status: "ACTIVE", price: { value: 119.99, currency: "PLN" } }, planned), false)
+})
+
+test("gross prices only: the option wins, otherwise the PLN price preference; none means net", async () => {
+  const query = (rows: Array<Record<string, unknown>>) => {
+    const asked: unknown[] = []
+    return {
+      asked,
+      graph: async (q: { entity: string; filters?: unknown }) => {
+        asked.push(q)
+        return { data: q.entity === "price_preference" ? rows : [] }
+      },
+    }
+  }
+  const net = query([])
+  assert.equal(await plnPricesIncludeTax(net as never, null), false)
+  assert.deepEqual((net.asked[0] as { filters: unknown }).filters, { attribute: "currency_code", value: "pln" })
+  assert.equal(await plnPricesIncludeTax(query([{ id: "prpref_1", is_tax_inclusive: false }]) as never, null), false)
+  assert.equal(await plnPricesIncludeTax(query([{ id: "prpref_1", is_tax_inclusive: true }]) as never, null), true)
+  const unused = query([])
+  assert.equal(await plnPricesIncludeTax(unused as never, true), true)
+  assert.equal(await plnPricesIncludeTax(unused as never, false), false)
+  assert.equal(unused.asked.length, 0)
 })

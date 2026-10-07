@@ -123,7 +123,7 @@ export function usePromptSpec(): SetupPromptSpec {
       summary: t("subtitle"),
       needs: Array.isArray(needs) ? (needs as string[]) : [],
       config: `${CODE.key}\n\n${CODE.options}`,
-      demo: 'demo: process.env.ALLEGRO_DEMO === "true" || !process.env.ALLEGRO_CLIENT_ID,',
+      demo: 'demo: process.env.ALLEGRO_DEMO === "true",',
     }
   }, [t])
 }
