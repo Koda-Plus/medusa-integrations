@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-negotiations",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Negotiations by Koda Plus: B2B price negotiations between logged-in customers and the store team. Threads for a product, a variant or a cart with quantity, target price and messages, counter offers, accept and reject on both sides, internal notes, expiry, stable events and an opt-in writer that turns accepted prices into draft orders. Demo mode.",
   "author": {
     "name": "Koda Plus",
@@ -54,7 +54,7 @@
     "dev": "medusa plugin:develop",
     "test": "node --experimental-strip-types --no-warnings --import ./test/ts-resolve.mjs --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json",
-    "prepublishOnly": "npm test && medusa plugin:build"
+    "prepublishOnly": "npm test && npm run typecheck && medusa plugin:build"
   },
   "devDependencies": {
     "@medusajs/admin-sdk": "2.15.3",

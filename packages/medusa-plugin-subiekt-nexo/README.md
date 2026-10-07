@@ -21,7 +21,7 @@ Subiekt nexo has no web API. Its SDK, **Sfera**, is a Windows .NET library that 
 ```
 
 - **This plugin** (MIT) is everything on the Medusa side: when to send an order, retries, plans, writers, the admin and the setup guide.
-- **The bridge** implements [`contract/openapi.yaml`](contract/openapi.yaml) (version 1.1.0). Koda Plus builds and runs a production bridge on the Sfera SDK (commercial, see [The bridge](#the-bridge)); any bridge that follows the contract works, and the plugin ships a **demo bridge** so you can evaluate everything without Subiekt.
+- **The bridge** implements [`contract/openapi.yaml`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract/openapi.yaml) (version 1.1.0). Koda Plus builds and runs a production bridge on the Sfera SDK (commercial, see [The bridge](#the-bridge)); any bridge that follows the contract works, and the plugin ships a **demo bridge** so you can evaluate everything without Subiekt.
 
 The bridge usually sits behind a Cloudflare Tunnel, so the Subiekt machine opens no inbound port. The plugin reads what the bridge can do from `capabilities` in `GET /v1/health` and uses only that, so you can update the plugin before the bridge: a contract 1.0 bridge keeps doing orders, WZ, stock and events, and the admin says what needs the update.
 
@@ -42,7 +42,7 @@ The bridge usually sits behind a Cloudflare Tunnel, so the Subiekt machine opens
 - **Plan first.** Prices and new products are computed as a plan (what changes, from what to what) and shown in the admin before anything is written. An incomplete read from the bridge plans nothing. Each run applies at most `maxPriceChangesPerRun` prices and `maxProductsPerRun` products, reads every item again right before it writes, skips what changed meanwhile, and quarantines an item that failed three runs in a row until a person releases it.
 - **Exactly once.** One task row per order and operation before anything goes to the network, claimed atomically. The bridge writes the order tag `[medusa:order_...]` into every document and looks for it before it creates one, under the order lock and again under the Sfera lock. An unclear answer (a timeout) becomes "Answer unclear" and the next attempt asks the bridge first.
 - **Outbox with retries.** Every call to the bridge is a row first and a request second, retried with backoff for about two and a half days, so a bridge machine switched off over a weekend loses nothing. A task fails for good only on a non-retryable error, and then it waits in the admin with a **Send again** button.
-- **Setup guide in the admin** ("Panel" | "Setup guide", `?view=guide`), in English and Polish: what you need, how the parts talk, twelve steps from an empty Windows machine to production with live states, a go-live checklist ticked from the live status, and troubleshooting from real failure modes. The same guide as Markdown: [docs/guide-en.md](docs/guide-en.md), [docs/guide-pl.md](docs/guide-pl.md).
+- **Setup guide in the admin** ("Panel" | "Setup guide", `?view=guide`), in English and Polish: what you need, how the parts talk, twelve steps from an empty Windows machine to production with live states, a go-live checklist ticked from the live status, and troubleshooting from real failure modes. The same guide as Markdown: [docs/guide-en.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-en.md), [docs/guide-pl.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-pl.md).
 - **Bridge diagnostics**: bridge, contract, nexo SDK and database versions, the Subiekt licence state, round trip, clock skew (signatures fail beyond five minutes, the admin warns from one), the result of the last signed request, the last event, what the bridge can do and what it cannot yet, with the reason and the setting to change.
 - **Admin page** with the connection, the writers, the stock plan, the products and prices plan with filters and quarantine, the queue, documents (ZK, WZ, FS, PA with KSeF numbers) and the history of background runs. "Running in production" cards from the `references` option.
 - **Order widget**: the ZK, WZ and FS or PA of the order with the KSeF number, the contractor Subiekt got, warnings, **Send to Subiekt now** and **Issue invoice** or **Issue receipt**.
@@ -141,7 +141,7 @@ Missing options never break the boot: the module registers, the admin lists what
 
 ## Setup in brief
 
-The full guide with live states is in the admin (`/app/subiekt?view=guide`) and in [docs/guide-en.md](docs/guide-en.md).
+The full guide with live states is in the admin (`/app/subiekt?view=guide`) and in [docs/guide-en.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-en.md).
 
 1. **Subiekt nexo PRO**: an operator for the bridge, the warehouse for new ZK, the retail buyer and its NIP, the price level to publish; note the exact Subiekt version.
 2. **nexo SDK and .NET 8** on a Windows machine that runs all the time next to the database; the SDK version must equal the database version.
@@ -178,7 +178,7 @@ There is deliberately **no compensation that deletes a document**. The ERP recip
 
 ## The bridge
 
-[`contract/openapi.yaml`](contract/openapi.yaml) (1.1.0) is the whole contract: `GET /v1/health` (with `capabilities`, versions, licence, last event, queue sizes and server time), `POST /v1/orders` (optional `buyer` block), `GET /v1/orders/{id}`, `POST /v1/orders/{id}/cancel`, `POST /v1/orders/{id}/fulfillments`, `POST /v1/orders/{id}/documents` (FS or PA, idempotent), `GET /v1/stock`, `GET /v1/products`, `GET /v1/events`, and the webhook `POST /hooks/subiekt`. Version 1.1 is additive: a 1.0 bridge keeps working with this plugin. Request and response examples and cross-language signature test vectors live in [`contract/examples`](contract/examples).
+[`contract/openapi.yaml`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract/openapi.yaml) (1.1.0) is the whole contract: `GET /v1/health` (with `capabilities`, versions, licence, last event, queue sizes and server time), `POST /v1/orders` (optional `buyer` block), `GET /v1/orders/{id}`, `POST /v1/orders/{id}/cancel`, `POST /v1/orders/{id}/fulfillments`, `POST /v1/orders/{id}/documents` (FS or PA, idempotent), `GET /v1/stock`, `GET /v1/products`, `GET /v1/events`, and the webhook `POST /hooks/subiekt`. Version 1.1 is additive: a 1.0 bridge keeps working with this plugin. Request and response examples and cross-language signature test vectors live in [`contract/examples`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract/examples).
 
 Koda Plus provides a production bridge for Subiekt nexo PRO: a Windows service on .NET 8 and the Sfera SDK, with a dedicated Sfera thread (no desktop heap exhaustion after days of uptime), incremental WZ and KSeF watchers, a SQLite event feed, install, upgrade and uninstall scripts, a read-only `--check` and a local status page. It is available commercially from Koda Plus, write to **kontakt@koda.plus**. You can also build your own bridge from the contract.
 
@@ -260,7 +260,7 @@ Shops often connect Subiekt through Base.com (BaseLinker): Medusa to Base with o
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Built and maintained by [Koda Plus](https://koda.plus).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/LICENSE). Built and maintained by [Koda Plus](https://koda.plus).
 
 Subiekt nexo, nexo PRO and Sfera are trademarks of InsERT S.A. This project is independent and not affiliated with InsERT.
 
@@ -278,10 +278,10 @@ Subiekt nexo, nexo PRO and Sfera are trademarks of InsERT S.A. This project is i
 - Sales documents: `salesDocument` (`none`, `fs`, `pa`, `auto`) and `salesDocumentAfter`, exactly once with an atomic claim and reconciliation of unclear answers; KSeF numbers on the order, in the documents view and in the order metadata.
 - Writers: every new write has an option (hard switch) and an admin toggle recorded with who and when; all off by default.
 - Admin: "Panel" | "Setup guide" switch, the bridge diagnostics section, writers, the products and prices plan, FS and PA with KSeF in the documents view and the order widget, "Running in production" references (`references` option).
-- Setup guide in English and Polish, in the admin with live states and as [docs/guide-en.md](docs/guide-en.md) and [docs/guide-pl.md](docs/guide-pl.md).
+- Setup guide in English and Polish, in the admin with live states and as [docs/guide-en.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-en.md) and [docs/guide-pl.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-pl.md).
 - Demo bridge simulates all of it from the store catalog.
 - Bridge fix worth knowing: bridge 0.1.0 ignored `address_1` and `address_2` of the order addresses (it expected `address1`), so ZK notes lacked the street; bridge 0.2.0 reads the contract names.
 
 ### 0.1.0 (2026-10-05)
 
-First release: contract 1.0.0, orders to ZK, cancels, WZ both ways, stock sync with dry run, signed webhook, the outbox queue, the admin page and order widget in English and Polish, the demo bridge. See [CHANGELOG.md](CHANGELOG.md).
+First release: contract 1.0.0, orders to ZK, cancels, WZ both ways, stock sync with dry run, signed webhook, the outbox queue, the admin page and order widget in English and Polish, the demo bridge. See [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/CHANGELOG.md).

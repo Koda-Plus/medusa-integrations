@@ -62,7 +62,7 @@ export function usePromptSpec(): SetupPromptSpec {
       summary: t("subtitle"),
       needs: Array.isArray(needs) ? (needs as string[]) : [],
       config: `// medusa-config.ts, in plugins: [ ... ]\n${MEDUSA_CODE}`,
-      demo: 'demo: process.env.SUBIEKT_DEMO === "true" || !process.env.SUBIEKT_BRIDGE_URL,',
+      demo: 'demo: process.env.SUBIEKT_DEMO === "true",',
     }
   }, [t])
 }

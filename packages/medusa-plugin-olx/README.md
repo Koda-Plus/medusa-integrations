@@ -297,7 +297,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the matching, the parsers, alerts, the three planners, the publish validation, the apply loops with their exactly-once rules, the SQL of the atomic claims, the client's answer handling, the write barrier, the encryption and the whole demo story. What the plugin relies on from the OLX documentation is in [docs/olx-api-notes.md](./docs/olx-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-olx` in the app.
+`npm test` covers the matching, the parsers, alerts, the three planners, the publish validation, the apply loops with their exactly-once rules, the SQL of the atomic claims, the client's answer handling, the write barrier, the encryption and the whole demo story. What the plugin relies on from the OLX documentation is in [docs/olx-api-notes.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-olx/docs/olx-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-olx` in the app.
 
 ## Commercial support
 
@@ -309,7 +309,7 @@ OLX and the OLX logo are trademarks of their owner, used here only to identify t
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-olx/LICENSE).
 
 ## Changelog
 

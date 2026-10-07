@@ -3,7 +3,7 @@
 export const KIT_META = {
   ns: "negotiations",
   pkg: "@koda-plus/medusa-plugin-negotiations",
-  version: "0.1.0",
+  version: "0.1.1",
   kit: "1.0.1",
   name: "Negotiations",
 } as const
