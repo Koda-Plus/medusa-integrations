@@ -14,17 +14,10 @@ import type {
   WriterKey,
 } from "../../modules/inpost/lib/contract"
 
-declare const __BACKEND_URL__: string | undefined
+import { backendUrl, kitRequestInit } from "./inpost-kit"
 
-/** Same origin by default; the admin build defines `__BACKEND_URL__` when the backend lives elsewhere. */
-export function backendUrl(): string {
-  try {
-    if (typeof __BACKEND_URL__ !== "undefined" && __BACKEND_URL__) return String(__BACKEND_URL__).replace(/\/+$/, "")
-  } catch {
-    /* not defined in this build */
-  }
-  return ""
-}
+/* The backend the dashboard talks to, with its auth (session or JWT): from the kit. */
+export { backendUrl }
 
 export class InpostRequestError extends Error {
   readonly status: number
@@ -38,13 +31,9 @@ export class InpostRequestError extends Error {
 }
 
 export async function inpostFetch<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
-  const hasBody = init?.body !== undefined
-  const res = await fetch(`${backendUrl()}${path}`, {
-    method: init?.method ?? "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...(hasBody ? { "Content-Type": "application/json" } : {}) },
-    body: hasBody ? JSON.stringify(init?.body) : undefined,
-  })
+  /* The kit adds the dashboard's auth (session cookie or JWT) and, on writes, the JSON body and the
+     x-koda-request header the server's write guard asks for. */
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: init?.method ?? "GET", body: init?.body }))
   const text = await res.text()
   let json: unknown = null
   try {
