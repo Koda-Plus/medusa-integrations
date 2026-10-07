@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Publishes the five packages to npm, one after another, and skips any whose
+ * Publishes every package to npm, one after another, and skips any whose
  * current version is already there, so a run stopped halfway (a 2FA prompt,
  * a lost connection) can simply be started again.
  *
@@ -18,7 +18,18 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const PACKAGES = ["medusa-plugin-olx", "medusa-plugin-allegro", "medusa-plugin-baselinker", "medusa-plugin-subiekt-nexo", "medusa-plugin-fakturownia"]
+const PACKAGES = [
+  "medusa-plugin-olx",
+  "medusa-plugin-allegro",
+  "medusa-plugin-baselinker",
+  "medusa-plugin-subiekt-nexo",
+  "medusa-plugin-fakturownia",
+  "medusa-plugin-negotiations",
+  "medusa-plugin-emails",
+  "medusa-plugin-inpost",
+  "medusa-plugin-stripe",
+  "medusa-plugin-tasks",
+]
 
 /* One command string: npm is npm.cmd on Windows and needs a shell, and Node warns (DEP0190) when a
    shell gets separate arguments. Every argument here is a plain token, nothing to escape. */
