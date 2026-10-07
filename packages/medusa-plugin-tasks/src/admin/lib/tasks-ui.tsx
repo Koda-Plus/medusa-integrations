@@ -8,6 +8,7 @@ import type { LinkType, TaskPriority, TaskStatus } from "../../modules/tasks/lib
 import { describeActivity } from "../../modules/tasks/lib/activity"
 import { isOverdue, utcDay } from "../../modules/tasks/lib/dates"
 import { personKey } from "../../modules/tasks/lib/people"
+import { safeAvatarUrl } from "./tasks-rules"
 import { pickText, type TasksReference } from "../../modules/tasks/lib/references"
 import { nb, type Reference } from "./tasks-guide"
 
@@ -220,14 +221,21 @@ export interface Who {
   role?: SampleText | null
 }
 
-/** The face of a free text name: a named person of the option, else an admin user with that name or e-mail. */
+/**
+ * The face of a free text name: a named person of the option, else an admin
+ * user with that name or e-mail. A name a key signed with (`ai`) never gets a
+ * person's face: only an agent of the `people` option lends it a photo, so a
+ * key can never look like someone on the team.
+ */
 function freeName(name: string | null | undefined, index: PeopleIndex, ai = false): Who {
   if (!name || !name.trim()) return { name: null, url: null, ai }
   const named = index.named.get(personKey(name))
-  if (named) return { name, url: named.avatar, ai: ai || named.kind === "agent", role: named.role }
+  if (ai) return named?.kind === "agent" ? { name, url: named.avatar, ai: true, role: named.role } : { name, url: null, ai: true }
+  if (named) return { name, url: named.avatar, ai: named.kind === "agent", role: named.role }
   const user = index.byName.get(name.trim().toLowerCase())
   return { name, url: user?.avatar_url ?? null, ai }
 }
+
 
 /** The assignee of a task: the admin user (with their photo), or the free text name and its face. */
 export function assigneeOf(task: Pick<TaskDto, "assignee" | "assignee_id">, index: PeopleIndex): Who {
@@ -272,10 +280,12 @@ export function initials(name: string | null | undefined): string {
 export function PersonAvatar({ who, large = false }: { who: Who | null; large?: boolean }) {
   const box = large ? "h-8 w-8" : "h-5 w-5"
   const ring = clx("flex shrink-0 items-center justify-center overflow-hidden rounded-full shadow-borders-base", box)
-  if (who?.url) {
+  const url = safeAvatarUrl(who?.url)
+  if (url) {
+    /* No referrer: the owner of the address does not learn which admin looks at the board. */
     return (
-      <span className={clx(ring, "bg-ui-bg-component")} title={who.name ?? undefined}>
-        <img src={who.url} alt="" className="h-full w-full object-cover" />
+      <span className={clx(ring, "bg-ui-bg-component")} title={who?.name ?? undefined}>
+        <img src={url} alt="" referrerPolicy="no-referrer" loading="lazy" decoding="async" className="h-full w-full object-cover" />
       </span>
     )
   }
@@ -423,6 +433,10 @@ export function activityText(a: Pick<ActivityDto, "type" | "message" | "metadata
       return t("activity.created")
     case "commented":
       return t("activity.commented")
+    case "commentEdited":
+      return t("activity.commentEdited")
+    case "commentDeleted":
+      return t("activity.commentDeleted")
     case "deleted":
       return t("activity.deleted")
     case "moved":

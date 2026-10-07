@@ -2,6 +2,9 @@
  * EVERYTHING THE ADMIN API READS, for one request context. Every read goes
  * through the store of the context's board, so a sandbox account reads the
  * sandbox board and nothing else, whatever ids it sends.
+ *
+ * READS ONLY: nothing here writes, seeds or emits. The sandbox board is
+ * seeded by `POST /admin/tasks/sandbox/ensure` and the job (`sandbox.ts`).
  */
 
 import {
@@ -36,15 +39,15 @@ import type {
   TaskDto,
 } from "../../modules/tasks/lib/contract"
 import { todayOf } from "../../modules/tasks/lib/dates"
-import { countsFrom, hiddenClosed, iso, toActivityDto, toCommentDto, toLinkDto, toTaskDto } from "../../modules/tasks/lib/dto"
+import { countsFrom, hiddenClosed, hiddenOpen, iso, toActivityDto, toCommentDto, toLinkDto, toTaskDto } from "../../modules/tasks/lib/dto"
 import { bounded, isAgencyEmail, isSandboxEmail } from "../../modules/tasks/lib/options"
-import { nextSandboxReset } from "../../modules/tasks/lib/sandbox"
+import { nextSandboxReset, sandboxStale } from "../../modules/tasks/lib/sandbox"
 import type { BoardStore, TaskQuery } from "../../modules/tasks/lib/store"
 import { cleanLine, isEntityId, likePattern } from "../../modules/tasks/lib/text"
 import type { TaskRow } from "../../modules/tasks/lib/rows"
 import { allUsers, usersByEmail } from "./context"
 import { labelFor, linkLabels } from "./records"
-import { ensureSandbox, sandboxMarker } from "./sandbox"
+import { sandboxMarker } from "./sandbox"
 import { envOf, notFound, type Scope } from "./runtime"
 
 export function boardStore(scope: Scope, ctx: RequestContext): BoardStore {
@@ -75,13 +78,12 @@ function dayStart(query: Record<string, unknown>, now: Date): Date {
 
 /** The board: every open task and the latest closed ones, with the counters. */
 export async function boardView(scope: Scope, ctx: RequestContext, query: Record<string, unknown> = {}): Promise<BoardResponse> {
-  await ensureSandbox(scope, ctx)
   const env = envOf(scope)
   const store = env.stores.board(ctx.board)
   const closedLimit = bounded(query.closed_limit, CLOSED_TASKS_DEFAULT, 0, CLOSED_TASKS_MAX)
   const [rows, countRows] = await Promise.all([store.boardTasks(OPEN_TASKS_MAX, closedLimit), store.statusCounts(dayStart(query, env.now))])
   const counts = countsFrom(countRows)
-  return { tasks: await taskDtos(scope, store, rows), counts, hidden_closed: hiddenClosed(counts, rows) }
+  return { tasks: await taskDtos(scope, store, rows), counts, hidden_closed: hiddenClosed(counts, rows), hidden_open: hiddenOpen(counts, rows) }
 }
 
 function listOf(value: unknown): string[] {
@@ -91,7 +93,6 @@ function listOf(value: unknown): string[] {
 
 /** The list for scripts: filters, a page, the counters of the whole board. */
 export async function listTasks(scope: Scope, ctx: RequestContext, query: Record<string, unknown> = {}): Promise<ListResponse> {
-  await ensureSandbox(scope, ctx)
   const env = envOf(scope)
   const store = env.stores.board(ctx.board)
   const linkType = query.link_type
@@ -147,7 +148,6 @@ export async function taskActivity(scope: Scope, ctx: RequestContext, id: string
 
 /** The latest activity across the board. */
 export async function boardActivity(scope: Scope, ctx: RequestContext, query: Record<string, unknown> = {}): Promise<{ activity: ActivityDto[] }> {
-  await ensureSandbox(scope, ctx)
   const rows = await boardStore(scope, ctx).boardActivity(bounded(query.limit, ACTIVITY_DEFAULT, 1, ACTIVITY_MAX))
   return { activity: rows.map((a) => toActivityDto(a)) }
 }
@@ -155,7 +155,6 @@ export async function boardActivity(scope: Scope, ctx: RequestContext, query: Re
 /** The widgets: tasks of the board linked to one order, product or customer. */
 export async function entityTasks(scope: Scope, ctx: RequestContext, type: LinkType, id: string): Promise<EntityTasksResponse> {
   if (!isEntityId(id) || !id.startsWith(LINK_ID_PREFIX[type])) throw notFound(type[0].toUpperCase() + type.slice(1))
-  await ensureSandbox(scope, ctx)
   const store = boardStore(scope, ctx)
   const { rows, count } = await store.tasksForEntity(type, id, WIDGET_TASKS)
   return { board: ctx.board, sandbox: ctx.sandbox, tasks: await taskDtos(scope, store, rows), count }
@@ -198,7 +197,6 @@ function adoptionOf(value: unknown): AdoptionDto | null {
 }
 
 export async function buildStatus(scope: Scope, ctx: RequestContext, query: Record<string, unknown> = {}): Promise<StatusResponse> {
-  await ensureSandbox(scope, ctx)
   const env = envOf(scope)
   const store = env.stores.board(ctx.board)
   const o = env.options
@@ -231,6 +229,8 @@ export async function buildStatus(scope: Scope, ctx: RequestContext, query: Reco
       sandbox_reset_hours: o.sandboxResetHours,
       agency_accounts: ctx.sandbox ? null : [...o.agencyAccounts],
       agency_account_count: o.agencyAccounts.length,
+      sandbox_guard: o.sandboxGuard.enabled,
+      agent_key_prefix: o.agentKeyPrefix || null,
     },
     sandbox_board: {
       enabled: o.sandboxAccounts.length > 0,
@@ -238,6 +238,8 @@ export async function buildStatus(scope: Scope, ctx: RequestContext, query: Reco
       tasks: sandboxTasks,
       reset_hours: o.sandboxResetHours,
       next_reset_at: nextSandboxReset(seededAt, o.sandboxResetHours),
+      /* The page of a sandbox account asks for a seed (POST /admin/tasks/sandbox/ensure) when this is true. */
+      stale: o.sandboxAccounts.length > 0 && sandboxStale(seed, o.sandboxResetHours, env.now),
     },
     adoption: adoption ? adoptionOf(adoption.value) : null,
     automation: { api_key_activity: automation.count, last_api_key_at: iso(automation.last) },

@@ -21,9 +21,10 @@ import * as ordersRoute from "../src/api/admin/tasks/orders/[id]/route.ts"
 import * as productsRoute from "../src/api/admin/tasks/products/[id]/route.ts"
 import * as customersRoute from "../src/api/admin/tasks/customers/[id]/route.ts"
 import * as resetRoute from "../src/api/admin/tasks/sandbox/reset/route.ts"
+import * as ensureRoute from "../src/api/admin/tasks/sandbox/ensure/route.ts"
 import { contextOf } from "../src/workflows/tasks/context.ts"
 import { ActionError } from "../src/workflows/tasks/runtime.ts"
-import { setup, type Setup } from "./helpers.ts"
+import { DEFAULT_OPTIONS, setup, type Setup } from "./helpers.ts"
 
 type Handler = (req: never, res: never) => Promise<void>
 type Actor = { actor_id: string; actor_type: string }
@@ -80,8 +81,8 @@ for (const [who, actor] of [
   test(`isolation: ${who} reads and changes nothing of the main board through any route`, async () => {
     const s = setup()
     const main = await mainBoard(s)
-    /* The sandbox exists too: seeded on the first visit. */
-    await call(s, statusRoute.GET as Handler, DEMO)
+    /* The sandbox exists too: seeded when the page of a sandbox account asks. */
+    assert.deepEqual((await call(s, ensureRoute.POST as Handler, DEMO)).body, { seeded: true })
     const sandboxTask = [...s.memory.tasks.values()].find((t) => t.board === "sandbox")
     assert.ok(sandboxTask, "the sandbox was seeded")
     const before = snapshot(s, "main")
@@ -147,9 +148,15 @@ for (const [who, actor] of [
   })
 }
 
-test("isolation: the team does not see the sandbox either, and the sandbox events say demo", async () => {
-  const s = setup()
-  await call(s, statusRoute.GET as Handler, DEMO)
+test("isolation: the team does not see the sandbox either; sandbox events go out only with sandboxEvents emit, marked demo", async () => {
+  const quiet = setup()
+  await call(quiet, ensureRoute.POST as Handler, DEMO)
+  await call(quiet, tasksRoute.POST as Handler, DEMO, { body: { title: "Demo visitor's task" } })
+  assert.equal(quiet.events.length, 0, "by default nothing a public visitor writes reaches the event bus")
+  assert.deepEqual((await call(quiet, ensureRoute.POST as Handler, TEAM)).body, { seeded: false }, "the team never seeds")
+
+  const s = setup({ ...DEFAULT_OPTIONS, sandboxEvents: "emit" })
+  await call(s, ensureRoute.POST as Handler, DEMO)
   const demoTask = await call(s, tasksRoute.POST as Handler, DEMO, { body: { title: "Demo visitor's task" } })
   const id = demoTask.body.task.id
   const event = s.events.find((e) => e.name === "tasks.task.created" && e.data.id === id)

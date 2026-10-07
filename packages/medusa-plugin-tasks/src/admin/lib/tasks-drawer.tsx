@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, PencilSquare, Trash } from "@medusajs/icons"
 import { Badge, Button, Drawer, Input, Select, Text, Textarea, clx, toast, usePrompt } from "@medusajs/ui"
 import { PRIORITIES, STATUSES, type TaskPriority, type TaskStatus } from "../../modules/tasks/lib/constants"
@@ -15,6 +15,7 @@ import {
   useUpdateTask,
 } from "./tasks-api"
 import { AssigneeSelect, RecordPicker, assigneeBody, assigneeValue, splitTags, useFailToast } from "./tasks-form"
+import { completeDay } from "./tasks-rules"
 import {
   Field,
   LinkChip,
@@ -238,13 +239,7 @@ function DrawerBody({
             <AssigneeSelect size="small" value={picked} freeText={freeText} people={people} index={index} onChange={(v) => void save(assigneeBody(v, freeText))} />
           </Field>
           <Field label={t("drawer.due")}>
-            <Input
-              size="small"
-              type="date"
-              className={late ? "text-ui-fg-error" : undefined}
-              value={dueDayOf(task) ?? ""}
-              onChange={(e) => void save({ due_date: e.target.value || null })}
-            />
+            <DueDateInput value={dueDayOf(task) ?? ""} late={late} onSave={(day) => void save({ due_date: day })} />
           </Field>
         </div>
 
@@ -537,5 +532,57 @@ function CommentRow({ taskId, comment: c, index }: { taskId: string; comment: Co
         </div>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * The due date, saved once it is a whole date: typing a year passes through
+ * 0002, 0020 and 0202, which are never sent. A picked or typed date is saved
+ * a moment after the last change, on blur, on Enter or when the drawer closes.
+ */
+function DueDateInput({ value, late, onSave }: { value: string; late: boolean; onSave: (day: string | null) => void }) {
+  const [draft, setDraft] = useState(value)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pending = useRef<string | null>(null)
+  const saveRef = useRef(onSave)
+  saveRef.current = onSave
+
+  useEffect(() => setDraft(value), [value])
+
+  const flush = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    const next = pending.current
+    pending.current = null
+    if (next === null) return
+    saveRef.current(next === "" ? null : next)
+  }
+
+  useEffect(() => () => flush(), [])
+
+  const change = (next: string) => {
+    setDraft(next)
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    pending.current = null
+    if (next === value || (next !== "" && !completeDay(next))) return
+    pending.current = next
+    timer.current = setTimeout(flush, 700)
+  }
+
+  return (
+    <Input
+      size="small"
+      type="date"
+      min="2000-01-01"
+      max="2100-12-31"
+      className={late ? "text-ui-fg-error" : undefined}
+      value={draft}
+      onChange={(e) => change(e.target.value)}
+      onBlur={flush}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") flush()
+      }}
+    />
   )
 }

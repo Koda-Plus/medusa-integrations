@@ -5,7 +5,7 @@ import { STATUSES, type TaskStatus } from "../../modules/tasks/lib/constants"
 import type { TaskDto } from "../../modules/tasks/lib/contract"
 import { personKey } from "../../modules/tasks/lib/people"
 import { PRIORITY_RANK } from "../../modules/tasks/lib/status"
-import type { MoveArgs } from "./tasks-api"
+import type { MoveArgs } from "./tasks-rules"
 import {
   LinkChip,
   Person,
@@ -284,6 +284,19 @@ export function TaskCard({
 /* ------------------------------------------------------------------ */
 
 const byPosition = (a: TaskDto, b: TaskDto) => a.position - b.position || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+const closedAt = (t: TaskDto) => t.completed_at ?? t.updated_at
+/** Done and rejected show the latest first: they are ordered by when tasks closed, not by hand. */
+const byClosed = (a: TaskDto, b: TaskDto) => closedAt(b).localeCompare(closedAt(a)) || b.id.localeCompare(a.id)
+export const CLOSED_COLUMNS: ReadonlySet<TaskStatus> = new Set<TaskStatus>(["done", "rejected"])
+
+/** The cards of each column as the board shows them. */
+export function columnsOf(tasks: TaskDto[]): Map<TaskStatus, TaskDto[]> {
+  const map = new Map<TaskStatus, TaskDto[]>()
+  for (const s of STATUSES) map.set(s, [])
+  for (const task of tasks) map.get(task.status)?.push(task)
+  for (const [status, list] of map) list.sort(CLOSED_COLUMNS.has(status) ? byClosed : byPosition)
+  return map
+}
 
 /**
  * Six columns. A card is dragged with the mouse or a pen; the drop place
@@ -309,16 +322,12 @@ export function BoardColumns({
 }) {
   const { t } = useLabels()
   const [drop, setDrop] = useState<{ status: TaskStatus; index: number } | null>(null)
-  const columns = useMemo(() => {
-    const map = new Map<TaskStatus, TaskDto[]>()
-    for (const s of STATUSES) map.set(s, [])
-    for (const task of tasks) map.get(task.status)?.push(task)
-    for (const list of map.values()) list.sort(byPosition)
-    return map
-  }, [tasks])
+  const columns = useMemo(() => columnsOf(tasks), [tasks])
   const refs = useRef(new Map<TaskStatus, HTMLDivElement | null>())
 
   const dropIndex = (status: TaskStatus, clientY: number): number => {
+    /* A card dropped in a closed column lands on top: it closed just now. */
+    if (CLOSED_COLUMNS.has(status)) return 0
     const el = refs.current.get(status)
     if (!el) return 0
     const cards = [...el.querySelectorAll<HTMLElement>("[data-card-id]")].filter((c) => c.dataset.cardId !== dragging)
@@ -337,6 +346,11 @@ export function BoardColumns({
     onDragging(null)
     if (!id) return
     const moving = tasks.find((x) => x.id === id)
+    if (CLOSED_COLUMNS.has(status)) {
+      /* Closed columns have no order of their own: only a new status counts. */
+      if (moving && moving.status !== status) onMove({ id, status, after_id: null, before_id: null })
+      return
+    }
     const list = (columns.get(status) ?? []).filter((x) => x.id !== id)
     const after = at > 0 ? list[at - 1]?.id ?? null : null
     const before = list[at]?.id ?? null

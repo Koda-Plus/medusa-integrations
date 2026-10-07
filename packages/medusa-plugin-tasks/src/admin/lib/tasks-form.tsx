@@ -3,7 +3,7 @@ import { MagnifyingGlass, Plus, XMarkMini } from "@medusajs/icons"
 import { Button, FocusModal, Heading, Input, Label, Select, Text, Textarea, toast } from "@medusajs/ui"
 import { LINK_TYPES, PRIORITIES, STATUSES, TAGS_MAX, type LinkType, type TaskPriority, type TaskStatus } from "../../modules/tasks/lib/constants"
 import type { PersonDto, StatusResponse } from "../../modules/tasks/lib/contract"
-import { errorCode, errorMessage, useCreateTask, useRecordSearch, type FoundRecord } from "./tasks-api"
+import { errorCode, errorMessage, fieldErrorCode, useCreateTask, useRecordSearch, type FoundRecord } from "./tasks-api"
 import { TasksIcon } from "./tasks-icon"
 import { personKey } from "../../modules/tasks/lib/people"
 import { LinkIcon, Person, roleLine, useDebounced, useLabels, usePeopleIndex, type Labels, type PeopleIndex } from "./tasks-ui"
@@ -20,10 +20,21 @@ export function useFailToast() {
   return (err: unknown) => toastError(err, labels)
 }
 
-export function toastError(err: unknown, labels: Labels) {
-  const code = errorCode(err)
+/** The message of a refusal in the admin's language: the field's own code first (other_board, too_long), then the refusal's. */
+export function errorText(err: unknown, labels: Labels): string {
   const message = errorMessage(err)
-  toast.error(code ? labels.t(`errors.${code}`, { defaultValue: labels.t("toast.error", { error: message }), message }) : labels.t("toast.error", { error: message }))
+  const fallback = labels.t("toast.error", { error: message })
+  const field = fieldErrorCode(err)
+  if (field) {
+    const text = labels.t(`errors.fields.${field}`, { defaultValue: "" })
+    if (text) return text
+  }
+  const code = errorCode(err)
+  return code ? labels.t(`errors.${code}`, { defaultValue: fallback, message }) : fallback
+}
+
+export function toastError(err: unknown, labels: Labels) {
+  toast.error(errorText(err, labels))
 }
 
 /** Tags typed as text: split on commas, cleaned, unique without case, at most ten. */

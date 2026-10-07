@@ -240,6 +240,16 @@ where "key" = ${quote(ADOPTION_KEY)} and "value"->>'run' = ${quote(run)};`
   return [marker, tasks, comments, activity, counts]
 }
 
+/**
+ * The marker when the migration runner cannot read the catalog (no
+ * `execute`): written only when a table called `task` exists, so Settings,
+ * General says why nothing was copied instead of tasks silently missing.
+ */
+export const SKIPPED_WITHOUT_CATALOG = `insert into "${SETTING_TABLE}" ("id", "key", "value", "created_at", "updated_at")
+select ${quote(ADOPTION_ROW_ID)}, ${quote(ADOPTION_KEY)}, jsonb_build_object('state', 'skipped', 'source', ${quote(ADOPTED_FROM)}, 'reason', 'the migration runner could not read the old tables', 'at', now()), now(), now()
+where to_regclass('"${LEGACY_TASK_TABLE}"') is not null and not exists (select 1 from "${SETTING_TABLE}" where "key" = ${quote(ADOPTION_KEY)})
+on conflict do nothing;`
+
 /** A fresh run token: time and randomness, plain characters only. */
 export function newRunToken(now: Date = new Date(), random: () => number = Math.random): string {
   return `adopt_${now.getTime().toString(36)}_${Math.floor(random() * 36 ** 6)

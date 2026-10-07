@@ -1,39 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { LinkType } from "../../modules/tasks/lib/constants"
 import type { ActivityResponse, BoardResponse, CommentDto, EntityTasksResponse, LinkDto, StatusResponse, TaskDto, TaskResponse } from "../../modules/tasks/lib/contract"
-import { planMove } from "../../modules/tasks/lib/positions"
+import { moveOnBoard, type MoveArgs } from "./tasks-rules"
 
-declare const __BACKEND_URL__: string | undefined
+import { backendUrl, kitRequestInit } from "./tasks-kit"
 
-/** Same origin by default; the admin build defines `__BACKEND_URL__` when the backend lives elsewhere. */
-export function backendUrl(): string {
-  try {
-    if (typeof __BACKEND_URL__ !== "undefined" && __BACKEND_URL__) return String(__BACKEND_URL__).replace(/\/+$/, "")
-  } catch {
-    /* not defined in this build */
-  }
-  return ""
-}
+/* The backend the dashboard talks to, with its auth (session cookie or JWT): from the kit. */
+export { backendUrl }
 
 export class TasksRequestError extends Error {
   readonly status: number
   readonly code: string | null
-  constructor(status: number, message: string, code: string | null) {
+  /** Field errors of a 400 (`errors: [{ field, code, message }]`). */
+  readonly errors: Array<{ field?: string; code?: string; message?: string }>
+  constructor(status: number, message: string, code: string | null, errors: Array<{ field?: string; code?: string; message?: string }> = []) {
     super(message)
     this.name = "TasksRequestError"
     this.status = status
     this.code = code
+    this.errors = errors
   }
 }
 
 export async function tasksFetch<T>(path: string, init?: { method?: "GET" | "POST" | "DELETE"; body?: unknown }): Promise<T> {
-  const hasBody = init?.body !== undefined
-  const res = await fetch(`${backendUrl()}${path}`, {
-    method: init?.method ?? "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...(hasBody ? { "Content-Type": "application/json" } : {}) },
-    body: hasBody ? JSON.stringify(init?.body) : undefined,
-  })
+  /* The kit adds the dashboard's auth (session cookie or JWT) and, on writes, the JSON body and the
+     x-koda-request header the server's write guard asks for. */
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: init?.method ?? "GET", body: init?.body }))
   const text = await res.text()
   let json: unknown = null
   try {
@@ -43,8 +35,9 @@ export async function tasksFetch<T>(path: string, init?: { method?: "GET" | "POS
   }
   if (!res.ok) {
     const body = json && typeof json === "object" ? (json as Record<string, unknown>) : null
-    const message = body && "message" in body ? String(body.message) : `HTTP ${res.status}`
-    throw new TasksRequestError(res.status, message, body && typeof body.code === "string" ? body.code : null)
+    const message = body && typeof body.message === "string" ? body.message : `HTTP ${res.status}`
+    const errors = Array.isArray(body?.errors) ? (body?.errors as Array<{ field?: string; code?: string; message?: string }>) : []
+    throw new TasksRequestError(res.status, message, body && typeof body.code === "string" ? body.code : null, errors)
   }
   return json as T
 }
@@ -55,6 +48,11 @@ export function errorMessage(err: unknown): string {
 
 export function errorCode(err: unknown): string | null {
   return err instanceof TasksRequestError ? err.code : null
+}
+
+/** The code of the first field error (`other_board`, `too_long`...), for a message in the admin's language. */
+export function fieldErrorCode(err: unknown): string | null {
+  return err instanceof TasksRequestError ? (err.errors[0]?.code ?? null) : null
 }
 
 /** The admin's own calendar day, so "overdue" means the same on the server and on screen. */
@@ -147,40 +145,8 @@ export function useUpdateTask(id: string) {
   })
 }
 
-export interface MoveArgs {
-  id: string
-  status: TaskDto["status"]
-  before_id: string | null
-  after_id: string | null
-}
-
-const CLOSED = new Set(["done", "rejected"])
-
-/** The board after a move, the way the server will order it: the card placed, both columns numbered again. */
-export function moveOnBoard(board: BoardResponse, m: MoveArgs): BoardResponse {
-  const moving = board.tasks.find((t) => t.id === m.id)
-  if (!moving) return board
-  const from = moving.status
-  const column = (status: string) =>
-    board.tasks
-      .filter((t) => t.status === status && t.id !== m.id)
-      .sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
-      .map((t) => t.id)
-  const dest = planMove(column(m.status), m.id, { afterId: m.after_id, beforeId: m.before_id })
-  const left = from === m.status ? [] : column(from)
-  const position = new Map<string, number>()
-  dest.forEach((id, i) => position.set(id, i))
-  left.forEach((id, i) => position.set(id, i))
-  const tasks = board.tasks.map((t) => {
-    const p = position.get(t.id)
-    if (t.id === m.id) {
-      const completed = CLOSED.has(m.status) ? (CLOSED.has(from) ? t.completed_at : new Date().toISOString()) : null
-      return { ...t, status: m.status, position: p ?? 0, completed_at: completed }
-    }
-    return p === undefined ? t : { ...t, position: p }
-  })
-  return { ...board, tasks }
-}
+export type { MoveArgs }
+export { moveOnBoard }
 
 /** Drag and drop: the card moves at once, the server confirms, a refusal puts it back. */
 export function useMoveTask() {
@@ -264,6 +230,20 @@ export function useRemoveLink(taskId: string) {
     onSuccess: () => {
       refresh(taskId)
       void client.invalidateQueries({ queryKey: tasksKeys.task(taskId) })
+    },
+  })
+}
+
+/**
+ * The sample tasks of a sandbox account's board, asked once by the Tasks
+ * page when the status says the board is stale. Reads never seed it.
+ */
+export function useEnsureSandbox() {
+  const client = useQueryClient()
+  return useMutation<{ seeded: boolean }, Error, void>({
+    mutationFn: () => tasksFetch("/admin/tasks/sandbox/ensure", { method: "POST", body: {} }),
+    onSuccess: (data) => {
+      if (data.seeded) void client.invalidateQueries({ queryKey: tasksKeys.all })
     },
   })
 }

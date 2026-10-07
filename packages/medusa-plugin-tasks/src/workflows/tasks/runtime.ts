@@ -127,8 +127,21 @@ export function warn(scope: Scope, message: string): void {
   }
 }
 
-/** Emits a plugin event. A courtesy for subscribers, never a reason to fail a change. */
+/**
+ * Emits a plugin event. A courtesy for subscribers, never a reason to fail a
+ * change. Events of the sandbox board (`demo: true`) are written by public
+ * visitors, so they are not emitted unless `sandboxEvents: "emit"`: one
+ * subscriber that forgets to skip them would post a stranger's text to the
+ * team's Slack or Discord.
+ */
 export async function emitEvent(scope: Scope, name: string, data: object): Promise<void> {
+  if ((data as { demo?: unknown }).demo === true) {
+    try {
+      if (tasksService(scope).getOptions().sandboxEvents !== "emit") return
+    } catch {
+      return
+    }
+  }
   try {
     const bus = resolve<IEventBusModuleService>(scope, Modules.EVENT_BUS)
     await bus.emit({ name, data: data as Record<string, unknown> })
@@ -161,4 +174,50 @@ export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T>
   } finally {
     if (locks.get(key) === tail) locks.delete(key)
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Rate of changes (the shared sandbox board)                          */
+/* ------------------------------------------------------------------ */
+
+const RATE_KEY = Symbol.for("koda.tasks.rate")
+type RateHolder = typeof globalThis & { [RATE_KEY]?: Map<string, number[]> }
+
+/**
+ * Counts one change of `key` and says whether it stays within `limit` per
+ * `windowMs` (a sliding window in this process). Old entries are dropped as
+ * they expire; the map forgets everything past a few thousand keys.
+ */
+export function withinRate(key: string, limit: number, windowMs: number, now: number = Date.now()): boolean {
+  if (limit <= 0) return true
+  const holder = globalThis as RateHolder
+  if (!holder[RATE_KEY]) holder[RATE_KEY] = new Map()
+  const map = holder[RATE_KEY] as Map<string, number[]>
+  if (map.size > 5000) map.clear()
+  const recent = (map.get(key) ?? []).filter((t) => now - t < windowMs)
+  if (recent.length >= limit) {
+    map.set(key, recent)
+    return false
+  }
+  recent.push(now)
+  map.set(key, recent)
+  return true
+}
+
+/**
+ * The shared sandbox board takes `sandboxLimits.writesPerMinute` changes per
+ * account (or key) a minute; more answer 429 `sandbox_busy`. The team's
+ * board has no such limit.
+ */
+export function sandboxPace(scope: Scope, ctx: { sandbox: boolean; actor: { type: string; id: string | null } }): void {
+  if (!ctx.sandbox) return
+  const limit = envOf(scope).options.sandboxLimits.writesPerMinute
+  if (!withinRate(`sandbox:${ctx.actor.type}:${ctx.actor.id ?? "anonymous"}`, limit, 60_000)) {
+    throw new ActionError(429, "sandbox_busy", "Too many changes on the sandbox board in a minute. Wait a moment and try again.")
+  }
+}
+
+/** Forgets every counted change (tests). */
+export function forgetRates(): void {
+  ;(globalThis as RateHolder)[RATE_KEY]?.clear()
 }

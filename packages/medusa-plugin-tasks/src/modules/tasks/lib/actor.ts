@@ -20,7 +20,7 @@
 
 import { MAIN_BOARD, SANDBOX_BOARD, type ActorType, type AuthorRole, type Board } from "./constants"
 import { isAgencyEmail, isSandboxEmail, type ResolvedTasksOptions } from "./options"
-import { cleanDisplayName, cleanLine } from "./text"
+import { cleanDisplayName, cleanLine, foldKey } from "./text"
 
 export interface UserProfile {
   id: string
@@ -72,20 +72,61 @@ export function userContext(p: UserProfile, options: Pick<ResolvedTasksOptions, 
   }
 }
 
+/** A name or e-mail as the reserved names compare it: one line, without case and accents. */
+export function nameKey(value: string): string {
+  return foldKey(cleanLine(value, 254))
+}
+
+/**
+ * The names a secret API key may not sign with: the full name and e-mail of
+ * every admin user, and the names in `people` that are people (not agents).
+ * A key that could sign as "Olga Owner" would look like Olga on the board.
+ */
+export function reservedNames(users: ReadonlyArray<Pick<UserProfile, "email" | "first_name" | "last_name">>, people: ReadonlyArray<{ name: string; kind: string }>): Set<string> {
+  const out = new Set<string>()
+  for (const u of users) {
+    const name = userName(u)
+    if (name) out.add(nameKey(name))
+    if (u.email) out.add(nameKey(u.email))
+  }
+  for (const p of people) if (p.kind !== "agent" && p.name) out.add(nameKey(p.name))
+  out.delete("")
+  return out
+}
+
+/**
+ * The name a key signs with: the `author` it sends, else its title. A
+ * reserved `author` is refused on the main board (`refused`) and dropped on
+ * the sandbox board, where a refusal would tell a public visitor who is on
+ * the team; a reserved title signs with no name (shown as "AI agent").
+ */
+export function keyName(author: unknown, title: string | null, reserved: ReadonlySet<string>, sandbox: boolean): { name: string | null; refused: boolean } {
+  const sent = cleanDisplayName(author)
+  if (sent && reserved.has(nameKey(sent))) {
+    if (!sandbox) return { name: null, refused: true }
+  } else if (sent) {
+    return { name: sent, refused: false }
+  }
+  const fallback = cleanDisplayName(title)
+  return { name: fallback && !reserved.has(nameKey(fallback)) ? fallback : null, refused: false }
+}
+
 /**
  * The context of a secret API key. `creator` is the admin user behind
  * `created_by`, or null when the key has none: such a key was made by server
  * code (a seed, a script with the admin's container), never by a sandbox
- * account through the admin, so it works on the main board.
+ * account through the admin, so it works on the main board. `name` comes from
+ * `keyName` (the reserved names already applied).
  */
 export function apiKeyContext(
   key: ApiKeyProfile,
   creator: UserProfile | null,
   author: unknown,
   options: Pick<ResolvedTasksOptions, "sandboxAccounts">,
+  reserved: ReadonlySet<string> = new Set(),
 ): RequestContext {
   const sandbox = isSandboxEmail(creator?.email, options)
-  const name = cleanDisplayName(author) ?? cleanDisplayName(key.title)
+  const { name } = keyName(author, key.title, reserved, sandbox)
   return {
     board: boardOf(sandbox),
     sandbox,
@@ -93,7 +134,11 @@ export function apiKeyContext(
   }
 }
 
-/** The plugin itself (sample tasks, custom code without a person behind it). */
-export function systemActor(name: string | null = null): Actor {
-  return { type: "system", id: null, name, email: null, role: "agency" }
+/**
+ * The plugin itself or custom code without a person behind it (a subscriber,
+ * a job): an automation, so its comments read as `claude` ("AI agent")
+ * unless the workflow input names another role.
+ */
+export function systemActor(name: string | null = null, role: AuthorRole = "claude"): Actor {
+  return { type: "system", id: null, name, email: null, role }
 }

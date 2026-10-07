@@ -184,6 +184,12 @@ export function hiddenClosed(counts: CountsDto, rows: readonly TaskRow[]): numbe
   return Math.max(0, counts.done + counts.rejected - shown)
 }
 
+/** Open tasks the board answer left out (more than `OPEN_TASKS_MAX`). */
+export function hiddenOpen(counts: CountsDto, rows: readonly TaskRow[]): number {
+  const shown = rows.filter((r) => !(CLOSED_STATUSES as readonly string[]).includes(String(r.status))).length
+  return Math.max(0, counts.open - shown)
+}
+
 /** What the events say about a task. */
 export function eventTask(row: TaskRow, links: ReadonlyArray<{ entity_type: string; entity_id: string }>): EventTask {
   return {

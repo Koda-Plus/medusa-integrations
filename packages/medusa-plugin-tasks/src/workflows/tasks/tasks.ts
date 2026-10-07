@@ -20,6 +20,8 @@ import type { Actor, RequestContext } from "../../modules/tasks/lib/actor"
 import { userName } from "../../modules/tasks/lib/actor"
 import {
   assignedEntry,
+  commentDeletedEntry,
+  commentEditedEntry,
   commentedEntry,
   createdEntry,
   deletedEntry,
@@ -61,7 +63,7 @@ import {
 import { userProfile, usersByEmail } from "./context"
 import { boardStore, taskDtos, taskRow } from "./read"
 import { labelFor, linkLabels } from "./records"
-import { ActionError, emitEvent, envOf, newId, notFound, type Scope } from "./runtime"
+import { ActionError, emitEvent, envOf, newId, notFound, sandboxPace, type Scope } from "./runtime"
 
 export function invalid(errors: FieldError[]): ActionError {
   return new ActionError(400, "invalid_data", errors[0]?.message ?? "Invalid request.", { errors })
@@ -116,6 +118,8 @@ export async function resolveAssignee(scope: Scope, ctx: RequestContext, input: 
   const field = input.kind === "user" ? "assignee_id" : "assignee_email"
   if (!profile) throw invalid([{ field, code: "not_found", message: "No admin user matches the assignee." }])
   if (isSandboxEmail(profile.email, options) !== ctx.sandbox) {
+    /* A sandbox account learns nothing about the team's accounts: the same answer as for an address nobody has. */
+    if (ctx.sandbox) throw invalid([{ field, code: "not_found", message: "No admin user matches the assignee." }])
     throw invalid([{ field, code: "other_board", message: "This admin user does not work on this board." }])
   }
   return { assignee: userName(profile) ?? profile.id, assignee_id: profile.id }
@@ -153,6 +157,10 @@ export async function createTask(scope: Scope, ctx: RequestContext, body: unknow
   const input = parsedOrThrow(parseCreate(body))
   const env = envOf(scope)
   const now = env.now
+  sandboxPace(scope, ctx)
+  if (ctx.sandbox && env.options.sandboxLimits.tasks > 0 && (await env.stores.sandbox.countTasks()) >= env.options.sandboxLimits.tasks) {
+    throw new ActionError(409, "sandbox_full", `The sandbox board takes at most ${env.options.sandboxLimits.tasks} tasks. Delete some, or reset the sandbox.`)
+  }
   const who = await resolveAssignee(scope, ctx, input.assignee)
   await checkLinks(scope, input.links)
   const id = newId("task")
@@ -226,6 +234,7 @@ export async function updateTask(scope: Scope, ctx: RequestContext, id: string, 
   const input = parsedOrThrow(parseUpdate(body))
   const env = envOf(scope)
   const now = env.now
+  sandboxPace(scope, ctx)
   const who = input.assignee !== undefined ? await resolveAssignee(scope, ctx, input.assignee) : undefined
   let changes: TaskChange[] = []
   let previous: TaskStatus = "backlog"
@@ -281,6 +290,8 @@ export async function updateTask(scope: Scope, ctx: RequestContext, id: string, 
       return { patch, activity: entries(before.id, ctx.actor, drafts, now) }
     },
     now,
+    /* A status in the body may move the task to another column: the board's lock first, like a move. */
+    input.status !== undefined,
   )
   if (!result) throw notFound()
   const after = result.after
@@ -295,6 +306,7 @@ export async function moveTask(scope: Scope, ctx: RequestContext, id: string, bo
   const input = parsedOrThrow(parseMove(body))
   const env = envOf(scope)
   const now = env.now
+  sandboxPace(scope, ctx)
   let previous: TaskStatus = "backlog"
   const result = await env.stores.board(ctx.board).moveTask(
     id,
@@ -313,6 +325,7 @@ export async function moveTask(scope: Scope, ctx: RequestContext, id: string, bo
 
 export async function deleteTask(scope: Scope, ctx: RequestContext, id: string): Promise<{ id: string; object: "task"; deleted: true }> {
   const env = envOf(scope)
+  sandboxPace(scope, ctx)
   const store = env.stores.board(ctx.board)
   const before = await taskRow(store, id)
   const links = await store.listLinks([before.id])
@@ -330,8 +343,13 @@ export async function deleteTask(scope: Scope, ctx: RequestContext, id: string):
 export async function addComment(scope: Scope, ctx: RequestContext, taskId: string, body: unknown): Promise<CommentDto> {
   const input = parsedOrThrow(parseComment(body))
   const env = envOf(scope)
+  sandboxPace(scope, ctx)
   const store = env.stores.board(ctx.board)
   const task = await taskRow(store, taskId)
+  const perTask = env.options.sandboxLimits.commentsPerTask
+  if (ctx.sandbox && perTask > 0 && ((await store.commentCounts([task.id])).get(task.id) ?? 0) >= perTask) {
+    throw new ActionError(409, "sandbox_full", `A task on the sandbox board takes at most ${perTask} comments.`)
+  }
   const commentId = newId("tcom")
   const row = await store.insertComment(
     {
@@ -364,17 +382,22 @@ async function ownComment(scope: Scope, ctx: RequestContext, id: string) {
   return { store, row }
 }
 
+/* An edit or a delete keeps the earlier text in the task's log: the log only grows. */
 export async function editComment(scope: Scope, ctx: RequestContext, id: string, body: unknown): Promise<CommentDto> {
   const input = parsedOrThrow(parseComment(body))
-  const { store } = await ownComment(scope, ctx, id)
-  const row = await store.updateComment(id, input.body, envOf(scope).now)
+  sandboxPace(scope, ctx)
+  const { store, row: before } = await ownComment(scope, ctx, id)
+  const now = envOf(scope).now
+  const row = await store.updateComment(id, input.body, now, before.body === input.body ? [] : entries(before.task_id, ctx.actor, [commentEditedEntry(id, before.body)], now))
   if (!row) throw notFound("Comment")
   return toCommentDto(row, { type: ctx.actor.type, id: ctx.actor.id })
 }
 
 export async function deleteComment(scope: Scope, ctx: RequestContext, id: string): Promise<{ id: string; object: "task_comment"; deleted: true }> {
-  const { store } = await ownComment(scope, ctx, id)
-  const row = await store.deleteComment(id, envOf(scope).now)
+  sandboxPace(scope, ctx)
+  const { store, row: before } = await ownComment(scope, ctx, id)
+  const now = envOf(scope).now
+  const row = await store.deleteComment(id, now, entries(before.task_id, ctx.actor, [commentDeletedEntry(id, before.body)], now))
   if (!row) throw notFound("Comment")
   return { id: row.id, object: "task_comment", deleted: true }
 }
@@ -386,6 +409,7 @@ export async function deleteComment(scope: Scope, ctx: RequestContext, id: strin
 export async function addLink(scope: Scope, ctx: RequestContext, taskId: string, body: unknown): Promise<{ link: LinkDto; created: boolean }> {
   const link = parsedOrThrow(parseLink(body))
   const env = envOf(scope)
+  sandboxPace(scope, ctx)
   const store = env.stores.board(ctx.board)
   const task = await taskRow(store, taskId)
   const existing = await store.listLinks([task.id])
@@ -407,6 +431,7 @@ export async function addLink(scope: Scope, ctx: RequestContext, taskId: string,
 
 export async function removeLink(scope: Scope, ctx: RequestContext, taskId: string, linkId: string): Promise<{ id: string; object: "task_link"; deleted: true }> {
   const env = envOf(scope)
+  sandboxPace(scope, ctx)
   const store = env.stores.board(ctx.board)
   const task = await taskRow(store, taskId)
   if (!isEntityId(linkId)) throw notFound("Link")

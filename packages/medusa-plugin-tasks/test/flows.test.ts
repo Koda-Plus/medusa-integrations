@@ -7,10 +7,11 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { addComment, addLink, createTask, deleteComment, deleteTask, editComment, moveTask, removeLink, updateTask } from "../src/workflows/tasks/tasks.ts"
 import { boardActivity, boardView, buildStatus, entityTasks, listTasks, taskDetail } from "../src/workflows/tasks/read.ts"
-import { contextOf } from "../src/workflows/tasks/context.ts"
+import { apiKeyProfile, contextOf, userProfile } from "../src/workflows/tasks/context.ts"
 import { ActionError } from "../src/workflows/tasks/runtime.ts"
-import type { RequestContext } from "../src/modules/tasks/lib/actor.ts"
-import { setup, type Setup } from "./helpers.ts"
+import { ensureSandbox } from "../src/workflows/tasks/sandbox.ts"
+import { systemActor, type RequestContext } from "../src/modules/tasks/lib/actor.ts"
+import { DEFAULT_OPTIONS, setup, type Setup } from "./helpers.ts"
 
 async function refused(p: Promise<unknown>): Promise<ActionError> {
   try {
@@ -116,6 +117,38 @@ test("API keys: a script or AI agent writes as claude, under the name it sends, 
   assert.equal(dev.author_role, "agency", "agencyAccounts by domain")
 })
 
+test("API keys: never under the name or e-mail of a person on the team; on the sandbox the name is dropped without telling who is on the team", async () => {
+  const s = setup({ ...DEFAULT_OPTIONS, people: [{ name: "Anna Kowalska" }, { name: "Claude Code", kind: "agent" }] })
+  for (const author of ["Olga Owner", "  OLGA   owner ", "owner@store.example", "Anna Kowalska", "anna kowalska"]) {
+    const err = await refused(key(s, { author }))
+    assert.deepEqual([err.status, err.code, (err.extra.errors as Array<{ field: string }>)[0].field], [400, "author_reserved", "author"], author)
+  }
+  assert.equal((await key(s, { author: "Claude Code" })).actor.name, "Claude Code", "an agent of the people option is fine")
+  assert.equal((await key(s, { author: "Olga" })).actor.name, "Olga", "a first name alone is not a person's full name")
+  /* The sandbox: the same name is simply not used, so the answer says nothing about the team. */
+  const demo = await key(s, { author: "Olga Owner" }, "apk_demo")
+  assert.equal(demo.board, "sandbox")
+  assert.equal(demo.actor.name, "Demo key")
+  /* Writing with a refused name changes nothing. */
+  assert.equal(s.memory.tasks.size, 0)
+  /* The user module is down: a sent name cannot be checked on the main board. */
+  const down = setup()
+  await apiKeyProfile(down.container, "apk_team")
+  await userProfile(down.container, "user_team")
+  down.failUsers.on = true
+  const err = await refused(key(down, { author: "Claude Code" }))
+  assert.deepEqual([err.status, err.message], [503, "The name in author could not be checked. Try again in a moment."])
+})
+
+test("workflows: automations without a user comment as claude unless the input names a role", async () => {
+  const s = setup()
+  const t = await createTask(s.container, { board: "main", sandbox: false, actor: systemActor("Order watcher") }, { title: "From a subscriber" })
+  const c = await addComment(s.container, { board: "main", sandbox: false, actor: systemActor("Order watcher") }, t.id, { body: "Flagged" })
+  assert.equal(c.author_role, "claude")
+  const team = await addComment(s.container, { board: "main", sandbox: false, actor: systemActor("Store bot", "client") }, t.id, { body: "As the store" })
+  assert.equal(team.author_role, "client")
+})
+
 test("assignees: an admin user of the board, by id or e-mail, or free text; never a sandbox account on the main board", async () => {
   const s = setup()
   const ctx = await team(s)
@@ -128,6 +161,13 @@ test("assignees: an admin user of the board, by id or e-mail, or free text; neve
   assert.deepEqual([demo.status, demo.code, (demo.extra.errors as Array<{ code: string }>)[0].code], [400, "invalid_data", "other_board"])
   const ghost = await refused(updateTask(s.container, ctx, t.id, { assignee_id: "user_ghost" }))
   assert.equal((ghost.extra.errors as Array<{ code: string }>)[0].code, "not_found")
+  /* A sandbox account learns nothing about the team's accounts: a team member answers like nobody. */
+  const demoCtx = await contextOf(s.container, { actor_id: "user_demo", actor_type: "user" })
+  const mine = await make(s, demoCtx, {})
+  for (const body of [{ assignee_id: "user_team" }, { assignee_email: "owner@store.example" }, { assignee_id: "user_ghost" }]) {
+    const err = await refused(updateTask(s.container, demoCtx, mine.id, body))
+    assert.equal((err.extra.errors as Array<{ code: string }>)[0].code, "not_found", JSON.stringify(body))
+  }
   const none = await updateTask(s.container, ctx, t.id, { assignee_id: null })
   assert.deepEqual([none.assignee, none.assignee_id], [null, null])
   const detail = await taskDetail(s.container, ctx, t.id)
@@ -150,7 +190,7 @@ test("update: a status change completes the task, appends it to its new column a
   const moved = await updateTask(s.container, ctx, a.id, { status: "done" })
   assert.equal(moved.status, "done")
   assert.ok(moved.completed_at)
-  assert.equal(moved.position, 1, "after the task that was done already")
+  assert.equal(moved.position, 0, "closed columns are ordered by when tasks closed, not numbered")
   const todo = (await listTasks(s.container, ctx, { status: "todo" })).tasks
   assert.deepEqual(
     todo.map((x) => [x.id, x.position]),
@@ -347,6 +387,7 @@ test("board and status: counters of the board, the team's people without sandbox
 test("board: a sample task's edited title drops only its own sample text", async () => {
   const s = setup()
   const demo = await contextOf(s.container, { actor_id: "user_demo", actor_type: "user" })
+  await ensureSandbox(s.container, demo)
   const board = await boardView(s.container, demo)
   const sample = board.tasks.find((t) => t.sample?.title && t.sample?.description)
   assert.ok(sample)

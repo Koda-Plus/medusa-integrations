@@ -11,7 +11,8 @@
  * the input names `sandbox`; with `user_id` the change is made as that admin
  * user, on that user's board (a sandbox account's id lands on the sandbox
  * board, whatever `board` says). Without a user the change is made by the
- * plugin (`system`) under `actor_name`.
+ * plugin (`system`) under `actor_name`, with the role `actor_role` (default
+ * `claude`, an automation).
  *
  * DELIBERATELY WITHOUT COMPENSATIONS: a change is announced by its event as
  * soon as it is stored, and a later change answers it rather than a silent
@@ -19,7 +20,7 @@
  */
 
 import { createStep, createWorkflow, StepResponse, WorkflowResponse } from "@medusajs/framework/workflows-sdk"
-import { SANDBOX_BOARD, MAIN_BOARD } from "../../modules/tasks/lib/constants"
+import { SANDBOX_BOARD, MAIN_BOARD, isRole } from "../../modules/tasks/lib/constants"
 import { systemActor, userContext, type RequestContext } from "../../modules/tasks/lib/actor"
 import type { CommentDto, LinkDto, TaskDto } from "../../modules/tasks/lib/contract"
 import { cleanDisplayName } from "../../modules/tasks/lib/text"
@@ -35,6 +36,11 @@ export interface WorkflowActorInput {
   user_id?: string
   /** The name the change is logged under when there is no user, like "Order watcher". */
   actor_name?: string
+  /**
+   * The role comments read as when there is no user: `claude` (default, an
+   * automation, shown as "AI agent"), `agency` or `client` (the store team).
+   */
+  actor_role?: "agency" | "client" | "claude"
 }
 
 async function contextFor(scope: Scope, input: WorkflowActorInput): Promise<RequestContext> {
@@ -44,7 +50,8 @@ async function contextFor(scope: Scope, input: WorkflowActorInput): Promise<Requ
     return userContext(profile, envOf(scope).options)
   }
   const board = input.board === SANDBOX_BOARD ? SANDBOX_BOARD : MAIN_BOARD
-  return { board, sandbox: board === SANDBOX_BOARD, actor: systemActor(cleanDisplayName(input.actor_name)) }
+  const role = input.actor_role && isRole(input.actor_role) ? input.actor_role : "claude"
+  return { board, sandbox: board === SANDBOX_BOARD, actor: systemActor(cleanDisplayName(input.actor_name), role) }
 }
 
 /* ------------------------------------------------------------------ */

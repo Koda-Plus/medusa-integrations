@@ -156,6 +156,8 @@ export interface SandboxDto {
   reset_hours: number
   /** When the next opening seeds it again; null when it is only reset by hand. */
   next_reset_at: string | null
+  /** Not seeded yet, or older than `reset_hours`: the page of a sandbox account asks `POST /admin/tasks/sandbox/ensure`. */
+  stale: boolean
 }
 
 export interface StatusResponse {
@@ -175,6 +177,10 @@ export interface StatusResponse {
     sandbox_reset_hours: number
     agency_accounts: string[] | null
     agency_account_count: number
+    /** `sandboxGuard`: sandbox accounts stay away from invites, users, API keys and writes outside Tasks. */
+    sandbox_guard: boolean
+    /** Secret API keys titled with this prefix reach only Tasks; null when off. */
+    agent_key_prefix: string | null
   }
   sandbox_board: SandboxDto
   /** The KODA Panel adoption, for the team; null when there was none, and for sandbox accounts. */
@@ -200,6 +206,8 @@ export interface BoardResponse {
   counts: CountsDto
   /** Closed tasks left out of the answer. */
   hidden_closed: number
+  /** Open tasks left out of the answer (a board of more than 1000 open tasks). */
+  hidden_open: number
 }
 
 export interface TaskResponse {

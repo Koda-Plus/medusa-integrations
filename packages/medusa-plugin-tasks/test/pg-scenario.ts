@@ -26,6 +26,7 @@ import * as linkRoute from "../src/api/admin/tasks/tasks/[id]/links/[link_id]/ro
 import * as commentRoute from "../src/api/admin/tasks/comments/[id]/route.ts"
 import * as ordersRoute from "../src/api/admin/tasks/orders/[id]/route.ts"
 import * as resetRoute from "../src/api/admin/tasks/sandbox/reset/route.ts"
+import * as ensureRoute from "../src/api/admin/tasks/sandbox/ensure/route.ts"
 import { setup } from "./helpers.ts"
 
 /** The demo copy of the KODA Panel module (its Migration20260623120000_initial), and the client copy's differences. */
@@ -268,7 +269,11 @@ export async function pgScenario(db: Database): Promise<string[]> {
   assert.ok(await sandbox.deleteLink(sampleLink.task_id, sampleLink.id, [], now))
   done.push("every read of both boards")
 
-  /* 5. The admin routes end to end on the SQL stores: the team works, a sandbox account reaches nothing of it. */
+  /* 5. The order of locks: the board before any row, and parallel changes keep every column numbered. */
+  await lockOrder(db)
+  done.push("the board's lock before any row; parallel changes keep the columns numbered")
+
+  /* 6. The admin routes end to end on the SQL stores: the team works, a sandbox account reaches nothing of it. */
   await routesEndToEnd(db)
   done.push("the admin routes end to end on the SQL stores, with the sandbox kept apart")
   return done
@@ -312,6 +317,10 @@ async function routesEndToEnd(db: Database): Promise<void> {
   assert.equal(detail.body.task.comments.length, 1)
   assert.ok(detail.body.task.activity.some((a: { type: string }) => a.type === "status_changed"))
 
+  const before = await call(statusRoute.GET, DEMO)
+  assert.deepEqual([before.status, before.body.counts.all, before.body.sandbox_board.stale], [200, 0, true], "a read never seeds")
+  const ensured = await call(ensureRoute.POST, DEMO)
+  assert.deepEqual([ensured.status, ensured.body.seeded], [200, true])
   const status = await call(statusRoute.GET, DEMO)
   assert.deepEqual([status.status, status.body.board, status.body.counts.all], [200, "sandbox", 9])
   const mainBefore = JSON.stringify(rowsOf(await sql.raw(`select * from "tasks_task" where "board" = 'main' order by "id"`)))
@@ -335,10 +344,83 @@ async function routesEndToEnd(db: Database): Promise<void> {
   const demoTask = await call(tasksRoute.POST, DEMO, { body: { title: "Demo task", board: "main" } })
   assert.equal(demoTask.body.task.board, "sandbox")
   assert.equal(JSON.stringify(rowsOf(await sql.raw(`select * from "tasks_task" where "board" = 'main' order by "id"`))), mainBefore, "the main board is exactly as it was")
+  /* A reset right after the seed changes nothing (a double click); a minute later it does. */
+  await call(resetRoute.POST, DEMO)
+  assert.equal(await count(sql, `select count(*)::int as n from "tasks_task" where "board" = 'sandbox' and "deleted_at" is null`), 10)
+  await sql.raw(`update "tasks_setting" set "value" = jsonb_set("value", '{seeded_at}', to_jsonb(?::text)) where "key" = 'sandbox:seed'`, [new Date(Date.now() - 60_000).toISOString()])
   const reset = await call(resetRoute.POST, DEMO)
   assert.equal(reset.status, 200)
   assert.equal(await count(sql, `select count(*)::int as n from "tasks_task" where "board" = 'sandbox'`), 9)
   const deletedTeam = await call(taskRoute.DELETE, TEAM, { params: { id: second.body.task.id } })
   assert.equal(deletedTeam.status, 200)
   assert.ok(s.events.some((e) => e.name === "tasks.task.deleted" && e.data.board === "main"))
+}
+
+type Tx = SqlRunner & { commit(): Promise<void>; rollback(): Promise<void> }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+function plainTask(id: string, status: string, at: Date): TaskInsert {
+  return { id, title: id, description: null, status, priority: "medium", assignee: null, assignee_id: null, due_date: null, tags: null, completed_at: null, created_by: "Tester", created_by_id: null, metadata: null, created_at: at }
+}
+
+/** True when another session can take the task's row right now (`for update nowait`). */
+async function rowIsFree(db: Database, id: string): Promise<boolean> {
+  const probe = (await (db.sql as unknown as { transaction(): Promise<Tx> }).transaction()) as Tx
+  try {
+    await probe.raw(`select "id" from "tasks_task" where "id" = ? for update nowait`, [id])
+    return true
+  } catch (err) {
+    if ((err as { code?: string }).code === "55P03") return false
+    throw err
+  } finally {
+    await probe.rollback()
+  }
+}
+
+async function lockOrder(db: Database): Promise<void> {
+  await db.reset()
+  await migrate(db.sql)
+  const main = createBoardStore(db.sql, "main")
+  const now = new Date()
+  for (let i = 0; i < 8; i++) await main.insertTask(plainTask(`lk_${i}`, i % 2 ? "in_progress" : "todo", new Date(now.getTime() + i)), [], [])
+
+  /* Another session holds the board: a status change and a delete wait for it WITHOUT holding their rows first. */
+  const holder = (await (db.sql as unknown as { transaction(): Promise<Tx> }).transaction()) as Tx
+  await holder.raw(`select pg_advisory_xact_lock(hashtext(?))`, ["koda.tasks.board:main"])
+  const update = main.updateTask("lk_0", () => ({ patch: { status: "review" }, activity: [] }), now, true)
+  const removal = main.deleteTask("lk_1", [], now)
+  const pending = (p: Promise<unknown>) => Promise.race([p.then(() => false), sleep(300).then(() => true)])
+  try {
+    assert.equal(await pending(update), true, "a status change waits for the board")
+    assert.equal(await pending(removal), true, "a delete waits for the board")
+    assert.equal(await rowIsFree(db, "lk_0"), true, "a status change takes the board's lock before its row")
+    assert.equal(await rowIsFree(db, "lk_1"), true, "a delete takes the board's lock before its row")
+  } finally {
+    /* Let the waiting changes finish even when an assertion failed, or the pool never closes. */
+    await holder.commit()
+  }
+  assert.equal((await update)?.after.status, "review")
+  assert.ok((await removal)?.deleted_at)
+
+  /* Moves, status changes and deletes at the same time: no deadlock, every open column numbered 0..n-1. */
+  let seed = 7
+  const pick = (n: number) => {
+    seed = (seed * 48271) % 2147483647
+    return seed % n
+  }
+  const ids = Array.from({ length: 8 }, (_, i) => `lk_${i}`).filter((id) => id !== "lk_1")
+  const ops: Array<Promise<unknown>> = []
+  for (let i = 0; i < 24; i++) {
+    const id = ids[pick(ids.length)]
+    const other = ids[pick(ids.length)]
+    const kind = i % 3
+    if (kind === 0) ops.push(main.moveTask(id, { status: pick(2) ? "todo" : "in_progress", beforeId: other === id ? null : other, afterId: null }, () => ({ patch: {}, activity: [] }), now))
+    else if (kind === 1) ops.push(main.updateTask(id, (b) => ({ patch: { status: b.status === "todo" ? "in_progress" : "todo" }, activity: [] }), now, true))
+    else ops.push(main.moveTask(id, { status: "done", beforeId: null, afterId: null }, () => ({ patch: {}, activity: [] }), now).then(() => main.moveTask(id, { status: "todo", beforeId: null, afterId: null }, () => ({ patch: {}, activity: [] }), now)))
+  }
+  await Promise.all(ops)
+  for (const status of ["todo", "in_progress", "review"]) {
+    const positions = rowsOf<{ position: number }>(await db.sql.raw(`select "position" from "tasks_task" where "board" = 'main' and "status" = ? and "deleted_at" is null order by "position"`, [status])).map((r) => r.position)
+    assert.deepEqual(positions, positions.map((_, i) => i), `${status} is numbered 0..n-1`)
+  }
 }

@@ -122,6 +122,8 @@ export const ACTIVITY_TYPES = [
   "assigned",
   "linked",
   "unlinked",
+  "comment_edited",
+  "comment_deleted",
 ] as const
 export type ActivityType = (typeof ACTIVITY_TYPES)[number]
 

@@ -2,7 +2,8 @@ import type en from "./en"
 import { typeset } from "../lib/tasks-guide"
 import { communityPl } from "../lib/tasks-kit-community"
 
-const pl: typeof en = {
+/* Typed by en.ts below (every English key exists here); Polish adds its plural forms (_few, _many). */
+const pl = {
   nav: "Zadania",
   title: "Zadania",
   by: "by Koda Plus",
@@ -27,7 +28,10 @@ const pl: typeof en = {
   sandbox: {
     label: "Jesteś na tablicy piaskownicy",
     text: "Twoje konto jest kontem piaskownicy: widzisz i zmieniasz tylko tablicę piaskownicy z przykładowymi zadaniami do wypróbowania wszystkiego. Prawdziwa tablica sklepu nigdy nie jest Ci pokazywana i nic, co tu zrobisz, do niej nie trafia.",
-    reset: "Przykładowe zadania wracają co {{count}} godzin oraz po „Wyczyść piaskownicę” w Więcej akcji.",
+    reset_one: "Przykładowe zadania wracają co godzinę oraz po „Wyczyść piaskownicę” w Więcej akcji.",
+    reset_few: "Przykładowe zadania wracają co {{count}} godziny oraz po „Wyczyść piaskownicę” w Więcej akcji.",
+    reset_many: "Przykładowe zadania wracają co {{count}} godzin oraz po „Wyczyść piaskownicę” w Więcej akcji.",
+    reset: "Przykładowe zadania wracają co {{count}} godziny oraz po „Wyczyść piaskownicę” w Więcej akcji.",
     resetManual: "Przykładowe zadania wracają po „Wyczyść piaskownicę” w Więcej akcji.",
     seeded: "Przygotowana {{time}}.",
     everyone: "Wszystkie konta piaskownicy dzielą tę tablicę, więc inni też mogą ją zmieniać.",
@@ -73,7 +77,10 @@ const pl: typeof en = {
     empty: "Nic tu nie ma",
     loading: "Wczytuję tablicę",
     shown: "Widać {{shown}} z {{total}} zadań.",
+    hiddenClosed_one: "Starszych gotowych albo odrzuconych zadań, których nie widać: {{count}}.",
     hiddenClosed: "Starszych gotowych albo odrzuconych zadań, których nie widać: {{count}}.",
+    hiddenOpen_one: "Otwartych zadań, których nie widać: {{count}}. Tablica pokazuje pierwsze 1000.",
+    hiddenOpen: "Otwartych zadań, których nie widać: {{count}}. Tablica pokazuje pierwsze 1000.",
     quick: {
       overdue: "Tylko po terminie",
       urgent: "Tylko pilne i ważne",
@@ -200,6 +207,8 @@ const pl: typeof en = {
     assigned: "Przypisano do: {{name}}",
     unassigned: "Usunięto osobę",
     commented: "Dodano komentarz",
+    commentEdited: "Zmieniono komentarz",
+    commentDeleted: "Usunięto komentarz",
     linked: "Dodano połączenie: {{type}}",
     unlinked: "Usunięto połączenie: {{type}}",
     updated: "Zmieniono: {{fields}}",
@@ -228,7 +237,7 @@ const pl: typeof en = {
   },
   confirm: {
     title: "Usunąć to zadanie?",
-    text: "„{{title}}” zniknie razem z komentarzami, połączeniami i historią.",
+    text: "„{{title}}” zniknie razem z komentarzami i połączeniami. Jego historia zostaje w dzienniku.",
     confirm: "Usuń",
     cancel: "Anuluj",
     commentTitle: "Usunąć ten komentarz?",
@@ -261,6 +270,24 @@ const pl: typeof en = {
     account_unavailable: "Nie udało się sprawdzić Twojego konta. Spróbuj za chwilę.",
     unauthorized: "Zaloguj się ponownie.",
     key_owner_missing: "Użytkownik, który utworzył ten klucz API, już nie istnieje.",
+    author_reserved: "Klucz nie może podpisać się imieniem i nazwiskiem ani adresem e-mail osoby z zespołu.",
+    conflict_retry: "Tablica zmieniła się w tej samej chwili. Spróbuj jeszcze raz.",
+    sandbox_full: "Tablica piaskownicy jest pełna. Usuń część zadań albo komentarzy, albo wyczyść piaskownicę.",
+    sandbox_busy: "Za dużo zmian na tablicy piaskownicy w ciągu minuty. Poczekaj chwilę.",
+    sandbox_guard: "Konto piaskownicy może zmieniać tylko tablicę piaskownicy.",
+    agent_key_scope: "Ten klucz sięga tylko do tras Zadań.",
+    json_required: "To zapytanie nie przyszło z panelu. Odśwież stronę.",
+    server_error: "Tablica nie dokończyła tej operacji. Spróbuj jeszcze raz; szczegóły są w logu serwera.",
+    fields: {
+      required: "Uzupełnij wymagane pole.",
+      invalid: "Jedno z pól ma wartość, której tablica nie przyjmuje.",
+      too_long: "Jeden z tekstów jest za długi.",
+      too_many: "Za dużo pozycji w jednym z pól.",
+      empty: "Jedno z pól jest puste.",
+      not_found: "Żaden użytkownik panelu nie pasuje do osoby przypisanej.",
+      other_board: "Ta osoba nie pracuje na tej tablicy.",
+      author_reserved: "Klucz nie może podpisać się imieniem i nazwiskiem ani adresem e-mail osoby z zespołu.",
+    },
   },
   general: {
     title: "Używane opcje",
@@ -274,15 +301,21 @@ const pl: typeof en = {
     agencyAccounts: "Konta agencji",
     people: "Osoby z opcji people",
     resetHours: "Piaskownica odnawiana po",
+    hours_one: "1 godzina",
     hours: "{{count}} godz.",
     onlyReset: "tylko po wyczyszczeniu",
     none: "brak",
+    accounts_one: "1 konto",
     accounts: "kont: {{count}}",
     references: "Pokazane sklepy",
     optionsHint: "Zmienisz je w opcjach wtyczki w medusa-config.ts, a potem uruchomisz Medusę ponownie.",
     automation: "Skrypty i agenci AI",
     automationNone: "Żaden klucz API jeszcze nic nie zapisał na tej tablicy.",
+    automationSome_one: "Jedna zmiana z klucza API, {{time}}.",
     automationSome: "Zmian z kluczy API: {{count}}, ostatnia {{time}}.",
+    agentKeys: "Klucze dla agentów AI",
+    agentKeysOn: "Klucze o nazwie zaczynającej się od {{prefix}} sięgają tylko do Zadań",
+    agentKeysOff: "wyłączone (agentKeyPrefix: false)",
   },
   adoption: {
     title: "Przejęte z modułu KODA Panel",
@@ -298,7 +331,11 @@ const pl: typeof en = {
     tasks: "Zadań na niej teraz",
     next: "Następne odnowienie",
     never: "jeszcze nie",
-    onOpen: "przy pierwszym otwarciu po {{time}}",
+    onOpen: "po {{time}}, przez cogodzinne zadanie albo przy następnej wizycie konta piaskownicy",
+    guard: "Poza Zadaniami",
+    guardOn: "Odcięte (sandboxGuard)",
+    guardOff: "Dalej użytkownik panelu sklepu",
+    guardWarning: "Poza Zadaniami konto piaskownicy jest dalej użytkownikiem panelu tego sklepu: może zaprosić nowego administratora, odczytać adresy e-mail zespołu i zmieniać ustawienia. Dla publicznego konta demo ustaw sandboxGuard: true w opcjach wtyczki.",
     resetHint: "Wyczyszczenie usuwa wszystkie zadania z tablicy piaskownicy i od nowa dodaje przykładowe. Tablica zespołu zostaje nietknięta.",
   },
   references: {
@@ -381,8 +418,9 @@ const pl: typeof en = {
       },
       automation: {
         title: "Pozwól skryptom i agentom AI zgłaszać pracę",
-        p1: "Utwórz tajny klucz API w Ustawieniach, Secret API Keys. Zapytania z nim korzystają z tych samych tras panelu co tablica: tworzą zadania, przenoszą je i komentują. Pracują na tablicy użytkownika, który utworzył klucz.",
-        p2: "Komentarze i zmiany z klucza zapisują się z rolą claude i pokazują jako Agent AI, pod nazwą wysłaną w polu author, a bez niej pod nazwą klucza. Trzymaj klucz na serwerze: ma uprawnienia użytkownika panelu.",
+        p1: "Utwórz tajny klucz API w Ustawieniach, Tajne klucze API, z nazwą zaczynającą się od tasks: (na przykład tasks: Agent obsługi). Taki klucz sięga tylko do tras Zadań: tworzy zadania, przenosi je i komentuje, a każda inna trasa panelu odpowiada mu 403. Pracuje na tablicy użytkownika, który go utworzył.",
+        p2: "Komentarze i zmiany z klucza zapisują się z rolą claude i pokazują jako Agent AI, pod nazwą wysłaną w polu author, a bez niej pod nazwą klucza. Klucz nigdy nie podpisze się imieniem i nazwiskiem ani adresem e-mail osoby z zespołu.",
+        p3: "Klucz o innej nazwie ma uprawnienia użytkownika panelu: zamówienia, zwroty, klienci, użytkownicy i klucze. Daj każdemu agentowi osobny klucz tasks:, trzymaj go w zmiennych środowiskowych serwera i nigdy w prompcie, traktuj treść zadań i komentarzy jako dane, a nie polecenia, i unieważnij klucz w Ustawieniach, gdy agent kończy pracę.",
         check: "Komentarz podpisany nazwą Twojego agenta z odznaką Agent AI.",
       },
       events: {
@@ -393,8 +431,9 @@ const pl: typeof en = {
       },
       sandbox: {
         title: "Daj publicznemu kontu demo piaskownicę",
-        p1: "Wpisz adres e-mail konta demo do sandboxAccounts. To konto widzi i zmienia tylko tablicę piaskownicy, przygotowaną z przykładowymi zadaniami przy pierwszej wizycie, a nigdy tablicy zespołu: każda trasa sprawdza tablicę każdego zadania, którego dotyka.",
-        p2: "Przykładowe zadania wracają co sandboxResetHours godzin (domyślnie 24) i po „Wyczyść piaskownicę”.",
+        p1: "Wpisz adres e-mail konta demo do sandboxAccounts. To konto widzi i zmienia tylko tablicę piaskownicy z przykładowymi zadaniami, a nigdy tablicy zespołu: każda trasa sprawdza tablicę każdego zadania, którego dotyka.",
+        p2: "Przykładowe zadania wracają co sandboxResetHours godzin (domyślnie 24) i po „Wyczyść piaskownicę”. Strona konta piaskownicy prosi o nie, gdy tablica jest nowa albo stara; samo czytanie tablicy nigdy jej nie zmienia.",
+        p3: "Poza Zadaniami konto piaskownicy jest dalej użytkownikiem panelu sklepu: mogłoby zaprosić nowego administratora, odczytać adresy e-mail zespołu albo zmienić ustawienia. Dla publicznego konta demo ustaw sandboxGuard: true: zaproszenia, użytkownicy panelu, klucze API, wykonania workflowów i powiadomienia spoza kanału feed odpowiadają 403, tak samo jak każdy zapis poza Zadaniami.",
         check: "Po zalogowaniu na konto demo strona pokazuje odznakę Tablica piaskownicy i przykładowe zadania.",
       },
       adopt: {
@@ -410,6 +449,7 @@ const pl: typeof en = {
       board: "Na tablicy są zadania",
       assigned: "Każde otwarte zadanie ma osobę",
       overdue: "Nic nie jest po terminie",
+      overdueHint_one: "Jedno zadanie po terminie",
       overdueHint: "Zadań po terminie: {{count}}",
       agency: "Ludzie agencji są wpisani w agencyAccounts",
       automation: "Skrypt albo agent AI zgłosił pracę kluczem API",
@@ -425,12 +465,12 @@ const pl: typeof en = {
       apiKey: {
         q: "Mój skrypt dostaje 401.",
         a1: "Wysyłaj tajny klucz API w uwierzytelnianiu Basic: klucz jako nazwa użytkownika i puste hasło (curl -u sk_...:). Klucz publikowalny nie działa na trasach panelu.",
-        a2: "Unieważniony klucz też dostaje 401. Utwórz nowy w Ustawieniach, Secret API Keys.",
+        a2: "Unieważniony klucz też dostaje 401. Utwórz nowy w Ustawieniach, Tajne klucze API.",
       },
       author: {
         q: "Komentarze mojego agenta mają nazwę klucza, a nie jego nazwę.",
         a1: "Wysyłaj author w treści każdego zapisu: {\"body\": \"...\", \"author\": \"Claude Code\"}. Bez niego używana jest nazwa klucza.",
-        a2: "Dla kluczy API rola to zawsze claude, pokazywana jako Agent AI; ludzie zalogowani do panelu piszą pod własnym nazwiskiem.",
+        a2: "Dla kluczy API rola to zawsze claude, pokazywana jako Agent AI; ludzie zalogowani do panelu piszą pod własnym nazwiskiem. Imię i nazwisko albo adres e-mail osoby z zespołu jest odrzucany (author_reserved).",
       },
       notFound: {
         q: "Identyfikator zadania odpowiada 404.",
@@ -444,18 +484,21 @@ const pl: typeof en = {
       },
       sandbox: {
         q: "Czy konto piaskownicy może zobaczyć tablicę zespołu?",
-        a1: "Nie. Tablicę ustala serwer na podstawie konta, z którego przyszło zapytanie, nigdy na podstawie samego zapytania, a każdy odczyt i zapis jest związany z tą tablicą.",
-        a2: "Klucze API utworzone przez konto piaskownicy też zostają na tablicy piaskownicy.",
+        a1: "Nie. Tablicę ustala serwer na podstawie konta, z którego przyszło zapytanie, nigdy na podstawie samego zapytania, a każdy odczyt i zapis jest związany z tą tablicą. Klucze API utworzone przez konto piaskownicy też zostają na tablicy piaskownicy.",
+        a2: "Piaskownica oddziela tablicę, a nie resztę sklepu: bez sandboxGuard konto zachowuje poza Zadaniami wszystkie uprawnienia użytkownika panelu. Włącz go dla publicznego konta demo.",
       },
       adopted: {
         q: "Brakuje zadań z modułu KODA Panel.",
         a1: "Migracja kopiuje je tylko wtedy, gdy nowe tabele są jeszcze puste, a stare mają kształt modułu KODA Panel; Ustawienia, Ogólne mówią, co zrobiła.",
-        a2: "Stare tabele są nietknięte, więc nic nie zginęło. Napisz do Koda Plus, jeśli kopię trzeba powtórzyć.",
+        a2: "Stare tabele są nietknięte, więc nic nie zginęło. Wdróż migrację razem z usunięciem starego modułu, żeby w międzyczasie nic nie trafiło do starych tabel.",
       },
     },
   },
   error: "Nie udało się wczytać tablicy: {{message}}",
 }
+
+const samePolishKeys: typeof en = pl
+void samePolishKeys
 
 /* Polish typography: no one-letter word left at the end of a line (nb in the page kit). */
 export default typeset(pl)

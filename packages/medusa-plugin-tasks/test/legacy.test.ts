@@ -156,8 +156,19 @@ test("migration: a fresh database gets the tables only; idempotent statements ev
   assert.deepEqual(fresh.statements, [...CREATE_STATEMENTS])
   for (const s of CREATE_STATEMENTS) assert.match(s, /^create (unique )?(table|index) if not exists/)
   const noExecute = migration()
-  await noExecute.m.up()
-  assert.deepEqual(noExecute.statements, [...CREATE_STATEMENTS], "a runner without execute skips the adoption")
+  const warn = console.warn
+  const warned: string[] = []
+  console.warn = (m: string) => void warned.push(m)
+  try {
+    await noExecute.m.up()
+  } finally {
+    console.warn = warn
+  }
+  assert.deepEqual(noExecute.statements.slice(0, CREATE_STATEMENTS.length), [...CREATE_STATEMENTS], "a runner without execute skips the adoption")
+  assert.equal(noExecute.statements.length, CREATE_STATEMENTS.length + 1, "and leaves a marker that says why")
+  assert.match(noExecute.statements.at(-1) ?? "", /'skipped'.*could not read the old tables/s)
+  assert.match(noExecute.statements.at(-1) ?? "", /to_regclass\('"task"'\) is not null/)
+  assert.equal(warned.length, 1)
 })
 
 test("migration: the tables are namespaced, with a board everywhere and no bigNumber", () => {
