@@ -1,0 +1,102 @@
+{
+  "name": "@koda-plus/medusa-plugin-inpost",
+  "version": "0.1.0",
+  "description": "InPost by Koda Plus: Paczkomat parcel lockers and InPost courier for Medusa, with cash on delivery, on the InPost ShipX API. A fulfillment provider with four options, shipments created only from a plan you read first (off by default), PDF labels through the backend, tracking, webhooks with a fallback poll, events for other plugins, a locker search for the admin and the storefront, and a demo mode.",
+  "author": {
+    "name": "Koda Plus",
+    "email": "kontakt@koda.plus",
+    "url": "https://koda.plus"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Koda-Plus/medusa-integrations.git",
+    "directory": "packages/medusa-plugin-inpost"
+  },
+  "bugs": {
+    "url": "https://github.com/Koda-Plus/medusa-integrations/issues"
+  },
+  "keywords": [
+    "medusa-v2",
+    "medusa-plugin-integration",
+    "medusa-plugin-shipping",
+    "medusa-plugin",
+    "medusa",
+    "inpost",
+    "paczkomat",
+    "paczkomaty",
+    "parcel-locker",
+    "shipx",
+    "cash-on-delivery",
+    "poland",
+    "shipping",
+    "fulfillment-provider"
+  ],
+  "files": [
+    ".medusa/server",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    "./workflows": "./.medusa/server/src/workflows/index.js",
+    "./.medusa/server/src/modules/*": "./.medusa/server/src/modules/*/index.js",
+    "./modules/*": "./.medusa/server/src/modules/*/index.js",
+    "./providers/*": "./.medusa/server/src/providers/*/index.js",
+    "./*": "./.medusa/server/src/*.js",
+    "./admin": {
+      "import": "./.medusa/server/src/admin/index.mjs",
+      "require": "./.medusa/server/src/admin/index.js",
+      "default": "./.medusa/server/src/admin/index.js"
+    }
+  },
+  "scripts": {
+    "build": "medusa plugin:build",
+    "dev": "medusa plugin:develop",
+    "test": "node --experimental-strip-types --no-warnings --import ./test/ts-resolve.mjs --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json",
+    "prepublishOnly": "npm test && medusa plugin:build"
+  },
+  "devDependencies": {
+    "@medusajs/admin-sdk": "2.15.3",
+    "@medusajs/cli": "2.15.3",
+    "@medusajs/framework": "2.15.3",
+    "@medusajs/icons": "2.15.3",
+    "@medusajs/medusa": "2.15.3",
+    "@medusajs/test-utils": "2.15.3",
+    "@medusajs/ui": "4.1.13",
+    "@swc/core": "^1.15.0",
+    "@tanstack/react-query": "^5.64.2",
+    "@types/node": "^22.5.4",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "prop-types": "^15.8.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^13.5.0",
+    "react-router-dom": "^6.30.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.0",
+    "yalc": "^1.0.0-pre.53"
+  },
+  "peerDependencies": {
+    "@medusajs/admin-sdk": "^2.12.0",
+    "@medusajs/framework": "^2.12.0",
+    "@medusajs/icons": "^2.12.0",
+    "@medusajs/medusa": "^2.12.0",
+    "@medusajs/ui": "^4.0.0",
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-i18next": ">=13.0.0",
+    "react-router-dom": "^6.0.0 || ^7.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
