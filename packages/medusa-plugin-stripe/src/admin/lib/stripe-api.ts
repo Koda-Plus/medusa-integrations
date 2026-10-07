@@ -9,17 +9,10 @@ import type {
   StripeStatusResponse,
 } from "../../modules/stripe/lib/contract"
 
-declare const __BACKEND_URL__: string | undefined
+import { backendUrl, kitRequestInit } from "./stripe-kit"
 
-/** Same origin by default; the admin build defines `__BACKEND_URL__` when the backend lives elsewhere. */
-export function backendUrl(): string {
-  try {
-    if (typeof __BACKEND_URL__ !== "undefined" && __BACKEND_URL__) return String(__BACKEND_URL__).replace(/\/+$/, "")
-  } catch {
-    /* not defined in this build */
-  }
-  return ""
-}
+/* The backend the dashboard talks to, with its auth (session or JWT): from the kit. */
+export { backendUrl }
 
 export class StripeRequestError extends Error {
   readonly status: number
@@ -30,9 +23,12 @@ export class StripeRequestError extends Error {
   }
 }
 
-/** GET only: the plugin's routes only read. */
+/**
+ * GET only: the plugin's routes only read. The kit adds the dashboard's auth
+ * (the session cookie, or the JWT when the admin runs with JWT auth).
+ */
 export async function stripeFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${backendUrl()}${path}`, { method: "GET", credentials: "include", headers: { Accept: "application/json" } })
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: "GET" }))
   const text = await res.text()
   let json: unknown = null
   try {
@@ -115,6 +111,22 @@ export function useStripeOrder(orderId: string) {
     enabled: Boolean(orderId),
     staleTime: 60_000,
     ...quiet,
+  })
+}
+
+/**
+ * The widget's Refresh: reads the order's payments from Stripe again (the
+ * server honours it once the last read is 30 seconds old), then the order's
+ * summary for hosts follows (same ["stripe"] key prefix).
+ */
+export function useStripeOrderRefresh(orderId: string) {
+  const client = useQueryClient()
+  return useMutation<StripeOrderResponse, Error, void>({
+    mutationFn: () => stripeFetch<StripeOrderResponse>(`/admin/stripe/orders/${encodeURIComponent(orderId)}?fresh=1`),
+    onSuccess: (data) => {
+      client.setQueryData(stripeKeys.order(orderId), data)
+      void client.invalidateQueries({ queryKey: ["stripe", "koda-integration"] })
+    },
   })
 }
 

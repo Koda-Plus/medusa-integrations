@@ -107,6 +107,15 @@ test("both dictionaries carry the shared community block of the Koda Plus integr
   }
 })
 
+test("Copy prompt turns demo mode on only with STRIPE_DEMO=true, and leaves an existing Stripe provider as it is", () => {
+  const view = readFileSync(join(root, "src/admin/lib/stripe-guide-view.tsx"), "utf8")
+  assert.ok(view.includes(`demo: 'demo: process.env.STRIPE_DEMO === "true",'`))
+  assert.ok(!view.includes("!process.env.STRIPE_READ_KEY"), "a missing key must never mean demo")
+  assert.match(view, /already registered here, keep its entry and its options/)
+  const readme = readFileSync(join(root, "README.md"), "utf8")
+  assert.ok(!readme.includes("!process.env.STRIPE_READ_KEY"))
+})
+
 test("the page kit is generated from kit/ and never edited here", () => {
   const text = readFileSync(join(root, "src/admin/lib/stripe-guide.tsx"), "utf8")
   assert.ok(text.startsWith("// GENERATED from kit/admin/guide.tsx"), "stripe-guide.tsx must come from npm run kit:sync")
@@ -154,9 +163,10 @@ test("the README has no tables, the hero image, the live demo and every section"
 test("package.json: the version, the keywords of the Medusa catalog, the files", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name: string; version: string; keywords: string[]; files: string[] }
   assert.equal(pkg.name, "@koda-plus/medusa-plugin-stripe")
-  assert.equal(pkg.version, "0.1.0")
+  assert.equal(pkg.version, "0.2.0")
   for (const k of ["medusa-v2", "medusa-plugin-integration", "medusa-plugin-payment", "stripe", "blik", "przelewy24", "p24", "poland", "payments", "disputes", "payouts"]) assert.ok(pkg.keywords.includes(k), k)
   assert.deepEqual(pkg.files, [".medusa/server", "README.md", "CHANGELOG.md", "LICENSE"])
   const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8")
+  assert.ok(changelog.includes("## 0.2.0 (unreleased)") || /## 0\.2\.0 \(\d{4}-\d{2}-\d{2}\)/.test(changelog))
   assert.ok(changelog.includes("## 0.1.0 (2026-10-07)"))
 })

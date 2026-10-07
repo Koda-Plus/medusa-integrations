@@ -7,14 +7,23 @@
  * SAME parsers, sums and checks as live data. Nothing calls Stripe, and every
  * row is flagged `demo`.
  *
+ * ONLY ORDERS STRIPE WOULD HAVE PAID. The caller passes the orders whose
+ * Medusa payment belongs to a Stripe provider (`demoQualifies`, option
+ * `demoOrders`): marketplace imports, cash on delivery and other gateways
+ * never get a Stripe payment. An order without a total, or below Stripe's
+ * minimum charge, gets none either.
+ *
  * DETERMINISTIC. The same orders give the same payments: methods, card
- * endings, banks, fees and failures come from a hash of the order id. An
- * order of the last 29 days is paid a few minutes before it was placed;
- * older orders are moved into the window (the first about an hour before the
- * start of the current hour, the rest at 4 to 18 hour gaps), so both periods
- * of the panel have data whatever the age of the store's orders. An order
- * that would land past 30 days is left out, and the order widget builds its
- * payment on its own. Within an hour nothing moves.
+ * endings, banks, fees and failures come from a hash of the order id; BLIK
+ * and Przelewy24 follow the order's own Stripe provider when it names one.
+ * An order of the last 29 days is paid a few minutes before it was placed.
+ * For the panel, older orders are moved into the window (the first about an
+ * hour before the start of the current hour, the rest at 4 to 18 hour gaps),
+ * so both periods have data whatever the age of the store's orders; the
+ * order itself (its widget, its summary) always shows the payment dated a
+ * few minutes before it was placed, with the refunds and disputes the panel
+ * gave it. An order that would land past 30 days is left out of the panel.
+ * Within an hour nothing moves.
  *
  * THE STORY:
  *   every order        a succeeded payment: BLIK leads, then cards, Przelewy24,
@@ -38,7 +47,7 @@
  * FEES ARE ILLUSTRATIVE (a percentage plus a fixed part per method), not
  * Stripe's price list.
  */
-import { EVENT_CAPTURABLE, EVENT_SUCCEEDED, EVENTS_DOCUMENTED, PAYOUTS_LIMIT, PROVIDER_IDENTIFIERS, STRIPE_API_VERSION } from "./constants"
+import { EVENT_CAPTURABLE, EVENT_SUCCEEDED, EVENTS_DOCUMENTED, MIN_CHARGE, PAYOUTS_LIMIT, PROVIDER_IDENTIFIERS, STRIPE_API_VERSION } from "./constants"
 import type { MethodKey, OrderLinkDto } from "./contract"
 import { basisPoints, toMinor } from "./money"
 import type {
@@ -64,6 +73,49 @@ export interface DemoOrder {
   /** The order total in major units (a number, a string or Medusa's BigNumber). */
   total: unknown
   currency: string
+  /** The order's Stripe provider (pp_stripe-blik_stripe...), when its Medusa payment names one: BLIK and Przelewy24 follow it. */
+  provider?: string | null
+}
+
+/** The payment side of an order as Query returns it: providers only, never metadata. */
+export interface DemoPaymentRecord {
+  payment_collections?: Array<{
+    payments?: Array<{ provider_id?: string | null } | null> | null
+    payment_sessions?: Array<{ provider_id?: string | null } | null> | null
+  } | null> | null
+}
+
+const STRIPE_PROVIDER = /^pp_stripe(-[a-z0-9]+)?_/
+
+/**
+ * Whether the demo pays this order with Stripe, from Medusa's own payment
+ * records (a shopper cannot set them; metadata is never read):
+ *
+ *   "stripe"          a payment of the order is a Stripe provider's; with no
+ *                     payment yet, a payment session is
+ *   "stripe-or-none"  also an order without any payment collection (a demo
+ *                     store seeded without a checkout)
+ *
+ * A marketplace import marked paid (pp_system_default), cash on delivery,
+ * another gateway and an unpaid import (a collection without a payment) never
+ * qualify.
+ */
+export function demoQualifies(record: DemoPaymentRecord | null | undefined, rule: "stripe" | "stripe-or-none"): { ok: boolean; provider: string | null } {
+  const collections = (record?.payment_collections ?? []).filter((c): c is NonNullable<typeof c> => Boolean(c))
+  const payments = collections.flatMap((c) => (c.payments ?? []).map((p) => p?.provider_id).filter((id): id is string => typeof id === "string"))
+  const sessions = collections.flatMap((c) => (c.payment_sessions ?? []).map((p) => p?.provider_id).filter((id): id is string => typeof id === "string"))
+  const decisive = payments.length > 0 ? payments : sessions
+  const stripe = decisive.find((id) => STRIPE_PROVIDER.test(id)) ?? null
+  if (stripe) return { ok: true, provider: stripe }
+  return { ok: rule === "stripe-or-none" && collections.length === 0, provider: null }
+}
+
+/** BLIK and Przelewy24 have providers of their own; the card provider (Payment Element) leaves the method to the hash. */
+export function methodOfProvider(provider: string | null | undefined): MethodKey | null {
+  if (typeof provider !== "string") return null
+  if (provider.startsWith(`pp_${PROVIDER_IDENTIFIERS.blik}_`)) return "blik"
+  if (provider.startsWith(`pp_${PROVIDER_IDENTIFIERS.p24}_`)) return "p24"
+  return null
 }
 
 export interface DemoRegion {
@@ -104,6 +156,8 @@ export interface DemoData {
   sessions: Map<string, DemoSession>
   /** Order id to the id of its sample PaymentIntent. */
   paymentOfOrder: Map<string, string>
+  /** Orders whose payment the panel moved into the 30 days: the order itself shows it at its own date. */
+  moved: Set<string>
 }
 
 const HOUR = 3_600_000
@@ -325,11 +379,16 @@ function created(order: DemoOrder): number {
   return Number.isFinite(t) ? t : 0
 }
 
-function amountOf(order: DemoOrder): number {
+/** The order total in minor units, or null without a total or below Stripe's minimum charge: such an order gets no sample payment. */
+export function demoAmount(order: Pick<DemoOrder, "total" | "currency">): number | null {
   const currency = String(order.currency || "pln").toLowerCase()
   const minor = toMinor(order.total, currency)
-  /* An order without a total (or a free one) still gets a plausible sample amount. */
-  return minor !== null && minor >= 200 ? minor : 4900 + Math.floor(unit(`${order.id}:amount`) * 40_000)
+  if (minor === null) return null
+  return minor >= (MIN_CHARGE[currency] ?? 50) ? minor : null
+}
+
+function methodFor(order: DemoOrder, currency: string): MethodKey {
+  return methodOfProvider(order.provider) ?? demoMethod(currency, order.id)
 }
 
 /** Monday to Friday, in UTC. */
@@ -361,28 +420,31 @@ export function buildDemoData(input: DemoInput): DemoData {
 
   const sessions = new Map<string, DemoSession>()
   const paymentOfOrder = new Map<string, string>()
+  const moved = new Set<string>()
   const specs: PaymentSpec[] = []
   /* Fixed within the hour, so an order on the edge does not flip between its own date and a moved one. */
   const recentFrom = anchor - 29 * DAY
   const oldest = anchor - 30 * DAY + HOUR
   let cursor = anchor - HOUR + Math.floor(unit("first") * 20) * 60_000
 
-  orders.forEach((order, i) => {
+  const payable = orders.filter((o) => demoAmount(o) !== null)
+  payable.forEach((order, i) => {
     /* An order of the last 29 days is paid a few minutes before it was placed; older ones are moved into the window. */
     const real = created(order)
     let at: number
     if (real >= recentFrom && real <= nowMs) {
-      at = real - (1 + Math.floor(unit(`${order.id}:pay`) * 4)) * 60_000
+      at = paidAt(order, real)
       cursor = Math.min(cursor, at)
     } else {
       if (i > 0) cursor -= 4 * HOUR + Math.floor(unit(`${order.id}:gap`) * 14 * HOUR)
       at = cursor
       /* Past the 30 days the panel reads: the order widget builds this order's payment on its own. */
       if (at < oldest) return
+      moved.add(order.id)
     }
     const currency = String(order.currency || "pln").toLowerCase()
-    const amount = amountOf(order)
-    const method = demoMethod(currency, order.id)
+    const amount = demoAmount(order) as number
+    const method = methodFor(order, currency)
     const sessionId = demoId("payses", order.id)
     sessions.set(sessionId, { order: { id: order.id, displayId: order.displayId }, cartId: null })
     const spec: PaymentSpec = { seed: order.id, amount, currency, createdMs: at, method, status: "succeeded", sessionId }
@@ -603,21 +665,39 @@ export function buildDemoData(input: DemoInput): DemoData {
   const regionList = realRegions.some((r) => r.currency === "pln") ? realRegions : [{ id: "reg_DemoPolska", name: "Polska", currency: "pln" }, ...realRegions]
   const regions = regionList.map((r) => ({ id: r.id, name: r.name, currency: String(r.currency).toLowerCase(), providers: ["pp_system_default", ids.card] }))
 
-  return { paymentIntents, refunds, disputes, balance, payouts, account, methodConfigs, endpoints, failedEvents, domains, providers, regions, sessions, paymentOfOrder }
+  return { paymentIntents, refunds, disputes, balance, payouts, account, methodConfigs, endpoints, failedEvents, domains, providers, regions, sessions, paymentOfOrder, moved }
+}
+
+/** A few minutes before the order was placed, the same for the panel and the order. */
+function paidAt(order: DemoOrder, real: number): number {
+  return real - (1 + Math.floor(unit(`${order.id}:pay`) * 4)) * 60_000
 }
 
 /**
- * The sample PaymentIntent of one order for the order widget: the one the
- * panel shows when the order is among the newest, otherwise one built for
- * this order alone, dated at the order.
+ * The sample PaymentIntent of one order for the order widget and its summary,
+ * always dated a few minutes before the order: the one the panel shows when
+ * the panel kept the order's own date, otherwise the same payment built at
+ * the order's date, with the refunds and the dispute flag the panel gave it
+ * (a dispute or a refund weeks after a payment is ordinary). Null for an
+ * order without a total or below Stripe's minimum.
  */
-export function demoPaymentForOrder(data: DemoData, order: DemoOrder, now: Date): { pi: RawPaymentIntent; sessions: Map<string, DemoSession> } {
+export function demoPaymentForOrder(data: DemoData, order: DemoOrder, now: Date): { pi: RawPaymentIntent; sessions: Map<string, DemoSession> } | null {
   const id = data.paymentOfOrder.get(order.id)
   const known = id ? data.paymentIntents.find((p) => p.id === id) : undefined
-  if (known) return { pi: known, sessions: data.sessions }
+  if (known && !data.moved.has(order.id)) return { pi: known, sessions: data.sessions }
+  const amount = demoAmount(order)
+  if (amount === null) return null
   const currency = String(order.currency || "pln").toLowerCase()
   const sessionId = demoId("payses", order.id)
   const at = created(order) || now.getTime() - DAY
-  const pi = paymentIntent({ seed: order.id, amount: amountOf(order), currency, createdMs: at - 2 * 60_000, method: demoMethod(currency, order.id), status: "succeeded", sessionId }, now.getTime())
+  const pi = paymentIntent({ seed: order.id, amount, currency, createdMs: paidAt(order, at), method: methodFor(order, currency), status: "succeeded", sessionId }, now.getTime())
+  const was = known?.latest_charge && typeof known.latest_charge === "object" ? (known.latest_charge as RawCharge) : null
+  const charge = pi.latest_charge && typeof pi.latest_charge === "object" ? (pi.latest_charge as RawCharge) : null
+  if (was && charge) {
+    charge.amount_refunded = was.amount_refunded
+    charge.refunded = was.refunded
+    charge.refunds = was.refunds
+    charge.disputed = was.disputed
+  }
   return { pi, sessions: new Map([[sessionId, { order: { id: order.id, displayId: order.displayId }, cartId: null }]]) }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-stripe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Stripe by Koda Plus: Stripe in the Medusa admin, next to the official Stripe payment provider. Volume, fees and net by payment method (cards, BLIK, Przelewy24, Apple Pay, Google Pay), payments linked to their orders, disputes with evidence deadlines, refunds, balance and payouts, health checks of the setup and an order widget. Read only, it never moves money. Demo mode.",
   "author": {
     "name": "Koda Plus",
@@ -58,7 +58,7 @@
     "dev": "medusa plugin:develop",
     "test": "node --experimental-strip-types --no-warnings --import ./test/ts-resolve.mjs --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json",
-    "prepublishOnly": "npm test && medusa plugin:build"
+    "prepublishOnly": "npm test && npm run typecheck && medusa plugin:build"
   },
   "devDependencies": {
     "@medusajs/admin-sdk": "2.15.3",
@@ -93,6 +93,26 @@
     "react": "^18.0.0 || ^19.0.0",
     "react-i18next": ">=13.0.0",
     "react-router-dom": "^6.0.0 || ^7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@medusajs/ui": {
+      "optional": true
+    },
+    "@medusajs/icons": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-i18next": {
+      "optional": true
+    },
+    "react-router-dom": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"

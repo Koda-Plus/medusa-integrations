@@ -6,18 +6,16 @@
  */
 import { after, before, test } from "node:test"
 import assert from "node:assert/strict"
-import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
-import KodaStripeModuleService from "../src/modules/stripe/service.ts"
-import { STRIPE_MODULE } from "../src/modules/stripe/lib/constants.ts"
 import { StripeApiError } from "../src/modules/stripe/lib/errors.ts"
-import type { StripePluginOptions } from "../src/modules/stripe/lib/options.ts"
-import type { StripeParams } from "../src/modules/stripe/lib/client.ts"
 import { buildStatus } from "../src/api/admin/stripe/helpers.ts"
 import { loadStripeOrder, loadStripeOverview, runStripeChecks } from "../src/workflows/stripe/reads.ts"
 import { paymentsPage } from "../src/workflows/stripe/overview.ts"
-import { CLIENT_KEY, requestOrigin } from "../src/workflows/stripe/runtime.ts"
+import { cacheFor, requestOrigin, setCacheForTests } from "../src/workflows/stripe/runtime.ts"
+import { loadOrderPayments } from "../src/workflows/stripe/order.ts"
+import { TtlCache } from "../src/modules/stripe/lib/cache.ts"
 import { loadSnapshot } from "../src/workflows/stripe/snapshot.ts"
-import { READ_KEY, account, bt, dispute, domain, endpoint, methodConfig, pi, refund } from "./fixtures.ts"
+import { NOW, READ_KEY, account, bt, dispute, domain, endpoint, methodConfig, pi, refund } from "./fixtures.ts"
+import { FakeStripe, PROVIDERS, REGIONS, RefusingStripe, container, type MedusaData } from "./harness.ts"
 
 const realFetch = globalThis.fetch
 before(() => {
@@ -29,102 +27,7 @@ after(() => {
   globalThis.fetch = realFetch
 })
 
-const silent = { info() {}, warn() {}, error() {}, debug() {}, log() {} }
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000)
-
-/* ------------------------------------------------------------------ */
-/* A scripted Stripe and a fake Medusa                                 */
-/* ------------------------------------------------------------------ */
-
-type Handler = (params: StripeParams | undefined) => unknown
-
-class FakeStripe {
-  calls: Array<{ path: string; params?: StripeParams }> = []
-  readonly routes: Record<string, Handler>
-  constructor(routes: Record<string, Handler>) {
-    this.routes = routes
-  }
-  private answer(path: string, params?: StripeParams): unknown {
-    this.calls.push({ path, params })
-    const exact = this.routes[path]
-    const prefix = Object.entries(this.routes).find(([k]) => k.endsWith("/*") && path.startsWith(k.slice(0, -1)))?.[1]
-    const handler = exact ?? prefix
-    if (!handler) throw new StripeApiError({ kind: "not_found", message: `No such route ${path}`, status: 404 })
-    return handler(params)
-  }
-  async get<T>(path: string, params?: StripeParams): Promise<T> {
-    return this.answer(path, params) as T
-  }
-  async list<T>(path: string, params: StripeParams): Promise<{ data: T[]; complete: boolean; pages: number }> {
-    return { data: this.answer(path, params) as T[], complete: true, pages: 1 }
-  }
-  count(path: string): number {
-    return this.calls.filter((c) => c.path === path).length
-  }
-}
-
-class RefusingStripe {
-  async get(): Promise<never> {
-    throw new Error("demo mode must not call Stripe")
-  }
-  async list(): Promise<never> {
-    throw new Error("demo mode must not call Stripe")
-  }
-}
-
-interface MedusaData {
-  sessions?: Record<string, { orderId?: string; displayId?: number; cartId?: string }>
-  sessionModes?: Array<{ livemode: boolean }>
-  regions?: Array<{ id: string; name: string; currency_code: string; payment_providers: Array<{ id: string; is_enabled: boolean }> }>
-  orders?: Array<Record<string, unknown>>
-  providers?: Array<{ id: string; is_enabled: boolean }>
-  storeCors?: string
-}
-
-function graph(m: MedusaData) {
-  return async (args: Record<string, unknown>) => {
-    const filters = (args.filters ?? {}) as Record<string, unknown>
-    if (args.entity === "payment_session" && Array.isArray(filters.id)) {
-      return {
-        data: (filters.id as string[])
-          .filter((id) => m.sessions?.[id])
-          .map((id) => {
-            const s = m.sessions![id]
-            return { id, payment_collection: { id: `pay_col_${id}`, order: s.orderId ? { id: s.orderId, display_id: s.displayId ?? null } : null, cart: s.cartId ? { id: s.cartId } : null } }
-          }),
-      }
-    }
-    if (args.entity === "payment_session") return { data: (m.sessionModes ?? []).map((s, i) => ({ id: `payses_mode${i}`, data: { id: `pi_mode${i}`, livemode: s.livemode, client_secret: "pi_mode_secret_x" } })) }
-    if (args.entity === "region") return { data: m.regions ?? [] }
-    if (args.entity === "order") {
-      const id = filters.id
-      return { data: id ? (m.orders ?? []).filter((o) => o.id === id) : (m.orders ?? []) }
-    }
-    return { data: [] }
-  }
-}
-
-function container(options: StripePluginOptions, medusa: MedusaData = {}, client?: unknown) {
-  const svc = new KodaStripeModuleService({ logger: silent as never }, options)
-  const registry: Record<string, unknown> = {
-    [STRIPE_MODULE]: svc,
-    [ContainerRegistrationKeys.QUERY]: { graph: graph(medusa) },
-    [Modules.PAYMENT]: { listPaymentProviders: async () => medusa.providers ?? [] },
-    [ContainerRegistrationKeys.CONFIG_MODULE]: { projectConfig: { http: { storeCors: medusa.storeCors ?? "" } } },
-    [CLIENT_KEY]: client,
-  }
-  return {
-    svc,
-    resolve<T>(key: string, o?: { allowUnregistered?: boolean }): T {
-      if (registry[key] !== undefined) return registry[key] as T
-      if (o?.allowUnregistered) return undefined as T
-      throw new Error(`not registered: ${key}`)
-    },
-  }
-}
-
-const PROVIDERS = ["pp_system_default", "pp_stripe_stripe", "pp_stripe-blik_stripe", "pp_stripe-przelewy24_stripe"].map((id) => ({ id, is_enabled: true }))
-const REGIONS = [{ id: "reg_FixturePL", name: "Polska", currency_code: "pln", payment_providers: [{ id: "pp_stripe_stripe", is_enabled: true }] }]
 
 /** A live store: two orders paid (BLIK, Apple Pay), a paid cart without an order, a declined card, a payment link. */
 function liveStore() {
@@ -193,6 +96,9 @@ test("live: one read of Stripe, payments matched to their orders by the payment 
   const list = stripe.calls.find((x) => x.path === "/payment_intents")
   assert.deepEqual((list?.params as { expand: string[] }).expand, ["data.latest_charge.balance_transaction"])
   assert.ok(typeof (list?.params as { created: { gte: number } }).created.gte === "number")
+  /* Disputes from 180 days back: an open dispute of a payment older than the panel's 30 days still shows. */
+  const disputes = stripe.calls.find((x) => x.path === "/disputes")?.params as { created: { gte: number } }
+  assert.ok(Math.abs(disputes.created.gte - (Date.now() / 1000 - 180 * 86_400)) < 120)
 
   const again = await loadStripeOverview(c)
   assert.equal(again.fresh, false)
@@ -223,7 +129,8 @@ test("the payments page: filters, methods and search from the cached read, no ex
   const all = paymentsPage(snapshot, { filter: "all", method: "all", q: "", offset: 0, limit: 2 })
   assert.equal(all.count, 5)
   assert.equal(all.payments.length, 2)
-  assert.deepEqual(all.counts, { all: 5, succeeded: 4, failed: 1, attention: 2, refunded: 0, disputed: 1, outside: 1 })
+  /* "Need a look" is the paid cart without an order only: a declined card is in "Declined", never a task. */
+  assert.deepEqual(all.counts, { all: 5, succeeded: 4, failed: 1, attention: 1, refunded: 0, disputed: 1, outside: 1, foreign: 0 })
   assert.equal(paymentsPage(snapshot, { filter: "all", method: "blik", q: "", offset: 0, limit: 20 }).count, 2)
   assert.equal(paymentsPage(snapshot, { filter: "all", method: "all", q: "#1002", offset: 0, limit: 20 }).payments[0]?.id, payments.apple.id)
   assert.equal(paymentsPage(snapshot, { filter: "all", method: "all", q: String(payments.link.id).toUpperCase(), offset: 0, limit: 20 }).count, 1)
@@ -318,8 +225,9 @@ test("the order widget says why a payment cannot be read, and when an order was 
 })
 
 test("demo mode never calls Stripe and still fills every part of the page", async () => {
+  /* A demo store seeded without a checkout: no payment collections, so "stripe-or-none" pays them. */
   const orders = Array.from({ length: 30 }, (_, i) => ({ id: `order_FixtureD${i}`, display_id: 2000 + i, created_at: ago(i * 20).toISOString(), total: `${150 + i}.00`, currency_code: "pln" }))
-  const c = container({ demo: true }, { orders, regions: REGIONS.map(({ payment_providers: _p, ...r }) => r) as MedusaData["regions"], storeCors: "https://kodasupply.example" }, new RefusingStripe())
+  const c = container({ demo: true, demoOrders: "stripe-or-none" }, { orders, regions: REGIONS.map(({ payment_providers: _p, ...r }) => r) as MedusaData["regions"], storeCors: "https://kodasupply.example" }, new RefusingStripe())
   const overview = await loadStripeOverview(c, { origin: "https://api.kodasupply.example" })
   assert.equal(overview.mode, "demo")
   assert.ok(overview.paymentsTotal >= 30)
@@ -373,4 +281,213 @@ test("this backend's address from the proxy headers, refusing anything that is n
   assert.equal(requestOrigin({ headers: { host: "localhost:9000" }, protocol: "http" }), "http://localhost:9000")
   assert.equal(requestOrigin({ headers: { host: "evil.example/../x" } }), null)
   assert.equal(requestOrigin({ headers: {} }), null)
+})
+
+/* ------------------------------------------------------------------ */
+/* Demo: only orders Stripe would have paid                            */
+/* ------------------------------------------------------------------ */
+
+function demoStore() {
+  const at = (h: number) => ago(h).toISOString()
+  const collection = (provider: string, kind: "payments" | "payment_sessions" = "payments") => [{ [kind]: [{ provider_id: provider }] }]
+  return [
+    { id: "order_FixtureCard", display_id: 3001, created_at: at(2), total: "189.00", currency_code: "pln", payment_collections: collection("pp_stripe_stripe") },
+    { id: "order_FixtureBlik", display_id: 3002, created_at: at(4), total: "59.00", currency_code: "pln", payment_collections: collection("pp_stripe-blik_stripe", "payment_sessions") },
+    /* An Allegro import marked paid, cash on delivery, an unpaid import (a collection, no payment) and another gateway. */
+    { id: "order_FixtureAllegro", display_id: 3003, created_at: at(6), total: "99.00", currency_code: "pln", metadata: { allegro_order_id: "x" }, payment_collections: collection("pp_system_default") },
+    { id: "order_FixtureCod", display_id: 3004, created_at: at(8), total: "79.00", currency_code: "pln", payment_collections: collection("pp_cod_cod", "payment_sessions") },
+    { id: "order_FixtureUnpaidImport", display_id: 3005, created_at: at(9), total: "79.00", currency_code: "pln", payment_collections: [{ payments: [], payment_sessions: [] }] },
+    { id: "order_FixturePayU", display_id: 3006, created_at: at(10), total: "79.00", currency_code: "pln", payment_collections: collection("pp_payu_payu") },
+    /* Seeded without a checkout: no collection at all. A shopper's metadata never makes an order a Stripe one. */
+    { id: "order_FixtureSeed", display_id: 3007, created_at: at(12), total: "129.00", currency_code: "pln", metadata: { stripe: true, payment_provider: "pp_stripe_stripe" } },
+    /* No total, and under Stripe's minimum charge. */
+    { id: "order_FixtureNoTotal", display_id: 3008, created_at: at(13), total: null, currency_code: "pln", payment_collections: collection("pp_stripe_stripe") },
+    { id: "order_FixtureTiny", display_id: 3009, created_at: at(14), total: "1.00", currency_code: "pln", payment_collections: collection("pp_stripe_stripe") },
+  ]
+}
+
+test("demo pays only orders Stripe would have paid: never imports, cash on delivery or another gateway", async () => {
+  const orders = demoStore()
+  const c = container({ demo: true }, { orders, regions: REGIONS }, new RefusingStripe())
+  const { snapshot } = await loadSnapshot(c, {})
+  const paid = new Set(snapshot.payments.map((p) => p.order?.id).filter(Boolean))
+  assert.deepEqual([...paid].sort(), ["order_FixtureBlik", "order_FixtureCard"])
+  /* BLIK follows the order's own provider. */
+  assert.equal(snapshot.payments.find((p) => p.order?.id === "order_FixtureBlik")?.method, "blik")
+  for (const id of ["order_FixtureAllegro", "order_FixtureCod", "order_FixtureUnpaidImport", "order_FixturePayU", "order_FixtureSeed", "order_FixtureNoTotal", "order_FixtureTiny"]) {
+    assert.equal((await loadStripeOrder(c, id)).none, true, id)
+  }
+  assert.equal((await loadStripeOrder(c, "order_FixtureCard")).none, false)
+  /* The queries ask for providers, never for metadata. */
+  assert.ok(c.queries.every((q) => !q.fields.some((f) => f.includes("metadata"))), JSON.stringify(c.queries.map((q) => q.fields)))
+  /* "stripe-or-none" adds the order without any payment collection, nothing else. */
+  const seeded = container({ demo: true, demoOrders: "stripe-or-none" }, { orders, regions: REGIONS }, new RefusingStripe())
+  const more = new Set((await loadSnapshot(seeded, {})).snapshot.payments.map((p) => p.order?.id).filter(Boolean))
+  assert.deepEqual([...more].sort(), ["order_FixtureBlik", "order_FixtureCard", "order_FixtureSeed"])
+})
+
+test("demo totals: one query for every order; one at a time only when Medusa refuses it", async () => {
+  const orders = demoStore()
+  let refusedOnce = false
+  const c = container({ demo: true }, { orders, regions: REGIONS }, new RefusingStripe())
+  const base = c.resolve<{ graph: (a: Record<string, unknown>) => Promise<{ data: unknown[] }> }>("query")
+  const graph = base.graph
+  base.graph = async (args) => {
+    const fields = (args.fields as string[]) ?? []
+    const ids = (args.filters as { id?: unknown } | undefined)?.id
+    if (fields.includes("total") && Array.isArray(ids) && ids.length > 1) {
+      refusedOnce = true
+      throw new Error("shipping method without a version")
+    }
+    return graph(args)
+  }
+  const { snapshot } = await loadSnapshot(c, {})
+  assert.ok(refusedOnce)
+  assert.equal(new Set(snapshot.payments.map((p) => p.order?.id).filter(Boolean)).size, 2)
+  const totals = c.queries.filter((q) => q.fields.includes("total"))
+  assert.ok(totals.length >= 3, "the batch, then one per order")
+})
+
+test("demo: an order older than the panel's 30 days shows its payment dated at the order, with the panel's refunds and dispute", async () => {
+  const old = Array.from({ length: 12 }, (_, i) => ({
+    id: `order_FixtureOld${i}`,
+    display_id: 4000 + i,
+    created_at: ago(24 * (60 + i)).toISOString(),
+    total: `${200 + i}.00`,
+    currency_code: "pln",
+    payment_collections: [{ payments: [{ provider_id: "pp_stripe_stripe" }] }],
+  }))
+  const c = container({ demo: true }, { orders: old, regions: REGIONS }, new RefusingStripe())
+  const { snapshot } = await loadSnapshot(c, {})
+  const moved = snapshot.payments.find((p) => p.order?.id === "order_FixtureOld0")
+  assert.ok(moved, "the panel still shows the payment within its 30 days")
+  const res = await loadStripeOrder(c, "order_FixtureOld0")
+  const p = res.payments[0].payment!
+  const orderAt = Date.parse(String(old[0].created_at))
+  assert.ok(Date.parse(p.created) <= orderAt && Date.parse(p.created) > orderAt - 10 * 60_000, "paid a few minutes before the order")
+  assert.equal(p.id, moved?.id)
+  /* Refunds and disputes the panel gave the payment stay with it. */
+  const refunded = snapshot.payments.find((x) => x.refunded && x.order)
+  if (refunded?.order) {
+    const r = await loadStripeOrder(c, refunded.order.id)
+    assert.deepEqual(r.payments[0].payment?.refunded, refunded.refunded)
+  }
+})
+
+/* ------------------------------------------------------------------ */
+/* The order widget: freshness, stale answers, errors                  */
+/* ------------------------------------------------------------------ */
+
+function widgetStore() {
+  const paymentIntent = pi({ amount: 15_000, method: { type: "blik" }, fee: 300, sessionId: "payses_w2" })
+  const stripe = new FakeStripe({ "/payment_intents/*": () => paymentIntent })
+  const order = {
+    id: "order_FixtureW2",
+    display_id: 1043,
+    payment_collections: [{ payments: [{ provider_id: "pp_stripe-blik_stripe", data: { id: paymentIntent.id }, captured_at: null, canceled_at: null, refunds: [] }] }],
+  }
+  return { paymentIntent, stripe, order }
+}
+
+test("the widget reads Stripe again after a capture or a refund in Medusa, and on Refresh once 30 seconds passed", async () => {
+  const { stripe, order } = widgetStore()
+  const c = container({ apiKey: READ_KEY }, { orders: [order] }, stripe)
+  await loadStripeOrder(c, order.id)
+  await loadStripeOrder(c, order.id)
+  assert.equal(stripe.count("/payment_intents/*"), 1)
+  /* Medusa captured the payment: a new read, without waiting for the cache. */
+  order.payment_collections[0].payments[0].captured_at = new Date().toISOString() as never
+  await loadStripeOrder(c, order.id)
+  assert.equal(stripe.count("/payment_intents/*"), 2)
+  /* A refund in Medusa: again. */
+  order.payment_collections[0].payments[0].refunds = [{ id: "ref_1" }] as never
+  await loadStripeOrder(c, order.id)
+  assert.equal(stripe.count("/payment_intents/*"), 3)
+  /* Refresh right after a read is served from the cache; 30 seconds later it reads again. */
+  let now = Date.now()
+  setCacheForTests(c.svc, new TtlCache({ now: () => now }))
+  await loadStripeOrder(c, order.id)
+  assert.equal(stripe.count("/payment_intents/*"), 4)
+  now += 10_000
+  await loadStripeOrder(c, order.id, { force: true })
+  assert.equal(stripe.count("/payment_intents/*"), 4)
+  now += 25_000
+  await loadStripeOrder(c, order.id, { force: true })
+  assert.equal(stripe.count("/payment_intents/*"), 5)
+})
+
+test("when Stripe stops answering, the widget shows the last good read, marked stale", async () => {
+  const { stripe, order, paymentIntent } = widgetStore()
+  let down = false
+  const flaky = new FakeStripe({
+    "/payment_intents/*": () => {
+      if (down) throw new StripeApiError({ kind: "network", message: "No connection to Stripe" })
+      return paymentIntent
+    },
+  })
+  void stripe
+  let now = Date.now()
+  const c = container({ apiKey: READ_KEY, cacheSeconds: 30 }, { orders: [order] }, flaky)
+  setCacheForTests(c.svc, new TtlCache({ now: () => now }))
+  const first = await loadOrderPayments(c, order.id, { origin: null, now: () => new Date(now) })
+  assert.equal(first.payments[0].stale, false)
+  assert.ok(first.payments[0].readAt)
+  down = true
+  now += 60_000
+  const later = await loadOrderPayments(c, order.id, { origin: null, now: () => new Date(now) })
+  assert.equal(later.payments[0].found, true)
+  assert.equal(later.payments[0].stale, true)
+  assert.equal(later.payments[0].readAt, first.payments[0].readAt)
+})
+
+test("the widget keeps no client secret or personal data in memory, and counts dispute days at every answer", async () => {
+  const paymentIntent = pi({ amount: 15_000, method: { type: "card" }, fee: 300, sessionId: "payses_w3", disputed: true }) as Record<string, unknown>
+  paymentIntent.client_secret = "pi_FixtureW3_secret_DoNotKeep"
+  ;(paymentIntent.latest_charge as Record<string, unknown>).billing_details = { name: "Jan Kowalski", email: "jan@example.com" }
+  const stripe = new FakeStripe({
+    "/payment_intents/*": () => paymentIntent,
+    "/disputes": () => [dispute(paymentIntent as never, { dueInHours: 50, evidence: { customer_name: "Jan Kowalski" } } as never)],
+  })
+  const order = { id: "order_FixtureW3", display_id: 1044, payment_collections: [{ payments: [{ provider_id: "pp_stripe_stripe", data: { id: paymentIntent.id } }] }] }
+  const c = container({ apiKey: READ_KEY, cacheSeconds: 86_400 }, { orders: [order] }, stripe)
+  const start = NOW.getTime()
+  const a = await loadOrderPayments(c, order.id, { origin: null, now: () => new Date(start) })
+  assert.equal(a.payments[0].disputes[0].daysLeft, 3)
+  /* The same cached read, two days later: the deadline moved closer. */
+  const b = await loadOrderPayments(c, order.id, { origin: null, now: () => new Date(start + 2 * 86_400_000) })
+  assert.equal(stripe.count("/payment_intents/*"), 1)
+  assert.equal(b.payments[0].disputes[0].daysLeft, 1)
+  assert.equal(b.payments[0].disputes[0].urgency, "urgent")
+  const memory = JSON.stringify([...(cacheFor(c.svc) as unknown as { spaces: Map<string, Map<string, unknown>> }).spaces.values()].map((m) => [...m.values()]))
+  assert.ok(!memory.includes("DoNotKeep") && !memory.includes("Kowalski") && !memory.includes("jan@example.com"), "normalized before it is kept")
+})
+
+test("routes: a Stripe error is a 502 with its masked message, anything else a 500 with a plain sentence", async () => {
+  const { respond } = await import("../src/api/admin/stripe/helpers.ts")
+  const { fakeResponse } = await import("./kit-conformance.ts")
+  const c = container({ apiKey: READ_KEY })
+  const req = { scope: c, method: "GET", path: "/admin/stripe/overview" } as never
+  const stripeRes = fakeResponse()
+  await respond(req, stripeRes, async () => {
+    throw new StripeApiError({ kind: "stripe", status: 500, message: `Stripe broke for ${READ_KEY}`, secrets: [READ_KEY] })
+  })
+  assert.equal(stripeRes.statusCode, 502)
+  assert.ok(!JSON.stringify(stripeRes.body).includes(READ_KEY))
+  const dbRes = fakeResponse()
+  await respond(req, dbRes, async () => {
+    throw new Error('relation "payment_session" does not exist at line 4')
+  })
+  assert.equal(dbRes.statusCode, 500)
+  assert.ok(!JSON.stringify(dbRes.body).includes("relation"), "no SQL to the browser")
+})
+
+test("the order route refuses an id that is not one, before any read", async () => {
+  const { GET } = await import("../src/api/admin/stripe/orders/[id]/route.ts")
+  const { fakeResponse } = await import("./kit-conformance.ts")
+  const stripe = new RefusingStripe()
+  const c = container({ apiKey: READ_KEY }, {}, stripe)
+  const res = fakeResponse()
+  await GET({ scope: c, params: { id: "../../etc" }, query: {}, headers: {} } as never, res)
+  assert.equal(res.statusCode, 400)
+  assert.equal(stripe.calls, 0)
 })

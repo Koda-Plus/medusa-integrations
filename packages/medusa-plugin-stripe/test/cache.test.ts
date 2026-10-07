@@ -72,3 +72,39 @@ test("memory is bounded: the oldest entry goes first", async () => {
   assert.equal(cache.peek("a"), null)
   assert.equal(cache.peek<string>("d")?.value, "d")
 })
+
+test("spaces: per-payment keys never push the snapshot or the checks out", async () => {
+  const cache = new TtlCache(clock(), 3)
+  await cache.get("snapshot:live", async () => "snap", { ttlMs: 1000 })
+  await cache.get("checks:live:", async () => "checks", { ttlMs: 1000 })
+  for (let i = 0; i < 10; i++) await cache.get(`order:live:pi_${i}:x`, async () => i, { ttlMs: 1000 })
+  assert.equal(cache.peek<string>("snapshot:live")?.value, "snap")
+  assert.equal(cache.peek<string>("checks:live:")?.value, "checks")
+  assert.equal(cache.peek("order:live:pi_0:x"), null, "the oldest payment went first")
+  assert.equal(cache.peek<number>("order:live:pi_9:x")?.value, 9)
+})
+
+test("a failed reload keeps the last good value next to it; entries long past their time are swept", async () => {
+  const c = clock()
+  const cache = new TtlCache(c, 500, {}, 10_000)
+  let fail = false
+  const load = async () => (fail ? { failed: true } : { failed: false, n: 1 })
+  const opts = { ttlMs: 1000, errorTtlMs: 500, isFailure: (v: { failed: boolean }) => v.failed }
+  await cache.get("order:k", load, opts)
+  fail = true
+  c.advance(2000)
+  const hit = await cache.get("order:k", load, opts)
+  assert.equal(hit.value.failed, true)
+  assert.equal(cache.peek("order:k"), null)
+  assert.deepEqual(cache.good("order:k"), { value: { failed: false, n: 1 }, at: 0 })
+  /* A second failure keeps the same good value. */
+  c.advance(600)
+  await cache.get("order:k", load, opts)
+  assert.equal(cache.good<{ n: number }>("order:k")?.value.n, 1)
+  /* Long past its time and the stale window: gone at the next write in its space. */
+  await cache.get("order:old", async () => ({ failed: false, n: 2 }), opts)
+  c.advance(20_000)
+  await cache.get("order:new", async () => ({ failed: false, n: 3 }), opts)
+  assert.equal(cache.good("order:old"), null)
+  assert.equal(cache.size, 1)
+})

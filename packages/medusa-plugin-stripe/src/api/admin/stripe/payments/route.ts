@@ -6,7 +6,7 @@ import { loadSnapshot } from "../../../../workflows/stripe/snapshot"
 import { intParam, originOf, respond, strParam, stripeService } from "../helpers"
 
 /**
- * GET /admin/stripe/payments?filter=all|succeeded|failed|attention|refunded|disputed|outside&method=blik&q=&offset=0&limit=20
+ * GET /admin/stripe/payments?filter=all|succeeded|failed|attention|refunded|disputed|outside|foreign&method=blik&q=&offset=0&limit=20
  *
  * The payments of the last 30 days, a page at a time, from the same cached
  * read as the panel (no extra call to Stripe). `q` matches a PaymentIntent

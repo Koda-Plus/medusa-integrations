@@ -15,6 +15,7 @@
  */
 import { DEFAULT_REQUESTS_PER_SECOND, DEFAULT_TIMEOUT_MS, LIST_LIMIT, MAX_CONCURRENCY, MAX_RETRIES, MAX_RETRY_WAIT_MS, STRIPE_API_BASE, STRIPE_API_VERSION } from "./constants"
 import { kindOfStatus, StripeApiError } from "./errors"
+import { KIT_META } from "./kit-meta"
 import { backoffMs, realClock, retryAfterMs, Semaphore, TokenBucket, type Clock } from "./rate-limit"
 import { canRead, keyInfo } from "./security"
 import type { RawList } from "./stripe-types"
@@ -70,6 +71,11 @@ export interface StripeClientOptions {
   userAgent?: string
 }
 
+/** Per call: past `deadline` (ms on the client's clock) no retry and no further page is asked for. */
+export interface ReadOptions {
+  deadline?: number | null
+}
+
 export interface ListResult<T> {
   data: T[]
   /** False when the read stopped at `maxPages` with more on Stripe's side. */
@@ -99,7 +105,7 @@ export class StripeReadClient {
     this.clock = options.clock ?? realClock
     this.random = options.random ?? Math.random
     this.maxRetries = options.maxRetries ?? MAX_RETRIES
-    this.userAgent = options.userAgent ?? "KodaPlus-MedusaPluginStripe/0.1 (+https://koda.plus)"
+    this.userAgent = options.userAgent ?? `KodaPlus-MedusaPluginStripe/${KIT_META.version} (+https://koda.plus)`
     this.bucket = new TokenBucket(options.requestsPerSecond ?? DEFAULT_REQUESTS_PER_SECOND, this.clock)
   }
 
@@ -127,8 +133,12 @@ export class StripeReadClient {
     }
   }
 
-  /** One GET. Throws a StripeApiError with a masked message. */
-  async get<T>(path: string, params?: StripeParams): Promise<T> {
+  private late(options?: ReadOptions): boolean {
+    return typeof options?.deadline === "number" && this.clock.now() >= options.deadline
+  }
+
+  /** One GET. Throws a StripeApiError with a masked message. Past the deadline it does not retry. */
+  async get<T>(path: string, params?: StripeParams, options?: ReadOptions): Promise<T> {
     if (!PATH.test(path)) throw new StripeApiError({ kind: "invalid", message: `Refused path ${path}: the plugin reads fixed Stripe resources only.` })
     if (!canRead(keyInfo(this.apiKey)) && keyInfo(this.apiKey).kind !== "unknown") {
       throw new StripeApiError({
@@ -146,7 +156,7 @@ export class StripeReadClient {
       try {
         res = await this.gate.run(() => this.send(url))
       } catch (err) {
-        if (attempt < this.maxRetries) {
+        if (attempt < this.maxRetries && !this.late(options)) {
           await this.clock.sleep(backoffMs(attempt, this.random))
           continue
         }
@@ -174,7 +184,7 @@ export class StripeReadClient {
 
       const shouldRetry = (res.headers.get("stripe-should-retry") ?? "").toLowerCase()
       const retryable = shouldRetry === "true" || ((res.status === 429 || res.status >= 500) && shouldRetry !== "false")
-      if (retryable && attempt < this.maxRetries) {
+      if (retryable && attempt < this.maxRetries && !this.late(options)) {
         const wait = retryAfterMs(res.headers.get("retry-after"), this.clock.now()) ?? backoffMs(attempt, this.random)
         await this.clock.sleep(Math.min(wait, MAX_RETRY_WAIT_MS))
         continue
@@ -193,14 +203,16 @@ export class StripeReadClient {
 
   /**
    * A list, page after page with `starting_after`, up to `maxPages` pages of
-   * `limit` objects. Stops early when Stripe says there is nothing more.
+   * `limit` objects. Stops early when Stripe says there is nothing more, and
+   * past the deadline (then `complete` is false: the oldest objects are missing).
    */
-  async list<T extends { id?: string }>(path: string, params: StripeParams, options: { maxPages: number; limit?: number }): Promise<ListResult<T>> {
+  async list<T extends { id?: string }>(path: string, params: StripeParams, options: { maxPages: number; limit?: number } & ReadOptions): Promise<ListResult<T>> {
     const out: T[] = []
     let startingAfter: string | undefined
     const maxPages = Math.max(1, Math.floor(options.maxPages))
     for (let page = 1; page <= maxPages; page++) {
-      const res = await this.get<RawList<T>>(path, { ...params, limit: options.limit ?? LIST_LIMIT, starting_after: startingAfter })
+      if (page > 1 && this.late(options)) return { data: out, complete: false, pages: page - 1 }
+      const res = await this.get<RawList<T>>(path, { ...params, limit: options.limit ?? LIST_LIMIT, starting_after: startingAfter }, options)
       const data = Array.isArray(res?.data) ? res.data : []
       out.push(...data)
       if (!res?.has_more || data.length === 0) return { data: out, complete: true, pages: page }

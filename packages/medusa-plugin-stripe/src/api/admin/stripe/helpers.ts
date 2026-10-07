@@ -3,6 +3,7 @@ import { providerIds } from "../../../modules/stripe/lib/checks"
 import { STRIPE_API_VERSION } from "../../../modules/stripe/lib/constants"
 import type { StripeMode, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
 import { DashboardLinks } from "../../../modules/stripe/lib/dashboard"
+import { StripeApiError } from "../../../modules/stripe/lib/errors"
 import { expectedWebhookUrl, webhookPath } from "../../../modules/stripe/lib/webhooks"
 import { requestOrigin, storefrontDomains, stripeService, type Scope } from "../../../workflows/stripe/runtime"
 
@@ -62,6 +63,7 @@ export function buildStatus(scope: Scope, origin: string | null): StripeStatusRe
       requestsPerSecond: o.requestsPerSecond,
       timeoutMs: o.timeoutMs,
       checks: o.checks,
+      demoOrders: o.demoOrders,
     },
     apiVersion: STRIPE_API_VERSION,
     webhookPath: webhookPath(o.providerId),
@@ -72,8 +74,9 @@ export function buildStatus(scope: Scope, origin: string | null): StripeStatusRe
 }
 
 /**
- * Runs a read for a route. Medusa answers errors on its own; this only
- * makes sure a message that leaves the server is masked first.
+ * Runs a read for a route. A Stripe error is a 502 with Stripe's own message
+ * (masked when it was made); anything else (Medusa, the database, a bug) is
+ * a 500 with a plain sentence, the details only in the server log, masked.
  */
 export async function respond<T>(req: MedusaRequest, res: MedusaResponse, work: () => Promise<T>): Promise<void> {
   try {
@@ -81,7 +84,12 @@ export async function respond<T>(req: MedusaRequest, res: MedusaResponse, work: 
   } catch (err) {
     const svc = stripeService(req.scope)
     const message = svc.mask(err instanceof Error ? err.message : String(err))
-    svc.getLogger().warn(`[stripe] ${req.method} ${req.path}: ${message}`)
-    res.status(502).json({ type: "stripe_read_failed", message })
+    if (err instanceof StripeApiError) {
+      svc.getLogger().warn(`[stripe] ${req.method} ${req.path}: ${message}`)
+      res.status(502).json({ type: "stripe_read_failed", message })
+      return
+    }
+    svc.getLogger().error(`[stripe] ${req.method} ${req.path} failed: ${message}`)
+    res.status(500).json({ type: "unexpected_state", message: "Stripe by Koda Plus could not answer. The details are in the server log." })
   }
 }

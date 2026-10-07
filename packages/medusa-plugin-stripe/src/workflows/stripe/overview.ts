@@ -5,8 +5,8 @@
 import { FIRST_PAGE, PERIODS, RECENT_REFUNDS } from "../../modules/stripe/lib/constants"
 import type { MethodKey, PaymentFilter, PaymentRowDto, StripeMode, StripeOverviewResponse, StripePaymentsResponse } from "../../modules/stripe/lib/contract"
 import { periodStats } from "../../modules/stripe/lib/aggregate"
-import { attemptFailed } from "../../modules/stripe/lib/normalize"
-import { splitPayouts } from "../../modules/stripe/lib/normalize"
+import { needsAttention } from "../../modules/stripe/lib/attention"
+import { attemptFailed, disputesAt, splitPayouts } from "../../modules/stripe/lib/normalize"
 import { dashboardFor, type Snapshot } from "./snapshot"
 
 export function overviewOf(snapshot: Snapshot, args: { now: Date; cacheSeconds: number; fresh: boolean; configured: boolean }): StripeOverviewResponse {
@@ -25,7 +25,8 @@ export function overviewOf(snapshot: Snapshot, args: { now: Date; cacheSeconds: 
     periods,
     payments: snapshot.payments.slice(0, FIRST_PAGE),
     paymentsTotal: snapshot.payments.length,
-    disputes: snapshot.disputes.filter((d) => d.open),
+    /* Days left counted now, not when Stripe was read. */
+    disputes: disputesAt(snapshot.disputes.filter((d) => d.open), args.now),
     disputesClosed: { won: closed.filter((d) => d.status === "won").length, lost: closed.filter((d) => d.status === "lost").length },
     refunds: snapshot.refunds.slice(0, RECENT_REFUNDS),
     balance: snapshot.balance,
@@ -57,22 +58,29 @@ export function emptyOverview(args: { cacheSeconds: number; mode: StripeMode }):
   }
 }
 
-export const PAYMENT_FILTERS: readonly PaymentFilter[] = ["all", "succeeded", "failed", "attention", "refunded", "disputed", "outside"]
+export const PAYMENT_FILTERS: readonly PaymentFilter[] = ["all", "succeeded", "failed", "attention", "refunded", "disputed", "outside", "foreign"]
 
-export function matchesFilter(p: PaymentRowDto, filter: PaymentFilter): boolean {
+/**
+ * attention: what a person should look at (lib/attention.ts, the same rule
+ * as the check and the board counter). disputed: an open dispute. foreign: a
+ * session of another Medusa on the same Stripe account.
+ */
+export function matchesFilter(p: PaymentRowDto, filter: PaymentFilter, now: number = Date.now()): boolean {
   switch (filter) {
     case "succeeded":
       return p.status === "succeeded"
     case "failed":
       return attemptFailed(p)
     case "attention":
-      return attemptFailed(p) || p.status === "requires_action" || p.status === "authorized" || (p.status === "succeeded" && p.fromMedusa && !p.order)
+      return needsAttention(p, now)
     case "refunded":
       return p.refunded !== null
     case "disputed":
-      return p.disputed
+      return p.disputeOpen
     case "outside":
       return !p.fromMedusa
+    case "foreign":
+      return p.session === "foreign"
     default:
       return true
   }
@@ -91,14 +99,15 @@ export function matchesSearch(p: PaymentRowDto, q: string): boolean {
   return false
 }
 
-export function paymentsPage(snapshot: Snapshot, args: { filter: PaymentFilter; method: MethodKey | "all"; q: string; offset: number; limit: number }): StripePaymentsResponse {
+export function paymentsPage(snapshot: Snapshot, args: { filter: PaymentFilter; method: MethodKey | "all"; q: string; offset: number; limit: number; now?: number }): StripePaymentsResponse {
+  const now = args.now ?? Date.now()
   /* A checkout that never got as far as a method is listed under all methods only, not as "Other". */
   const byMethod = (p: PaymentRowDto) => args.method === "all" || p.method === args.method
   const searched = snapshot.payments.filter((p) => matchesSearch(p, args.q))
-  const rows = searched.filter((p) => byMethod(p) && matchesFilter(p, args.filter))
-  const counts = Object.fromEntries(PAYMENT_FILTERS.map((f) => [f, searched.filter((p) => byMethod(p) && matchesFilter(p, f)).length])) as Record<PaymentFilter, number>
+  const rows = searched.filter((p) => byMethod(p) && matchesFilter(p, args.filter, now))
+  const counts = Object.fromEntries(PAYMENT_FILTERS.map((f) => [f, searched.filter((p) => byMethod(p) && matchesFilter(p, f, now)).length])) as Record<PaymentFilter, number>
   const methods: Partial<Record<MethodKey, number>> = {}
-  for (const p of searched.filter((x) => matchesFilter(x, args.filter))) {
+  for (const p of searched.filter((x) => matchesFilter(x, args.filter, now))) {
     if (p.method) methods[p.method] = (methods[p.method] ?? 0) + 1
   }
   return {

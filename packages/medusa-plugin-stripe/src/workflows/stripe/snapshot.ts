@@ -6,12 +6,15 @@
  * expanded, the balance, the latest payouts), then one Query over the
  * payment sessions to find each payment's order. A part that fails leaves
  * its section empty with the reason (and the permission Stripe asked for);
- * the rest of the page still shows.
+ * the rest of the page still shows. The whole read has a time budget: past
+ * it no further page is asked for and the panel says the oldest payments are
+ * missing, instead of waiting a minute for retries while Stripe is down.
  *
  * Demo: the same rows built from the store's own orders (lib/demo.ts),
  * through the same parsers.
  */
-import { FORCE_REFRESH_MIN_MS, ERROR_CACHE_MS, DEMO_ORDERS, DISPUTES_LIMIT, PAYOUTS_LIMIT, WINDOW_DAYS } from "../../modules/stripe/lib/constants"
+import { newestRefundFailed } from "../../modules/stripe/lib/attention"
+import { FORCE_REFRESH_MIN_MS, ERROR_CACHE_MS, DEMO_ORDERS, DISPUTES_LIMIT, DISPUTES_MAX_PAGES, DISPUTES_WINDOW_DAYS, PAYOUTS_LIMIT, READ_BUDGET_MS, WINDOW_DAYS } from "../../modules/stripe/lib/constants"
 import type { BalanceDto, DisputeRowDto, MethodKey, PaymentRowDto, PayoutRowDto, RefundRowDto, SectionErrorDto, SectionKey } from "../../modules/stripe/lib/contract"
 import { DashboardLinks } from "../../modules/stripe/lib/dashboard"
 import { buildDemoData, type DemoData } from "../../modules/stripe/lib/demo"
@@ -49,10 +52,12 @@ export function dashboardFor(mode: "live" | "test" | "demo"): DashboardLinks {
   return new DashboardLinks(mode === "test" ? "test" : "live")
 }
 
-function lookupOf(links: Map<string, SessionLink>): OrderLookup {
+/** Sessions Medusa answered for; without an answer (`null`), whose sessions they are stays unknown. */
+function lookupOf(links: Map<string, SessionLink> | null): OrderLookup {
   return {
-    orderOf: (id) => (id ? (links.get(id)?.order ?? null) : null),
-    cartOf: (id) => (id ? (links.get(id)?.cartId ?? null) : null),
+    orderOf: (id) => (id ? (links?.get(id)?.order ?? null) : null),
+    cartOf: (id) => (id ? (links?.get(id)?.cartId ?? null) : null),
+    ...(links ? { known: (id: string) => links.has(id) } : {}),
   }
 }
 
@@ -92,6 +97,13 @@ export function buildRows(args: {
       .filter((d): d is DisputeRowDto => d !== null),
   )
   const payouts = args.payouts.map((p) => normalizePayout(p, ctx)).filter((p): p is PayoutRowDto => p !== null)
+  /* What a person should look at: an open dispute, a refund that failed (its newest one). */
+  const open = new Set(disputes.filter((d) => d.open && d.paymentIntent).map((d) => String(d.paymentIntent)))
+  const refundFailed = newestRefundFailed(refunds)
+  for (const p of payments) {
+    p.disputeOpen = open.has(p.id)
+    p.refundFailed = refundFailed.has(p.id)
+  }
   return { payments, facts, refunds, disputes, balance: normalizeBalance(args.balance), payouts }
 }
 
@@ -104,13 +116,17 @@ async function readLive(scope: Scope, now: Date): Promise<Snapshot> {
   const mode = svc.keyInfo().mode === "test" ? "test" : "live"
   const secrets = [o.apiKey]
   const since = Math.floor((now.getTime() - WINDOW_DAYS * DAY) / 1000)
+  const disputesSince = Math.floor((now.getTime() - DISPUTES_WINDOW_DAYS * DAY) / 1000)
+  /* On the real clock: the client compares it with Date.now(). */
+  const deadline = Date.now() + READ_BUDGET_MS
 
   const [pis, refunds, disputes, balance, payouts] = await Promise.allSettled([
-    client.list<RawPaymentIntent>("/payment_intents", { created: { gte: since }, expand: ["data.latest_charge.balance_transaction"] }, { maxPages: o.maxPages }),
-    client.list<RawRefund>("/refunds", { created: { gte: since }, expand: ["data.payment_intent"] }, { maxPages: Math.min(5, o.maxPages) }),
-    client.list<RawDispute>("/disputes", { expand: ["data.payment_intent"] }, { maxPages: 1, limit: DISPUTES_LIMIT }),
-    client.get<RawBalance>("/balance"),
-    client.list<RawPayout>("/payouts", {}, { maxPages: 1, limit: PAYOUTS_LIMIT }),
+    client.list<RawPaymentIntent>("/payment_intents", { created: { gte: since }, expand: ["data.latest_charge.balance_transaction"] }, { maxPages: o.maxPages, deadline }),
+    client.list<RawRefund>("/refunds", { created: { gte: since }, expand: ["data.payment_intent"] }, { maxPages: Math.min(5, o.maxPages), deadline }),
+    /* Open disputes of older payments too: a dispute may come months after its payment. */
+    client.list<RawDispute>("/disputes", { created: { gte: disputesSince }, expand: ["data.payment_intent"] }, { maxPages: Math.min(DISPUTES_MAX_PAGES, o.maxPages), limit: DISPUTES_LIMIT, deadline }),
+    client.get<RawBalance>("/balance", undefined, { deadline }),
+    client.list<RawPayout>("/payouts", {}, { maxPages: 1, limit: PAYOUTS_LIMIT, deadline }),
   ])
 
   const errors: SectionErrorDto[] = []
@@ -139,12 +155,13 @@ async function readLive(scope: Scope, now: Date): Promise<Snapshot> {
     ...refundList.map((r) => sessionOf(r.payment_intent)),
     ...disputeList.map((d) => sessionOf(d.payment_intent)),
   ].filter((id): id is string => Boolean(id))
-  let links = new Map<string, SessionLink>()
+  let links: Map<string, SessionLink> | null = new Map<string, SessionLink>()
   let ordersFailure: ReadFailure | null = null
   if (sessionIds.length > 0) {
     try {
       links = await readSessionLinks(scope, sessionIds)
     } catch (err) {
+      links = null
       ordersFailure = toFailure(err, secrets)
       errors.push(sectionError("orders", ordersFailure))
     }
@@ -178,7 +195,7 @@ async function readLive(scope: Scope, now: Date): Promise<Snapshot> {
 async function readDemo(scope: Scope, now: Date, origin: string | null): Promise<Snapshot> {
   const svc = stripeService(scope)
   const o = svc.getOptions()
-  const [orders, regions] = await Promise.all([readDemoOrders(scope, DEMO_ORDERS).catch(() => []), readDemoRegions(scope).catch(() => [])])
+  const [orders, regions] = await Promise.all([readDemoOrders(scope, DEMO_ORDERS, o.demoOrders).catch(() => []), readDemoRegions(scope).catch(() => [])])
   const data = buildDemoData({
     orders,
     now,
@@ -198,6 +215,7 @@ async function readDemo(scope: Scope, now: Date, origin: string | null): Promise
     orders: {
       orderOf: (id) => (id ? (data.sessions.get(id)?.order ?? null) : null),
       cartOf: (id) => (id ? (data.sessions.get(id)?.cartId ?? null) : null),
+      known: (id) => data.sessions.has(id),
     },
   })
   return { mode: "demo", fetchedAt: now.toISOString(), ...rows, coveredFrom: null, errors: [], paymentsFailure: null, ordersFailure: null, keyFailure: null, demo: data }
@@ -209,24 +227,42 @@ export interface SnapshotHit {
   at: number
 }
 
+function snapshotKey(scope: Scope, origin: string | null | undefined): string {
+  const svc = stripeService(scope)
+  const o = svc.getOptions()
+  /* The demo's sample webhook points at this backend, so its snapshot is kept per address. */
+  return svc.isDemo() ? `snapshot:demo:${o.backendUrl ?? origin ?? ""}` : `snapshot:${svc.keyInfo().mode ?? "none"}`
+}
+
 /**
  * The snapshot of the current mode, from the cache while it is fresh. One
  * read at a time; a forced refresh within 30 seconds of the last read is
  * served from the cache. A read that failed for the key is kept for a minute.
+ * `maxAgeMs` lets a caller reuse an older read (the board counters).
  */
-export async function loadSnapshot(scope: Scope, args: { force?: boolean; origin?: string | null; now?: () => Date } = {}): Promise<SnapshotHit> {
+export async function loadSnapshot(scope: Scope, args: { force?: boolean; origin?: string | null; now?: () => Date; maxAgeMs?: number } = {}): Promise<SnapshotHit> {
   const svc = stripeService(scope)
   const o = svc.getOptions()
   const now = args.now ?? (() => new Date())
   const demo = svc.isDemo()
-  /* The demo's sample webhook points at this backend, so its snapshot is kept per address. */
-  const key = demo ? `snapshot:demo:${o.backendUrl ?? args.origin ?? ""}` : `snapshot:${svc.keyInfo().mode ?? "none"}`
-  const hit = await cacheFor(svc).get<Snapshot>(key, () => (demo ? readDemo(scope, now(), args.origin ?? null) : readLive(scope, now())), {
-    ttlMs: o.cacheSeconds * 1000,
+  const hit = await cacheFor(svc).get<Snapshot>(snapshotKey(scope, args.origin), () => (demo ? readDemo(scope, now(), args.origin ?? null) : readLive(scope, now())), {
+    ttlMs: Math.max(o.cacheSeconds * 1000, args.maxAgeMs ?? 0),
     force: args.force,
     forceMinMs: FORCE_REFRESH_MIN_MS,
     errorTtlMs: ERROR_CACHE_MS,
     isFailure: (s) => s.paymentsFailure !== null,
   })
   return { snapshot: hit.value, fresh: hit.fresh, at: hit.at }
+}
+
+/**
+ * The snapshot for an answer that must not come back empty-handed while
+ * Stripe is down: the newest read, or, when that one failed, the last good
+ * one marked `stale`. Null when nothing was ever read.
+ */
+export async function snapshotOrStale(scope: Scope, args: { origin?: string | null; maxAgeMs?: number; now?: () => Date } = {}): Promise<{ snapshot: Snapshot; at: number; stale: boolean } | null> {
+  const hit = await loadSnapshot(scope, args)
+  if (hit.snapshot.paymentsFailure === null) return { snapshot: hit.snapshot, at: hit.at, stale: false }
+  const good = cacheFor(stripeService(scope)).good<Snapshot>(snapshotKey(scope, args.origin))
+  return good ? { snapshot: good.value, at: good.at, stale: true } : null
 }

@@ -1,15 +1,16 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Container, InlineTip, toast } from "@medusajs/ui"
-import type { StripeMode, StripeOverviewResponse, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
+import type { PaymentFilter, StripeMode, StripeOverviewResponse, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
 import { errorMessage, useStripeChecks, useStripeOverview, useStripeRefresh, useStripeStatus } from "../../lib/stripe-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/stripe-guide"
 import { GuideView, usePromptSpec } from "../../lib/stripe-guide-view"
 import { HealthSection, HealthStrip } from "../../lib/stripe-health"
 import { StripeIcon } from "../../lib/stripe-icon"
-import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays } from "../../lib/stripe-panel"
+import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays } from "../../lib/stripe-panel"
 import { AccessTab, ChecksTab, OptionsTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/stripe-settings"
 import { fmtRating, referencesFor } from "../../lib/stripe-ui"
 
@@ -25,6 +26,10 @@ import { fmtRating, referencesFor } from "../../lib/stripe-ui"
  *   the checks and what each one reads, the access the key needs.
  *
  * The plugin only reads: the one action is Refresh, which reads Stripe again.
+ *
+ * Deep links from hosts and boards: `?filter=` picks the payments list
+ * (`/stripe?filter=attention`, `/stripe?filter=disputed` also scrolls to the
+ * open disputes) and `?q=` searches it (`/stripe?q=1042`, an order number).
  */
 
 function scrollToSection(id: string): void {
@@ -45,6 +50,19 @@ const StripePage = () => {
   const checks = useStripeChecks(Boolean(s))
   const [days, setDays] = useState<PeriodDays>(30)
   const o = overview.data
+  const [params] = useSearchParams()
+  const [initialFilter] = useState<PaymentFilter>(() => {
+    const asked = params.get("filter")
+    return asked && (PAYMENT_FILTERS as readonly string[]).includes(asked) ? (asked as PaymentFilter) : "all"
+  })
+  const [initialQuery] = useState(() => (params.get("q") ?? "").slice(0, 100))
+  /* A link to the open disputes lands on them once the panel has its data. */
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (scrolled.current || !o || initialFilter !== "disputed") return
+    scrolled.current = true
+    scrollToSection("stripe-disputes")
+  }, [o, initialFilter])
   const summary = checks.data?.summary
   const healthFirst = Boolean(summary && (summary.fail > 0 || summary.warn > 0 || !configured))
 
@@ -90,7 +108,7 @@ const StripePage = () => {
           {configured && o ? (
             <>
               <MethodsSection overview={o} days={days} lang={lang} />
-              <PaymentsSection overview={o} lang={lang} />
+              <PaymentsSection overview={o} lang={lang} initialFilter={initialFilter} initialQuery={initialQuery} />
               <DisputesSection overview={o} lang={lang} />
               <RefundsSection overview={o} lang={lang} />
               <BalanceSection overview={o} lang={lang} />

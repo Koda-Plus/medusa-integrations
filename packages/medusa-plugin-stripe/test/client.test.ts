@@ -145,3 +145,27 @@ test("the token bucket keeps the pace and the backoff grows", async () => {
   assert.equal(retryAfterMs(null, 0), null)
   assert.equal(retryAfterMs("Wed, 07 Oct 2026 12:00:10 GMT", Date.parse("2026-10-07T12:00:00Z")), 10_000)
 })
+
+test("past the read's deadline no further page and no retry is asked for", async () => {
+  const clock = fakeClock()
+  const page = (id: string, more: boolean) => response(200, { object: "list", data: [{ id }], has_more: more })
+  const s = scripted([page("pi_FixtureA", true), page("pi_FixtureB", true), page("pi_FixtureC", false)])
+  const c = client(s.fetch, clock)
+  /* The first page is always asked for; the budget is spent once it is in. */
+  const first = await c.list<{ id: string }>("/payment_intents", {}, { maxPages: 5, deadline: clock.now() })
+  assert.equal(first.data.length, 1)
+  assert.equal(first.complete, false, "the oldest payments are missing, and the panel says so")
+  /* A refused request is not retried once the budget is spent. */
+  const failing = scripted([response(500, { error: { message: "down" } }), response(200, { object: "balance" })])
+  const late = client(failing.fetch, clock)
+  await assert.rejects(late.get("/balance", undefined, { deadline: clock.now() - 1 }), (e: unknown) => e instanceof StripeApiError && e.kind === "stripe")
+  assert.equal(failing.calls.length, 1)
+})
+
+test("the User-Agent names the version of the package", async () => {
+  const { readFileSync } = await import("node:fs")
+  const version = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version
+  const s = scripted([response(200, { object: "balance" })])
+  await client(s.fetch).get("/balance")
+  assert.equal(s.calls[0].headers["User-Agent"], `KodaPlus-MedusaPluginStripe/${version} (+https://koda.plus)`)
+})

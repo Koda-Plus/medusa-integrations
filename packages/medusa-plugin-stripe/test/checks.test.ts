@@ -28,8 +28,13 @@ import { NOW, account, daysAgo, domain, endpoint, event, hoursAgo, methodConfig,
 const dashboard = new DashboardLinks("live")
 const IDS = providerIds("stripe")
 
-function facts(list: ReturnType<typeof pi>[], orders: Record<string, string> = {}): PaymentFacts[] {
-  const ctx = { dashboard, orders: { orderOf: (s: string | null | undefined) => (s && orders[s] ? { id: orders[s], displayId: 1 } : null) }, demo: false }
+/** Payment facts as the snapshot builds them; sessions in `foreign` are unknown to this Medusa. */
+function facts(list: ReturnType<typeof pi>[], orders: Record<string, string> = {}, foreign: string[] = []): PaymentFacts[] {
+  const ctx = {
+    dashboard,
+    orders: { orderOf: (s: string | null | undefined) => (s && orders[s] ? { id: orders[s], displayId: 1 } : null), known: (s: string) => !foreign.includes(s) },
+    demo: false,
+  }
   return list.map((p) => normalizePaymentIntent(p, ctx)!.facts)
 }
 
@@ -158,6 +163,17 @@ test("deliveries: none, a few retrying, a lost payment_intent.succeeded; the gra
   const lost = checkDeliveries(healthy({ failedEvents: [event("payment_intent.succeeded", hoursAgo(1)), event("payment_intent.payment_failed", hoursAgo(3))] }))
   assert.equal(lost.verdict, "fail")
   assert.equal(lost.params.succeeded, 1)
+  /* Stripe does not say which endpoint failed: with another listener on the account it may be that service's. */
+  const shared = checkDeliveries(
+    healthy({
+      endpoints: [endpoint(), endpoint({ url: "https://erp.example/stripe", enabled_events: ["payment_intent.succeeded"] })],
+      failedEvents: [event("payment_intent.succeeded", hoursAgo(1))],
+    }),
+  )
+  assert.equal(shared.verdict, "warn")
+  assert.equal(shared.code, "succeededShared")
+  /* Without the endpoints there is nothing to blame this Medusa with. */
+  assert.equal(checkDeliveries(healthy({ endpoints: null, failedEvents: [event("payment_intent.succeeded", hoursAgo(1))] })).verdict, "warn")
   /* Events of the last minutes may simply not have been sent yet; events older than a day are out of the window. */
   const quiet = checkDeliveries(healthy({ failedEvents: [event("payment_intent.succeeded", new Date(NOW.getTime() - 60_000)), event("payment_intent.succeeded", hoursAgo(30))] }))
   assert.equal(quiet.verdict, "pass")
@@ -226,6 +242,58 @@ test("orphans: a payment that succeeded without an order fails, within the windo
   assert.equal(checkOrphans(healthy({ payments: fine })).verdict, "pass")
   /* When Medusa could not match payments to orders, nothing is called an orphan. */
   assert.equal(checkOrphans(healthy({ payments: facts([orphan]), ordersFailure: { error: "db down", status: null, kind: "unknown", permission: null } })).verdict, "unknown")
+  /* The advice is to look, never to refund. */
+  assert.equal(found.hint, "check")
+})
+
+test("orphans: another Medusa on the same Stripe account is information, a replaced session is nothing", () => {
+  const other = pi({ amount: 4_900, sessionId: "payses_staging", created: hoursAgo(3) })
+  const replaced = pi({ amount: 4_900, sessionId: "payses_switched", status: "canceled", created: hoursAgo(3) })
+  const list = facts([other, replaced], {}, ["payses_staging", "payses_switched"])
+  assert.equal(list[0].session, "foreign")
+  assert.equal(list[1].session, "replaced")
+  const r = checkOrphans(healthy({ payments: list }))
+  assert.equal(r.verdict, "info")
+  assert.equal(r.code, "foreign")
+  assert.equal(r.params.count, 1)
+  assert.equal(r.items[0].tone, "grey")
+  /* A known orphan next to it still fails, and only the known one is counted. */
+  const mixed = checkOrphans(healthy({ payments: [...list, ...facts([pi({ amount: 1_000, sessionId: "payses_ours", created: hoursAgo(2) })])] }))
+  assert.equal(mixed.verdict, "fail")
+  assert.equal(mixed.params.count, 1)
+})
+
+test("a store that does not sell in PLN gets no Polish warnings: settlement, BLIK, Przelewy24, capture", () => {
+  const eur = healthy({
+    regions: [{ id: "reg_FixtureDE", name: "Deutschland", currency: "eur", providers: [IDS.card] }],
+    payments: facts([pi({ amount: 10_000, currency: "eur", sessionId: "payses_de", created: hoursAgo(5) })], { payses_de: "order_FixtureDE" }),
+    account: account({ country: "DE", default_currency: "eur", capabilities: { card_payments: "active", blik_payments: "inactive", p24_payments: "inactive" } }),
+    balanceCurrencies: ["eur"],
+  })
+  assert.equal(checkAccount(eur).verdict, "pass")
+  const caps = checkCapabilities(eur)
+  assert.equal(caps.verdict, "pass")
+  assert.equal(caps.code, "activeNoPln")
+  assert.equal(checkCapture(eur).code, "notApplicable")
+  assert.equal(checkRegions(eur).code, "noPln")
+  /* The same account in a store with a PLN region still warns. */
+  const pln = healthy({ account: account({ default_currency: "eur", capabilities: { card_payments: "active", blik_payments: "inactive", p24_payments: "active" } }), balanceCurrencies: ["eur"] })
+  assert.equal(checkAccount(pln).code, "currency")
+  assert.equal(checkCapabilities(pln).code, "inactive")
+  /* Without the regions, PLN payments decide; without either, the checks judge as before. */
+  assert.equal(checkCapabilities(healthy({ regions: null, payments: null, account: account({ capabilities: { card_payments: "active", blik_payments: "inactive", p24_payments: "active" } }) })).code, "inactive")
+})
+
+test("an error inside a check reaches the admin masked", () => {
+  const broken = healthy({ secrets: ["rk_live_FAKEsecretValue1234"] })
+  Object.defineProperty(broken, "domains", {
+    get() {
+      throw new Error("boom with rk_live_FAKEsecretValue1234 inside")
+    },
+  })
+  const r = runChecks(broken).find((x) => x.key === "domains")!
+  assert.equal(r.verdict, "unknown")
+  assert.ok(r.error && !r.error.includes("FAKEsecretValue1234"), r.error ?? "")
 })
 
 test("summaries: the worst verdict wins", () => {

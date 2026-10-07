@@ -6,6 +6,7 @@
  * refunds expanded; the disputes of the payment come from a second read only
  * when the charge says it is disputed.
  */
+import { newestRefundFailed } from "./attention"
 import type { OrderPaymentDto, OrderLinkDto } from "./contract"
 import type { DashboardLinks } from "./dashboard"
 import type { ReadFailure } from "./errors"
@@ -23,7 +24,8 @@ export function orderPaymentFrom(args: {
   demo: boolean
   now: Date
 }): OrderPaymentDto {
-  const orders = { orderOf: () => args.order, cartOf: () => null }
+  /* The payment came from this order's own record in Medusa: its session is this Medusa's. */
+  const orders = { orderOf: () => args.order, cartOf: () => null, known: () => true }
   const ctx = { dashboard: args.dashboard, orders, demo: args.demo }
   const n = normalizePaymentIntent(args.pi, ctx)
   const charge = chargeOf(args.pi)
@@ -35,6 +37,7 @@ export function orderPaymentFrom(args: {
   const disputes = sortDisputes(
     args.disputes.map((d) => normalizeDispute(d, { ...ctx, now: args.now, methodOf: () => n?.row.method ?? null })).filter((d): d is NonNullable<typeof d> => d !== null),
   )
+  const row = n ? { ...n.row, disputeOpen: disputes.some((d) => d.open), refundFailed: newestRefundFailed(refunds).has(n.row.id) } : null
   return {
     id: String(args.pi.id ?? ""),
     providerId: args.providerId,
@@ -42,7 +45,7 @@ export function orderPaymentFrom(args: {
     problem: n ? null : "error",
     problemMessage: n ? null : "Stripe sent a payment without an amount.",
     permission: null,
-    payment: n?.row ?? null,
+    payment: row,
     feeDetails: (bt?.fee_details ?? [])
       .map((f) => {
         const amount = money(f?.amount, f?.currency)
@@ -57,19 +60,27 @@ export function orderPaymentFrom(args: {
       ? { type: charge.outcome.type ?? null, sellerMessage: charge.outcome.seller_message ?? null, riskScore: typeof charge.outcome.risk_score === "number" ? charge.outcome.risk_score : null }
       : null,
     livemode: typeof args.pi.livemode === "boolean" ? args.pi.livemode : null,
+    readAt: null,
+    stale: false,
   }
 }
 
-/** A PaymentIntent the plugin could not read, with the reason the widget shows. */
-export function unreadPayment(id: string, providerId: string | null, failure: ReadFailure | "unconfigured"): OrderPaymentDto {
-  const problem: OrderPaymentDto["problem"] = failure === "unconfigured" ? "unconfigured" : failure.kind === "not_found" ? "not_found" : failure.kind === "permission" ? "forbidden" : "error"
+/**
+ * A PaymentIntent the plugin could not read, with the reason the widget shows.
+ * "skipped": not read for this answer (a summary of many orders reads only a
+ * few payments from Stripe; the rest come from what the cache holds).
+ */
+export function unreadPayment(id: string, providerId: string | null, failure: ReadFailure | "unconfigured" | "skipped"): OrderPaymentDto {
+  const problem: OrderPaymentDto["problem"] =
+    failure === "unconfigured" || failure === "skipped" ? failure : failure.kind === "not_found" ? "not_found" : failure.kind === "permission" ? "forbidden" : "error"
+  const read = typeof failure === "object" ? failure : null
   return {
     id,
     providerId,
     found: false,
     problem,
-    problemMessage: failure === "unconfigured" ? null : failure.error,
-    permission: failure === "unconfigured" ? null : failure.permission,
+    problemMessage: read ? read.error : null,
+    permission: read ? read.permission : null,
     payment: null,
     feeDetails: [],
     exchangeRate: null,
@@ -78,5 +89,7 @@ export function unreadPayment(id: string, providerId: string | null, failure: Re
     disputes: [],
     outcome: null,
     livemode: null,
+    readAt: null,
+    stale: false,
   }
 }

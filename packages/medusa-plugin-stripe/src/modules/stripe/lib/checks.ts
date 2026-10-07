@@ -10,27 +10,31 @@
  *   account       country, default currency, charges and payouts enabled, requirements due
  *   capabilities  card_payments, blik_payments, p24_payments active, and shown at checkout
  *   webhook       an endpoint at this backend's /hooks/payment/stripe_<id> (webhooks.ts)
- *   deliveries    webhook deliveries that failed in the last 24 hours
+ *   deliveries    webhook deliveries of the account that failed in the last 24 hours
  *   domains       payment method domains for Apple Pay and Google Pay
  *   regions       PLN regions offer BLIK and Przelewy24
  *   capture       automatic capture where the Payment Element should offer BLIK and Przelewy24
- *   orphans       payments that succeeded in Stripe while their cart never became an order
+ *   orphans       payments of this Medusa's checkout that succeeded while their cart never became an order
+ *
+ * The Polish parts (PLN settlement, BLIK, Przelewy24, their capture mode)
+ * judge only a store that sells in PLN: a region in PLN, or PLN payments.
  *
  * Verdicts: pass, warn (works, but something is off), fail (costs payments
  * or orders now), info (worth knowing), off (turned off in the options),
  * unknown (could not be read: the error and the missing permission are kept).
  */
-import { CHECK_KEYS, DELIVERY_GRACE_MINUTES, DELIVERY_WINDOW_HOURS, EVENT_SUCCEEDED, ORPHAN_GRACE_MINUTES, ORPHAN_WINDOW_DAYS, PROVIDER_IDENTIFIERS } from "./constants"
+import { isOrphan } from "./attention"
+import { CHECK_KEYS, DELIVERY_GRACE_MINUTES, DELIVERY_WINDOW_HOURS, EVENT_SUCCEEDED, ORPHAN_WINDOW_DAYS, PROVIDER_IDENTIFIERS } from "./constants"
 import type { CheckItemDto, CheckKey, CheckResultDto, HealthSummaryDto, KeyInfoDto, MethodKey, OrderLinkDto, Verdict } from "./contract"
 import type { DashboardLinks } from "./dashboard"
 import { isFailure, type ReadFailure } from "./errors"
 import type { PaymentFacts } from "./normalize"
+import { maskSecrets } from "./security"
 import type { RawAccount, RawEvent, RawPaymentMethodConfiguration, RawPaymentMethodDomain, RawWebhookEndpoint } from "./stripe-types"
-import { checkWebhook, type CaptureMode } from "./webhooks"
+import { checkWebhook, listensTo, matchEndpoints, type CaptureMode } from "./webhooks"
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
-const DAY = 24 * HOUR
 
 export type Read<T> = T | ReadFailure | null
 
@@ -73,6 +77,22 @@ export interface ChecksInput {
   /** Recent Medusa payment sessions of the Stripe providers, by the mode of their PaymentIntent. */
   sessionModes: { live: number; test: number } | null
   dashboard: DashboardLinks
+  /** Masked out of any error text (the key). */
+  secrets?: readonly string[]
+}
+
+/**
+ * Whether the store sells in PLN: a region in PLN, or PLN payments of this
+ * Medusa in the read. Null when neither could be read (the Polish checks then
+ * judge as before).
+ */
+export function sellsInPln(input: Pick<ChecksInput, "regions" | "payments">): boolean | null {
+  const regions = input.regions && !isFailure(input.regions) ? input.regions : null
+  const payments = input.payments && !isFailure(input.payments) ? input.payments : null
+  if (regions?.some((r) => r.currency === "pln")) return true
+  if (payments?.some((p) => p.sessionId && p.currency === "pln")) return true
+  if (regions && regions.length > 0) return false
+  return payments && payments.some((p) => p.sessionId) ? false : null
 }
 
 type Draft = Omit<CheckResultDto, "key" | "demo">
@@ -145,7 +165,7 @@ export function checkKey(input: Pick<ChecksInput, "key" | "keyFailure" | "sessio
   return draft("pass", key.last4 ? "restricted" : "restrictedPlain", { params })
 }
 
-export function checkAccount(input: Pick<ChecksInput, "account" | "balanceCurrencies" | "dashboard">): Draft {
+export function checkAccount(input: Pick<ChecksInput, "account" | "balanceCurrencies" | "dashboard"> & Partial<Pick<ChecksInput, "regions" | "payments">>): Draft {
   if (input.account === null || isFailure(input.account)) return unknown(isFailure(input.account) ? input.account : null)
   const a = input.account
   const country = String(a.country ?? "").toUpperCase()
@@ -167,6 +187,8 @@ export function checkAccount(input: Pick<ChecksInput, "account" | "balanceCurren
     const deadline = typeof a.requirements?.current_deadline === "number" ? new Date(a.requirements.current_deadline * 1000).toISOString() : ""
     return draft("warn", "requirementsDue", { params: { ...params, count: due, deadline }, hint: "finishOnboarding", link: account, items })
   }
+  /* PLN settlement and the Polish methods matter only to a store that sells in PLN. */
+  if (sellsInPln({ regions: input.regions ?? null, payments: input.payments ?? null }) === false) return draft("pass", "ready", { params, items })
   const plnSettles = (input.balanceCurrencies ?? []).includes("pln")
   if (currency && currency !== "pln" && !plnSettles) {
     return draft("warn", "currency", { params, hint: "plnAccount", link: { kind: "stripe", url: input.dashboard.payoutSettings() }, items })
@@ -187,7 +209,7 @@ function shown(config: RawPaymentMethodConfiguration | null, method: string): "o
   return value === "on" || value === "off" ? value : null
 }
 
-export function checkCapabilities(input: Pick<ChecksInput, "account" | "methodConfigs" | "dashboard">): Draft {
+export function checkCapabilities(input: Pick<ChecksInput, "account" | "methodConfigs" | "dashboard"> & Partial<Pick<ChecksInput, "regions" | "payments">>): Draft {
   if (input.account === null || isFailure(input.account)) return unknown(isFailure(input.account) ? input.account : null)
   const caps = input.account.capabilities ?? {}
   const config = input.methodConfigs && !isFailure(input.methodConfigs) ? defaultMethodConfig(input.methodConfigs) : null
@@ -210,6 +232,12 @@ export function checkCapabilities(input: Pick<ChecksInput, "account" | "methodCo
   const card = rows[0]
   if (rows.slice(0, 3).every((r) => r.capability === null) && !config) return draft("info", "notReported", { hint: "checkDashboard", link, items })
   if (card.capability !== null && card.capability !== "active") return draft("fail", "cardInactive", { params: { state: card.capability }, hint: "enableMethods", link, items })
+  if (sellsInPln({ regions: input.regions ?? null, payments: input.payments ?? null }) === false) {
+    /* BLIK and Przelewy24 take PLN only: a store that does not sell in PLN needs neither. */
+    const hiddenHere = rows.filter((r) => r.method !== "blik" && r.method !== "p24" && r.shown === "off").map((r) => r.method)
+    if (hiddenHere.length > 0) return draft("warn", "hidden", { params: { methods: hiddenHere.join(",") }, hint: "turnOn", link, items })
+    return draft("pass", "activeNoPln", { items })
+  }
   const local = rows.slice(1, 3)
   const pending = local.filter((r) => r.capability === "pending").map((r) => r.method)
   const inactive = local.filter((r) => r.capability !== null && r.capability !== "active" && r.capability !== "pending").map((r) => r.method)
@@ -220,7 +248,13 @@ export function checkCapabilities(input: Pick<ChecksInput, "account" | "methodCo
   return draft("pass", "active", { items })
 }
 
-export function checkDeliveries(input: Pick<ChecksInput, "failedEvents" | "now" | "dashboard">): Draft {
+/**
+ * Failed deliveries of the whole Stripe account: Stripe does not say which
+ * endpoint an event failed for. A failed payment_intent.succeeded is a fail
+ * only when this Medusa's endpoint is the one endpoint listening to it; with
+ * other listeners (another service on the account) it may be theirs, a warn.
+ */
+export function checkDeliveries(input: Pick<ChecksInput, "failedEvents" | "now" | "dashboard"> & Partial<Pick<ChecksInput, "endpoints" | "backendHosts" | "providerId">>): Draft {
   if (input.failedEvents === null || isFailure(input.failedEvents)) return unknown(isFailure(input.failedEvents) ? input.failedEvents : null)
   const now = input.now.getTime()
   const recent = input.failedEvents.filter((e) => {
@@ -236,7 +270,13 @@ export function checkDeliveries(input: Pick<ChecksInput, "failedEvents" | "now" 
   }))
   const succeeded = recent.filter((e) => e.type === EVENT_SUCCEEDED).length
   const link = { kind: "stripe" as const, url: input.dashboard.webhooks() }
-  if (succeeded > 0) return draft("fail", "succeeded", { params: { count: recent.length, succeeded }, hint: "fixEndpoint", link, items })
+  if (succeeded > 0) {
+    const endpoints = input.endpoints && !isFailure(input.endpoints) ? input.endpoints : null
+    const listeners = (endpoints ?? []).filter((e) => e.status === "enabled" && listensTo(Array.isArray(e.enabled_events) ? e.enabled_events.filter((x): x is string => typeof x === "string") : [], EVENT_SUCCEEDED))
+    const medusa = matchEndpoints(listeners, { backendHosts: input.backendHosts ?? [], providerId: input.providerId ?? "stripe" }).filter((m) => m.hostMatch !== false)
+    if (listeners.length === 1 && medusa.length === 1) return draft("fail", "succeeded", { params: { count: recent.length, succeeded }, hint: "fixEndpoint", link, items })
+    return draft("warn", "succeededShared", { params: { count: recent.length, succeeded }, hint: "checkEndpoint", link, items })
+  }
   return draft("warn", "some", { params: { count: recent.length }, hint: "checkEndpoint", link, items })
 }
 
@@ -373,6 +413,7 @@ export function separateProviders(regions: Read<RegionFacts[]>, providerId: stri
 
 export function checkCapture(input: Pick<ChecksInput, "payments" | "regions" | "providerId">): Draft {
   if (input.payments === null || isFailure(input.payments)) return unknown(isFailure(input.payments) ? input.payments : null)
+  if (sellsInPln(input) === false) return draft("info", "notApplicable")
   const own = input.payments.filter((p) => p.sessionId && p.currency === "pln")
   if (own.length === 0) return draft("info", "noData")
   const manualElement = own.filter((p) => p.automatic && p.captureMethod === "manual")
@@ -382,21 +423,29 @@ export function checkCapture(input: Pick<ChecksInput, "payments" | "regions" | "
   return draft("warn", "manual", { params: { count: manualElement.length }, hint: "captureTrue", items })
 }
 
+/**
+ * Paid without an order: only sessions this Medusa knows (lib/attention.ts).
+ * Succeeded payments of another Medusa on the same account are named apart,
+ * as information: they are someone else's checkout, never a refund to make.
+ */
 export function checkOrphans(input: Pick<ChecksInput, "payments" | "ordersFailure" | "now" | "orderOf" | "dashboard">): Draft {
   if (input.payments === null || isFailure(input.payments)) return unknown(isFailure(input.payments) ? input.payments : null)
   if (input.ordersFailure) return unknown(input.ordersFailure)
   const now = input.now.getTime()
-  const orphans = input.payments.filter((p) => p.status === "succeeded" && p.sessionId && !p.orderId && p.created >= now - ORPHAN_WINDOW_DAYS * DAY && p.created <= now - ORPHAN_GRACE_MINUTES * MINUTE)
-  if (orphans.length === 0) return draft("pass", "none", { params: { days: ORPHAN_WINDOW_DAYS } })
-  const items: CheckItemDto[] = orphans.slice(0, 10).map((p) => ({
+  const facts = (p: PaymentFacts) => ({ status: p.status, session: p.session, hasOrder: Boolean(p.orderId), createdMs: p.created })
+  const orphans = input.payments.filter((p) => isOrphan(facts(p), now))
+  const item = (p: PaymentFacts, tone: CheckItemDto["tone"]): CheckItemDto => ({
     label: p.id,
     money: { amount: p.amount, currency: p.currency },
     at: new Date(p.created).toISOString(),
     value: p.cartId,
     url: input.dashboard.payment(p.id),
-    tone: "red",
-  }))
-  return draft("fail", "found", { params: { count: orphans.length, days: ORPHAN_WINDOW_DAYS }, hint: "completeOrRefund", items })
+    tone,
+  })
+  if (orphans.length > 0) return draft("fail", "found", { params: { count: orphans.length, days: ORPHAN_WINDOW_DAYS }, hint: "check", items: orphans.slice(0, 10).map((p) => item(p, "red")) })
+  const foreign = input.payments.filter((p) => isOrphan({ ...facts(p), session: p.session === "foreign" ? "known" : null }, now))
+  if (foreign.length > 0) return draft("info", "foreign", { params: { count: foreign.length, days: ORPHAN_WINDOW_DAYS }, hint: "foreign", items: foreign.slice(0, 10).map((p) => item(p, "grey")) })
+  return draft("pass", "none", { params: { days: ORPHAN_WINDOW_DAYS } })
 }
 
 /* ------------------------------------------------------------------ */
@@ -432,7 +481,7 @@ export function runChecks(input: ChecksInput): CheckResultDto[] {
     try {
       return { key, demo: input.demo, ...run[key]() }
     } catch (err) {
-      return { key, demo: input.demo, ...draft("unknown", "notRead", { error: err instanceof Error ? err.message : String(err) }) }
+      return { key, demo: input.demo, ...draft("unknown", "notRead", { error: maskSecrets(err instanceof Error ? err.message : String(err), input.secrets ?? []) }) }
     }
   })
 }
