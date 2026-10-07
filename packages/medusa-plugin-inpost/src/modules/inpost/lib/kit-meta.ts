@@ -3,7 +3,7 @@
 export const KIT_META = {
   ns: "inpost",
   pkg: "@koda-plus/medusa-plugin-inpost",
-  version: "0.1.0",
+  version: "0.2.0",
   kit: "1.0.0",
   name: "InPost",
 } as const

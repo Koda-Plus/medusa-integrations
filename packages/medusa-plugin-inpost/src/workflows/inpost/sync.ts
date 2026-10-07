@@ -4,11 +4,14 @@
  *
  *   1. creates that never finished (the process died) become `unknown`
  *   2. `unknown` rows are looked up in ShipX (never sent again blindly)
- *   3. open shipments are read again, the oldest read first, at most 100 a
- *      pass and each at most every 25 minutes; shipments in a final status
- *      or older than `pollMaxAgeDays` are left alone
+ *   3. open shipments are read again, the never read and the oldest read
+ *      first, at most 100 a pass and each at most every 25 minutes; the
+ *      database picks them (final statuses and shipments older than
+ *      `pollMaxAgeDays` never fill the batch, however many there are)
  *   4. with the shipment writer armed and `autoCreate`: pending rows without
- *      problems are created, and confirmed courier pickups are ordered
+ *      problems, recorded after the writer was armed and within
+ *      `autoCreateMaxAgeHours`, are created (never a backlog), and confirmed
+ *      courier pickups are ordered
  *   5. the fulfillment status writer catches up on what it missed
  *   6. the history keeps 120 days
  *
@@ -19,11 +22,11 @@
 import { EVENTS_RETENTION_DAYS, SYNC_BATCH, SYNC_EVERY_MS } from "../../modules/inpost/lib/constants"
 import type { ParcelRow } from "../../modules/inpost/lib/dto"
 import { canCallShipx } from "../../modules/inpost/lib/options"
-import { isFinalStatus, isPickedUp } from "../../modules/inpost/lib/statuses"
+import { FINAL_STATUSES, isPickedUp } from "../../modules/inpost/lib/statuses"
 import { DEMO_SEED_ACTOR } from "../../modules/inpost/lib/demo"
 import { ensureDemoSeed } from "./demo"
 import { createShipment, lookupUnknown, refreshParcel, requestPickup } from "./parcels"
-import { exclusive, inpostService, isArmed, listParcels, recordEvent, storeFor, type Scope } from "./runtime"
+import { exclusive, inpostService, isArmed, listParcels, recordEvent, storeFor, writerStates, type Scope } from "./runtime"
 import { syncFulfillmentStatus } from "./status-writer"
 
 export interface SyncStats {
@@ -39,10 +42,20 @@ export interface SyncStats {
   skipped?: string
 }
 
-const ms = (v: Date | string | null | undefined): number => {
-  if (!v) return 0
-  const t = new Date(v).getTime()
-  return Number.isFinite(t) ? t : 0
+/**
+ * The open shipments due for a read, chosen by the database: created, with a
+ * shipment id, not in a final status, younger than `maxAge`, not read since
+ * `readBefore`. Shipments never read come first, then the oldest read.
+ */
+export function dueForReadFilter(demo: boolean, maxAge: Date, readBefore: Date | null): Record<string, unknown> {
+  const and: Array<Record<string, unknown>> = [
+    { $or: [{ status: null }, { status: { $nin: [...FINAL_STATUSES] } }] },
+    { $or: [{ shipment_created_at: { $gte: maxAge } }, { shipment_created_at: null, created_at: { $gte: maxAge } }] },
+  ]
+  if (readBefore) and.push({ $or: [{ last_checked_at: null }, { last_checked_at: { $lte: readBefore } }] })
+  /* Demo: the sample shipments keep their story; only shipments a person created move on. */
+  if (demo) and.push({ $or: [{ created_by: null }, { created_by: { $ne: DEMO_SEED_ACTOR } }] })
+  return { demo, state: "created", shipment_id: { $ne: null }, $and: and }
 }
 
 /** The pass. Null when one already runs in this process. */
@@ -77,15 +90,16 @@ export async function runSync(scope: Scope, trigger: "schedule" | "manual"): Pro
       }
     }
 
-    const maxAge = Date.now() - o.pollMaxAgeDays * 24 * 3600 * 1000
-    const open = (await listParcels(svc, { demo, state: "created" }, { take: SYNC_BATCH * 3, order: { last_checked_at: "ASC" } })).filter(
-      (r) =>
-        r.shipment_id &&
-        !isFinalStatus(r.status) &&
-        ms(r.shipment_created_at ?? r.created_at) >= maxAge &&
-        (trigger === "manual" || Date.now() - ms(r.last_checked_at) >= SYNC_EVERY_MS) &&
-        (!demo || r.created_by !== DEMO_SEED_ACTOR),
-    )
+    const maxAge = new Date(Date.now() - o.pollMaxAgeDays * 24 * 3600 * 1000)
+    const readBefore = trigger === "manual" ? null : new Date(Date.now() - SYNC_EVERY_MS)
+    const filter = dueForReadFilter(demo, maxAge, readBefore)
+    const neverRead = await listParcels(svc, { ...filter, last_checked_at: null }, { take: SYNC_BATCH, order: { created_at: "ASC" } })
+    const open = [
+      ...neverRead,
+      ...(neverRead.length < SYNC_BATCH
+        ? (await listParcels(svc, filter, { take: SYNC_BATCH, order: { last_checked_at: "ASC" } })).filter((r) => !neverRead.some((n) => n.id === r.id))
+        : []),
+    ]
     if (o.pollEnabled || trigger === "manual" || demo) {
       for (const row of open.slice(0, SYNC_BATCH)) {
         try {
@@ -99,7 +113,10 @@ export async function runSync(scope: Scope, trigger: "schedule" | "manual"): Pro
     }
 
     if (o.autoCreate && (await isArmed(svc, "shipment"))) {
-      const pending = (await listParcels(svc, { demo, state: "pending" }, { take: 10, order: { created_at: "ASC" } })).filter((r) => !r.problems || r.problems.length === 0)
+      /* Never a backlog: only rows recorded after the writer was armed and within autoCreateMaxAgeHours. */
+      const armedAt = (await writerStates(svc)).shipment.updatedAt
+      const since = Math.max(Date.now() - o.autoCreateMaxAgeHours * 3600 * 1000, armedAt ? new Date(armedAt).getTime() || 0 : 0)
+      const pending = await listParcels(svc, { demo, state: "pending", problems: null, created_at: { $gte: new Date(since) } }, { take: 10, order: { created_at: "ASC" } })
       for (const row of pending) {
         try {
           const after = await createShipment(scope, row.id, { actor: "system", trigger: "auto" })

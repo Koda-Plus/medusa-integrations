@@ -164,7 +164,8 @@ export function createShipxClient(opts: ShipxClientOptions): ShipxClient {
         parsed.error ?? parsed.key ?? `http_${res.status}`,
         mask(parsed.message ?? (text.slice(0, 300) || `HTTP ${res.status}`)),
         parsed.details ?? null,
-        transient && method !== "GET",
+        /* An answer that never came is unclear; a 429 is a clear "not taken". */
+        res.status >= 500 && method !== "GET",
       )
       opts.logger?.warn(`[inpost] ShipX ${method} ${path.split("?")[0]}: ${res.status} ${last.code}`)
       if (transient && attempt < retries) {

@@ -63,7 +63,8 @@ export const RETURNED_STATUSES: readonly string[] = ["returned_to_sender", "take
 const RETURNED: ReadonlySet<string> = new Set(RETURNED_STATUSES)
 
 /** Statuses that end the tracking: the status pass stops reading the shipment. */
-const FINAL: ReadonlySet<string> = new Set(["delivered", "returned_to_sender", "canceled", "return_pickup_confirmation_to_sender"])
+export const FINAL_STATUSES: readonly string[] = ["delivered", "returned_to_sender", "canceled", "return_pickup_confirmation_to_sender"]
+const FINAL: ReadonlySet<string> = new Set(FINAL_STATUSES)
 
 export function shipmentStage(status: string | null | undefined): ShipmentStage {
   if (!status) return "preparing"

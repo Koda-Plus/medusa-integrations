@@ -154,6 +154,7 @@ const parcelPath = (id: string, action: string) => `/admin/inpost/parcels/${enco
 export const useInpostSync = () => usePost<{ started: boolean; alreadyRunning: boolean }>(() => "/admin/inpost/sync")
 export const useInpostCheck = () => usePost<{ result: CheckResult }>(() => "/admin/inpost/check")
 export const useInpostDemoReset = () => usePost<StatusResponse>(() => "/admin/inpost/demo/reset")
+export const useInpostDemoSeed = () => usePost<StatusResponse>(() => "/admin/inpost/demo/seed")
 export const useInpostWriter = () => usePost<StatusResponse, { writer: WriterKey; on: boolean }>(() => "/admin/inpost/writers", (v) => v)
 export const useInpostSettings = () => usePost<StatusResponse, Record<string, unknown>>(() => "/admin/inpost/settings", (v) => v)
 export const useInpostPickup = () => usePost<{ dispatchOrderId: string | null; parcels: number }, { ids?: string[] }>(() => "/admin/inpost/pickup", (v) => v)

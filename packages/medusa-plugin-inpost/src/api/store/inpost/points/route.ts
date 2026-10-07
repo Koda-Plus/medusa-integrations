@@ -25,10 +25,13 @@ function limiter(perMinute: number): RateLimiter {
   return (holder[LIMITER_KEY] as { limiter: RateLimiter }).limiter
 }
 
+/**
+ * The client address as Medusa resolved it (Express `trust proxy`), never the
+ * first X-Forwarded-For value, which the client writes itself: a new value
+ * per request would make the limit endless.
+ */
 function clientIp(req: MedusaRequest): string {
-  const forwarded = req.headers["x-forwarded-for"]
-  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "").split(",")[0].trim()
-  return first || req.ip || req.socket?.remoteAddress || "unknown"
+  return req.ip || req.socket?.remoteAddress || "unknown"
 }
 
 const one = (v: unknown): string => {

@@ -130,7 +130,7 @@ test("a fulfillment records the choice and the cash on delivery amount, and send
   assert.equal(eur.data.inpost_cod_amount, null)
   assert.deepEqual(readFulfillmentData(res.data)?.spec.id, "inpost-paczkomat-cod")
   assert.deepEqual(await p.cancelFulfillment({}), {})
-  assert.deepEqual(await p.createReturnFulfillment({}), { data: {}, labels: [] })
+  await assert.rejects(() => p.createReturnFulfillment({}), /returns are not supported/, "a return on the InPost provider is refused, never an empty success")
 })
 
 test("documents: the label of a fulfillment with a shipment id; a generated PDF in demo mode", async () => {

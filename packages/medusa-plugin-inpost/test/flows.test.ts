@@ -299,3 +299,28 @@ test("the status pass skips everything while InPost is not configured, and recor
   await runSync(live.container, "schedule")
   assert.equal(live.events.rows.filter((e) => e.kind === "run").length, 1)
 })
+
+test("the status pass picks open shipments in the database: 400 delivered parcels never starve the one still on its way", async () => {
+  const s = setup(LIVE, [])
+  const base = { demo: false, option_id: "paczkomat", kind: "locker", cod: false, service: "inpost_locker_standard", locker_code: "KSP01M", parcel_size: "small", currency: "PLN", external: false, attempts: 0, state: "created" }
+  const old = new Date(Date.now() - 3 * 3600 * 1000)
+  for (let i = 0; i < 400; i++) {
+    s.parcels.insert({ ...base, order_id: `order_done_${i}`, fulfillment_id: `ful_done_${i}`, parcel_no: 1, status: "delivered", shipment_id: String(1000 + i), shipment_created_at: old, last_checked_at: new Date(Date.now() - 10 * 24 * 3600 * 1000) })
+  }
+  s.parcels.insert({ ...base, order_id: "order_open", fulfillment_id: "ful_open", parcel_no: 1, status: "dispatched_by_sender", shipment_id: "5000", shipment_created_at: old, last_checked_at: old })
+  s.fake.shipments.set("5000", { id: 5000, status: "out_for_delivery", tracking_number: "9".repeat(24), service: "inpost_locker_standard", reference: "1042-1" })
+  const stats = await runSync(s.container, "schedule")
+  assert.equal(stats?.read, 1)
+  assert.equal(s.parcels.rows.find((r) => r.shipment_id === "5000")?.status, "out_for_delivery")
+})
+
+test("autoCreate never takes a backlog: only rows recorded after arming and within autoCreateMaxAgeHours", async () => {
+  const s = setup({ ...LIVE, autoCreate: true, autoCreateMaxAgeHours: 48 }, [withFulfillment(order(), { inpost_option: "inpost-paczkomat", type: "paczkomat", cod: false, machine_id: "KSP01M" }, FUL)])
+  const base = { demo: false, option_id: "paczkomat", kind: "locker", cod: false, service: "inpost_locker_standard", locker_code: "KSP01M", parcel_size: "small", currency: "PLN", external: false, attempts: 0, state: "pending", problems: null }
+  s.parcels.insert({ ...base, order_id: order().id, fulfillment_id: "ful_old", parcel_no: 1, created_at: new Date(Date.now() - 5 * 24 * 3600 * 1000) })
+  await arm(s, "shipment")
+  const stats = await runSync(s.container, "schedule")
+  assert.equal(stats?.created, 0)
+  assert.equal(s.parcels.rows.find((r) => r.fulfillment_id === "ful_old")?.state, "pending")
+  assert.equal(s.fake.calls.filter((c) => c.method === "POST").length, 0, "no shipment for a row older than the arming")
+})

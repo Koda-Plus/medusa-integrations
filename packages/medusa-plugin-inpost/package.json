@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-inpost",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "InPost by Koda Plus: Paczkomat parcel lockers and InPost courier for Medusa, with cash on delivery, on the InPost ShipX API. A fulfillment provider with four options, shipments created only from a plan you read first (off by default), PDF labels through the backend, tracking, webhooks with a fallback poll, events for other plugins, a locker search for the admin and the storefront, and a demo mode.",
   "author": {
     "name": "Koda Plus",

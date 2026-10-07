@@ -7,7 +7,6 @@ import { describeError, InpostApiError } from "../../../modules/inpost/lib/error
 import { IN_LOCKER_STATUSES, PRE_LABEL_STATUSES, PROBLEM_STATUSES, RETURNED_STATUSES } from "../../../modules/inpost/lib/statuses"
 import { webhookPath } from "../../../modules/inpost/lib/webhook"
 import { WRITERS } from "../../../modules/inpost/lib/writers"
-import { ensureDemoSeed } from "../../../workflows/inpost/demo"
 import {
   ActionError,
   actorNames,
@@ -61,8 +60,9 @@ export function sendError(scope: Scope, res: MedusaResponse, err: unknown): void
     res.status(err.status === 404 ? 404 : 502).json({ code: d.code, message: svc.mask(d.message) })
     return
   }
-  svc.getLogger().error(`[inpost] ${svc.mask((err as Error)?.message ?? String(err))}`)
-  res.status(500).json({ code: "error", message: svc.mask((err as Error)?.message ?? String(err)) })
+  /* The details (a SQL error, a stack) stay in the server log, masked; the browser gets a plain sentence. */
+  svc.getLogger().error(`[inpost] ${svc.mask((err as Error)?.stack ?? (err as Error)?.message ?? String(err))}`)
+  res.status(500).json({ code: "error", message: "Something went wrong on the server; the details are in the server log." })
 }
 
 /** The public origin of the backend as the admin reached it (behind a proxy: the forwarded host). */
@@ -188,14 +188,15 @@ export function lastCheck(mode: "demo" | "live"): CheckResult | null {
 
 /**
  * Status for the admin. READS OUR DATABASE ONLY: not a single call to ShipX
- * while rendering (demo mode builds its sample shipments on the first visit).
+ * and not a single write while rendering. Demo mode builds its sample
+ * shipments through POST /admin/inpost/demo/seed (the page asks for it) and
+ * in the status pass.
  */
 export async function buildStatus(req: MedusaRequest): Promise<StatusResponse> {
   const scope = req.scope
   const svc: InpostModuleService = inpostService(scope)
   const o = svc.getOptions()
   const demo = o.demo
-  if (demo) await ensureDemoSeed(scope).catch(() => 0)
 
   const counts: StatusResponse["counts"] = { to_create: 0, waiting: 0, in_transit: 0, in_locker: 0, delivered: 0, problems: 0, all: 0, canceled: 0, skipped: 0, attention: 0 }
   for (const c of await storeFor(scope).counts(demo)) {

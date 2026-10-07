@@ -417,13 +417,10 @@ export async function createShipment(scope: Scope, id: string, opts: { planHash?
 /* ------------------------------------------------------------------ */
 
 /** The offer of a prepaid account to buy: the one of the row's service that ShipX marks available (or selected after a failed try). */
+/** The offer of the shipment's own service, never another (possibly dearer) one: without it a person decides. */
 export function offerToBuy(row: Pick<ParcelRow, "service">, offers: ShipxOffer[] | null | undefined): ShipxOffer | null {
   const list = offers ?? []
-  return (
-    list.find((x) => x?.service?.id === row.service && (x.status === "available" || x.status === "selected")) ??
-    list.find((x) => x?.status === "available" || x?.status === "selected") ??
-    null
-  )
+  return list.find((x) => x?.service?.id === row.service && (x.status === "available" || x.status === "selected")) ?? null
 }
 
 /**

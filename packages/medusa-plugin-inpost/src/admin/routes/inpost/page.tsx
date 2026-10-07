@@ -6,7 +6,7 @@ import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, MagnifyingGlass, TruckFast } from "@medusajs/icons"
 import { Badge, Container, InlineTip, toast, usePrompt } from "@medusajs/ui"
 import type { ParcelFilter, PanelGroup, StatusResponse } from "../../../modules/inpost/lib/contract"
-import { errorMessage, inpostKeys, useInpostDemoReset, useInpostPickup, useInpostStatus, useInpostSync } from "../../lib/inpost-api"
+import { errorMessage, inpostKeys, useInpostDemoReset, useInpostDemoSeed, useInpostPickup, useInpostStatus, useInpostSync } from "../../lib/inpost-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpost-guide"
 import { GuideView, usePromptSpec } from "../../lib/inpost-guide-view"
 import { InpostIcon } from "../../lib/inpost-icon"
@@ -57,6 +57,15 @@ const InpostPage = () => {
   })
   const initialQuery = (params.get("q") ?? "").slice(0, 100)
   const polling = Boolean(s?.running) || Date.now() < pollUntil
+
+  /* Demo mode: the sample shipments are built once, on the first visit (reads never write). */
+  const seed = useInpostDemoSeed()
+  const asked = useRef(false)
+  useEffect(() => {
+    if (asked.current || !s || s.mode !== "demo" || s.counts.all > 0) return
+    asked.current = true
+    seed.mutate()
+  }, [s]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* A finished status pass refreshes the lists. */
   const runKey = s?.lastRun?.id ?? ""
