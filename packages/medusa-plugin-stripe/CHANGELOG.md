@@ -31,6 +31,16 @@ First npm release. 0.1.0 was never published: it ran only as vendored code on me
 - The payments filter "Disputed" lists open disputes only; "Need a look" no longer lists declined cards or payments waiting for the customer (they have their own filter and status).
 - The admin fetch goes through the kit: admins signed in with a JWT work, and every write carries the header the write guard asks for. Writes to `/admin/stripe/*` take a JSON body or the `x-koda-request` header (415 otherwise); every route only reads today.
 - `prepublishOnly` runs the typecheck too.
+- The order card stays out of orders not paid with Stripe (it used to say so in a card of its own) and lists every dispute of a payment; the exchange rate shows its currency pair.
+- The package ships type declarations; the dead `./providers/*` export is gone.
+
+### Added
+
+- The koda.integration/1 contract: `GET /admin/stripe/integration` (the manifest), `/integration/summary` for orders and customers (one line per record, the worst Stripe payment speaking, with the payment fact: method, Stripe's fee and the net formatted on the server with the currency's exponent) and `/integration/attention` (board counters `payments_failed`, `disputes_open`, `health_failing`, each linked to its filtered list). Summaries read Stripe only through the plugin's cache, at most five PaymentIntents per answer, and serve the last good read as stale when Stripe does not answer.
+- The order card can be embedded by a host (`embedded`): no frame, header or footer of its own, the facts in a grid, a line while loading and on orders not paid with Stripe. It registers as `stripe.order` for the zone `order.details`.
+- "Read again" in the order card, with the time of the read and a note when Stripe did not answer.
+- Deep links into the page: `?filter=` (`attention`, `disputed`, `checks` and the other payment filters) and `?q=`; a new payments filter for another Medusa on the same Stripe account.
+- `stripeIntegration` and more response types in the public exports.
 
 ## 0.1.0 (2026-10-07)
 

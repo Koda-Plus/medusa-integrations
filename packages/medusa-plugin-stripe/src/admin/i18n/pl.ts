@@ -1,5 +1,6 @@
 import type en from "./en"
 import { typeset } from "../lib/stripe-guide"
+import { integrationPl } from "../../modules/stripe/lib/integration-texts"
 import { communityPl } from "../lib/stripe-kit-community"
 
 const pl: typeof en = {
@@ -604,6 +605,7 @@ const pl: typeof en = {
     review: "Zobacz opinię",
   },
   community: communityPl,
+  integration: integrationPl,
   pagination: {
     of: "z",
     results: "wyników",
@@ -626,6 +628,7 @@ const pl: typeof en = {
     fee: "Prowizja Stripe",
     net: "Netto",
     exchangeRate: "Kurs wymiany",
+    exchangeRateValue: "{{from}}/{{to}} {{rate}}",
     availableOn: "Dostępne",
     risk: "Ryzyko z Radaru",
     outcome: "Wynik",

@@ -13,3 +13,5 @@ export { loadStripeOrder, loadStripeOverview, runStripeChecks } from "./stripe/r
 export { loadChecks } from "./stripe/health"
 export { loadOrderPayments } from "./stripe/order"
 export { loadSnapshot } from "./stripe/snapshot"
+/** koda.integration/1 for in-process hosts: `stripeIntegration.build.summaries(ctx, "order", ids)` answers without HTTP. */
+export { stripeIntegration } from "./stripe/integration"

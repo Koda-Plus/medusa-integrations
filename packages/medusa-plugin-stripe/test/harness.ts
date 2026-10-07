@@ -15,7 +15,7 @@ import { CLIENT_KEY } from "../src/workflows/stripe/runtime.ts"
 
 export const silent = { info() {}, warn() {}, error() {}, debug() {}, log() {} }
 
-type Handler = (params: StripeParams | undefined) => unknown
+type Handler = (params: StripeParams | undefined, path: string) => unknown
 
 export class FakeStripe {
   calls: Array<{ path: string; params?: StripeParams }> = []
@@ -29,7 +29,7 @@ export class FakeStripe {
     const prefix = Object.entries(this.routes).find(([k]) => k.endsWith("/*") && path.startsWith(k.slice(0, -1)))?.[1]
     const handler = exact ?? prefix
     if (!handler) throw new StripeApiError({ kind: "not_found", message: `No such route ${path}`, status: 404 })
-    return handler(params)
+    return handler(params, path)
   }
   async get<T>(path: string, params?: StripeParams): Promise<T> {
     return this.answer(path, params) as T

@@ -19,7 +19,7 @@ import { isFailure, toFailure, type ReadFailure } from "../../modules/stripe/lib
 import { disputesAt } from "../../modules/stripe/lib/normalize"
 import { orderPaymentFrom, unreadPayment } from "../../modules/stripe/lib/order-payment"
 import type { RawDispute, RawPaymentIntent } from "../../modules/stripe/lib/stripe-types"
-import { dashboardFor, loadSnapshot } from "./snapshot"
+import { dashboardFor, loadSnapshot, type Snapshot } from "./snapshot"
 import { cacheFor, clientFor, readDemoOrder, readOrderPaymentRefs, stripeService, type OrderPaymentRef, type Scope } from "./runtime"
 
 /** Stripe reads one answer may still make; shared by the orders of a batch. */
@@ -36,6 +36,46 @@ export function liveMode(scope: Scope): StripeMode {
 
 function at(dto: OrderPaymentDto, now: Date, readAt: number | null, stale: boolean): OrderPaymentDto {
   return { ...dto, disputes: disputesAt(dto.disputes, now), readAt: readAt === null ? null : new Date(readAt).toISOString(), stale }
+}
+
+/** The cache key of one PaymentIntent of an order: the mode, the id, and what Medusa records about it. */
+export function paymentKey(mode: StripeMode, ref: Pick<OrderPaymentRef, "paymentIntentId" | "stamp">): string {
+  return `order:${mode}:${ref.paymentIntentId}:${ref.stamp}`
+}
+
+/** The last read of a PaymentIntent the cache still holds, whatever its age, without asking Stripe. */
+export function cachedPayment(scope: Scope, ref: OrderPaymentRef, mode: StripeMode, now: Date): OrderPaymentDto | null {
+  const last = cacheFor(stripeService(scope)).good<OrderPaymentDto>(paymentKey(mode, ref))
+  return last ? at(last.value, now, last.at, false) : null
+}
+
+/** A PaymentIntent of the 30 days the snapshot holds, shaped like the widget's read (without the fee details). */
+export function paymentFromSnapshot(snapshot: Snapshot, ref: OrderPaymentRef, args: { now: Date; at: number; stale: boolean }): OrderPaymentDto | null {
+  const row = snapshot.payments.find((p) => p.id === ref.paymentIntentId)
+  if (!row) return null
+  return at(
+    {
+      id: row.id,
+      providerId: ref.providerId,
+      found: true,
+      problem: null,
+      problemMessage: null,
+      permission: null,
+      payment: row,
+      feeDetails: [],
+      exchangeRate: null,
+      availableOn: null,
+      refunds: snapshot.refunds.filter((r) => r.paymentIntent === row.id),
+      disputes: snapshot.disputes.filter((d) => d.paymentIntent === row.id),
+      outcome: null,
+      livemode: null,
+      readAt: null,
+      stale: false,
+    },
+    args.now,
+    args.at,
+    args.stale,
+  )
 }
 
 /**
@@ -61,7 +101,7 @@ export async function stripePaymentsOf(
   const ttlMs = o.cacheSeconds * 1000
   const out: OrderPaymentDto[] = []
   for (const ref of refs) {
-    const key = `order:${args.mode}:${ref.paymentIntentId}:${ref.stamp}`
+    const key = paymentKey(args.mode, ref)
     const cached = cache.peek<OrderPaymentDto>(key)
     const fresh = cached !== null && args.now.getTime() - cached.at < ttlMs && !args.force
     if (!fresh && args.budget && args.budget.left <= 0) {

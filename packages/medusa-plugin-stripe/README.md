@@ -164,8 +164,36 @@ Every route only reads, and Medusa authenticates `/admin` for you:
 - `GET /admin/stripe/payments?filter=all|succeeded|failed|attention|refunded|disputed|outside|foreign&method=blik&q=&offset=0&limit=20`: a page of payments from the cached read. `attention` is what a person should look at (paid without an order, a refund that failed), `disputed` an open dispute, `foreign` another Medusa on the same Stripe account.
 - `GET /admin/stripe/checks?fresh=1`: the health checks.
 - `GET /admin/stripe/orders/:id?fresh=1`: the order widget.
+- `GET /admin/stripe/integration`, `/integration/summary`, `/integration/attention`: the contract for apps that host the plugin (below).
 
 A failed Stripe read answers 502 with Stripe's message, masked; any other failure answers 500 with a plain sentence, and the details stay in the server log, masked.
+
+What each route costs in Stripe requests when nothing is cached (every answer is cached afterwards; retries after a 429 or a 5xx may add a few):
+
+- `GET /admin/stripe`: none.
+- `GET /admin/stripe/overview` and `/payments`: one read of the last 30 days, shared: PaymentIntents (up to `maxPages` pages), refunds (up to 5 pages), disputes of 180 days (up to 5 pages), the balance and the payouts. A small store needs 5 requests.
+- `GET /admin/stripe/checks`: the same read, plus up to 6 (the account, the payment method configurations, the webhook endpoints, failed events in 2 pages, the domains).
+- `GET /admin/stripe/orders/:id`: 1 per PaymentIntent of the order, 2 when it is disputed; up to 5 PaymentIntents.
+- `GET /admin/stripe/integration/summary`: for orders, the same reads as the order widget, shared with it, and at most 5 per answer; for customers, none beyond the 30 day read.
+- `GET /admin/stripe/integration/attention`: the 30 day read and the checks, reused for up to 15 minutes.
+
+The plugin never polls: a host should cache its answers too (the routes send an ETag) and not refetch them on every window focus.
+
+## Works with Koda Plus hosts
+
+An app that shows every Koda Plus plugin in one place (like [medusa.koda.plus](https://medusa.koda.plus/app/orders?demo=en)) reads Stripe through the shared contract `koda.integration/1` and never needs to know the plugin's inside:
+
+- `GET /admin/stripe/integration`: the manifest (mode `live`, `sandbox`, `demo` or `off`, whether a key is set, the time of the last read, problems such as a missing or a secret key, the widget).
+- `GET /admin/stripe/integration/summary?entity=order&id=order_...` (or `ids=`, up to 50): one line per order, the worst Stripe payment of the order speaking. Red: a refund failed, a dispute lost or past its deadline, the last attempt declined, an authorization Stripe canceled while Medusa still waits to capture it. Orange: a dispute to answer, a card authorization two days from expiring, the customer has to act. Blue: waiting for the bank, a refund under way, a dispute under review, an authorization to capture. Green: paid, refunded, a dispute won. Attempts declined before the payment went through are history. The fact `payment` (priority 80, Stripe is the record of card, BLIK and Przelewy24 payments) gives the method ("Visa 4242", "BLIK", "Przelewy24, mBank"), Stripe's fee and the net, formatted on the server with the currency's exponent (Stripe's amounts are minor units). Links: the plugin page searched for the order (`/stripe?q=1042`) and the payment in the Stripe Dashboard. An order Stripe never paid answers `none`.
+- `GET /admin/stripe/integration/summary?entity=customer&id=cus_...`: the worst order of the customer speaks ("Order #1042: Dispute: answer by 9 Oct"), otherwise how many Stripe payments and the method used most.
+- `GET /admin/stripe/integration/attention?scope=orders,integration`: counters `payments_failed` (red, orders: paid by this store's checkout without an order, or a refund that failed), `disputes_open` (red, orders: disputes still open, also of payments older than 30 days) and `health_failing` (orange, integration: health checks that fail), each with its filtered list: `/stripe?filter=attention`, `/stripe?filter=disputed`, `/stripe?filter=checks`. While nothing was read yet, the counters are left out rather than called zero.
+- Summaries and counters only read, and Stripe only through the plugin's cache: a summary of many orders reads at most five PaymentIntents and takes the rest from the cache or from Medusa's own payment records; when Stripe does not answer, the last good read is served with `stale: true`. Nothing comes from order or cart metadata. In demo mode every line says it is sample data.
+- The order card registers as `stripe.order` for the zone `order.details` (tab order 10); a host that claims the zone shows it as a tab (`embedded`: no frame of its own, the facts in a grid, a line while loading), hidden on orders Stripe never paid. Medusa's own spot stays empty then. Without a host nothing changes.
+- The page opens on deep links: `/stripe?filter=attention`, `/stripe?filter=disputed` (also scrolls to the open disputes), `/stripe?filter=checks`, `/stripe?q=1042`.
+
+## Public API
+
+What other code may import: `@koda-plus/medusa-plugin-stripe/workflows` (the reads behind the admin and `stripeIntegration` for in-process hosts), `@koda-plus/medusa-plugin-stripe/modules/stripe` (the module, its options and the response types; money in every type is an integer in the currency's minor unit) and `/admin`. Type declarations ship with the package. Every other path is internal and may change in any release.
 
 ## Use it from your code
 
@@ -181,11 +209,16 @@ The same cache as the admin; nothing here can move money.
 
 ## Security and data
 
-- **Read only**: one HTTP client, GET only, one host (`api.stripe.com`), fixed resource paths; ids are checked before they reach a path. All admin routes are GET.
+- **Read only**: one HTTP client, GET only, one host (`api.stripe.com`), fixed resource paths; ids are checked before they reach a path. All admin routes are GET. Stripe has no API that shows a key's permissions, so a restricted key should have Read or None for every resource: the plugin's own guarantee is that it only sends GET requests.
+- **Write guard**: requests to `/admin/stripe/*` that would write take a JSON body or the `x-koda-request` header and answer 415 otherwise, so a form on another site can never use an admin's session (Medusa's session cookie is `SameSite=None` in production). The plugin's admin sends both, and works for admins signed in with a JWT.
+- **No metadata**: the plugin reads nothing from order or cart metadata, which a shopper can set through the Store API. A payment's order comes from Medusa's payment session, the PaymentIntent of an order from Medusa's payment record, so there is no store metadata to guard.
 - **The key stays on the server**: only in the `Authorization` header of the server's requests, never in a URL, never sent to the browser. Logs, errors and the admin get it masked, and the admin sees only its kind, mode and last four characters. A restricted key with read access limits what a leaked key could do; the checks recommend one.
 - **No client secrets in the admin**: the order widget takes only the PaymentIntent id from Medusa's payment data, which also holds the client secret.
-- **No personal data**: no customer names, e-mails, addresses or BLIK buyer ids are read into the admin; a payment shows its card brand and last four digits, the wallet, or the Przelewy24 bank and reference.
-- **Nothing stored**: no tables. Reads live in memory for `cacheSeconds`, per process, and disappear on restart.
+- **No personal data**: no customer names, e-mails, addresses or BLIK buyer ids are read into the admin; a payment shows its card brand and last four digits, the wallet, or the Przelewy24 bank and reference. The order widget's reads are normalized before they are kept in memory, so no client secret, billing details or dispute evidence stays there either.
+- **Nothing stored**: no tables. Reads live in memory for `cacheSeconds` (the last good one a few hours longer, for a stale answer while Stripe is down), per process, and disappear on restart.
+- **What is masked**: the configured key word for word and every Stripe secret by its shape (`sk_`, `rk_`, `whsec_`, client secrets), in logs, errors, check results and admin answers. Unexpected server errors answer a plain sentence; the details stay in the server log, masked.
+- **Demo mode** only with `demo: true`, a warning in the log when it runs in production, and every panel section, widget and host line marked as sample data.
+- **Who sees it**: every admin user and secret API key of the Medusa admin can read the panel (Medusa has no public roles API yet).
 
 ## What this plugin does not do
 
@@ -196,6 +229,16 @@ The same cache as the admin; nothing here can move money.
 - It does not keep a history: it shows the last 30 days, read live. For longer reports use Stripe's reports.
 - It does not read Connect accounts: one Stripe account per store.
 
+## Uninstall
+
+1. Remove the plugin from `plugins` in `medusa-config.ts` and the package from `package.json`.
+2. Delete the restricted key in the Stripe Dashboard (Developers, API keys) if nothing else uses it.
+3. Nothing else to clean: the plugin keeps no tables, no jobs and no subscribers, and the official provider and its webhook stay as they are. An app that hosts the order card (`stripe.order`) shows one tab fewer.
+
+## Compatibility
+
+Medusa 2.12 to 2.21 (peer range `^2.12.0`) and Node.js 20+. The release of each version runs the smoke test on a fresh Medusa 2.12.6 and 2.21.2 app: build, start and the admin pages. The plugin reads the official provider's records as it writes them (`metadata.session_id` in each PaymentIntent, the PaymentIntent as the payment's data), Stripe API version `2024-04-10`. The admin libraries (`@medusajs/ui`, `@medusajs/icons`, `@tanstack/react-query`, `react`, `react-i18next`, `react-router-dom`) are optional peers: the app keeps the copies of Medusa's dashboard. Developing the plugin needs Node.js 22.6+ (the tests run the TypeScript sources directly).
+
 ## Development
 
 ```bash
@@ -205,7 +248,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the money in minor units and its formatting, the payment method classification of PaymentIntents and charges, the fee and net sums and the 7 and 30 day periods, every health check verdict from Stripe fixtures, the webhook endpoint matching, dispute deadlines, the demo generator, the options and references, the HTTP client (encoding, retries, errors, masking) and the cache, and the flows end to end against a fake Medusa and a scripted Stripe, without a network or a build.
+`npm test` covers the money in minor units and its formatting, the payment method classification of PaymentIntents and charges, the fee and net sums and the 7 and 30 day periods, every health check verdict from Stripe fixtures, the webhook endpoint matching, dispute deadlines, the demo generator and which orders it pays, the options and references, the HTTP client (encoding, retries, the read budget, errors, masking) and the cache, the flows end to end against a fake Medusa and a scripted Stripe, and the koda.integration/1 contract (the shared conformance checks and the plugin's own rules), without a network or a build.
 
 ## Commercial support
 
@@ -221,6 +264,6 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 ## Changelog
 
-### 0.1.0 (2026-10-07)
+### 0.2.0 (first npm release)
 
-First public release: the panel (7 and 30 days by payment method, payments next to their orders, disputes, refunds, balance, payouts), ten health checks with fixes, the order widget, the setup guide for a Polish store, settings, demo mode, English and Polish. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-stripe/CHANGELOG.md).
+Demo mode only with `demo: true`, paying only orders Stripe would have paid; paid without an order only for this store's checkout; Polish checks only for stores that sell in PLN; the order widget fresh after a capture or a refund and stale instead of empty while Stripe is down; the koda.integration/1 contract for Koda Plus hosts with an embeddable order card; type declarations. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-stripe/CHANGELOG.md).
