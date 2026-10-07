@@ -1,4 +1,4 @@
-// GENERATED from kit/contract.ts (kit 1.0.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/contract.ts (kit 1.0.1) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 /**
  * koda.integration/1: what every Koda Plus plugin answers about itself and
  * about the records of a store, so that a host (an app that shows all
@@ -90,6 +90,13 @@ export interface Fact {
   slot: FactSlot
   /** 80: the system of record (Fakturownia for its invoice, InPost for its parcel); 50: a mirror (BaseLinker tracking); 20: a hint. */
   priority: number
+  /**
+   * A stable code for hosts that act on the fact, not only show it
+   * (kit 1.0.1). Payment: "cod" (cash on delivery: the order may be fulfilled
+   * unpaid), "paid", "pending", "refunded", "failed". Channel: the
+   * marketplace, e.g. "allegro". Lowercase letters, digits and _.
+   */
+  code?: string
   value: Message
   sub?: Message
   tone?: Tone

@@ -61,6 +61,8 @@ export interface LinkDraft {
 export interface FactDraft {
   slot: FactSlot
   priority: number
+  /** See Fact.code: "cod" for cash on delivery, the marketplace for a channel. */
+  code?: string
   value: MessageDraft
   sub?: MessageDraft
   tone?: Tone
@@ -246,6 +248,7 @@ function link(def: IntegrationDefinition, lang: Lang, draft: LinkDraft | undefin
 function fact(def: IntegrationDefinition, lang: Lang, draft: FactDraft): Fact | null {
   if (!(FACT_SLOTS as readonly string[]).includes(draft.slot)) return null
   const out: Fact = { slot: draft.slot, priority: Math.max(0, Math.min(100, Math.round(draft.priority))), value: message(def, lang, draft.value) }
+  if (typeof draft.code === "string" && /^[a-z0-9_]{1,40}$/.test(draft.code)) out.code = draft.code
   if (draft.sub) out.sub = message(def, lang, draft.sub)
   if (draft.tone) out.tone = draft.tone
   const l = link(def, lang, draft.link)

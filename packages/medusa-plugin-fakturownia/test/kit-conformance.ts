@@ -1,4 +1,4 @@
-// GENERATED from kit/test/conformance.ts (kit 1.0.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/test/conformance.ts (kit 1.0.1) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 /**
  * koda.integration/1 conformance, the same checks for every plugin. A
  * package calls it from its own test with its definition and a fake

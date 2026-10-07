@@ -89,6 +89,13 @@ export interface Fact {
   slot: FactSlot
   /** 80: the system of record (Fakturownia for its invoice, InPost for its parcel); 50: a mirror (BaseLinker tracking); 20: a hint. */
   priority: number
+  /**
+   * A stable code for hosts that act on the fact, not only show it
+   * (kit 1.0.1). Payment: "cod" (cash on delivery: the order may be fulfilled
+   * unpaid), "paid", "pending", "refunded", "failed". Channel: the
+   * marketplace, e.g. "allegro". Lowercase letters, digits and _.
+   */
+  code?: string
   value: Message
   sub?: Message
   tone?: Tone

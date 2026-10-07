@@ -105,6 +105,7 @@ function codFact(rows: ParcelRow[], chosen: ChosenInpost | null, money: (minor: 
     slot: "payment",
     /* The payment plugin that took the money online speaks louder (80); cash on delivery is what InPost knows. */
     priority: 50,
+    code: "cod",
     tone: "blue",
     value:
       minor !== null && minor !== undefined

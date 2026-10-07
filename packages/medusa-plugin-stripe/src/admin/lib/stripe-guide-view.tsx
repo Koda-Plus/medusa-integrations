@@ -112,6 +112,8 @@ export function usePromptSpec(status?: StripeStatusResponse): SetupPromptSpec {
       config: `${ENV}\n\n${providerCode(providerId)}\n\n${pluginCode(providerId)}`,
       /* Only an explicit switch: a store whose read key is missing shows the setup, never sample data. */
       demo: 'demo: process.env.STRIPE_DEMO === "true",',
+      readOnly: true,
+      migrations: false,
     }),
     [t, providerId],
   )
