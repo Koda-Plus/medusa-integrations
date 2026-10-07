@@ -26,6 +26,7 @@
  */
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
+import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { listPackages, root, selectPackages } from "./lib/packages.mjs"
@@ -215,9 +216,9 @@ function writeApp(dir, version, packages, tarballs, dbUrl) {
     "  projectConfig: {",
     "    databaseUrl: process.env.DATABASE_URL,",
     "    http: {",
-    '      storeCors: "http://localhost:9000",',
-    '      adminCors: "http://localhost:9000",',
-    '      authCors: "http://localhost:9000",',
+    '      storeCors: process.env.SMOKE_ORIGIN || "http://localhost:9000",',
+    '      adminCors: process.env.SMOKE_ORIGIN || "http://localhost:9000",',
+    '      authCors: process.env.SMOKE_ORIGIN || "http://localhost:9000",',
     '      jwtSecret: "smoke-jwt-secret",',
     '      cookieSecret: "smoke-cookie-secret",',
     "    },",
@@ -260,6 +261,35 @@ function writeApp(dir, version, packages, tarballs, dbUrl) {
     ),
   )
   fs.writeFileSync(path.join(dir, ".env"), `DATABASE_URL=${dbUrl}\nNODE_ENV=development\n`)
+}
+
+/** A port nobody listens on, from the system. */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer()
+    srv.unref()
+    srv.on("error", reject)
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address()
+      srv.close(() => resolve(port))
+    })
+  })
+}
+
+/** Stops the server and everything it started (npx runs medusa as a child); SIGKILL when it does not go in 5 s. */
+async function stopTree(child) {
+  if (!child || child.exitCode !== null) return
+  const signal = (sig) => {
+    try {
+      if (isWin) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"])
+      else process.kill(-child.pid, sig)
+    } catch {
+      /* gone */
+    }
+  }
+  signal("SIGTERM")
+  for (let i = 0; i < 10 && child.exitCode === null; i++) await new Promise((r) => setTimeout(r, 500))
+  if (child.exitCode === null) signal("SIGKILL")
 }
 
 async function waitFor(url, ms) {
@@ -337,8 +367,9 @@ async function smokeVersion(version, packages, tarballs) {
     step("medusa user (admin)", r.ok, r.out.slice(-1500))
     r = sh("npx medusa build", { cwd: dir, env })
     step("medusa build (server and admin with every plugin)", r.ok, r.out.slice(-4000))
-    const port = 9000
-    server = spawn(isWin ? "npx.cmd" : "npx", ["medusa", "start"], { cwd: dir, env: { ...env, PORT: String(port) }, shell: isWin, stdio: ["ignore", "pipe", "pipe"] })
+    const port = await freePort()
+    /* Its own process group, so stopping it stops medusa too (npx starts it as a child). */
+    server = spawn(isWin ? "npx.cmd" : "npx", ["medusa", "start"], { cwd: dir, env: { ...env, PORT: String(port), SMOKE_ORIGIN: `http://localhost:${port}` }, shell: isWin, detached: !isWin, stdio: ["ignore", "pipe", "pipe"] })
     let serverLog = ""
     server.stdout.on("data", (d) => (serverLog += d))
     server.stderr.on("data", (d) => (serverLog += d))
@@ -395,10 +426,7 @@ async function smokeVersion(version, packages, tarballs) {
   } catch (e) {
     run.error = String(e?.message ?? e).slice(0, 4000)
   } finally {
-    if (server) {
-      server.kill("SIGTERM")
-      await new Promise((r) => setTimeout(r, 1500))
-    }
+    if (server) await stopTree(server)
     pg.stop()
   }
   return run.ok
