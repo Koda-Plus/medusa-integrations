@@ -6,7 +6,7 @@ Nothing about the buyer is stored in Medusa: the plugin keeps the document kind,
 
 ![Fakturownia page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-fakturownia/docs/admin-fakturownia.png)
 
-**Live demo:** Medusa admin [medusa.koda.plus/app/fakturownia](https://medusa.koda.plus/app/fakturownia?demo=en), signed in to a public demo account by the link itself. The demo runs the plugin in demo mode: a simulated Fakturownia account that issues documents for the store's own orders, with KSeF statuses, corrections to approve and e-mails, and zero outgoing requests.
+**Live demo:** Medusa admin [medusa.koda.plus/app/fakturownia](https://medusa.koda.plus/app/fakturownia?demo=en), signed in to a public demo account by the link itself. The demo runs the plugin in demo mode (`demo: true`): a simulated Fakturownia account that issues documents for the store's own orders, with KSeF statuses, corrections to approve and e-mails, and zero outgoing requests.
 
 ## What it does
 
@@ -31,13 +31,14 @@ Nothing about the buyer is stored in Medusa: the plugin keeps the document kind,
 - **Positions from Medusa totals**: one per line item ("Product, variant", SKU, quantity, gross total after discounts, the tax rate of the line's tax lines) and one per shipping method, also at 0.00.
 - **Admin page** with a Panel and a Setup guide: counters, the writers, the connection, the corrections, the documents with a detail drawer (KSeF, e-mails, corrections), the unpaid documents, the e-mails, the monthly summary, the history of background runs, and the stores running the integration.
 - **Order widget** with the documents of the order, their details, "Issue now", the correction plans and "Check for corrections".
-- **Demo mode**: a simulated Fakturownia account inside the plugin that shows everything above. Nothing leaves Medusa.
+- **Demo mode** (only with `demo: true`): a simulated Fakturownia account inside the plugin that shows everything above. Nothing leaves Medusa.
 - **Admin in English and Polish.**
 - **Workflows, events and a PDF method** for your own code and for other plugins.
+- **Works with Koda Plus hosts**: the `koda.integration/1` contract (one line per order and customer, board counters) and an order card that a host can show as a tab.
 
 ## Requirements
 
-- Medusa 2.12 or newer (tested on 2.15.3) and Node.js 20+.
+- Medusa 2.12 to 2.21 and Node.js 20+ (see Compatibility).
 - For a real account: a Fakturownia API token (Ustawienia, Ustawienia konta, Integracja, Kod autoryzacyjny API) and the account name (the subdomain of your Fakturownia address).
 
 ## Installation
@@ -80,6 +81,7 @@ module.exports = defineConfig({
         apiToken: process.env.FAKTUROWNIA_API_TOKEN,
         account: process.env.FAKTUROWNIA_ACCOUNT, // "mojafirma" for https://mojafirma.fakturownia.pl
         issuePlace: "Warszawa",
+        // demo: process.env.FAKTUROWNIA_DEMO === "true", // a simulated account, only when asked for
         // documentFlow: "proforma_then_vat",
         // receiptForConsumers: true,
         // corrections: "plan",
@@ -117,20 +119,20 @@ Without `apiToken` (or `account`) the plugin registers, the admin says "Not conf
 - `quantityUnit` (default `szt.`): the unit of every position.
 - `paymentTypes` (default: `transfer` for everything): the Fakturownia `payment_type` by payment provider id prefix, like `{ pp_stripe: "card", pp_payu: "payu" }`.
 - `codProviders` (default `pp_cod`, `pp_cash`): payment provider id prefixes meaning cash on delivery (`cash_on_delivery`).
-- `paymentTermDays` (default `7`): the payment term of documents issued unpaid.
+- `paymentTermDays` (default `7`, 0 to 365): the payment term of documents issued unpaid.
 - `markPaidOnCapture` (default `true`): when a payment is captured for a document issued unpaid, set it paid in Fakturownia.
 - `sendByEmail` (default `false`): after issuing, Fakturownia e-mails the document to the buyer (`writers.emails: false` stops it too).
 - `emailPdf` (default `false`): attach the PDF to the e-mails Fakturownia sends (`email_pdf`).
 - `cancelOnOrderCanceled` (default `true`): a canceled order rejects its proforma; a VAT invoice or a receipt is flagged "needs correction" (and with `corrections: "plan"` a correction to zero is planned).
 - `corrections` (default `plan`): `plan` computes correction plans when an issued order changes; `off` plans nothing (0.1.0 behaviour).
 - `writers` (default `{ corrections: true, emails: true, ksef: true }`): the hard switches of the writes added in 0.2.0. `true` lets a person turn the writer on in the admin (it starts off); `false` turns it off for good, whatever the admin says. Strings like `"false"` from environment variables work.
-- `reminderAfterDays` (default `7`): unpaid proformas and VAT invoices at least this old are listed for a payment reminder.
+- `reminderAfterDays` (default `7`, 0 to 365): unpaid proformas and VAT invoices at least this old are listed for a payment reminder (and are orange in the contract lines).
 - `nipSources` (default: the keys of `taxIdMetadataKeys` in the order metadata, then in the billing address metadata, then `billing_address.tax_id`): where the buyer's NIP is looked for, in order. Strings `order.metadata.<key>`, `billing_address.metadata.<key>`, `billing_address.tax_id`, `billing_address.company` (a NIP typed into the company name, taken only when it passes the checksum), `company:<entity>`, or an object `{ entity, customerField, nipField, nameField }` for a company module of your store read with Query by the order's customer (defaults `customer_id`, `nip`, `name`).
 - `taxIdMetadataKeys` (default `nip`, `tax_id`, `invoice_nip`): the metadata keys of the default `nipSources`.
 - `oidPrefix` (default none): a prefix for the order number sent to Fakturownia, for accounts that already hold documents numbered like Medusa orders (an earlier shop).
-- `references` (default none): stores running the integration, shown in the admin ("Running in production"): `[{ name, url, description?, metrics?: [{ label, value }], links?: [{ label, url }], soon? }]`, texts plain or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped.
-- `requestsPerMinute` (default `60`): self-imposed rate limit (Fakturownia documents none).
-- `timeoutMs` (default `30000`): one request.
+- `references` (default none): stores running the integration, shown in the admin ("Running in production"): `[{ name, url, icon?, description?, metrics?: [{ label, value }], links?: [{ label, url }], review?: { rating, scale?, source, url?, icon?, quote?, author? }, soon? }]`, texts plain or `{ en, pl }`. `icon` is a data URI or an https address; `review` is the store's rating of the work (a positive `rating` up to `scale`, default 5, and its `source`, like Clutch). `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped.
+- `requestsPerMinute` (default `60`, 1 to 600): self-imposed rate limit (Fakturownia documents none).
+- `timeoutMs` (default `30000`, 5000 to 120000): one request. The claim of an attempt lasts at least ten minutes, and fifteen times this.
 
 ## Which document, and when
 
@@ -149,9 +151,9 @@ The final document after a proforma is made from the proforma as Fakturownia hol
 A duplicate VAT invoice on a KSeF account can only be undone with a correction invoice, so the plugin is built around never creating one:
 
 1. **One row per business key.** Subscribers only insert a pending row into `fakturownia_document`. A unique index on (order id, kind, mode) makes the database refuse a second document of the same kind for one order, a partial unique index allows only one final document (VAT invoice or receipt) per order, and a correction is unique per (order id, source key, mode). A racing insert is ignored. The demo mode keeps its rows apart.
-2. **One sender per row.** The job claims a row with one atomic `UPDATE ... SET status = 'issuing' ... WHERE id = ? AND status = 'pending' RETURNING *`, with a claim token and a ten minute lease. Two processes cannot both win a row, and the result is written only by the claim's owner.
+2. **One sender per row.** The job claims a row with one atomic `UPDATE ... SET status = 'issuing' ... WHERE id = ? AND status = 'pending' RETURNING *`, with a claim token and a lease that follows `timeoutMs` (at least ten minutes, half an hour at the longest timeout). Two processes cannot both win a row, and the result is written only by the claim's owner. The owner proves the claim is still its own with one conditional update when it writes what it will send, and again right before the create request leaves (after the queue of the rate limit), stamping `create_sent_at`: when Fakturownia answered so slowly that the lease ran out and another process took the row over, the slow attempt stops and sends nothing.
 3. **Look before you write.** Before the create request, the document is looked up in Fakturownia by its order number and kind (`GET /invoices.json?oid=`), a final document made from a proforma also by `?from_invoice_id=`, and a correction by the corrections of the invoice it corrects, where it carries a marker in its private note (`internal_note`). A matching document is adopted and nothing is sent; one with another amount is a conflict for a person.
-4. **One shot, never blind.** The create request is never repeated. A timeout, a 5xx or a broken answer means "unknown": the plugin looks again a few seconds later and adopts the document when it is there. Otherwise the row becomes `unknown`, and it is looked up again after a two minute grace period before anything else is sent. On top, `oid_unique: "yes"` makes Fakturownia itself refuse a second document with the same order number (not sent on corrections and on a final document made from a proforma, which carry the order number of their original).
+4. **One shot, never blind.** The create request is never repeated. A timeout, a 5xx or a broken answer means "unknown": the plugin looks again a few seconds later and adopts the document when it is there. Otherwise the row becomes `unknown`, and it is looked up again before anything else is sent; a "not found" counts only after a grace of two minutes plus `timeoutMs` from the moment the create request left (never from the claim, so a slow lookup cannot shorten it). On top, `oid_unique: "yes"` makes Fakturownia itself refuse a second document with the same order number (not sent on corrections and on a final document made from a proforma, which carry the order number of their original).
 
 A request that Fakturownia refused (any 4xx, or a network error before the request left) created nothing, so it is retried with backoff for about two and a half days when it may pass (429) and fails at once when it will not (422). A row with a Fakturownia id is never sent again by any road. An `unknown` row also waits for a person in the admin: **Check in Fakturownia**, **Issue again** (after a confirmation), **Mark as issued**. Details and sources: [docs/fakturownia-api-notes.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/docs/fakturownia-api-notes.md).
 
@@ -176,23 +178,28 @@ A document issued before the money arrived (cash on delivery, a transfer, `trigg
 
 The plugin does not send documents to KSeF itself: that is the account's setting in Fakturownia. It always sends `buyer_company`, which that setting decides by, and dates documents in Poland's time zone (a document dated before today would be treated as OFFLINE24).
 
+KSeF is mandatory in 2026 (from 1 February for the largest taxpayers, from 1 April for the others). The automatic sending modes that send only companies leave invoices for private persons outside KSeF: decide with your accountant or tax adviser which mode your store needs.
+
 - Every 15 minutes it reads `gov_status`, `gov_id` (the KSeF number), `gov_send_date`, `gov_error_messages`, `gov_verification_link` and, for corrections, `gov_corrected_invoice_number` of VAT invoices and corrections of the last 14 days, until they are accepted. Every change goes into the document's KSeF history.
 - The document drawer shows the number, the dates, the errors KSeF reported, the verification link, the **UPO** and the **KSeF XML** (fetched by the backend from `GET /invoices/{id}/attachment?kind=gov_upo|gov`) and the history.
-- **Send to KSeF again** (`GET /invoices/{id}.json?send_to_ksef=yes`) for a document never sent, a send error, a KSeF server error, an offline document or a fixed connection problem, with the KSeF writer armed, once per five minutes per document. Not offered for `status_check_error` (the invoice may be accepted already: check Fakturownia) or `duplicate_error`.
+- **Send to KSeF again** (`GET /invoices/{id}.json?send_to_ksef=yes`) for a document never sent, a send error, a KSeF server error, an offline document or a fixed connection problem, with the KSeF writer armed, once per five minutes per document (taken atomically: two clicks send once). Not offered for `status_check_error` (the invoice may be accepted already: check Fakturownia) or `duplicate_error`.
+- The status pass picks its documents in the database, never checked first and then the least recently checked, so a store with thousands of documents reads every one of them in turn; a document sent to KSeF again is read for 14 days after the resend, one deleted in Fakturownia is no longer read.
+- **A correction waits until KSeF accepted the invoice it corrects**: it names that invoice's KSeF number.
 - The header counts the documents accepted, processing and rejected.
 
 ![The order page widget: the document, its payment and KSeF status, and corrections](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-fakturownia/docs/admin-order-widget.png)
 
 ## E-mails and reminders
 
-- **Automatic** (`sendByEmail`): right after issue Fakturownia e-mails the document to the buyer's address. On a KSeF account a company document waits for its KSeF number (Fakturownia refuses it before); the plugin tries again for three days.
+- **Automatic** (`sendByEmail`): right after issue Fakturownia e-mails the document to the buyer's address. On a KSeF account a company document waits for its KSeF number (Fakturownia refuses it before with "brak numeru KSeF"); the plugin tries again for three days. The e-mail is taken with one conditional update (`pending` to `sending`), so two processes never send it twice; one left half sent by a stopped process becomes `failed` with a note that it may have gone out.
 - **From the admin** (the e-mails writer armed): **Send by e-mail** to the buyer, or to up to five other addresses (`email_to`), with the PDF attached or not (`email_pdf`).
-- **Reminders**: Fakturownia's API has no reminder call and no field for the text of an e-mail, so **Send a reminder** e-mails an unpaid proforma or VAT invoice again with the account's template, at most once a day. The **Unpaid documents** section lists those issued at least `reminderAfterDays` days ago. Fakturownia's own automatic payment reminders (account settings) send their own text.
+- **Reminders**: Fakturownia's API has no reminder call and no field for the text of an e-mail, so **Send a reminder** e-mails an unpaid proforma or VAT invoice again with the account's template, at most once a day (taken atomically: two clicks send one; a refused reminder may be tried again at once). The **Unpaid documents** section lists those issued at least `reminderAfterDays` days ago. Fakturownia's own automatic payment reminders (account settings) send their own text.
 - **History**: every request with who asked, when, the masked address and Fakturownia's answer, per document and in the **E-mails** section. A request without an answer may have sent the e-mail, so it is never repeated by the plugin.
 
 ## Buyer data and B2B
 
-- `nipSources` says where the NIP is, in order (see Options). A Polish NIP must have ten digits and pass the checksum; an EU VAT number of another country keeps its prefix and needs the right shape.
+- `nipSources` says where the NIP is, in order (see Options). A NIP a shopper typed at checkout is input like any other: the plugin validates it as data. A Polish NIP must have ten digits and pass the checksum; an EU VAT number of another country keeps its prefix and needs the shape of that country's numbers (EL for Greece, XI for Northern Ireland); two letters followed by digits are not enough.
+- **A receipt always names a consumer**: a NIP that appeared after the receipt was queued is shown as a warning on the row and never sent as `buyer_tax_no`. An invoice to a receipt (faktura do paragonu) is issued by hand in Fakturownia.
 - **An invalid NIP, or a company name without a NIP, gives a consumer document** (a receipt with `receiptForConsumers`) and a warning on the row ("the NIP from order.metadata.nip fails the checksum"), never a refusal from Fakturownia. The NIP itself is not stored.
 - **A company module of your store** (B2B): `{ entity: "company" }` reads the company of the order's customer with Query, its NIP and its name. A source that cannot be read is logged once and skipped; it never stops a document.
 - **The seller department per sales channel**: `departmentsBySalesChannel`. **Check connection** names the department of every mapped channel.
@@ -221,7 +228,7 @@ const { documents } = await res.json()
 
 ## Writes to Fakturownia: two switches
 
-Every write added in 0.2.0 ships off:
+Every write added in 0.2.0 ships off, and carries a **Beta** badge in the admin (see "What is verified, and what is not"):
 
 - **Corrections**: issues approved correction invoices.
 - **E-mails**: sends documents and reminders from the admin.
@@ -229,14 +236,20 @@ Every write added in 0.2.0 ships off:
 
 The option `writers.<name>` is the hard switch: `false` turns the writer off for good and the admin cannot override it. The runtime toggle is in the admin (Writes to Fakturownia), stored in the database with who flipped it and when, apart for demo and live mode. A writer writes only when both say yes. The writes of 0.1.0 keep their own options: issuing documents, `markPaidOnCapture`, `cancelOnOrderCanceled` (proforma rejection) and `sendByEmail`.
 
+## What is verified, and what is not
+
+- **Measured in production** (the integration this plugin comes from): VAT invoices, proformas and the final document made from a proforma, receipts, the lookup by order number before every create, `oid_unique`, marking documents paid, rejecting a proforma, the PDF, the KSeF status read, the automatic e-mail after issue.
+- **Built from the API documentation and tested against a simulated account, not yet against a real account with KSeF** (Beta in the admin): correction invoices and their approval, e-mails and reminders from the admin, "Send to KSeF again", the UPO and the KSeF XML. Try them on a Fakturownia test account (30 days free) with KSeF (DEMO) before you turn their writers on in your store: a correction is an accounting document in KSeF, undone only by another correction.
+- Checklist for that test account: a correction of a returned item and a correction to zero (the payload with `correction_before_attributes` and `correction_after_attributes`, the marker in the private note, the lookup by `from_invoice_id`), a correction issued while the corrected invoice is still processing in KSeF, `send_to_ksef=yes`, the UPO and the XML downloads, an e-mail refused before the KSeF number, an invoice in EUR, a line with the `zw` rate.
+
 ## Demo mode
 
-A simulated Fakturownia account inside the plugin, with zero outgoing requests. Documents are built from your real orders by the same code as live ones, so bad order data fails the same way.
+A simulated Fakturownia account inside the plugin, with zero outgoing requests, only when you set `demo: true` (for example `demo: process.env.FAKTUROWNIA_DEMO === "true"`). Documents are built from your real orders by the same code as live ones, so bad order data fails the same way.
 
-- The first visit to the admin page issues documents for the newest orders, and one of them is refused with a readable error, to show that state.
+- The sample documents come for the newest orders on the first visit to the admin page (it asks once with `POST /admin/fakturownia/demo/seed`) or at the next run of the issue job; GET routes never write. One of them is refused with a readable error, to show that state.
 - Numbers per kind and month: "FV 12/10/2026", "PRO 3/10/2026", "PAR 7/10/2026", "KOR 1/10/2026". The simulated Fakturownia id carries the kind and the number, so the PDF of a demo document shows its number wherever it is downloaded.
 - Paid: every document of a captured order, and about a third of the others.
-- KSeF: a VAT invoice or a correction is "Processing" after issue and "Accepted", with a KSeF-shaped number, two to eight minutes later. One invoice was rejected by KSeF and waits for **Send to KSeF again**; another shows a rejection and a resend in its history.
+- KSeF: a VAT invoice or a correction is "Processing" after issue and "Accepted", with a KSeF-shaped number, two to eight minutes later (the issue job moves the simulated KSeF, every two minutes). One invoice was rejected by KSeF and waits for **Send to KSeF again**; another shows a rejection and a resend in its history.
 - Corrections: plans from the demo store's own returns, refunds and edits when it has any (nothing is created in Medusa); otherwise a simulated return on one invoice, marked as simulated, that can be approved and issued.
 - E-mails go to a simulated mailbox; a few unpaid invoices are moved one to five weeks back for the reminders and the monthly summary; PDFs, the UPO and the KSeF XML are generated.
 - The writers start off in demo mode too: turning them on shows the whole road.
@@ -245,11 +258,14 @@ A simulated Fakturownia account inside the plugin, with zero outgoing requests. 
 
 ## Admin API
 
-- `GET /admin/fakturownia`: configuration summary (never the token), counters, writers, references, the last run of each kind. Reads the database only.
+Every route is behind Medusa's admin authentication, and every `GET` only reads (never Fakturownia, never a write). Writes take a JSON body or the `x-koda-request` header and answer 415 otherwise.
+
+- `GET /admin/fakturownia`: configuration summary (never the token), counters, writers, references, the last run of each kind, `demoPrepared` in demo mode. Reads the database only.
+- `POST /admin/fakturownia/demo/seed`: demo mode only, the sample documents now (idempotent; 409 in live mode).
 - `POST /admin/fakturownia/check`: harmless reads now (departments, categories).
 - `POST /admin/fakturownia/sync` with `{ "what": "issue" | "statuses" | "payments" | "corrections" }`: run a job now (202, background).
 - `POST /admin/fakturownia/writers` with `{ "writer": "corrections" | "emails" | "ksef", "on": true }`: the runtime toggle.
-- `GET /admin/fakturownia/documents?filter=all|pending|issued|attention|unpaid|ksef|corrections|canceled&q=`: the documents.
+- `GET /admin/fakturownia/documents?filter=all|pending|issued|attention|unpaid|ksef|corrections|canceled&q=`: the documents. Exact lookups: `order_id=a,b` (up to 50), `number=` (the number as printed), `customer_id=` (the documents of a customer's newest 500 orders). A search keeps the filter.
 - `GET /admin/fakturownia/documents/:id`: one document with its KSeF and e-mail history, corrections and plans.
 - `POST /admin/fakturownia/documents/:id/retry`, `/issue-again`, `/check`, `/mark-issued` (`{ "number": "...", "fakturowniaId": "..." }`): what a person can do.
 - `POST /admin/fakturownia/documents/:id/email` with `{ "kind": "manual" | "reminder", "to": "...", "attachPdf": true }` and `POST /admin/fakturownia/documents/:id/ksef-resend`.
@@ -257,6 +273,7 @@ A simulated Fakturownia account inside the plugin, with zero outgoing requests. 
 - `GET /admin/fakturownia/corrections?filter=open|approved|issued|closed|all&q=`, `POST /admin/fakturownia/corrections/:id/approve` (`{ "revision": 2, "reason": "..." }`), `/dismiss` and `/done` (`{ "note": "..." }`).
 - `GET /admin/fakturownia/orders/:orderId`, `POST /admin/fakturownia/orders/:orderId/issue` and `POST /admin/fakturownia/orders/:orderId/corrections`: the order widget.
 - `GET /admin/fakturownia/reminders`, `GET /admin/fakturownia/emails`, `GET /admin/fakturownia/summary`, `GET /admin/fakturownia/runs?kind=issue|payments|statuses|corrections`.
+- `GET /admin/fakturownia/integration`, `/integration/summary`, `/integration/attention`: the koda.integration/1 contract, see "Works with Koda Plus hosts".
 
 No route uses DELETE: dismissing and closing are POSTs.
 
@@ -274,7 +291,11 @@ const { result } = await issueFakturowniaDocumentWorkflow(container).run({
 
 Also exported: `issueFakturowniaDocumentsWorkflow` (one pass of the outbox), `markFakturowniaPaidWorkflow`, `refreshFakturowniaStatusesWorkflow`, `checkFakturowniaConnectionWorkflow`, and the plain functions behind them.
 
-The events of 0.1.0 stay: `fakturownia.document_issued`, `fakturownia.document_failed` and `fakturownia.document_needs_attention`.
+The events of 0.1.0 stay as they were, for code that listens to them (new code should listen to `fakturownia.document.issued` and `.corrected`, below):
+
+- `fakturownia.document_issued` (not for corrections): `{ order_id, display_id, document_id, kind, fakturownia_id, number, adopted, paid, demo }`.
+- `fakturownia.document_failed`: `{ order_id, display_id, document_id, kind, code, message, attempts, demo }`, when a document fails for good.
+- `fakturownia.document_needs_attention`: `{ order_id, display_id, document_id, kind, status, demo }` plus `message` (an unknown result) or `number` (an invoice of a canceled order that needs a correction).
 
 ## Use it from other plugins
 
@@ -325,21 +346,42 @@ export const config: SubscriberConfig = { event: ["fakturownia.document.issued",
 
 With `demo: true` it returns a small generated PDF of the simulated document with its number, without any request. It throws a `FakturowniaApiError` (check `code`): `PDF_NOT_READY` while Fakturownia has not rendered the PDF (a new document, or a KSeF number on its way: try again in a minute), `DEMO_MODE` for a live document in demo mode, `BAD_ID`, `HTTP_404`.
 
+## Works with Koda Plus hosts
+
+An app that shows every Koda Plus plugin in one place (like [medusa.koda.plus](https://medusa.koda.plus/app/orders?demo=en)) reads Fakturownia through the shared contract `koda.integration/1` and never needs to know its tables:
+
+- `GET /admin/fakturownia/integration`: the manifest (mode `live`, `demo` or `off`, whether it is configured, the writers armed, the widgets, the last issue pass).
+- `GET /admin/fakturownia/integration/summary?entity=order&id=order_...` (or `ids=`, up to 50): one line per order, the worst signal speaking. Red: a document not issued, a lost answer, a KSeF rejection. Orange: a correction to approve or to handle by hand, an approved correction waiting for the corrections writer, a proforma of a canceled order still active, an e-mail that failed, a NIP to check, an unpaid document older than `reminderAfterDays`, an order whose trigger is met without a document (to issue). Blue: being issued, KSeF processing, an e-mail waiting for the KSeF number. Green: issued. The facts: `document` (priority 80, Fakturownia is the system of record of its documents: kind and number, the KSeF number or status, paid or not) and `buyer` (priority 60: company with its NIP on the invoice, or consumer, with a NIP warning), both from the plugin's rows, never from order metadata.
+- `GET /admin/fakturownia/integration/summary?entity=customer&ids=cus_...`: one line per customer, the worst of their orders, with the last document and its buyer.
+- `GET /admin/fakturownia/integration/attention?scope=orders`: the counters `documents_attention` (red), `ksef_problems` (red), `corrections_to_approve` (orange) and `to_issue` (orange), each the length of the list its link opens (`/fakturownia?filter=attention`, `?filter=ksef`, `?plans=open`, `?filter=pending`), with up to 20 order ids.
+- The order card registers as `fakturownia.order` for the zone `order.details` (tab order 20); a host that claims the zone shows it as a tab (`embedded`: no frame or header of its own) and Medusa's own spot stays empty. Without a host nothing changes.
+- The page opens on deep links: `/fakturownia?filter=attention`, `?q=1042`, `?doc=fkdoc_...` (the document drawer), `?customer=cus_...`, `?plans=open`.
+
+## Public API
+
+What other code may import: `@koda-plus/medusa-plugin-fakturownia/workflows` (the workflows and the plain functions behind them), `@koda-plus/medusa-plugin-fakturownia/modules/fakturownia` (the module, `FakturowniaPluginOptions`, the event names and types, `FakturowniaApiError`, `PdfDownload`) and `/admin`. The plugin has no providers. Type declarations ship with the package. Every other path is internal and may change in any release. The events and `downloadPdf` above are the contract the Allegro and BaseLinker plugins build on and keep their names and shapes.
+
 ## Security
 
-- **The token in a header only:** `Authorization: Bearer`, never in a URL or a body, redirects not followed (a KSeF file's redirect is followed by hand, without the token unless it stays on the account host), masked in logs, stored errors, runs and the admin.
-- **Files through the backend:** the PDF, the UPO and the KSeF XML; the browser talks to plugin routes with the admin session, never to Fakturownia.
-- **No personal data at rest:** the tables keep no buyer name, address or tax ID, only "company" or "person" and a NIP warning without the number. The e-mail history keeps the address masked ("a***@e***.pl") and the user id of the admin who asked.
-- **Storefront ownership by customer id**, never by e-mail; rate limited.
+- **The token in a header only:** `Authorization: Bearer`, never in a URL or a body, redirects not followed (a KSeF file's redirect is followed by hand, without the token unless it stays on the account host), masked in logs, stored errors, runs and the admin, which only knows whether it is set.
+- **Files through the backend:** the PDF, the UPO and the KSeF XML; the admin fetches them with its own session or token, never from Fakturownia. File names are ASCII with the printed name in `filename*`, files carry `nosniff`, the KSeF files are always `application/xml` and limited to 5 MB.
+- **Writes from the admin or a server only:** writes to `/admin/fakturownia/*` take a JSON body or the `x-koda-request` header and answer 415 otherwise (Medusa's session cookie is `SameSite=None` in production, so a form on another site could otherwise post with it). The plugin's admin sends both.
+- **RBAC** (Medusa 2.15 and newer with the `rbac` feature flag): every admin route needs `fakturownia:read`, every write `fakturownia:update`, and approving corrections `fakturownia:approve`, e-mailing documents and reminders and sending to KSeF again `fakturownia:send`, the writers `fakturownia:manage`. The policies are defined by the plugin (`src/policies`), so roles can be given them. Older versions and stores without the flag work as before.
+- **Shopper metadata is not state:** the plugin keeps its state in its own tables and reads no key of its own from order or cart metadata, so it guards none on the Store API. The NIP a shopper types at checkout (`nipSources`) is input, validated as data when the document is built.
+- **No personal data at rest:** the tables keep no buyer name, address or tax ID, only "company" or "person" and a NIP warning without the number. Error texts from Fakturownia and KSeF are masked before they are stored or logged: the token, token-like values and e-mail addresses (NIPs and KSeF numbers stay readable, KSeF numbers start with the seller's NIP). The e-mail history keeps the address masked ("a***@e***.pl") and the user id of the admin who asked.
+- **Storefront ownership by customer id**, never by e-mail; rate limited; a shopper reads a plain sentence when a PDF cannot be fetched, the reason goes to the server log.
 - **One HTTP client:** the Fakturownia host is built in one place, from a validated subdomain, and document ids must be numbers before they reach a path.
-- **Reads only while rendering:** the admin never calls Fakturownia to draw a page; network calls sit behind jobs and clicks.
+- **Reads never write:** no `GET` route writes or calls Fakturownia (the demo data comes from the issue job or one explicit POST); network calls sit behind jobs and clicks.
+- **Data processing:** the buyer's data travels to Fakturownia when a document is issued: Fakturownia processes it for the store (sign a data processing agreement, umowa powierzenia, with Fakturownia as you would for any invoicing service).
 
 ## What this plugin does not do
 
 - It does not send documents to KSeF itself, nor authorize your company in KSeF; that is Fakturownia's setting.
 - It does not correct receipts (the register of returns is kept by a person) and does not plan corrections for claims and exchanges (a manual plan says so).
-- It does not send the basis of a VAT exemption (`exempt_tax_kind`) for lines with the `zw` rate, which a KSeF account requires; tell us if you sell exempt goods.
-- It does not convert amounts of foreign currency documents to PLN.
+- It does not send the basis of a VAT exemption (`exempt_tax_kind`) for lines with the `zw` rate, which a KSeF account requires: on such an account every document with a `zw` line is refused (HTTP 422) and waits for a person. Tell us if you sell exempt goods.
+- It does not convert amounts of foreign currency documents to PLN: the law asks for the VAT amount in PLN on an invoice in another currency, and a KSeF account may refuse it. Check an invoice in EUR on a test account before you sell in other currencies.
+- It does not issue an invoice to a receipt (faktura do paragonu): issue it by hand in Fakturownia.
+- Its receipts are Fakturownia documents, not fiscal receipts: where the store is not exempt from the cash register, keep fiscalizing sales as before.
 - It does not write a custom text into e-mails or reminders: the API has no field for it, Fakturownia's templates apply.
 - It does not fiscalize receipts (printer, e-receipt); Fakturownia can do it after a receipt is created through the API.
 - It does not sync products, clients or warehouse documents.
@@ -362,7 +404,19 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the options, masking, the buyer and the NIP sources, the positions, the kind decision, the proforma conversion, the HTTP client, the lookup and matching, the outbox states and its SQL, the correction planner, payload and lookup, the writers, the e-mails, KSeF, the storefront routes, the monthly summary, the demo, and the flows end to end against a scripted Fakturownia account, without a network or a build.
+`npm test` covers the options, masking, the buyer and the NIP sources, the positions, the kind decision, the proforma conversion, the HTTP client, the lookup and matching, the outbox states and its SQL, the claims under a slow Fakturownia and two processes, the correction planner, payload and lookup, the writers, the e-mails, KSeF, the admin and storefront routes (reads never write), the monthly summary, the demo, the koda.integration/1 contract, and the flows end to end against a scripted Fakturownia account, without a network or a build. Running the tests needs Node.js 22.6+ (they load the TypeScript sources directly).
+
+The migrations are written by hand (`create table if not exists`, `add column if not exists`), and the amounts are `numeric(14,2)` in the database while the model declares `float` (without the `raw_` columns of `bigNumber`): do not run `medusa db:generate` for this module, it would generate a change of the amount columns.
+
+## Uninstall
+
+1. Turn the writers off in the admin (Writes to Fakturownia), then remove the plugin from `medusa-config.ts` and the package from `package.json`.
+2. The tables `fakturownia_document`, `fakturownia_correction`, `fakturownia_email`, `fakturownia_ksef_event`, `fakturownia_sync_run` and `fakturownia_setting` stay with your data. They are the record of which order got which accounting document: keep them as long as you keep your accounting records, then drop them by hand.
+3. Do not run the `down` of the migrations: the one of 0.2.0 deletes every correction row from the outbox.
+
+## Compatibility
+
+Medusa 2.12 to 2.21 (peer range `^2.12.0`) and Node.js 20+. The release of each version runs the smoke test on a fresh Medusa 2.12.6 and 2.21.2 app: migrations, build, start and the admin pages. The admin libraries (`@medusajs/ui`, `@medusajs/icons`, `@tanstack/react-query`, `react`, `react-i18next`, `react-router-dom`) are optional peers: the plugin uses the copies of Medusa's dashboard. The RBAC policies take effect on Medusa versions that have RBAC, with its feature flag on.
 
 ## Commercial support
 
@@ -377,6 +431,10 @@ Fakturownia and its logo are trademarks of their owner, used here only to identi
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/LICENSE).
 
 ## Changelog
+
+### 0.3.0 (unreleased)
+
+Exactly once under a slow Fakturownia (the claim is proven right before the create request; the grace of a lost answer counts from that request); the automatic e-mail, reminders and "Send to KSeF again" taken atomically; demo mode only with `demo: true`; reads never write; writes only from the admin or a server, with RBAC policies; one definition of unpaid and honest filters; safe file names; correction invoices wait for KSeF; the koda.integration/1 contract for Koda Plus hosts with an embeddable order card; type declarations. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/CHANGELOG.md).
 
 ### 0.2.2 (2026-10-07)
 
@@ -401,4 +459,4 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 ### 0.1.0 (2026-10-05)
 
-First public release, generalized from the Fakturownia integration Koda Plus runs in production for a Polish cosmetics wholesaler: documents exactly once, proforma then VAT, receipts for consumers, payments, KSeF status, e-mail after issue, canceled orders, the admin page and the order widget, demo mode. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/CHANGELOG.md).
+First release in the repository (never published on npm; the first npm release is 0.2.0), generalized from the Fakturownia integration Koda Plus runs in production for a Polish cosmetics wholesaler: documents exactly once, proforma then VAT, receipts for consumers, payments, KSeF status, e-mail after issue, canceled orders, the admin page and the order widget, demo mode. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/CHANGELOG.md).

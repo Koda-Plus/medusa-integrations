@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { InformationCircleSolid } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Switch, Table, Text, toast } from "@medusajs/ui"
+import { Badge, Button, Container, Heading, InlineTip, Switch, Table, Text, toast, usePrompt } from "@medusajs/ui"
 import type { DocumentKind, StatusResponse, SummaryMonthDto, WriterDto, WriterKey } from "../../modules/fakturownia/lib/contract"
 import { errorMessage, useFakturowniaEmail, useFakturowniaEmails, useFakturowniaReminders, useFakturowniaSummary, useFakturowniaWriter } from "./fakturownia-api"
 import { EmailHistory } from "./fakturownia-document"
@@ -29,7 +29,20 @@ export function DemoDetails({ status }: { status: StatusResponse }) {
 export function WritersSection({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("fakturownia")
   const toggle = useFakturowniaWriter()
+  const prompt = usePrompt()
   const flip = async (writer: WriterKey, on: boolean) => {
+    /* Turning the corrections writer on sends what was approved earlier: the person sees how many first. */
+    const waiting = status.counts.correctionsApproved
+    if (writer === "corrections" && on && waiting > 0) {
+      const confirmed = await prompt({
+        title: t("prompts.armCorrections.title"),
+        description: t("prompts.armCorrections.description", { count: waiting }),
+        confirmText: t("prompts.armCorrections.confirm"),
+        cancelText: t("actions.cancel"),
+        variant: "confirmation",
+      })
+      if (!confirmed) return
+    }
     try {
       await toggle.mutateAsync({ writer, on })
       toast.success(t(on ? "writers.turnedOn" : "writers.turnedOff", { name: t(`writers.names.${writer}`) }))

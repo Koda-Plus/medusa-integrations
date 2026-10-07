@@ -32,13 +32,20 @@
 - Writes to `/admin/fakturownia` need a JSON body or the `x-koda-request` header (the kit's `writeGuard`), so a form on another site cannot trigger them with the admin's cookie.
 - The admin calls the routes through the kit (`kitRequestInit`), so an admin signed in with a token (JWT) works too; the PDF, UPO and XML are fetched as files the same way instead of plain links.
 - The admin asks again only while something moves by itself (5 s while issuing, 60 s for KSeF, e-mails and retries, never for what waits for a person), and never while the tab is hidden.
-- The writers of 0.2.0 (corrections, e-mails and reminders, KSeF sending) carry a Beta badge in the admin: they are built from the API documentation and tested against a simulated account, not yet against a real one with KSeF.
+- The writers of 0.2.0 (corrections, e-mails and reminders, KSeF sending) carry a Beta badge in the admin: they are built from the API documentation and tested against a simulated account, not yet against a real one with KSeF. The README says what is measured in production and what is not, with a checklist for a test account with KSeF DEMO.
+- Turning the corrections writer on asks first when approved corrections wait: how many go out right away.
+- The admin says "1 day" and "1 dzień" (singular forms of the day counts).
+- The guide's KSeF step names the 2026 dates and what the "companies only" modes leave outside KSeF; the FAQ on a wrong NIP describes the correction to zero and a new invoice by hand (a correction cannot change the buyer on a KSeF account).
+- The order card is hostable (`fakturownia.order`, zone `order.details`, tab order 20): a Koda Plus host that claims the zone shows it as a tab, with `embedded` (no frame or header of its own, a line while loading). Without a host nothing changes.
+- The package ships type declarations (`declaration: true`); `prepublishOnly` runs the typecheck too. The `./providers/*` export is gone (the plugin has no providers).
 
 ### Added
 
 - RBAC policies for Medusa 2.15 and newer with the `rbac` feature flag: `fakturownia:read` on every admin route, `fakturownia:update` on every write, and `approve` (corrections), `send` (e-mails, reminders, KSeF again) and `manage` (writers) on top. Older Medusa versions and stores without the flag work as before.
 - Exact lookups: `GET /admin/fakturownia/documents?order_id=a,b` and `?number=`.
-- Deep links into the page: `?filter=`, `?q=`, `?doc=`.
+- Deep links into the page: `?filter=`, `?q=`, `?doc=` (the document drawer), `?customer=` (a customer's documents), `?plans=` (the correction plans).
+- The koda.integration/1 contract for Koda Plus hosts: `GET /admin/fakturownia/integration` (manifest), `/integration/summary?entity=order|customer` (the worst signal speaks, with the facts `document`, priority 80, and `buyer`, priority 60, from the plugin's rows, never from order metadata) and `/integration/attention?scope=orders` (counters `documents_attention`, `ksef_problems`, `corrections_to_approve`, `to_issue`, each the length of the list its link opens).
+- `GET /admin/fakturownia/documents?customer_id=`: the documents of a customer's orders.
 - Migration `Migration20261008093000_fakturownia`: `create_sent_at`, `email_claimed_at`, `reminder_at`, `finals_checked_at`, `converted_at` (columns only, idempotent).
 
 ## 0.2.2 (2026-10-07)
@@ -131,7 +138,7 @@ Corrections, e-mails, KSeF in depth, documents in the customer account and B2B b
 
 ## 0.1.0 (2026-10-05)
 
-First public release, generalized from the Fakturownia integration Koda Plus runs in production for a Polish cosmetics wholesaler.
+First release in the repository (never published on npm; the first npm release is 0.2.0), generalized from the Fakturownia integration Koda Plus runs in production for a Polish cosmetics wholesaler.
 
 - Documents for Medusa orders: the final document at the trigger (`payment_captured` or `order_placed`), or a proforma at the trigger and the final document after the first fulfillment; a receipt instead of a VAT invoice for consumers on request (`receiptKind` configurable).
 - Exactly once: one row per order and kind enforced by unique indexes (and one final document per order), an atomic claim with a token and a lease, a lookup by order number (`?oid=`) and by proforma (`?from_invoice_id=`) before every create, a create request never repeated blindly, unknown results reconciled after a grace period, `oid_unique` on top, conflicts left to a person.

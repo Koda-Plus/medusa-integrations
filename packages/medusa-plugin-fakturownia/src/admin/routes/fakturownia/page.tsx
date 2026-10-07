@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
-import type { CheckResult, DocumentFilter, StatusResponse } from "../../../modules/fakturownia/lib/contract"
+import type { CheckResult, DocumentFilter, PlanFilter, StatusResponse } from "../../../modules/fakturownia/lib/contract"
 import {
   errorMessage,
   fakturowniaKeys,
@@ -62,9 +62,12 @@ import {
  *
  * Deep links (hosts, boards, the order card): `?filter=attention` (any filter
  * of the documents table), `?q=1042` (a search: order number, document
- * number, order id), `?doc=fkdoc_...` (opens the document drawer).
+ * number, order id), `?doc=fkdoc_...` (opens the document drawer),
+ * `?customer=cus_...` (the documents of a customer's orders) and
+ * `?plans=open|approved|issued|closed|all` (the correction plans, scrolled to).
  */
 const PAGE_SIZE = 15
+const PLAN_FILTERS: readonly PlanFilter[] = ["open", "approved", "issued", "closed", "all"]
 
 const SETTINGS_TABS = ["account", "writers", "mailbox", "runs"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
@@ -84,6 +87,12 @@ const FakturowniaPage = () => {
     return asked && (FILTERS as readonly string[]).includes(asked) ? (asked as DocumentFilter) : "all"
   })
   const initialQuery = (params.get("q") ?? "").slice(0, 80)
+  const [customer, setCustomer] = useState(() => {
+    const id = params.get("customer") ?? ""
+    return /^cus_[A-Za-z0-9]{1,60}$/.test(id) ? id : ""
+  })
+  const plansParam = params.get("plans")
+  const plansFilter = PLAN_FILTERS.includes(plansParam as PlanFilter) ? (plansParam as PlanFilter) : null
   const [openDocument, setOpenDocument] = useState<string | null>(() => {
     const doc = params.get("doc") ?? ""
     return /^fkdoc_[A-Za-z0-9]{1,60}$/.test(doc) ? doc : null
@@ -171,8 +180,19 @@ const FakturowniaPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          <DocumentsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} onAction={poll} onOpen={setOpenDocument} initialQuery={initialQuery} />
-          <CorrectionsSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
+          <DocumentsSection
+            status={s}
+            lang={lang}
+            filter={filter}
+            onFilter={setFilter}
+            poll={polling}
+            onAction={poll}
+            onOpen={setOpenDocument}
+            initialQuery={initialQuery}
+            customer={customer}
+            onClearCustomer={() => setCustomer("")}
+          />
+          <CorrectionsSection status={s} lang={lang} onOpenDocument={setOpenDocument} initialFilter={plansFilter ?? "open"} focus={plansFilter !== null} />
           <UnpaidSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
           <SummarySection lang={lang} />
         </>
@@ -549,6 +569,8 @@ function DocumentsSection({
   onAction,
   onOpen,
   initialQuery = "",
+  customer = "",
+  onClearCustomer,
 }: {
   status: StatusResponse
   lang: string
@@ -558,13 +580,16 @@ function DocumentsSection({
   onAction: () => void
   onOpen: (id: string) => void
   initialQuery?: string
+  /** A deep link from a customer card: only the documents of this customer's orders. */
+  customer?: string
+  onClearCustomer?: () => void
 }) {
   const { t } = useTranslation("fakturownia")
   const [search, setSearch] = useState(initialQuery)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
-  useEffect(() => setPage(0), [filter, q])
-  const documents = useFakturowniaDocuments(filter, q, page * PAGE_SIZE, PAGE_SIZE, poll)
+  useEffect(() => setPage(0), [filter, q, customer])
+  const documents = useFakturowniaDocuments(filter, q, page * PAGE_SIZE, PAGE_SIZE, poll, customer)
   const rows = documents.data?.documents ?? []
 
   return (
@@ -576,7 +601,23 @@ function DocumentsSection({
         </Text>
       </div>
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<DocumentFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`documents.filter.${f}`), count: filterCount(status, f) }))} />
+        <span className="flex flex-wrap items-center gap-2">
+          <FilterPills<DocumentFilter>
+            value={filter}
+            onChange={onFilter}
+            options={FILTERS.map((f) => ({ value: f, label: t(`documents.filter.${f}`), count: customer ? undefined : filterCount(status, f) }))}
+          />
+          {customer ? (
+            <Badge size="2xsmall" color="blue">
+              <span className="inline-flex items-center gap-x-1">
+                {t("documents.customer", { id: customer })}
+                <button type="button" className="text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={onClearCustomer} aria-label={t("documents.showAll")}>
+                  {t("documents.showAll")}
+                </button>
+              </span>
+            </Badge>
+          ) : null}
+        </span>
         <div className="w-full lg:w-72">
           <Input size="small" type="search" placeholder={t("documents.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>

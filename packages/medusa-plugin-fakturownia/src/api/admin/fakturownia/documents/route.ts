@@ -1,9 +1,17 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { DocumentFilter, DocumentsResponse } from "../../../../modules/fakturownia/lib/contract"
 import type { DocumentRow } from "../../../../modules/fakturownia/lib/dto"
+import { queryOf } from "../../../../workflows/fakturownia/runtime"
 import { DOCUMENT_FILTERS, documentDto, documentFilters, fakturowniaService, intParam, like, strParam, withAlternatives } from "../helpers"
 
 const ORDER_ID = /^order_[A-Za-z0-9]{1,60}$/
+const CUSTOMER_ID = /^cus_[A-Za-z0-9]{1,60}$/
+
+/** The orders of a customer (the newest 500), read by id: the documents of a customer card. */
+async function ordersOfCustomer(scope: MedusaRequest["scope"], customerId: string): Promise<string[]> {
+  const { data } = await queryOf(scope).graph({ entity: "order", fields: ["id"], filters: { customer_id: customerId }, pagination: { take: 500, order: { created_at: "DESC" } } })
+  return (data as Array<{ id?: string }>).map((o) => o.id).filter((id): id is string => typeof id === "string")
+}
 
 /**
  * GET /admin/fakturownia/documents?filter=&q=&order_id=&number=&limit=&offset=
@@ -17,6 +25,7 @@ const ORDER_ID = /^order_[A-Za-z0-9]{1,60}$/
  *             Fakturownia document id
  *   order_id  exact: one or more Medusa order ids, comma separated (up to 50)
  *   number    exact: the document number as Fakturownia printed it
+ *   customer_id  the documents of a customer's orders (their newest 500)
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = fakturowniaService(req.scope)
@@ -31,9 +40,19 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     .filter((s) => ORDER_ID.test(s))
     .slice(0, 50)
   const number = strParam(req.query.number).slice(0, 100)
+  const customerId = strParam(req.query.customer_id)
 
   let where = documentFilters(filter, svc.isDemo())
-  if (orderIds.length > 0) where.order_id = orderIds
+  if (CUSTOMER_ID.test(customerId)) {
+    const ofCustomer = await ordersOfCustomer(req.scope, customerId)
+    const asked = orderIds.length > 0 ? orderIds.filter((id) => ofCustomer.includes(id)) : ofCustomer
+    if (asked.length === 0) {
+      const empty: DocumentsResponse = { documents: [], count: 0, limit, offset }
+      res.json(empty)
+      return
+    }
+    where.order_id = asked
+  } else if (orderIds.length > 0) where.order_id = orderIds
   if (number) where.number = number
   if (q) {
     const bare = q.replace(/^#/, "")

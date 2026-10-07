@@ -149,7 +149,7 @@ export async function openFile(path: string, fallbackName: string): Promise<void
 export const fakturowniaKeys = {
   all: ["fakturownia"] as const,
   status: ["fakturownia", "status"] as const,
-  documents: (filter: DocumentFilter, q: string, offset: number, limit: number) => ["fakturownia", "documents", filter, q, offset, limit] as const,
+  documents: (filter: DocumentFilter, q: string, offset: number, limit: number, customer = "") => ["fakturownia", "documents", filter, q, offset, limit, customer] as const,
   runs: ["fakturownia", "runs"] as const,
   order: (id: string) => ["fakturownia", "order", id] as const,
   document: (id: string) => ["fakturownia", "document", id] as const,
@@ -178,10 +178,10 @@ function params(values: Record<string, string | number>): string {
   return p.toString()
 }
 
-export function useFakturowniaDocuments(filter: DocumentFilter, q: string, offset: number, limit: number, poll: boolean) {
+export function useFakturowniaDocuments(filter: DocumentFilter, q: string, offset: number, limit: number, poll: boolean, customer = "") {
   return useQuery<DocumentsResponse>({
-    queryKey: fakturowniaKeys.documents(filter, q, offset, limit),
-    queryFn: () => fakturowniaFetch<DocumentsResponse>(`/admin/fakturownia/documents?${params({ filter, q, offset, limit })}`),
+    queryKey: fakturowniaKeys.documents(filter, q, offset, limit, customer),
+    queryFn: () => fakturowniaFetch<DocumentsResponse>(`/admin/fakturownia/documents?${params({ filter, q, offset, limit, customer_id: customer })}`),
     placeholderData: (previous) => previous,
     /* `lib/poll.ts`: fast only while something is being issued; a finished run refreshes the lists anyway. */
     refetchInterval: (query) => (poll ? 4_000 : pollInterval(query.state.data?.documents ?? [])),

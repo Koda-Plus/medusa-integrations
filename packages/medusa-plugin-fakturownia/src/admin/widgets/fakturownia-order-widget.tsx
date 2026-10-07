@@ -3,12 +3,13 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Button, Container, Heading, Text, toast } from "@medusajs/ui"
+import { Badge, Button, Heading, Text, toast } from "@medusajs/ui"
 import type { DocumentDto } from "../../modules/fakturownia/lib/contract"
 import { errorMessage, useFakturowniaCheckOrderCorrections, useFakturowniaIssueOrder, useFakturowniaOrder } from "../lib/fakturownia-api"
 import { PlanCard } from "../lib/fakturownia-corrections"
 import { DocumentDrawer } from "../lib/fakturownia-document"
 import { FakturowniaIcon } from "../lib/fakturownia-icon"
+import { WidgetFrame, hostable } from "../lib/fakturownia-kit"
 import { BuyerWarningText, DocumentActions, DocumentLinks, DocumentStatusBadge, KindBadge, KsefBadge, PaidBadge, fmtDateTime, fmtMoney } from "../lib/fakturownia-ui"
 
 /**
@@ -17,8 +18,13 @@ import { BuyerWarningText, DocumentActions, DocumentLinks, DocumentStatusBadge, 
  * generated in demo mode), the details drawer (KSeF history, e-mails),
  * "Issue now" when the order has no document yet, and the correction plans
  * of the order with "Check for corrections".
+ *
+ * A host (an app that shows every integration as tabs of one card) embeds it
+ * with `embedded`: no frame and header of its own, a line while loading
+ * instead of nothing. It registers as `fakturownia.order` in the zone
+ * `order.details`, tab order 20.
  */
-const FakturowniaOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
+const FakturowniaOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { embedded?: boolean }) => {
   const { t, i18n } = useTranslation("fakturownia")
   const lang = i18n.language || "en"
   const q = useFakturowniaOrder(data.id)
@@ -51,24 +57,38 @@ const FakturowniaOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
     }
   }
 
-  return (
-    <Container className="divide-y p-0">
-      <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-x-2">
-          <FakturowniaIcon width={18} height={18} className="shrink-0" />
-          <Heading level="h2">{t("widget.title")}</Heading>
-          {info?.mode === "demo" ? (
-            <Badge size="2xsmall" color="purple">
-              {t("widget.demo")}
-            </Badge>
-          ) : null}
-        </div>
-        <Link to="/fakturownia" className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-          {t("widget.more")}
-        </Link>
-      </div>
+  if (embedded && (q.isLoading || !info)) return <Quiet>{q.isError ? t("widget.failed") : t("widget.loading")}</Quiet>
 
-      {q.isLoading ? null : (
+  return (
+    <WidgetFrame
+      embedded={embedded}
+      header={
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-x-2">
+            <FakturowniaIcon width={18} height={18} className="shrink-0" />
+            <Heading level="h2">{t("widget.title")}</Heading>
+            {info?.mode === "demo" ? (
+              <Badge size="2xsmall" color="purple">
+                {t("widget.demo")}
+              </Badge>
+            ) : null}
+          </div>
+          <Link to={`/fakturownia?q=${data.display_id ?? data.id}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+            {t("widget.more")}
+          </Link>
+        </div>
+      }
+    >
+      {embedded && info?.mode === "demo" ? (
+        <div className="px-6 py-2">
+          <Badge size="2xsmall" color="purple">
+            {t("widget.demo")}
+          </Badge>
+        </div>
+      ) : null}
+      {q.isError && !info ? (
+        <Quiet>{t("widget.failed")}</Quiet>
+      ) : q.isLoading ? null : (
         <>
           {docs.length === 0 ? (
             <div className="flex flex-col gap-y-1 px-6 py-4">
@@ -120,7 +140,17 @@ const FakturowniaOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
         </>
       )}
       {open ? <DocumentDrawer documentId={open} onClose={() => setOpen(null)} /> : null}
-    </Container>
+    </WidgetFrame>
+  )
+}
+
+function Quiet({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-6 py-4">
+      <Text size="small" className="text-ui-fg-subtle">
+        {children}
+      </Text>
+    </div>
   )
 }
 
@@ -208,4 +238,4 @@ export const config = defineWidgetConfig({
   zone: "order.details.side.after",
 })
 
-export default FakturowniaOrderWidget
+export default hostable({ id: "fakturownia.order", ns: "fakturownia", zone: "order.details", name: "Fakturownia", order: 20, Icon: FakturowniaIcon }, FakturowniaOrderCard)

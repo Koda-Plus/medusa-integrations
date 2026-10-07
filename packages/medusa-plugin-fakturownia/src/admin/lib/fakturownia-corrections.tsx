@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Table, Text, Textarea, toast } from "@medusajs/ui"
 import type { CorrectionPlanDto, PlanFilter, StatusResponse, WriterDto } from "../../modules/fakturownia/lib/contract"
@@ -14,9 +14,26 @@ const FILTERS: PlanFilter[] = ["open", "approved", "issued", "closed", "all"]
  * and the decision of a person. An approved plan becomes a correction
  * invoice once, when the corrections writer is on.
  */
-export function CorrectionsSection({ status, lang, onOpenDocument }: { status: StatusResponse; lang: string; onOpenDocument: (id: string) => void }) {
+export function CorrectionsSection({
+  status,
+  lang,
+  onOpenDocument,
+  initialFilter = "open",
+  focus = false,
+}: {
+  status: StatusResponse
+  lang: string
+  onOpenDocument: (id: string) => void
+  /** A deep link (`?plans=open`): the filter to start with, and the section scrolled into view. */
+  initialFilter?: PlanFilter
+  focus?: boolean
+}) {
   const { t } = useTranslation("fakturownia")
-  const [filter, setFilter] = useState<PlanFilter>("open")
+  const [filter, setFilter] = useState<PlanFilter>(initialFilter)
+  const section = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (focus) section.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [focus])
   const [search, setSearch] = useState("")
   const [q, setQ] = useState("")
   const [page, setPage] = useState(0)
@@ -33,7 +50,7 @@ export function CorrectionsSection({ status, lang, onOpenDocument }: { status: S
   const counts: Partial<Record<PlanFilter, number>> = { open: status.counts.correctionsOpen, approved: status.counts.correctionsApproved, issued: status.counts.correctionsIssued }
 
   return (
-    <Container className="divide-y p-0">
+    <Container className="divide-y p-0" ref={section}>
       <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
         <div className="flex max-w-3xl flex-col gap-1">
           <Heading level="h2">{t("corrections.title")}</Heading>
