@@ -4,7 +4,7 @@ import { normalizeLocale } from "../../../../modules/emails/lib/locale"
 import { resolveTemplate } from "../../../../modules/emails/lib/registry"
 import { RenderError } from "../../../../modules/emails/lib/render"
 import { renderPreview } from "../../../../workflows/emails/preview"
-import { emailsService, strParam } from "../helpers"
+import { emailsService, serverError, strParam } from "../helpers"
 
 /**
  * GET /admin/emails/preview?template=order.placed&locale=pl|en&theme=light|dark&source=sample|latest
@@ -44,7 +44,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     res.setHeader("Cache-Control", "private, no-store")
     res.json(body)
   } catch (err) {
-    const message = svc.mask(err instanceof RenderError ? err.message : `The preview failed: ${(err as Error)?.message ?? String(err)}`)
-    res.status(422).json({ message })
+    if (err instanceof RenderError) {
+      /* The template's own error (your code threw, or returned no subject): useful to its author, masked. */
+      res.status(422).json({ code: "render_error", message: svc.mask(err.message) })
+      return
+    }
+    serverError(req, res, err, "The preview failed. The server log has the details.")
   }
 }

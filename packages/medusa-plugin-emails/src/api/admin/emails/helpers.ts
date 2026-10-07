@@ -1,15 +1,17 @@
-import type { MedusaRequest } from "@medusajs/framework/http"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
-import { PLUGIN_VERSION, TEST_LIMIT_PER_HOUR, TEST_LIMIT_PER_USER, TEST_WINDOW_MS } from "../../../modules/emails/lib/constants"
-import type { MessageFilter, ProviderDto, StatusResponse, TemplateDto } from "../../../modules/emails/lib/contract"
-import { toBrandDto } from "../../../modules/emails/lib/dto"
+import { TEST_LIMIT_PER_HOUR, TEST_LIMIT_PER_USER, TEST_WINDOW_MS } from "../../../modules/emails/lib/constants"
+import type { MessageFilter, MessageWindow, ProviderDto, StatusResponse, TemplateDto } from "../../../modules/emails/lib/contract"
+import { localized, toBrandDto } from "../../../modules/emails/lib/dto"
+import { KIT_META } from "../../../modules/emails/lib/kit-meta"
 import { fingerprintDifferences, missingOptions, optionsFingerprint, recommendedOptions } from "../../../modules/emails/lib/options"
 import { providerNote } from "../../../modules/emails/lib/provider-status"
 import { listTemplates } from "../../../modules/emails/lib/registry"
 import { applyBrandOverrides, BRAND_FIELDS, templateState } from "../../../modules/emails/lib/settings"
-import type { StatRow } from "../../../modules/emails/lib/store"
+import type { Counts, StatRow } from "../../../modules/emails/lib/store"
+import { demoSeedState } from "../../../workflows/emails/demo"
 import { LATEST_TEMPLATES } from "../../../workflows/emails/preview"
-import { actorNames, adminResetLink, emailsService, resolveOptional, settingsFor, storeFor, type Scope } from "../../../workflows/emails/runtime"
+import { actorNames, adminResetLink, emailsService, resolveOptional, settingsForDisplay, storeFor, type Scope } from "../../../workflows/emails/runtime"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
 
@@ -37,6 +39,20 @@ export function like(q: string): string {
   return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 }
 
+/**
+ * An unexpected error of a route: a plain sentence for the browser, the
+ * details (masked) in the server log. Never an SQL text or a stack.
+ */
+export function serverError(req: MedusaRequest, res: MedusaResponse, err: unknown, publicMessage: string, status = 500): void {
+  try {
+    const svc = emailsService(req.scope)
+    svc.getLogger().error(`[emails] ${req.method ?? "GET"} ${String(req.path ?? req.url ?? "").split("?")[0]}: ${svc.mask((err as Error)?.message ?? String(err))}`)
+  } catch {
+    /* no logger in tests */
+  }
+  res.status(status).json({ code: "emails_unavailable", message: publicMessage })
+}
+
 /** The table filter as service filters, in the current mode. */
 export function messageFilters(filter: MessageFilter, demo: boolean): Record<string, unknown> {
   const where: Record<string, unknown> = { demo }
@@ -53,16 +69,28 @@ export function messageFilters(filter: MessageFilter, demo: boolean): Record<str
     case "test":
       where.kind = "test"
       break
+    case "bounced":
+      where.status = "failed"
+      where.error_code = "INVALID_RECIPIENT"
+      break
   }
   return where
 }
 
-/** Enabled providers of the email channel in Medusa's own table, or null when it cannot be read. */
-async function emailProviders(scope: Scope): Promise<string[] | null> {
+const WINDOW_MS: Record<MessageWindow, number> = { "24h": 24 * 3600 * 1000, "7d": 7 * 24 * 3600 * 1000, "30d": 30 * 24 * 3600 * 1000 }
+
+/** The start of a list window (`since=24h|7d|30d`), or null for the whole log. */
+export function sinceOf(value: unknown, now: Date = new Date()): Date | null {
+  const v = strParam(value) as MessageWindow
+  return WINDOW_MS[v] ? new Date(now.getTime() - WINDOW_MS[v]) : null
+}
+
+/** Enabled providers of a channel in Medusa's own table, or null when it cannot be read. */
+async function channelProviders(scope: Scope, channel: "email" | "feed"): Promise<string[] | null> {
   const pg = resolveOptional<{ raw(sql: string, b?: unknown[]): Promise<{ rows?: Array<{ id: string }> }> }>(scope, ContainerRegistrationKeys.PG_CONNECTION)
   if (!pg) return null
   try {
-    const r = await pg.raw(`select "id" from "notification_provider" where "is_enabled" = true and 'email' = any("channels") order by "id"`)
+    const r = await pg.raw(`select "id" from "notification_provider" where "is_enabled" = true and ? = any("channels") order by "id"`, [channel])
     return (r.rows ?? []).map((row) => row.id)
   } catch {
     return null
@@ -95,14 +123,16 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   const o = svc.getOptions()
   const now = new Date()
   const store = storeFor(scope)
-  const settings = await settingsFor(scope)
+  const settings = await settingsForDisplay(scope)
 
   let logReady = true
-  let counts = { sent24h: 0, sent30d: 0, attention30d: 0, tests30d: 0, skipped30d: 0 }
+  let counts: Counts = { sent24h: 0, sent30d: 0, attention30d: 0, tests30d: 0, testsSent30d: 0, skipped30d: 0, refused30d: 0 }
   let stats: Record<string, TemplateDto["stats"]> = {}
   try {
     counts = await store.counts(o.demo, now)
     stats = statsByTemplate(await store.stats(o.demo, new Date(now.getTime() - 30 * 24 * 3600 * 1000)))
+    /* A log older than this version (the migrations of 0.2.0 did not run) is "not ready" too: the page asks for db:migrate. */
+    logReady = await store.schemaReady()
   } catch {
     logReady = false
   }
@@ -110,14 +140,11 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   const names = await actorNames(scope, [settings.brandUpdatedBy, ...Object.values(settings.templates).map((t) => t.updatedBy)])
   const templates: TemplateDto[] = listTemplates(o).map((t) => {
     const state = templateState(t.key, t.def.enabledByDefault !== false, o, settings)
-    const label = t.def.label
-    const description = t.def.description
-    const text = (v: typeof label) => (v === undefined ? null : typeof v === "string" ? { en: v, pl: v } : { en: v.en ?? null, pl: v.pl ?? null })
     return {
       key: t.key,
       source: t.source === "builtin" ? "builtin" : "app",
-      label: text(label),
-      description: text(description),
+      label: localized(t.def.label),
+      description: localized(t.def.description),
       trigger: { kind: t.def.trigger?.kind ?? "manual", name: t.def.trigger?.name ?? null },
       optional: state.optional,
       allowed: state.allowed,
@@ -135,14 +162,16 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     loaded: Boolean(note),
     loadedAt: note?.loadedAt ?? null,
     channels: note?.channels ?? [],
-    emailProviders: await emailProviders(scope),
+    mode: note?.mode ?? null,
+    emailProviders: await channelProviders(scope, "email"),
+    feedProviders: await channelProviders(scope, "feed"),
     sameOptions: note ? fingerprintDifferences(note.fingerprint, optionsFingerprint(o)).length === 0 : null,
     differences: note ? fingerprintDifferences(note.fingerprint, optionsFingerprint(o)) : [],
   }
 
   const overrides = settings.brand ?? {}
   return {
-    version: PLUGIN_VERSION,
+    version: KIT_META.version,
     mode: o.mode,
     configured: missingOptions(o).length === 0,
     missing: missingOptions(o),
@@ -161,8 +190,9 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     provider,
     templates,
     counts,
+    demo: await demoSeedState(scope, now),
     abandonedCart: o.abandonedCart,
-    limits: { testsPerUser: TEST_LIMIT_PER_USER, testWindowMinutes: Math.round(TEST_WINDOW_MS / 60000), testsPerHour: TEST_LIMIT_PER_HOUR },
+    limits: { testsPerUser: TEST_LIMIT_PER_USER, testWindowMinutes: Math.round(TEST_WINDOW_MS / 60000), testsPerHour: TEST_LIMIT_PER_HOUR, passwordResetsPerHour: o.passwordResetsPerHour },
     retentionDays: o.logRetentionDays,
     references: o.references,
     logReady,

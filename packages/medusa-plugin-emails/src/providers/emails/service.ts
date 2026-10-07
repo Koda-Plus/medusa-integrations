@@ -77,7 +77,7 @@ class EmailsNotificationProvider extends AbstractNotificationProviderService {
         {
           options: this.options_,
           store,
-          loadSettings: () => cachedSettings(this.options_.demo, () => (store ? store.settings() : Promise.resolve([]))),
+          loadSettings: () => cachedSettings(this.options_.demo, () => (store ? store.settings() : Promise.resolve([])), Date.now(), this.logger_),
           client: () => this.client(),
           logger: this.logger_,
         },

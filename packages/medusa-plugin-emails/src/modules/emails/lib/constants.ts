@@ -14,8 +14,6 @@ export const EMAILS_MODULE = "emails"
  */
 export const PROVIDER_IDENTIFIER = "koda-emails"
 
-export const PLUGIN_VERSION = "0.1.0"
-
 export const MESSAGE_TABLE = "emails_message"
 export const SETTING_TABLE = "emails_setting"
 
@@ -53,7 +51,11 @@ export const MAX_RETRY_WAIT_MS = 10_000
 export const BREAKER_THRESHOLD = 5
 export const BREAKER_COOLDOWN_MS = 60_000
 
-/** A row being sent holds this lease. A crash mid-send leaves it; it expires to `unknown`. */
+/**
+ * A row being sent holds a lease; a crash mid-send leaves it, and it expires
+ * to `unknown`. This is the shortest one: the lease of a send also covers
+ * every try the options allow (`timeoutMs`, `maxRetries`), see `leaseMs`.
+ */
 export const LEASE_MS = 2 * 60 * 1000
 
 /** Resend keeps an idempotency key for 24 hours. */
@@ -87,6 +89,16 @@ export const TEST_LIMIT_PER_HOUR = 30
 
 /** Medusa's password reset tokens expire after 15 minutes unless the auth module says otherwise. */
 export const DEFAULT_RESET_MINUTES = 15
+
+/**
+ * Password reset e-mails per address in any hour (`passwordResetsPerHour`).
+ * Asking for a reset needs no account, so without a limit anyone could flood
+ * an inbox from the store's domain and use up the Resend plan.
+ */
+export const DEFAULT_RESETS_PER_HOUR = 3
+
+/** The board counters of a host count the messages of this many days. */
+export const BOARD_WINDOW_DAYS = 7
 
 /** Abandoned carts: idle at least this long, at most this old, at most this many e-mails per run. */
 export const DEFAULT_ABANDONED_AFTER_HOURS = 24

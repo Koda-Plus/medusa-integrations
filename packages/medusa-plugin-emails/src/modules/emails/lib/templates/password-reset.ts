@@ -36,6 +36,8 @@ export const passwordResetTemplate: EmailTemplateDefinition<PasswordResetEmailDa
   description: { en: COPY.en.passwordReset.description, pl: COPY.pl.passwordReset.description },
   trigger: { kind: "event", name: "auth.password_reset" },
   enabledByDefault: true,
+  /* The link holds the reset token: never in Medusa's notification data, hidden in the demo outbox. */
+  sensitive: ["reset_url"],
   sample: (locale) => samplePasswordReset(locale),
   render: renderPasswordReset,
 }

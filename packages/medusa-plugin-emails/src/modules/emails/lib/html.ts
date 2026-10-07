@@ -39,6 +39,37 @@ export function cleanText(value: unknown, max = 500): string {
   return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s
 }
 
+/**
+ * Text a shopper typed that reads like a link, an e-mail address or a
+ * domain ("evil.example", "www.", "https://", "a@b"). Such text never goes
+ * into a message from the store's domain: a free registration would
+ * otherwise mail anyone a line the stranger wrote.
+ */
+export function looksLikeLink(value: string): boolean {
+  return /[@<>\\/]|:\/\/|\bwww\.|\bhttps?\b/i.test(value) || /[\p{L}\p{N}-]\.\p{L}{2,}/u.test(value)
+}
+
+const PERSON_NAME = /^[\p{L}\p{M}][\p{L}\p{M}'’ .-]*$/u
+
+/**
+ * A person's name as typed at registration or checkout, only when it looks
+ * like a name: letters of any alphabet, spaces, apostrophes, dots and
+ * hyphens, no link, address or domain. Null otherwise, and the message reads
+ * without a name.
+ */
+export function personName(value: unknown, max = 60): string | null {
+  const s = cleanText(value, max)
+  if (!s || looksLikeLink(s) || !PERSON_NAME.test(s)) return null
+  return s
+}
+
+/** A company name as typed by a shopper: any text but a link, an address or a domain. */
+export function companyName(value: unknown, max = 100): string | null {
+  const s = cleanText(value, max)
+  if (!s || looksLikeLink(s)) return null
+  return s
+}
+
 const UNSAFE_IN_URL = /[\s"'<>\\`]/
 
 /**

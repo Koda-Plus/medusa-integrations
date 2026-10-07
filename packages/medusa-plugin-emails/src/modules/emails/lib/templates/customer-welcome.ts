@@ -1,23 +1,29 @@
+import { companyName, personName } from "../html"
 import type { EmailDocument } from "../kit"
 import type { EmailTemplateContext, EmailTemplateDefinition, WelcomeEmailData } from "../types"
 import { COPY } from "./copy"
 import { sampleWelcome } from "./samples"
-import { firstName, text } from "./shared"
+import { firstName } from "./shared"
 
 /**
  * WELCOME (`customer.welcome`, from `customer.created` for registered
  * accounts only, never for guests): the customer card on the band and three
  * first steps.
+ *
+ * Anyone can register with any address, and Medusa does not confirm it, so
+ * the welcome is the one message a stranger can make the store send to
+ * someone else. What they typed shows only when it looks like a name or a
+ * company (never a link, an address or a domain), and never in the subject.
  */
 export function renderCustomerWelcome({ data, locale, kit, format, links, brand }: EmailTemplateContext<WelcomeEmailData>): EmailDocument {
   const c = COPY[locale].customerWelcome
   const common = COPY[locale].common
   const name = firstName(data.customer_name)
-  const company = text(data.company_name, 80)
-  const fullName = text(data.customer_name, 80)
+  const company = companyName(data.company_name, 80)
+  const fullName = personName(data.customer_name, 80)
   const title = c.title(name)
   return {
-    subject: c.subject(name, brand.name),
+    subject: c.subject(null, brand.name),
     preheader: c.preheader,
     chip: c.chip,
     eyebrow: c.eyebrow(brand.name),

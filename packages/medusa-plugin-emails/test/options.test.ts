@@ -54,13 +54,13 @@ test("modes: demo whatever the key, live with a key; live needs a valid From", (
 
 test("From and Reply-To: a name with punctuation is quoted, bad values are listed as problems", () => {
   assert.equal(resolveOptions({ from: "Koda Supply <orders@mail.example.com>" }).sender?.value, "Koda Supply <orders@mail.example.com>")
-  assert.equal(resolveOptions({ from: "Kowalski, Sklep <a@b.pl>" }).sender?.value, '"Kowalski, Sklep" <a@b.pl>')
+  assert.equal(resolveOptions({ from: "Kowalski, Sklep <a@b.example>" }).sender?.value, '"Kowalski, Sklep" <a@b.example>')
   assert.equal(resolveOptions({ from: "orders@mail.example.com" }).sender?.domain, "mail.example.com")
   const bad = resolveOptions({ from: "nope", replyTo: ["x", 3 as unknown as string] })
   assert.equal(bad.sender, null)
   assert.ok(bad.problems.some((p) => p.startsWith("from")))
   assert.ok(bad.problems.some((p) => p.startsWith("replyTo")))
-  assert.deepEqual(resolveOptions({ replyTo: "a@x.pl; b@x.pl, a@x.pl" }).replyTo, ["a@x.pl", "b@x.pl"])
+  assert.deepEqual(resolveOptions({ replyTo: "a@x.example; b@x.example, a@x.example" }).replyTo, ["a@x.example", "b@x.example"])
 })
 
 test("links: defaults from the storefront, paths joined to it, placeholders checked", () => {
@@ -80,8 +80,8 @@ test("buildLink encodes every value and leaves no double slash for an empty one"
   assert.equal(buildLink("https://s.example.com/{country}/account/orders/{order_id}", { country: "pl", order_id: "order_1" }), "https://s.example.com/pl/account/orders/order_1")
   assert.equal(buildLink("https://s.example.com/{country}/account", { country: null }), "https://s.example.com/account")
   assert.equal(
-    buildLink("https://s.example.com/reset?token={token}&email={email}", { token: "a b&c", email: "x+y@ex.com" }),
-    "https://s.example.com/reset?token=a%20b%26c&email=x%2By%40ex.com",
+    buildLink("https://s.example.com/reset?token={token}&email={email}", { token: "a b&c", email: "x+y@ex.example" }),
+    "https://s.example.com/reset?token=a%20b%26c&email=x%2By%40ex.example",
   )
   assert.equal(buildLink(null, {}), null)
 })

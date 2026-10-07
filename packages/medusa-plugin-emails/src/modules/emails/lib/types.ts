@@ -81,6 +81,14 @@ export interface EmailTemplateDefinition<D = Record<string, unknown>> {
   /** Data for the admin preview and test sends, one set for both languages or per language. */
   sample?: D | ((locale: EmailLocale) => D)
   /**
+   * Fields of the data that carry a secret, such as a link with a token
+   * (`["reset_url"]` for the built-in password reset). Such a message never
+   * passes through Medusa's notification table (the plugin hands it straight
+   * to its provider), and the simulated outbox of demo mode keeps it with
+   * these fields hidden.
+   */
+  sensitive?: readonly string[]
+  /**
    * Renders the message. Keep it pure (the same input, the same output): a
    * retry must produce the same message, or Resend refuses the idempotency key.
    * Return a document built with the kit (recommended: the look, dark mode and

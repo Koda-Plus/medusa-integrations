@@ -80,8 +80,14 @@ export function referencesFor(items: readonly ReferenceDto[], lang: string): Ref
 /* The state of the whole module, for the mode badge                  */
 /* ------------------------------------------------------------------ */
 
-export function modeState(s: StatusResponse | undefined): { key: "demo" | "live" | "dev" | "notConfigured" | "unknown"; tone: Tone } {
+/**
+ * The badge in the header. The provider decides what happens to an e-mail,
+ * so when the provider of this process runs in another mode than the plugin
+ * options say, the badge says so in red instead of "Demo mode".
+ */
+export function modeState(s: StatusResponse | undefined): { key: "demo" | "live" | "dev" | "notConfigured" | "unknown" | "mismatch"; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
+  if (s.provider.loaded && s.provider.mode && s.provider.mode !== s.mode) return { key: "mismatch", tone: "red" }
   if (s.mode === "demo") return { key: "demo", tone: "purple" }
   if (s.mode === "dev") return { key: "dev", tone: "orange" }
   if (!s.configured || !s.provider.loaded) return { key: "notConfigured", tone: "red" }

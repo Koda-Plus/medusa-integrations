@@ -180,3 +180,27 @@ test("previews from the store's data keep the products and amounts, never the pe
   assert.equal(d.items?.[0].title, "Wiertarka 18V")
   assert.equal(d.total, 369)
 })
+
+test("previews from the store's data carry sample ids: a real cart id would open the cart, and the shopper's address, through the Store API", () => {
+  const d = anonymize(orderData(order(), o), "pl")
+  assert.equal(d.order_id, "order_sample")
+  assert.equal(d.order_number, "1042", "the number the page shows stays")
+  const c = anonymize(cartData({ id: "cart_01REAL", email: "anna@example.com", items: [{ title: "Lampa", quantity: 1, unit_price: 10 }] }, o), "pl")
+  assert.equal(c.cart_id, "cart_sample")
+  const f = { id: "ful_1", shipped_at: "2026-10-06T12:00:00Z", labels: [{ tracking_number: "600123456789", tracking_url: "https://inpost.pl/sledzenie-przesylek?number=600123456789" }], items: [] }
+  const s = anonymize(shipmentData(order(), f, o), "en")
+  assert.ok(!JSON.stringify(s).includes("600123456789"), "no real tracking number or link")
+  assert.equal(s.tracking?.length, 1)
+})
+
+test("the welcome takes from the registration only what reads like a name or a company: never a link, an address or a domain", () => {
+  const welcome = (first_name: string, company_name: string | null = null) => welcomeData({ first_name, company_name, created_at: "2026-10-01T10:00:00Z", metadata: {} }, o)
+  assert.equal(welcome("Zoë").customer_name, "Zoë")
+  assert.equal(welcome("Anne-Marie O'Neil").customer_name, "Anne-Marie O'Neil")
+  assert.equal(welcome("Łukasz").customer_name, "Łukasz")
+  for (const bad of ["Win a prize at evil.example", "www.evil", "https://x", "Visit us: http://x", "me@evil.example", "Bob <b>", "Anna2"]) {
+    assert.equal(welcome(bad).customer_name, null, bad)
+  }
+  assert.equal(welcome("Anna", "Prizes at evil.example").company_name, null)
+  assert.equal(welcome("Anna", "Stolarnia Wiśniewski sp. z o.o.").company_name, "Stolarnia Wiśniewski sp. z o.o.")
+})

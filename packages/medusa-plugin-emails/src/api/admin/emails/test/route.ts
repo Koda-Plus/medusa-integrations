@@ -71,8 +71,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.status(502).json({ message: outcome.error })
     return
   }
+  if (outcome.status === "skipped") {
+    res.status(409).json({ message: `The test was not sent: ${outcome.reason}.` })
+    return
+  }
   if (outcome.status !== "queued") {
-    res.status(409).json({ message: "Medusa's notification module is not available: register the provider of this plugin (see the Setup guide)." })
+    res.status(409).json({ message: "The provider of this plugin is not registered: register it in Medusa's notification module (see the Setup guide)." })
     return
   }
   const notification = outcome.notification ?? {}

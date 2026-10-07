@@ -1,9 +1,9 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { SettingsRequest } from "../../../../modules/emails/lib/contract"
 import { resolveTemplate } from "../../../../modules/emails/lib/registry"
-import { brandKey, forgetSettings, mergeOverrides, sanitizeBrandOverrides, templateKey } from "../../../../modules/emails/lib/settings"
-import { settingsFor, storeFor } from "../../../../workflows/emails/runtime"
-import { actorOf, buildStatus, emailsService } from "../helpers"
+import { brandKey, forgetSettings, mergeOverrides, readSettings, sanitizeBrandOverrides, templateKey, type BrandOverrides } from "../../../../modules/emails/lib/settings"
+import { storeFor } from "../../../../workflows/emails/runtime"
+import { actorOf, buildStatus, emailsService, serverError } from "../helpers"
 
 /**
  * POST /admin/emails/settings  { brand?: {...} | null, templates?: { "order.placed": true } }
@@ -54,7 +54,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       res.status(400).json({ message: `Check these fields: ${errors.join(", ")}.`, fields: errors })
       return
     }
-    const current = (await settingsFor(req.scope)).brand
+    /* Merged with what the database holds now, not with this process's cache: another admin on another instance may have just saved. */
+    let current: BrandOverrides | null
+    try {
+      current = readSettings(await store.settings(), demo).brand
+    } catch (err) {
+      serverError(req, res, err, "The settings cannot be saved. Did the migrations run (npx medusa db:migrate)? The server log has the details.", 503)
+      return
+    }
     brand = mergeOverrides(current, value) as Record<string, unknown>
   }
 
@@ -62,11 +69,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     for (const [key, on] of switches) await store.setSetting(templateKey(demo, key), { on }, actor)
     if (brand !== undefined) await store.setSetting(brandKey(demo), brand, actor)
   } catch (err) {
-    res.status(503).json({ message: `The settings cannot be saved (did the migrations run?): ${svc.mask((err as Error)?.message ?? String(err))}` })
+    serverError(req, res, err, "The settings cannot be saved. Did the migrations run (npx medusa db:migrate)? The server log has the details.", 503)
     return
   }
-  forgetSettings()
+  forgetSettings({ keepFallback: true })
   if (switches.length > 0) svc.getLogger().info(`[emails] Templates ${switches.map(([k, on]) => `${k} ${on ? "on" : "off"}`).join(", ")} by ${actor ?? "unknown"}`)
   if (brand !== undefined) svc.getLogger().info(`[emails] Branding ${input.brand === null ? "reset" : "changed"} by ${actor ?? "unknown"}`)
-  res.json(await buildStatus(req.scope))
+  try {
+    res.json(await buildStatus(req.scope))
+  } catch (err) {
+    serverError(req, res, err, "The settings were saved, but the status could not be read. The server log has the details.")
+  }
 }

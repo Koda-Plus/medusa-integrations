@@ -10,10 +10,13 @@ import { model } from "@medusajs/framework/utils"
  *   kind      event, job, test, app (a notification created by other code),
  *             seed (the demo outbox)
  *
- * PERSONAL DATA: the recipient is stored MASKED ("a***@e***.com"). The
- * subject is kept (it may hold a first name). The rendered message is kept
- * only in demo mode, for the simulated outbox. Rows older than
- * `logRetentionDays` are deleted every hour.
+ * PERSONAL DATA: the recipient is stored MASKED ("a***@e***.com"), next to
+ * a one-way hash of the address (`recipient_hash`, to find the e-mails of one
+ * address and to limit password resets per address) and the Medusa customer
+ * id when known. The subject is kept (it may hold a first name). The
+ * rendered message is kept only in demo mode, for the simulated outbox, with
+ * secret fields hidden. Rows older than `logRetentionDays` are deleted every
+ * hour.
  */
 const EmailsMessage = model
   .define("emails_message", {
@@ -44,6 +47,8 @@ const EmailsMessage = model
     requested_by: model.text().nullable(),
     body_html: model.text().nullable(),
     body_text: model.text().nullable(),
+    customer_id: model.text().nullable(),
+    recipient_hash: model.text().nullable(),
   })
   .indexes([
     { on: ["key", "demo"], unique: true, where: "deleted_at IS NULL" },
@@ -51,6 +56,8 @@ const EmailsMessage = model
     { on: ["template", "demo", "created_at"], where: "deleted_at IS NULL" },
     { on: ["order_id"], where: "deleted_at IS NULL" },
     { on: ["status", "demo"], where: "deleted_at IS NULL" },
+    { on: ["customer_id", "demo"], where: "deleted_at IS NULL AND customer_id IS NOT NULL" },
+    { on: ["recipient_hash", "template", "demo", "created_at"], where: "deleted_at IS NULL AND recipient_hash IS NOT NULL" },
   ])
 
 export default EmailsMessage

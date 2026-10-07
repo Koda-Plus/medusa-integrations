@@ -27,6 +27,7 @@ import {
   DEFAULT_MAX_RETRIES,
   DEFAULT_REQUESTS_PER_SECOND,
   DEFAULT_RESET_MINUTES,
+  DEFAULT_RESETS_PER_HOUR,
   DEFAULT_RETENTION_DAYS,
   DEFAULT_SKIP_ORDER_METADATA_KEYS,
   DEFAULT_TIMEOUT_MS,
@@ -109,6 +110,8 @@ export interface EmailsPluginOptions {
   trackingUrls?: Record<string, string>
   /** How long a password reset link works, for the text of the message. Default 15. */
   passwordResetMinutes?: number
+  /** Password reset e-mails per address in any hour (1 to 50). Default 3; further requests are logged as skipped. */
+  passwordResetsPerHour?: number
   /**
    * Only for negotiation events that send `price` as a number and no
    * `price_amount`: major units (469 for 469.00, the default, as Medusa keeps
@@ -169,6 +172,7 @@ export interface ResolvedEmailsOptions {
   skipOrderMetadataKeys: string[]
   trackingUrls: Record<string, string>
   passwordResetMinutes: number
+  passwordResetsPerHour: number
   negotiationAmounts: "minor" | "major"
   requestsPerSecond: number
   timeoutMs: number
@@ -362,6 +366,7 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     skipOrderMetadataKeys: skip,
     trackingUrls,
     passwordResetMinutes: int(o.passwordResetMinutes, DEFAULT_RESET_MINUTES, 1, 24 * 60),
+    passwordResetsPerHour: int(o.passwordResetsPerHour, DEFAULT_RESETS_PER_HOUR, 1, 50),
     negotiationAmounts: o.negotiationAmounts === "minor" ? "minor" : "major",
     requestsPerSecond: Number.isFinite(rps) && rps > 0 ? Math.min(50, rps) : DEFAULT_REQUESTS_PER_SECOND,
     timeoutMs: int(o.timeoutMs, DEFAULT_TIMEOUT_MS, 1000, 120_000),
@@ -418,6 +423,7 @@ export function optionsFingerprint(o: ResolvedEmailsOptions): Record<string, str
     trackingUrls: JSON.stringify(o.trackingUrls),
     skipOrderMetadataKeys: o.skipOrderMetadataKeys.join(","),
     negotiationAmounts: o.negotiationAmounts,
+    passwordResetsPerHour: String(o.passwordResetsPerHour),
   }
 }
 

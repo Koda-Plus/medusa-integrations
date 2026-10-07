@@ -2,10 +2,27 @@
  * Rows as the admin sees them. Zero Medusa imports.
  */
 
-import type { BrandDto, MessageDto } from "./contract"
+import type { BrandDto, LocalizedTextDto, MessageDto } from "./contract"
 import type { ResolvedBrand } from "./options"
-import { isBuiltInKey } from "./registry"
+import { isBuiltInKey, listTemplates } from "./registry"
 import type { MessageRow } from "./store"
+import type { EmailTemplateDefinition, LocalizedText } from "./types"
+
+/** A template's name or description as the admin takes it. */
+export function localized(v: LocalizedText | undefined): LocalizedTextDto | null {
+  if (v === undefined) return null
+  return typeof v === "string" ? { en: v, pl: v } : { en: v.en ?? null, pl: v.pl ?? null }
+}
+
+/** The names of every template the options know, by key, for the rows of the log. */
+export function templateLabels(o: { definitions: Record<string, EmailTemplateDefinition<any>> }): Record<string, LocalizedTextDto> {
+  const out: Record<string, LocalizedTextDto> = {}
+  for (const t of listTemplates(o)) {
+    const label = localized(t.def.label)
+    if (label) out[t.key] = label
+  }
+  return out
+}
 
 export function iso(v: Date | string | null | undefined): string | null {
   if (!v) return null
@@ -29,10 +46,11 @@ export function canRetry(row: Pick<MessageRow, "template" | "status" | "resource
   return Boolean(type && isBuiltInKey(row.template) && row.resource_type === type && row.resource_id)
 }
 
-export function toMessageDto(row: MessageRow, names: Record<string, string> = {}): MessageDto {
+export function toMessageDto(row: MessageRow, names: Record<string, string> = {}, labels: Record<string, LocalizedTextDto> = {}): MessageDto {
   return {
     id: row.id,
     template: row.template,
+    label: labels[row.template] ?? null,
     locale: row.locale ?? null,
     demo: Boolean(row.demo),
     kind: String(row.kind ?? "event"),
@@ -43,6 +61,7 @@ export function toMessageDto(row: MessageRow, names: Record<string, string> = {}
     resourceType: row.resource_type ?? null,
     resourceId: row.resource_id ?? null,
     orderId: row.order_id ?? null,
+    customerId: row.customer_id ?? null,
     externalId: row.external_id ?? null,
     attempts: Number(row.attempts ?? 0),
     rotation: Number(row.rotation ?? 0),

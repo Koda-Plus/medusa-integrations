@@ -66,8 +66,13 @@ test("every file outside the namespace folders carries the namespace prefix, as 
 })
 
 test("the migration name is unique across the packages of the monorepo", () => {
-  const mine = readdirSync(join(root, "src/modules/emails/migrations"))
-  assert.deepEqual(mine, ["Migration20261007110000.ts"])
+  const mine = readdirSync(join(root, "src/modules/emails/migrations")).sort()
+  assert.deepEqual(mine, ["Migration20261007110000.ts", "Migration20261008110000_emails.ts"])
+  for (const f of mine) {
+    /* Medusa records the class name: it must be the file name, so the uniqueness of the file names holds for it. */
+    const text = readFileSync(join(root, "src/modules/emails/migrations", f), "utf8")
+    assert.ok(text.includes(`export class ${f.replace(/\.ts$/, "")} extends Migration`), `${f}: class name`)
+  }
   const siblings = join(root, "..")
   for (const dir of existsSync(siblings) ? readdirSync(siblings) : []) {
     if (dir === "medusa-plugin-emails") continue
@@ -79,4 +84,27 @@ test("the migration name is unique across the packages of the monorepo", () => {
       for (const f of readdirSync(migrations)) assert.ok(!mine.includes(f), `${dir}/${m}/${f} has the same name`)
     }
   }
+})
+
+test("the medusa-config examples keep Medusa's local provider on the feed channel, and turn demo mode on only on purpose", () => {
+  const readme = readFileSync(join(root, "README.md"), "utf8")
+  const guide = readFileSync(join(root, "src/admin/lib/emails-guide-view.tsx"), "utf8")
+  const settings = readFileSync(join(root, "src/admin/lib/emails-settings.tsx"), "utf8")
+  for (const [name, text] of [
+    ["README", readme],
+    ["guide", guide],
+    ["settings", settings],
+  ]) {
+    assert.match(text, /@medusajs\/medusa\/notification-local/, `${name}: product import and export need the feed channel`)
+    assert.match(text, /channels: \["feed"\]/, name)
+  }
+  assert.match(readme, /demo: process\.env\.EMAILS_DEMO === "true"/)
+  assert.ok(guide.includes(`demo: 'demo: process.env.EMAILS_DEMO === "true",'`), "the setup prompt")
+  assert.doesNotMatch(guide + readme, /!process\.env\.RESEND_API_KEY/, "a missing key never turns demo mode on")
+})
+
+test("README links are absolute and the README has no tables (npm and medusajs.com render it outside the repo)", () => {
+  const readme = readFileSync(join(root, "README.md"), "utf8")
+  assert.doesNotMatch(readme, /\]\((\.\/|\.\.\/|docs\/|LICENSE|CHANGELOG)/)
+  assert.doesNotMatch(readme, /^\s*\|.*\|\s*$/m)
 })

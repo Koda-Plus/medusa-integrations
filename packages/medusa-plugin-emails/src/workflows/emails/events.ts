@@ -31,15 +31,18 @@ import {
   type NegotiationEvent,
   type OrderRecord,
 } from "../../modules/emails/lib/data"
-import { eventKey, resetKey, retryNotificationKey, sha256 } from "../../modules/emails/lib/keys"
-import { isEmail } from "../../modules/emails/lib/security"
-import type { MessageRow } from "../../modules/emails/lib/store"
-import { sendTemplate, type SendOutcome } from "./send-template"
+import { addressHash, eventKey, resetKey, retryNotificationKey, sha256 } from "../../modules/emails/lib/keys"
+import { isEmail, maskEmail } from "../../modules/emails/lib/security"
+import { SettingsUnavailableError } from "../../modules/emails/lib/settings"
+import { isMissingTable, type MessageRow } from "../../modules/emails/lib/store"
+import { recordPreSend, sendTemplate, type SendOutcome, type SendTemplateInput } from "./send-template"
 import { sendAbandonedCart } from "./abandoned-carts"
-import { adminResetLink, emailsService, graphOne, templateStateOf, type Scope } from "./runtime"
+import { adminResetLink, emailsService, graphOne, storeFor, templateStateOf, type Scope } from "./runtime"
 
 export const ORDER_FIELDS: readonly string[] = [
   "id",
+  /* Medusa 2.12 computes no totals without it ("Item version is required to load adjustments"). */
+  "version",
   "display_id",
   "email",
   "currency_code",
@@ -96,6 +99,7 @@ export type HandlerOutcome = { status: "sent" | "disabled" | "no_provider" } | {
 function fromSend(outcome: SendOutcome): HandlerOutcome {
   if (outcome.status === "queued") return { status: "sent" }
   if (outcome.status === "failed") return { status: "failed", reason: outcome.error }
+  if (outcome.status === "skipped") return { status: "skipped", reason: outcome.reason }
   return { status: outcome.status }
 }
 
@@ -105,10 +109,17 @@ function skipped(scope: Scope, template: string, id: string, reason: string): Ha
   return { status: "skipped", reason }
 }
 
-function failed(scope: Scope, template: string, id: string, err: unknown): HandlerOutcome {
+/**
+ * An e-mail that failed before it reached the provider (Query could not read
+ * the order, the settings could not be read): logged, and written to the send
+ * log as failed under the event's key (`row`), so the page shows it and a
+ * person can retry it. A person's own retry writes nothing: its row exists.
+ */
+async function failed(scope: Scope, template: string, id: string, err: unknown, row?: Omit<SendTemplateInput, "template" | "data" | "kind">): Promise<HandlerOutcome> {
   const svc = emailsService(scope)
   const reason = svc.mask((err as Error)?.message ?? String(err)).slice(0, 500)
   svc.getLogger().warn(`[emails] ${template} for ${id}: ${reason}`)
+  if (row) await recordPreSend(scope, { ...row, template, data: {} }, err instanceof SettingsUnavailableError ? err.code : "PRE_SEND", reason)
   return { status: "failed", reason }
 }
 
@@ -151,7 +162,13 @@ async function orderEmail(scope: Scope, template: typeof TEMPLATES.orderPlaced |
       }),
     )
   } catch (err) {
-    return failed(scope, template, orderId, err)
+    return failed(
+      scope,
+      template,
+      orderId,
+      err,
+      opts.retry ? undefined : { to: "", key: eventKey(template, orderId), trigger: template === TEMPLATES.orderPlaced ? "order.placed" : "order.canceled", resource: { type: "order", id: orderId }, orderId },
+    )
   }
 }
 
@@ -166,12 +183,13 @@ export function onOrderCanceled(scope: Scope, orderId: string, opts: HandlerOpti
 /** `shipment.created` carries the fulfillment id and the `no_notification` flag of the shipment. */
 export async function onShipmentCreated(scope: Scope, fulfillmentId: string, noNotification: boolean, opts: HandlerOptions = {}): Promise<HandlerOutcome> {
   const template = TEMPLATES.orderShipped
+  let orderId: string | null = null
   try {
     if (noNotification && !opts.retry) return skipped(scope, template, fulfillmentId, "no_notification")
     if (!(await enabled(scope, template))) return { status: "disabled" }
     const o = emailsService(scope).getOptions()
     const f = await graphOne<FulfillmentRecord & { order?: { id?: string | null } | null }>(scope, "fulfillment", FULFILLMENT_FIELDS, [], { id: fulfillmentId })
-    const orderId = f?.order?.id
+    orderId = f?.order?.id ?? null
     if (!f || !orderId) return skipped(scope, template, fulfillmentId, "fulfillment or its order not found")
     const order = await loadOrder(scope, orderId, ["fulfillments.id", "fulfillments.shipped_at", "fulfillments.canceled_at", "fulfillments.items.quantity", "fulfillments.items.line_item_id"])
     if (!order) return skipped(scope, template, fulfillmentId, "order not found")
@@ -192,7 +210,13 @@ export async function onShipmentCreated(scope: Scope, fulfillmentId: string, noN
       }),
     )
   } catch (err) {
-    return failed(scope, template, fulfillmentId, err)
+    return failed(
+      scope,
+      template,
+      fulfillmentId,
+      err,
+      opts.retry ? undefined : { to: "", key: eventKey(template, fulfillmentId), trigger: "shipment.created", resource: { type: "fulfillment", id: fulfillmentId }, orderId },
+    )
   }
 }
 
@@ -214,11 +238,18 @@ export async function onCustomerCreated(scope: Scope, customerId: string, opts: 
         trigger: "customer.created",
         resource: { type: "customer", id: customerId },
         receiverId: customerId,
+        customerId,
         ...retryFields(key, opts),
       }),
     )
   } catch (err) {
-    return failed(scope, template, customerId, err)
+    return failed(
+      scope,
+      template,
+      customerId,
+      err,
+      opts.retry ? undefined : { to: "", key: eventKey(template, customerId), trigger: "customer.created", resource: { type: "customer", id: customerId }, customerId },
+    )
   }
 }
 
@@ -232,17 +263,30 @@ export interface PasswordResetEvent {
 /**
  * `auth.password_reset`: `entity_id` is the address (the emailpass
  * provider), `actor_type` customer or user. The token is never logged and
- * never part of a key; it reaches only the link in the message.
+ * never part of a key; it reaches only the link in the message, which never
+ * passes through Medusa's notification table (the template is `sensitive`,
+ * see `sendTemplate`).
+ *
+ * Asking for a reset needs no account, so a stranger can ask for anyone's
+ * address: at most `passwordResetsPerHour` (3) e-mails go to one address in
+ * an hour, the rest are logged as skipped (`THROTTLED`). Demo mode handles
+ * no reset of an admin user: the outbox of a public demo is open to every
+ * visitor.
  */
 export async function onPasswordReset(scope: Scope, e: PasswordResetEvent): Promise<HandlerOutcome> {
   const template = TEMPLATES.passwordReset
   const email = String(e.entity_id ?? "").trim()
   const actor = String(e.actor_type ?? "")
+  const key = e.token ? resetKey(String(e.token)) : null
   try {
     if (!(await enabled(scope, template))) return { status: "disabled" }
-    if (!isEmail(email) || !e.token) return skipped(scope, template, actor || "?", "no address or no token in the event")
+    if (!isEmail(email) || !e.token || !key) return skipped(scope, template, actor || "?", "no address or no token in the event")
     const svc = emailsService(scope)
     const o = svc.getOptions()
+    if (svc.isDemo() && actor === "user") {
+      await recordSkip(scope, { key, template, to: email, trigger: "auth.password_reset", code: "DEMO_ADMIN_RESET", message: "Demo mode does not handle the password reset of an admin user." })
+      return skipped(scope, template, actor, "demo mode does not reset admin users")
+    }
     let person: CustomerRecord | null = null
     try {
       if (actor === "customer") person = await graphOne<CustomerRecord>(scope, "customer", ["id", "first_name", "metadata"], [], { email, has_account: true })
@@ -266,14 +310,46 @@ export async function onPasswordReset(scope: Scope, e: PasswordResetEvent): Prom
         template,
         to: email,
         data: data as unknown as Record<string, unknown>,
-        key: resetKey(String(e.token)),
+        key,
         trigger: "auth.password_reset",
         resource: person?.id ? { type: actor === "user" ? "user" : "customer", id: person.id } : null,
         receiverId: actor === "customer" ? person?.id ?? null : null,
+        customerId: actor === "customer" ? person?.id ?? null : null,
+        limitPerHour: o.passwordResetsPerHour,
       }),
     )
   } catch (err) {
-    return failed(scope, template, actor || "?", err)
+    return failed(scope, template, actor || "?", err, key && isEmail(email) ? { to: email, key, trigger: "auth.password_reset", resource: null } : undefined)
+  }
+}
+
+/** A skipped row written by a flow itself (nothing reached the provider): what the page shows for it. */
+async function recordSkip(scope: Scope, row: { key: string; template: string; to: string; trigger: string; code: string; message: string }): Promise<void> {
+  const svc = emailsService(scope)
+  try {
+    await storeFor(scope).record({
+      key: row.key,
+      template: row.template,
+      locale: null,
+      demo: svc.isDemo(),
+      kind: "event",
+      status: "skipped",
+      recipient: maskEmail(row.to),
+      subject: null,
+      trigger: row.trigger,
+      resource_type: null,
+      resource_id: null,
+      order_id: null,
+      notification_id: null,
+      requested_by: null,
+      customer_id: null,
+      recipient_hash: addressHash(row.to),
+      error_code: row.code,
+      error: row.message,
+      retryable: false,
+    })
+  } catch (err) {
+    if (!isMissingTable(err)) svc.getLogger().warn(`[emails] Could not write the skipped ${row.template} to the send log: ${svc.mask((err as Error)?.message ?? String(err))}`)
   }
 }
 

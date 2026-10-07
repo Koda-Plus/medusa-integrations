@@ -1,10 +1,10 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, PaperPlane } from "@medusajs/icons"
 import { Container, InlineTip } from "@medusajs/ui"
 import type { MessageFilter, StatusResponse } from "../../../modules/emails/lib/contract"
-import { errorMessage, useEmailsStatus } from "../../lib/emails-api"
+import { errorMessage, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/emails-guide"
 import { GuideView, usePromptSpec } from "../../lib/emails-guide-view"
 import { EmailsIcon } from "../../lib/emails-icon"
@@ -34,6 +34,15 @@ const EmailsPage = () => {
   const [filter, setFilter] = useState<MessageFilter>("all")
   const [openMessage, setOpenMessage] = useState<string | null>(null)
   const [test, setTest] = useState<TestInitial | null | "open">(null)
+  /* Demo mode: the status only says the outbox is stale (a GET never writes); the page asks for the seed once. */
+  const seed = useEmailsSeed()
+  const seedAsked = useRef(false)
+  const seedDue = Boolean(s && s.mode === "demo" && s.demo?.stale && (s.provider.mode === null || s.provider.mode === "demo"))
+  useEffect(() => {
+    if (!seedDue || seedAsked.current) return
+    seedAsked.current = true
+    seed.mutate()
+  }, [seedDue])
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -47,6 +56,13 @@ const EmailsPage = () => {
           </div>
         ) : null}
         {s ? <Warnings status={s} /> : null}
+        {seed.isPending ? (
+          <div className="px-6 py-4">
+            <InlineTip variant="info" label={t("demo.label")}>
+              {t("demo.preparing")}
+            </InlineTip>
+          </div>
+        ) : null}
         {s && nav.view === "panel" ? (
           <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
             <StatTile label={s.mode === "demo" ? t("stats.simulated24h") : t("stats.sent24h")} value={fmtNumber(s.counts.sent24h, lang)} tone="green" />
@@ -181,7 +197,15 @@ function Warnings({ status }: { status: StatusResponse }) {
   const tips: Array<{ key: string; variant: "warning" | "error"; label: string; text: string }> = []
   if (status.mode === "live" && status.missing.length > 0) tips.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }) })
   if (!status.provider.loaded) tips.push({ key: "provider", variant: "error", label: t("provider.notLoaded.label"), text: t("provider.notLoaded.text") })
-  else if (status.provider.sameOptions === false) tips.push({ key: "differs", variant: "warning", label: t("provider.differsLabel"), text: t("provider.differsText", { list: status.provider.differences.join(", ") }) })
+  else if (status.provider.mode && status.provider.mode !== status.mode) {
+    tips.push({
+      key: "modes",
+      variant: "error",
+      label: t("provider.modeDiffersLabel"),
+      text: t("provider.modeDiffersText", { plugin: t(`mode.${status.mode}`), provider: t(`mode.${status.provider.mode}`) }),
+    })
+  } else if (status.provider.sameOptions === false) tips.push({ key: "differs", variant: "warning", label: t("provider.differsLabel"), text: t("provider.differsText", { list: status.provider.differences.join(", ") }) })
+  if (status.provider.feedProviders && status.provider.feedProviders.length === 0) tips.push({ key: "feed", variant: "error", label: t("provider.noFeedLabel"), text: t("provider.noFeedText") })
   if (status.provider.emailProviders && status.provider.emailProviders.length > 1) {
     tips.push({ key: "several", variant: "warning", label: t("provider.severalLabel"), text: t("provider.severalText", { list: status.provider.emailProviders.join(", ") }) })
   }

@@ -90,6 +90,17 @@ export function resolveTemplate(key: string, options: { definitions: Record<stri
   return builtIn ? { key, def: builtIn, source: "builtin", builtIn: true } : null
 }
 
+/**
+ * The data fields of a template that carry a secret: its own `sensitive`
+ * list, plus the built-in one when an app replaced a built-in template under
+ * its key (a replaced password reset still carries the token).
+ */
+export function sensitiveFields(template: Pick<ResolvedTemplate, "key" | "def" | "builtIn">): string[] {
+  const own = Array.isArray(template.def.sensitive) ? template.def.sensitive : []
+  const builtIn = template.builtIn ? (BUILT_IN.get(template.key)?.sensitive ?? []) : []
+  return [...new Set([...own, ...builtIn].filter((f): f is string => typeof f === "string" && f.length > 0))]
+}
+
 /** Every template: the built-in keys first, in their order, then the others by key. */
 export function listTemplates(options: { definitions: Record<string, EmailTemplateDefinition<any>> }): ResolvedTemplate[] {
   const keys = [...BUILT_IN.keys()]

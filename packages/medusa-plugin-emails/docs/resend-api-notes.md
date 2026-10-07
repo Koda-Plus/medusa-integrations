@@ -26,7 +26,7 @@ Verified on 6 October 2026 against the official sources:
 
 Every error has `statusCode`, `name` and `message`. What the plugin does with each:
 
-- 400 `validation_error`, 400 `invalid_idempotency_key`, 401 `missing_api_key`, 401 and 403 `restricted_api_key`, 403 `invalid_permission`, 403 `suspended_api_key`, 403 `validation_error` (an unverified domain, or the test mode of `onboarding@resend.dev`), 404, 405, 422 (`invalid_attachment`, `invalid_parameter`, `missing_required_field`): final, no retry.
+- 400 `validation_error`, 400 `invalid_idempotency_key`, 401 `missing_api_key`, 401 and 403 `restricted_api_key`, 403 `invalid_permission`, 403 `suspended_api_key`, 403 `validation_error` (an unverified domain, or the test mode of Resend's own test sender), 404, 405, 422 (`invalid_attachment`, `invalid_parameter`, `missing_required_field`): final, no retry.
 - 429 `rate_limit_exceeded`: tried again after `retry-after` (seconds), capped at 10 seconds.
 - 429 `daily_quota_exceeded` and `monthly_quota_exceeded`: final, no retry (trying again cannot help before the plan changes).
 - 409 `concurrent_idempotent_requests` and `resource_locked`: tried again after a second.
@@ -42,7 +42,7 @@ Every error has `statusCode`, `name` and `message`. What the plugin does with ea
 
 - Resend recommends sending from a subdomain (`updates.example.com`) to keep the reputation of the main domain apart, and DMARC after the verification.
 - Records for a domain `mail.example.com`: MX on `send.mail` (the value from Resend, `feedback-smtp.<region>.amazonses.com`, priority 10), TXT on `send.mail` (`v=spf1 include:amazonses.com ~all`), TXT on `resend._domainkey.mail` (the DKIM key from Resend). Values must be copied from Resend.
-- Until a domain is verified, `onboarding@resend.dev` delivers only to the address of the account.
+- Until a domain is verified, Resend's own test sender delivers only to the address of the account.
 
 ## Medusa events
 

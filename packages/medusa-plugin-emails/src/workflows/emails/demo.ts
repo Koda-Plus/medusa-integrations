@@ -13,8 +13,9 @@
  * not to the records they come from (a demo store's orders may be months
  * old): a few within the last day, the rest over the last days, always at
  * the same offsets. The seed is rebuilt when it is older than
- * `DEMO_SEED_REFRESH_MS`, by the admin page or the hourly housekeeping
- * job, so the 24-hour counter never drops to zero. A rebuild swaps the whole
+ * `DEMO_SEED_REFRESH_MS`, by `POST /admin/emails/demo/seed` (the page asks
+ * for it when the status says the seed is stale; a GET never writes) or by
+ * the hourly housekeeping job, so the 24-hour counter never drops to zero. A rebuild swaps the whole
  * seed set in one transaction under the same keys (the event keys of the
  * records), so it never duplicates a row; rows of real events and test sends
  * are never touched, and a record that already has such a row is not seeded.
@@ -24,21 +25,22 @@
 
 import { MAX_STORED_BODY_CHARS, TEMPLATES } from "../../modules/emails/lib/constants"
 import { orderData, orderSkipReason, shipmentData, welcomeData, type CustomerRecord, type FulfillmentRecord, type OrderRecord } from "../../modules/emails/lib/data"
-import { eventKey } from "../../modules/emails/lib/keys"
+import { addressHash, customerIdOf, eventKey } from "../../modules/emails/lib/keys"
 import { resolveTemplate } from "../../modules/emails/lib/registry"
 import { renderTemplate } from "../../modules/emails/lib/render"
-import { maskEmail } from "../../modules/emails/lib/security"
+import { providerNote } from "../../modules/emails/lib/provider-status"
+import { isEmail, maskEmail } from "../../modules/emails/lib/security"
 import { applyBrandOverrides, type SettingRow } from "../../modules/emails/lib/settings"
 import type { MessageStatus, SeedMessage } from "../../modules/emails/lib/store"
 import { CUSTOMER_FIELDS, FULFILLMENT_FIELDS, ORDER_FIELDS, ORDER_OPTIONAL_FIELDS } from "./events"
-import { emailsService, exclusive, graphList, settingsFor, storeFor, type Scope } from "./runtime"
+import { emailsService, exclusive, graphList, graphOne, settingsFor, storeFor, type Scope } from "./runtime"
 
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 
 export const SEED_KEY = "demo:seeded"
 /** Seeds of an older version (or none) are rebuilt on the next occasion. */
-export const SEED_VERSION = 3
+export const SEED_VERSION = 4
 /** A seed older than this is rebuilt with fresh dates. Below 24 hours, so the 24-hour counter always has rows. */
 export const DEMO_SEED_REFRESH_MS = 12 * HOUR
 /** After a failed rebuild, the next try waits this long. */
@@ -77,14 +79,30 @@ export function seedIsStale(row: SettingRow | undefined, now: Date): boolean {
   return m.done ? age >= DEMO_SEED_REFRESH_MS : age >= SEED_RETRY_MS
 }
 
+/** What the status tells the page about the seed: when it was built, and whether it is due. Reads only. */
+export async function demoSeedState(scope: Scope, now: Date = new Date()): Promise<{ seededAt: string | null; stale: boolean } | null> {
+  if (!emailsService(scope).isDemo()) return null
+  try {
+    const marker = (await storeFor(scope).settings()).find((r) => r.key === SEED_KEY)
+    const m = markerOf(marker)
+    return { seededAt: m && m.at > 0 && m.done ? new Date(m.at).toISOString() : null, stale: seedIsStale(marker, now) }
+  } catch {
+    return { seededAt: null, stale: false }
+  }
+}
+
 /**
  * Seeds the demo outbox when it is missing or stale (`force` rebuilds it
  * anyway). Returns the rows written or refreshed; 0 outside demo mode, when
- * the seed is fresh, or while another seed runs in this process.
+ * the provider of this process is not in demo mode, when the seed is fresh,
+ * or while another seed runs in this process.
  */
 export async function ensureDemoOutbox(scope: Scope, now: Date = new Date(), opts: { force?: boolean } = {}): Promise<number> {
   const svc = emailsService(scope)
   if (!svc.isDemo()) return 0
+  /* The provider of this process would really send: no simulated outbox that says otherwise. */
+  const note = providerNote()
+  if (note && note.mode !== "demo") return 0
   const result = await exclusive("demo-seed", async () => {
     const store = storeFor(scope)
     const marker = (await store.settings()).find((r) => r.key === SEED_KEY)
@@ -99,6 +117,31 @@ export async function ensureDemoOutbox(scope: Scope, now: Date = new Date(), opt
   return result ?? 0
 }
 
+/**
+ * The newest orders with their totals. One read for all of them; when Medusa
+ * refuses it (an older Medusa cannot compute the totals of an order whose
+ * lines have no version, some imported orders), the orders are read one by
+ * one and the ones it refuses are left out, so one bad order never empties
+ * the demo.
+ */
+async function newestOrders(scope: Scope, take: number): Promise<OrderRecord[]> {
+  try {
+    return await graphList<OrderRecord>(scope, "order", ORDER_FIELDS, ORDER_OPTIONAL_FIELDS, {}, { take, order: { created_at: "DESC" } })
+  } catch {
+    const ids = await graphList<{ id: string }>(scope, "order", ["id"], [], {}, { take, order: { created_at: "DESC" } })
+    const out: OrderRecord[] = []
+    for (const { id } of ids) {
+      try {
+        const one = await graphOne<OrderRecord>(scope, "order", ORDER_FIELDS, ORDER_OPTIONAL_FIELDS, { id })
+        if (one) out.push(one)
+      } catch {
+        /* left out */
+      }
+    }
+    return out
+  }
+}
+
 /** The seed rows, rendered with the current branding and dated by `SEED_SLOTS`. */
 export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]> {
   const o = emailsService(scope).getOptions()
@@ -108,7 +151,12 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
   const iso = (d: Date, minutes = 0) => new Date(d.getTime() + minutes * MINUTE).toISOString()
   const rows: SeedMessage[] = []
 
-  const add = (template: string, to: string, data: Record<string, unknown>, row: { key: string; resourceType: string; resourceId: string; orderId: string | null; at: Date; status?: MessageStatus; error?: string }) => {
+  const add = (
+    template: string,
+    to: string,
+    data: Record<string, unknown>,
+    row: { key: string; resourceType: string; resourceId: string; orderId: string | null; customerId: string | null; at: Date; status?: MessageStatus; error?: string },
+  ) => {
     const t = resolveTemplate(template, o)
     if (!t) return
     const rendered = renderTemplate(t, data, { options: o, brand })
@@ -127,6 +175,8 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
       order_id: row.orderId,
       notification_id: null,
       requested_by: null,
+      customer_id: customerIdOf(row.customerId),
+      recipient_hash: isEmail(to) ? addressHash(to) : null,
       created_at: row.at,
       status: row.status ?? "sent",
       external_id: failed ? null : `demo_seed_${row.resourceId.slice(-12)}`,
@@ -143,9 +193,7 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
   const confirmedAt = new Map<string, Date>()
   /* A wider window than the five slots: the newest orders of a store are often marketplace imports,
      which the plugin skips (`skipOrderMetadataKeys`), and a demo must still find its five. */
-  const orders = (await graphList<OrderRecord>(scope, "order", ORDER_FIELDS, ORDER_OPTIONAL_FIELDS, {}, { take: 60, order: { created_at: "DESC" } }))
-    .filter((order) => !orderSkipReason(order, o))
-    .slice(0, SEED_SLOTS.orders.length)
+  const orders = (await newestOrders(scope, 60)).filter((order) => !orderSkipReason(order, o)).slice(0, SEED_SLOTS.orders.length)
   for (const [i, order] of orders.entries()) {
     const at = hoursAgo(SEED_SLOTS.orders[i])
     confirmedAt.set(order.id, at)
@@ -155,6 +203,7 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
       resourceType: "order",
       resourceId: order.id,
       orderId: order.id,
+      customerId: order.customer_id ?? null,
       at,
     })
   }
@@ -165,7 +214,13 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
   let order: OrderRecord | undefined
   for (const candidate of parcels) {
     if (!candidate?.order?.id) continue
-    const found = (await graphList<OrderRecord>(scope, "order", [...ORDER_FIELDS, "fulfillments.id", "fulfillments.shipped_at", "fulfillments.canceled_at", "fulfillments.items.quantity"], ORDER_OPTIONAL_FIELDS, { id: candidate.order.id }, { take: 1 }))[0]
+    let found: OrderRecord | undefined
+    try {
+      found = (await graphList<OrderRecord>(scope, "order", [...ORDER_FIELDS, "fulfillments.id", "fulfillments.shipped_at", "fulfillments.canceled_at", "fulfillments.items.quantity"], ORDER_OPTIONAL_FIELDS, { id: candidate.order.id }, { take: 1 }))[0]
+    } catch {
+      /* An order whose totals Medusa refuses to compute: the next parcel. */
+      continue
+    }
     if (found && !orderSkipReason(found, o)) {
       parcel = candidate
       order = found
@@ -181,6 +236,7 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
       resourceType: "fulfillment",
       resourceId: parcel.id,
       orderId: order.id,
+      customerId: order.customer_id ?? null,
       at,
     })
   }
@@ -196,6 +252,7 @@ export async function buildSeed(scope: Scope, now: Date): Promise<SeedMessage[]>
       resourceType: "customer",
       resourceId: String(c.id),
       orderId: null,
+      customerId: String(c.id),
       at,
       ...(i === failing
         ? {

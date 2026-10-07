@@ -25,6 +25,25 @@
  */
 
 import { BREAKER_COOLDOWN_MS, BREAKER_THRESHOLD, MAX_RETRY_WAIT_MS, RESEND_EMAILS_URL } from "./constants"
+import { KIT_META } from "./kit-meta"
+
+/** The User-Agent of every request: this version of the plugin. */
+export const USER_AGENT = `KodaPlus-Medusa-Emails/${KIT_META.version} (+https://koda.plus)`
+
+/**
+ * A network error that happened before the request left this machine (the
+ * name of api.resend.com did not resolve, the connection was refused): the
+ * message cannot have gone out, so it is `failed`, not `unknown`.
+ */
+export function notSentNetworkError(err: unknown): boolean {
+  const codes: unknown[] = []
+  let e = err as { code?: unknown; cause?: unknown } | null
+  for (let depth = 0; e && depth < 4; depth += 1) {
+    codes.push(e.code)
+    e = (e.cause ?? null) as { code?: unknown; cause?: unknown } | null
+  }
+  return codes.some((c) => c === "ENOTFOUND" || c === "EAI_AGAIN" || c === "ECONNREFUSED")
+}
 
 export interface ResendPayload {
   from: string
@@ -163,7 +182,7 @@ export function createResendClient(deps: ResendClientDeps): ResendClient {
           "Content-Type": "application/json",
           Accept: "application/json",
           "Idempotency-Key": key,
-          "User-Agent": "KodaPlus-Medusa-Emails/0.1 (+https://koda.plus)",
+          "User-Agent": USER_AGENT,
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -186,6 +205,7 @@ export function createResendClient(deps: ResendClientDeps): ResendClient {
       return { ok: false, verdict: classify(res.status, body, res.headers) }
     } catch (err) {
       const timeout = (err as { name?: string } | null)?.name === "AbortError"
+      const neverSent = !timeout && notSentNetworkError(err)
       return {
         ok: false,
         verdict: {
@@ -196,7 +216,7 @@ export function createResendClient(deps: ResendClientDeps): ResendClient {
             status: null,
             message: timeout ? `No answer from Resend within ${Math.round(deps.timeoutMs / 1000)} s.` : `Could not reach Resend: ${(err as Error)?.message ?? String(err)}`.slice(0, 500),
             temporary: true,
-            maybeSent: true,
+            maybeSent: !neverSent,
           },
         },
       }
@@ -209,6 +229,8 @@ export function createResendClient(deps: ResendClientDeps): ResendClient {
     async send(payload, key) {
       const state = paceState()
       let attempts = 0
+      /* Once any try may have gone out, the message stays "may have gone out", whatever the later tries say. */
+      let maybeSent = false
       for (;;) {
         attempts += 1
         const r = await once(payload, key)
@@ -217,12 +239,13 @@ export function createResendClient(deps: ResendClientDeps): ResendClient {
           return { ok: true, id: r.id, attempts }
         }
         const { verdict } = r
+        maybeSent = maybeSent || verdict.failure.maybeSent
         if (verdict.failure.temporary) {
           state.failures += 1
           if (state.failures >= BREAKER_THRESHOLD) state.openUntil = now() + BREAKER_COOLDOWN_MS
         }
         const open = now() < state.openUntil
-        if (!verdict.retryNow || attempts > deps.maxRetries || open) return { ok: false, error: verdict.failure, attempts }
+        if (!verdict.retryNow || attempts > deps.maxRetries || open) return { ok: false, error: { ...verdict.failure, maybeSent }, attempts }
         const backoff = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)]
         const wait = Math.min(MAX_RETRY_WAIT_MS, Math.max(verdict.waitMs, Math.round(backoff * (0.8 + 0.4 * random()))))
         await sleep(wait)

@@ -4,15 +4,19 @@
  */
 
 import type { EmailLocale } from "../constants"
-import { cleanText } from "../html"
+import { cleanText, personName } from "../html"
 import * as kit from "../kit"
 import { toNumber } from "../locale"
 import type { EmailFormat, EmailItem, Money, OrderEmailData } from "../types"
 import { COPY } from "./copy"
 
-/** The first word of a name, for "Anna, thank you": at most 40 characters, or null. */
+/**
+ * The first word of a name, for "Anna, thank you": at most 40 characters,
+ * or null. Only a name that looks like one (see `personName`): a link or a
+ * domain typed as a name never reaches a message.
+ */
 export function firstName(value: unknown): string | null {
-  const s = cleanText(value, 80)
+  const s = personName(value, 80)
   if (!s) return null
   const first = s.split(" ")[0]
   return first.length > 40 ? first.slice(0, 40) : first

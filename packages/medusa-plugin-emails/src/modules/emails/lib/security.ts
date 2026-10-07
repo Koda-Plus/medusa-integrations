@@ -54,6 +54,37 @@ export function maskSecrets(text: unknown, secrets: ReadonlyArray<string | null 
     .replace(/[A-Za-z0-9+/=_-]{40,}/g, "***")
 }
 
+/** What stands in for a hidden link: a valid address that never resolves (`.invalid` is reserved). */
+export const HIDDEN_LINK = "https://link.hidden.invalid/"
+
+/**
+ * The data of a message with its secret fields hidden (a template's
+ * `sensitive` list): a link becomes `HIDDEN_LINK`, any other value "hidden".
+ * What the simulated outbox keeps and shows instead of the real message.
+ */
+export function redactData(data: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  if (fields.length === 0) return data
+  const out: Record<string, unknown> = { ...data }
+  for (const f of fields) {
+    if (!(f in out) || out[f] === null || out[f] === undefined) continue
+    out[f] = typeof out[f] === "string" && /^https?:\/\//i.test(String(out[f]).trim()) ? HIDDEN_LINK : "hidden"
+  }
+  return out
+}
+
+/**
+ * A stored message with anything shaped like a token taken out: JSON Web
+ * Tokens (Medusa's reset tokens are JWTs) and the values of `token`, `code`,
+ * `key`, `secret` and `signature` parameters in links. For bodies kept by an
+ * older version, before the outbox hid secret fields itself.
+ */
+export function scrubSecrets(text: string | null | undefined): string | null {
+  if (text === null || text === undefined) return null
+  return String(text)
+    .replace(/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, "hidden")
+    .replace(/([?&;](?:token|code|key|secret|signature|sig)=)[^&#"'<>\s]+/gi, "$1hidden")
+}
+
 /** Addresses and secrets, both, for anything that leaves the provider (logs, the send log, the admin). */
 export function maskAll(text: unknown, secrets: ReadonlyArray<string | null | undefined> = []): string {
   return maskSecrets(maskEmailsIn(text), secrets)

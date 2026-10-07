@@ -4,11 +4,16 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { cleanText, cssFontFamily, esc, safeHttpsUrl, safeUrl } from "../src/modules/emails/lib/html.ts"
-import { cleanKey, entityRef, eventKey, resendKey, resetKey, retryNotificationKey, testKey } from "../src/modules/emails/lib/keys.ts"
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { cleanText, companyName, cssFontFamily, esc, looksLikeLink, personName, safeHttpsUrl, safeUrl } from "../src/modules/emails/lib/html.ts"
+import { addressHash, cleanKey, customerIdOf, entityRef, eventKey, resendKey, resetKey, retryNotificationKey, testKey } from "../src/modules/emails/lib/keys.ts"
+import { KIT_META } from "../src/modules/emails/lib/kit-meta.ts"
+import { USER_AGENT } from "../src/modules/emails/lib/resend.ts"
 import { currencyCode, formatDate, formatMoney, formatShortDate, formatTag, monthYear, normalizeLocale, pickLocale, plural, toNumber, validTimeZone } from "../src/modules/emails/lib/locale.ts"
 import { createRateLimiter } from "../src/modules/emails/lib/rate-limit.ts"
-import { addressList, isEmail, maskAll, maskEmail, maskEmailsIn, maskSecrets, parseSender } from "../src/modules/emails/lib/security.ts"
+import { addressList, HIDDEN_LINK, isEmail, maskAll, maskEmail, maskEmailsIn, maskSecrets, parseSender, redactData, scrubSecrets } from "../src/modules/emails/lib/security.ts"
 import { htmlToText } from "../src/modules/emails/lib/text.ts"
 import { contrast, makePalette, normalizeHex } from "../src/modules/emails/lib/theme.ts"
 import { nb, typesetHtml } from "../src/modules/emails/lib/typeset.ts"
@@ -41,10 +46,10 @@ test("addresses: validated, masked in single values and in texts", () => {
   assert.equal(isEmail("anna.nowak@example.com"), true)
   assert.equal(isEmail("anna@localhost"), false)
   assert.equal(maskEmail("anna.nowak@example.com"), "a***@e***.com")
-  assert.equal(maskEmail("x@mail.firma.co.uk"), "x***@m***.uk")
+  assert.equal(maskEmail("x@mail.firma.example"), "x***@m***.example")
   assert.equal(maskEmail("nope"), "***")
-  assert.equal(maskEmailsIn("to anna@example.com and b@c.pl"), "to a***@e***.com and b***@c***.pl")
-  assert.deepEqual(addressList("a@x.pl, Bob <b@x.pl>; junk"), ["a@x.pl", "Bob <b@x.pl>"])
+  assert.equal(maskEmailsIn("to anna@example.com and b@c.example"), "to a***@e***.com and b***@c***.example")
+  assert.deepEqual(addressList("a@x.example, Bob <b@x.example>; junk"), ["a@x.example", "Bob <b@x.example>"])
   assert.equal(parseSender("Shop <shop@example.com>")?.address, "shop@example.com")
   assert.equal(parseSender("Evil\r\nBcc: x@y.z <shop@example.com>")?.value.includes("\n"), false, "no header injection through the name")
   assert.equal(parseSender("<b>@example.com"), null)
@@ -157,4 +162,38 @@ test("the rate limiter: a sliding window per key", () => {
   assert.equal(third.retryAfterSeconds, 1)
   assert.equal(l.hit("b", 20).ok, true)
   assert.equal(l.hit("a", 1001).ok, true)
+})
+
+test("the version in the admin, the manifest and the User-Agent is the one of package.json", () => {
+  const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf8")) as { version: string }
+  assert.equal(KIT_META.version, pkg.version)
+  assert.equal(USER_AGENT, `KodaPlus-Medusa-Emails/${pkg.version} (+https://koda.plus)`)
+})
+
+test("secret fields are hidden in what the outbox keeps; tokens are taken out of old bodies", () => {
+  const data = { email: "anna@example.com", reset_url: "https://shop.example.com/reset-password?token=abc&email=x", code: 1234 }
+  assert.deepEqual(redactData(data, ["reset_url", "code", "missing"]), { email: "anna@example.com", reset_url: HIDDEN_LINK, code: "hidden" })
+  assert.deepEqual(redactData(data, []), data)
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJlbnRpdHlfaWQiOiJhbm5hQGV4YW1wbGUuY29tIn0.c2lnbmF0dXJlMTIzNDU2"
+  const html = `<a href="https://shop.example.com/reset-password?token=${jwt}&amp;email=anna%40example.com">Reset</a> https://x.example/?code=998877 ${jwt}`
+  const scrubbed = scrubSecrets(html) ?? ""
+  assert.ok(!scrubbed.includes("eyJ"))
+  assert.ok(!scrubbed.includes("998877"))
+  assert.match(scrubbed, /token=hidden&amp;email=anna%40example\.com/, "the rest of the link stays")
+  assert.equal(scrubSecrets(null), null)
+})
+
+test("an address is kept only as a one-way hash, the same for any spelling of it", () => {
+  assert.equal(addressHash("anna@example.com"), addressHash("  ANNA@example.com "))
+  assert.notEqual(addressHash("anna@example.com"), addressHash("ania@example.com"))
+  assert.match(addressHash("anna@example.com"), /^[0-9a-f]{40}$/)
+  assert.equal(customerIdOf("cus_01J9ABC"), "cus_01J9ABC")
+  for (const bad of ["user_01", "cus_", "cus_1; drop", null, 42]) assert.equal(customerIdOf(bad), null)
+})
+
+test("text that reads like a link, an address or a domain never passes as a name", () => {
+  for (const ok of ["Anna", "Zoë", "Anne-Marie", "O'Neil", "Łukasz", "J. R."]) assert.equal(personName(ok), ok, ok)
+  for (const bad of ["evil.example", "www.x", "https://x", "a@b.c", "Anna2", "<b>", "x/y"]) assert.equal(personName(bad), null, bad)
+  assert.equal(looksLikeLink("Stolarnia sp. z o.o."), false, "a Polish company form is not a domain")
+  assert.equal(companyName("Shop at deals.example"), null)
 })

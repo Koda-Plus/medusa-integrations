@@ -1,22 +1,19 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { ensureDemoOutbox } from "../../../workflows/emails/demo"
-import { buildStatus, emailsService } from "./helpers"
+import { buildStatus, serverError } from "./helpers"
 
 /**
  * GET /admin/emails
  *
  * The configuration in use (never the API key), the provider's state, the
  * templates with their switches and 30 day counts, the counters of the
- * Panel. Reads the database and the options only, never Resend. In demo mode
- * a visit fills the simulated outbox from the store's newest orders and
- * customers, or rebuilds it with fresh dates when the seed is stale.
+ * Panel. Reads the database and the options only, never Resend, and writes
+ * nothing: in demo mode the answer says when the simulated outbox was seeded
+ * and whether it is stale; the page then asks `POST /admin/emails/demo/seed`.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
-  const svc = emailsService(req.scope)
   try {
-    await ensureDemoOutbox(req.scope)
+    res.json(await buildStatus(req.scope))
   } catch (err) {
-    svc.getLogger().warn(`[emails] Demo outbox: ${svc.mask((err as Error)?.message ?? String(err))}`)
+    serverError(req, res, err, "The e-mails status could not be read. The server log has the details.")
   }
-  res.json(await buildStatus(req.scope))
 }

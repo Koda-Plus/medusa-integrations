@@ -1,10 +1,10 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { RetryResponse } from "../../../../../../modules/emails/lib/contract"
-import { canRetry, toMessageDto } from "../../../../../../modules/emails/lib/dto"
+import { canRetry, templateLabels, toMessageDto } from "../../../../../../modules/emails/lib/dto"
 import type { MessageRow } from "../../../../../../modules/emails/lib/store"
 import { retryMessage } from "../../../../../../workflows/emails/events"
 import { actorNames } from "../../../../../../workflows/emails/runtime"
-import { actorOf, emailsService } from "../../../helpers"
+import { actorOf, emailsService, serverError } from "../../../helpers"
 
 /**
  * POST /admin/emails/messages/:id/retry
@@ -16,6 +16,14 @@ import { actorOf, emailsService } from "../../../helpers"
  * admin asks before it calls this.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+  try {
+    await retry(req, res)
+  } catch (err) {
+    serverError(req, res, err, "The retry failed. The server log has the details.")
+  }
+}
+
+async function retry(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = emailsService(req.scope)
   const find = async (): Promise<MessageRow | null> =>
     ((await svc.listEmailsMessages({ id: req.params.id, demo: svc.isDemo() } as never, { take: 1 } as never)) as unknown as MessageRow[])[0] ?? null
@@ -33,7 +41,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   svc.getLogger().info(`[emails] Retry of ${row.template} (${row.id}) by ${actor ?? "unknown"}: ${outcome.status}`)
   const after = await find()
   const names = await actorNames(req.scope, [after?.requested_by])
-  const body: RetryResponse = { outcome: outcome.status, message: after ? toMessageDto(after, names) : null }
+  const body: RetryResponse = { outcome: outcome.status, message: after ? toMessageDto(after, names, templateLabels(svc.getOptions())) : null }
   if (outcome.status === "sent") {
     res.json(body)
     return

@@ -51,7 +51,7 @@ test("settings per mode; demo changes older than a day are forgotten", () => {
   assert.equal(demoS.templates["order.placed"].on, false)
 })
 
-test("the settings cache: one read per 10 seconds, forgotten after a change, defaults when the read fails", async () => {
+test("the settings cache: one read per 10 seconds, forgotten after a change, defaults only without the table", async () => {
   let reads = 0
   const load = async () => {
     reads += 1
@@ -66,10 +66,32 @@ test("the settings cache: one read per 10 seconds, forgotten after a change, def
   forgetSettings()
   await cachedSettings(false, load, 12_001)
   assert.equal(reads, 3)
-  const failing = await cachedSettings(true, async () => {
-    throw new Error("no table")
+  const noTable = await cachedSettings(true, async () => {
+    throw Object.assign(new Error('relation "emails_setting" does not exist'), { code: "42P01" })
   })
-  assert.equal(failing.brand, null)
+  assert.equal(noTable.brand, null, "no table yet: nobody could have switched anything, the defaults")
+})
+
+test("a failing read never turns a switched-off template back on: the last settings read, else nothing is sent", async () => {
+  const off = [{ key: templateKey(false, "order.placed"), value: { on: false } }]
+  const first = await cachedSettings(false, async () => off, 1000)
+  assert.equal(first.templates["order.placed"]?.on, false)
+  const warnings: string[] = []
+  const busy = async (): Promise<never> => {
+    throw new Error("timeout acquiring a connection for owner.secret@db.example.com, the pool is probably full")
+  }
+  /* Past the 10 seconds: the read fails, the switch from the last good read stays, with one warning a minute. */
+  const stale = await cachedSettings(false, busy, 20_000, { warn: (m) => void warnings.push(m) })
+  assert.equal(stale.templates["order.placed"]?.on, false)
+  await cachedSettings(false, busy, 30_000, { warn: (m) => void warnings.push(m) })
+  assert.equal(warnings.length, 1)
+  assert.ok(!warnings[0].includes("owner.secret@"), "an address in the error is masked")
+  /* After a change in the admin the fallback stays too. */
+  forgetSettings({ keepFallback: true })
+  assert.equal((await cachedSettings(false, busy, 31_000)).templates["order.placed"]?.on, false)
+  /* Nothing read before: the caller learns the settings are unknown. */
+  forgetSettings()
+  await assert.rejects(() => cachedSettings(false, busy, 40_000), (err: Error & { code?: string }) => err.name === "SettingsUnavailableError" && err.code === "SETTINGS_UNAVAILABLE")
 })
 
 function runner() {
@@ -191,4 +213,59 @@ test("a missing table is recognised by its Postgres code or message", () => {
   assert.equal(isMissingTable({ code: "42P01" }), true)
   assert.equal(isMissingTable(new Error('relation "emails_message" does not exist')), true)
   assert.equal(isMissingTable(new Error("deadlock")), false)
+})
+
+test("SQL: a limited claim locks the address, counts its messages of the hour and inserts in one transaction", async () => {
+  const r = runner()
+  let transactions = 0
+  const sql = {
+    ...r.sql,
+    transaction: async <T,>(handler: (trx: typeof r.sql) => Promise<T>) => {
+      transactions += 1
+      return handler(r.sql)
+    },
+  }
+  const store = createSqlStore({ sql, newId: (p) => `${p}_1` })
+  const since = new Date("2026-10-07T09:00:00Z")
+  const m = { ...NEW, template: "password.reset", recipient_hash: "h".repeat(40) }
+  r.set({ rows: [{ n: 3 }] })
+  assert.deepEqual(await store.claimLimited(m, { token: "t", leaseUntil: new Date(), resendKey: "k" }, { max: 3, since }), { row: null, throttled: true })
+  assert.equal(transactions, 1)
+  assert.equal(r.calls.length, 2, "over the limit: nothing is inserted")
+  assert.match(r.calls[0].sql, /pg_advisory_xact_lock\(hashtext\(\?\)\)/)
+  assert.deepEqual(r.calls[0].bindings, [`emails:limit:password.reset:${"h".repeat(40)}`])
+  assert.match(r.calls[1].sql, /"template" = \? and "recipient_hash" = \? and "demo" = \? and "created_at" >= \? and "status" <> 'skipped'/)
+  assert.deepEqual(r.calls[1].bindings, ["password.reset", "h".repeat(40), false, since])
+  r.set({ rows: [{ n: 1, id: "emmsg_1" }] })
+  const ok = await store.claimLimited(m, { token: "t", leaseUntil: new Date(), resendKey: "k" }, { max: 3, since })
+  assert.equal(ok.throttled, false)
+  assert.match(r.calls[4].sql, /insert into "emails_message"/)
+  assert.ok(r.calls[4].bindings.includes("h".repeat(40)), "the hash of the address is written")
+})
+
+test("SQL: summaries read all records at once, never the address or the body; board counters in one grouped count", async () => {
+  const r = runner()
+  const store = createSqlStore({ sql: r.sql, newId: (p) => `${p}_1` })
+  await store.forOrders(["order_1", "order_2", "order_1"], false)
+  assert.match(r.calls[0].sql, /"order_id" in \(\?, \?\)/)
+  assert.match(r.calls[0].sql, /"kind" <> 'test'/)
+  assert.doesNotMatch(r.calls[0].sql, /"recipient",|body_html|body_text/)
+  assert.deepEqual(r.calls[0].bindings, [false, "order_1", "order_2", 50])
+  await store.forCustomers(["cus_1"], ["a".repeat(40)], true)
+  assert.match(r.calls[1].sql, /\("customer_id" in \(\?\) or "recipient_hash" in \(\?\)\)/)
+  assert.deepEqual(await store.forOrders([], false), [])
+  assert.equal(r.calls.length, 2, "no ids, no query")
+  r.set({ rows: [{ orderFailed: 2, refusedAddresses: 1 }] })
+  assert.deepEqual(await store.boardCounts(false, new Date("2026-10-01T00:00:00Z")), { orderFailed: 2, refusedAddresses: 1 })
+  assert.match(r.calls[2].sql, /count\(\*\) filter \(where "status" in \('failed', 'unknown'\) and "order_id" is not null\)/)
+  assert.match(r.calls[2].sql, /count\(distinct coalesce\("recipient_hash", "id"\)\) filter \(where "status" = 'failed' and "error_code" = 'INVALID_RECIPIENT'\)/)
+  assert.match(r.calls[2].sql, /"kind" <> 'test'/)
+})
+
+test("SQL: the log of an older version (no customer_id or recipient_hash yet) is not ready", async () => {
+  const ok = runner()
+  assert.equal(await createSqlStore({ sql: ok.sql, newId: (p) => p }).schemaReady(), true)
+  assert.match(ok.calls[0].sql, /select "customer_id", "recipient_hash" from "emails_message" where false/)
+  const old = { raw: async () => Promise.reject(Object.assign(new Error('column "customer_id" does not exist'), { code: "42703" })) }
+  assert.equal(await createSqlStore({ sql: old, newId: (p) => p }).schemaReady(), false)
 })

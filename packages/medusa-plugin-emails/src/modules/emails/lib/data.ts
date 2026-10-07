@@ -14,11 +14,11 @@
  */
 
 import type { EmailLocale } from "./constants"
-import { cleanText, safeUrl } from "./html"
+import { cleanText, companyName, personName, safeUrl } from "./html"
 import { metadataLocale, normalizeLocale, pickLocale, toNumber } from "./locale"
 import { buildLink, type ResolvedEmailsOptions } from "./options"
 import { isEmail } from "./security"
-import { sampleOrder } from "./templates/samples"
+import { sampleShipment } from "./templates/samples"
 import type { CartEmailData, CanceledEmailData, EmailItem, NegotiationEmailData, OrderEmailData, PasswordResetEmailData, ShipmentEmailData, WelcomeEmailData } from "./types"
 
 export interface AddressRecord {
@@ -265,11 +265,12 @@ export function shipmentData(order: OrderRecord, f: FulfillmentRecord, o: Pick<R
   }
 }
 
+/** The welcome: what the stranger typed at registration only when it reads like a name or a company. */
 export function welcomeData(c: CustomerRecord, o: Pick<ResolvedEmailsOptions, "defaultLocale">): WelcomeEmailData {
   return {
     locale: localeTag([metadataLocale(c.metadata)], o.defaultLocale),
-    customer_name: cleanText(c.first_name, 60) || null,
-    company_name: cleanText(c.company_name, 100) || null,
+    customer_name: personName(c.first_name, 60),
+    company_name: companyName(c.company_name, 100),
     customer_since: iso(c.created_at) ?? new Date().toISOString(),
   }
 }
@@ -378,16 +379,33 @@ export function negotiationData(
 
 /**
  * The store's real data for a preview or a test send, with the person
- * replaced by the sample one: the products, amounts, numbers and dates stay,
- * the name, the company and the address do not. A test e-mail to any
- * address never carries a customer's details.
+ * replaced by the sample one: the products, amounts, the order number and
+ * dates stay; the name, the company, the address, the record ids (a cart id
+ * opens the cart, with the shopper's address, through the Store API) and the
+ * tracking numbers do not. A test e-mail to any address never carries a
+ * customer's details or a working link to them.
  */
-export function anonymize<T extends { customer_name?: string | null; company_name?: string | null; shipping_address?: string[] | null }>(data: T, locale: EmailLocale): T {
-  const sample = sampleOrder(locale)
+export function anonymize<
+  T extends {
+    customer_name?: string | null
+    company_name?: string | null
+    shipping_address?: string[] | null
+    order_id?: string | null
+    cart_id?: string | null
+    tracking?: ShipmentEmailData["tracking"] | null
+  },
+>(data: T, locale: EmailLocale): T {
+  const sample = sampleShipment(locale)
   return {
     ...data,
     ...("customer_name" in data ? { customer_name: sample.customer_name } : {}),
     ...("company_name" in data ? { company_name: sample.company_name } : {}),
     ...("shipping_address" in data ? { shipping_address: sample.shipping_address } : {}),
+    ...("order_id" in data ? { order_id: sample.order_id } : {}),
+    ...("cart_id" in data ? { cart_id: SAMPLE_CART_ID } : {}),
+    ...("tracking" in data && Array.isArray(data.tracking) && data.tracking.length > 0 ? { tracking: sample.tracking } : {}),
   }
 }
+
+/** The cart id of the sample data: no cart of the store opens with it. */
+export const SAMPLE_CART_ID = "cart_sample"
