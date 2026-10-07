@@ -42,7 +42,7 @@
 
 ### Added
 
-- RBAC policies for Medusa 2.15 and newer with the `rbac` feature flag: `fakturownia:read` on every admin route, `fakturownia:update` on every write, and `approve` (corrections), `send` (e-mails, reminders, KSeF again) and `manage` (writers) on top. Older Medusa versions and stores without the flag work as before.
+- RBAC policies for Medusa 2.15 and newer with the `rbac` feature flag: `fakturownia:read` on every admin route, `fakturownia:update` on every write, and `approve` (corrections), `send` (e-mails, reminders, KSeF again) and `manage` (writers) on top. The routes declare them only while the flag is on, because Medusa 2.12 checks declared policies even without RBAC and would refuse every admin without a role; older Medusa versions and stores without the flag work as before.
 - Exact lookups: `GET /admin/fakturownia/documents?order_id=a,b` and `?number=`.
 - Deep links into the page: `?filter=`, `?q=`, `?doc=` (the document drawer), `?customer=` (a customer's documents), `?plans=` (the correction plans).
 - The koda.integration/1 contract for Koda Plus hosts: `GET /admin/fakturownia/integration` (manifest), `/integration/summary?entity=order|customer` (the worst signal speaks, with the facts `document`, priority 80, and `buyer`, priority 60, from the plugin's rows, never from order metadata) and `/integration/attention?scope=orders` (counters `documents_attention`, `ksef_problems`, `corrections_to_approve`, `to_issue`, each the length of the list its link opens).
