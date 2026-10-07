@@ -37,6 +37,10 @@ Run `npx medusa db:migrate`: the send log gets two columns (`Migration2026100811
 
 ### Added
 
+- The koda.integration/1 contract: `GET /admin/emails/integration`, `/integration/summary` (one line per order and per customer, the worst message speaking; a customer's line covers the e-mails of orders placed as a guest with the same address) and `/integration/attention` (the board counters `messages_failed` and `bounced` of the last 7 days, with links to filtered lists).
+- The order card can be embedded by a host (`emails.order`, zone `order.details`): no header of its own, a line while loading, the link to the order's e-mails at the bottom. It reads no status of the plugin any more: each message carries its template's name.
+- Deep links into the page: `?filter=` (with `bounced`), `?since=` (`24h`, `7d`, `30d`), `?order_id=`, `?customer_id=` and `?q=`; the log takes `customer_id` and `since`.
+- Type declarations in the package, with explicit `./templates` and `./workflows` exports: `defineEmailTemplate<{ ... }>(...)` from the README is checked in a strict TypeScript app. `emailsIntegration` is exported from `/workflows`.
 - The option `passwordResetsPerHour`, and `sensitive` in a template definition: data fields with a secret, handled like the password reset link.
 - The send log keeps the Medusa customer of a message and a one-way hash of its address (`customer_id`, `recipient_hash`).
 - The `bounced` filter of the log: messages refused for the recipient's address.

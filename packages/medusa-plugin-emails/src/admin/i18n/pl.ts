@@ -1,4 +1,5 @@
 import type en from "./en"
+import { integrationPl } from "../../modules/emails/lib/integration-texts"
 import { typeset } from "../lib/emails-guide"
 import { communityPl } from "../lib/emails-kit-community"
 
@@ -157,6 +158,16 @@ const pl: typeof en = {
       job: "Zadanie",
       app: "Twój kod",
     },
+    scope: {
+      order: "Zamówienie {{id}}",
+      customer: "Klient {{id}}",
+      since: {
+        "24h": "Ostatnie 24 godziny",
+        "7d": "Ostatnie 7 dni",
+        "30d": "Ostatnie 30 dni",
+      },
+      clear: "Pokaż wszystkie e-maile",
+    },
     notReadyLabel: "Log wysyłek",
     notReady: "Brakuje tabeli logu wysyłek albo jest starsza niż ta wersja: uruchom npx medusa db:migrate. Wiadomości dalej wychodzą, ale nie trafiają do logu.",
   },
@@ -306,8 +317,10 @@ const pl: typeof en = {
   },
   widget: {
     title: "E-maile",
-    all: "Wszystkie e-maile",
+    all: "Otwórz w E-mailach",
     empty: "Do tego zamówienia nie wyszedł jeszcze żaden e-mail.",
+    loading: "Wczytuję e-maile tego zamówienia",
+    failed: "Nie udało się wczytać e-maili tego zamówienia.",
   },
   languages: {
     en: "Angielski",
@@ -357,6 +370,7 @@ const pl: typeof en = {
     prev: "Wstecz",
     next: "Dalej",
   },
+  integration: integrationPl,
   guide: {
     intro: {
       title: "Uruchom e-maile w prawdziwym sklepie",

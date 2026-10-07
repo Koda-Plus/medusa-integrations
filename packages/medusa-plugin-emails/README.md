@@ -41,14 +41,15 @@ Optional, off until you turn them on:
 - **Dark mode** for Apple Mail and most apps, Outlook.com included; Polish typography with no one-letter word at the end of a line.
 - **Under Gmail's clipping size** and a plain-text part in every message; long orders show 30 lines and a sum-up line.
 - **Retry from the admin** for failed messages of the order, shipping, cancellation, welcome and cart templates: the data is read again, the provider takes the failed row over, Resend gets a fresh key.
-- **Order widget** on every order page: the e-mails of that order with their status.
+- **Order widget** on every order page: the e-mails of that order with their status, one click to the message; a host can show it as a tab (see Works with Koda Plus hosts).
+- **Deep links** into the log: `/emails?filter=attention&since=7d`, `/emails?filter=bounced`, `/emails?order_id=order_...`, `/emails?customer_id=cus_...`, `/emails?q=anna@example.com`.
 - **Demo mode** (only with `demo: true`): a simulated outbox, seeded from your newest orders and customers and dated over the last days, rebuilt with fresh dates twice a day so a public demo never looks abandoned; test sends and new events land there and stay; nothing leaves the server, and password reset links are kept hidden.
 - **Your own templates** in the same look, with the same kit, through the `templates` option or `registerEmailTemplate`.
 - **Admin in English and Polish** through the Medusa admin translations.
 
 ## Requirements
 
-- Medusa 2.12 or newer (tested on 2.15.3) and Node.js 20+.
+- Medusa 2.12 to 2.21 and Node.js 20+ (see Compatibility).
 - A Resend account with a verified sending domain, and an API key with sending access. Without a key the plugin logs every message instead of sending it (the admin says "Log only"); in demo mode it needs nothing. The free plan of Resend sends 100 e-mails a day and 3 000 a month: choose a plan for your volume before you go live.
 
 ## Installation
@@ -255,11 +256,31 @@ The admin has the full guide (**E-mails**, **Setup guide**), with the state of e
 - It does not send SMS or push messages, only the email channel.
 - It does not translate your custom templates: they render what you write, in the languages you write.
 
+## Works with Koda Plus hosts
+
+An app that shows every Koda Plus plugin in one place (like [medusa.koda.plus](https://medusa.koda.plus/app/orders?demo=en)) reads E-mails through the shared contract `koda.integration/1` and never needs to know its tables:
+
+- `GET /admin/emails/integration`: the manifest (mode, configuration, problems such as no API key or a provider that is not registered, the widget).
+- `GET /admin/emails/integration/summary?entity=order&id=order_...` (or `ids=`, up to 50; `entity=customer` too): one line per record, the worst message speaking. A message that failed is red; one that may not have gone out, or an address that was refused (customers), is orange; one being sent is blue; sent is green, with the number of messages and the newest one. Messages skipped on purpose (a template switched off, no API key) only speak when there is nothing else, and test sends never count. A customer's line covers the customer's own e-mails and those of orders placed as a guest with the same address (found by the hash of the address). No facts: e-mails are not a payment, a delivery or a document.
+- `GET /admin/emails/integration/attention?scope=orders,customers`: counters of the last 7 days, `messages_failed` (red, orders: messages of orders that failed or may not have gone out, linked to `/emails?filter=attention&since=7d`) and `bounced` (orange, customers: addresses refused when a message was sent, linked to `/emails?filter=bounced&since=7d`). The plugin reads no bounce webhooks of Resend, so a message that bounced after Resend accepted it is not counted.
+- The order card registers as `emails.order` for the zone `order.details` (tab order 80); a host that claims the zone shows it as a tab (`embedded`) and Medusa's own spot stays empty. Without a host nothing changes.
+- The page opens on deep links: `?filter=` (`all`, `sent`, `attention`, `skipped`, `test`, `bounced`), `?since=` (`24h`, `7d`, `30d`), `?order_id=`, `?customer_id=` and `?q=`.
+
+All three routes only read the send log (and, for a customer, the customer's address by id); they never seed the demo outbox, call Resend or write.
+
+## Public API
+
+What other code may import: `@koda-plus/medusa-plugin-emails/templates` (your own templates: `defineEmailTemplate`, `registerEmailTemplate`, the kit, `renderEmailPreview`, the data types), `@koda-plus/medusa-plugin-emails/workflows` (`sendEmailWorkflow`, `sendAbandonedCartsWorkflow`, `sendTemplate`, `emailsIntegration`), `@koda-plus/medusa-plugin-emails/modules/emails` (the module, its options and the same template API), `@koda-plus/medusa-plugin-emails/providers/emails` (the notification provider) and `/admin`. Type declarations ship with the package, so `defineEmailTemplate<{ ... }>(...)` is checked in a strict TypeScript app. Every other path is internal and may change in any release.
+
 ## Uninstall
 
 1. Remove both registrations from `medusa-config.ts`: the plugin in `plugins`, and its provider in the notification module. Put back a provider for the `email` channel if the store still sends e-mails, and keep the local provider on `feed` (or remove the whole `@medusajs/medusa/notification` entry to go back to Medusa's defaults).
 2. Remove the package from `package.json`.
 3. The tables `emails_message` and `emails_setting` stay with their data. Drop them by hand when you no longer need the log, or run `npx medusa db:rollback emails` before removing the package. Medusa keeps its own notification rows and the record of the migrations; the `emails` row of its provider table is disabled by Medusa once the provider is gone.
+
+## Compatibility
+
+Medusa 2.12 to 2.21 (peer range `^2.12.0`) and Node.js 20+. The tests and the build run on Medusa 2.15.3; the release of each version runs the smoke test on a fresh Medusa 2.12.6 and 2.21.2 app (migrations, build, start and the admin pages). Admin translations need Medusa 2.12 or newer. Developing the plugin needs Node.js 22.6+ (the tests run the TypeScript sources directly).
 
 ## Development
 
@@ -286,6 +307,4 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 ## Changelog
 
-### 0.1.0 (2026-10-06)
-
-First public release, generalized from the e-mails of the Koda Plus demo store: a Resend notification provider with exactly-once delivery and a send log, nine templates in English and Polish (order confirmation, shipping with tracking, cancellation, welcome, password reset, abandoned cart, three negotiation e-mails), branding from the options and the admin, custom templates with the same kit, the admin page with the live gallery, test sends, the log and the setup guide, the order widget and demo mode.
+Every release is in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-emails/CHANGELOG.md). Version 0.2.0 keeps password reset links out of every table, limits resets per address, adds the contract for Koda Plus hosts (summaries of orders and customers, board counters, the order card as a tab) and ships type declarations; it needs `npx medusa db:migrate`.

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, PaperPlane } from "@medusajs/icons"
 import { Container, InlineTip } from "@medusajs/ui"
-import type { MessageFilter, StatusResponse } from "../../../modules/emails/lib/contract"
+import { MESSAGE_FILTERS, MESSAGE_WINDOWS, type MessageFilter, type MessageWindow, type StatusResponse } from "../../../modules/emails/lib/contract"
 import { errorMessage, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/emails-guide"
 import { GuideView, usePromptSpec } from "../../lib/emails-guide-view"
@@ -17,7 +18,9 @@ import { StatTile, fmtNumber, fmtRating, modeState, referencesFor } from "../../
  *
  * - Panel: what was sent (counters, the log with masked addresses, counts per
  *   template), the template gallery with the live preview, and the test send.
- *   In demo mode the log is the simulated outbox.
+ *   In demo mode the log is the simulated outbox. Deep links from hosts,
+ *   boards and the order card open the log filtered: `?filter=attention`,
+ *   `?filter=bounced`, `?since=7d`, `?order_id=`, `?customer_id=`, `?q=`.
  * - Setup guide (`?view=guide`): from a Resend account to production.
  * - Settings (`?view=settings&tab=`): the branding, the template switches, the
  *   provider and the options in use.
@@ -31,7 +34,25 @@ const EmailsPage = () => {
   const nav = usePageNav(SETTINGS_TABS)
   const status = useEmailsStatus()
   const s = status.data
-  const [filter, setFilter] = useState<MessageFilter>("all")
+  const [params, setParams] = useSearchParams()
+  const askedFilter = params.get("filter")
+  const [filter, setFilter] = useState<MessageFilter>(() => (MESSAGE_FILTERS.includes(askedFilter as MessageFilter) ? (askedFilter as MessageFilter) : "all"))
+  useEffect(() => {
+    if (askedFilter && MESSAGE_FILTERS.includes(askedFilter as MessageFilter)) setFilter(askedFilter as MessageFilter)
+  }, [askedFilter])
+  const askedSince = params.get("since")
+  const scope = {
+    orderId: (params.get("order_id") ?? "").slice(0, 80),
+    customerId: (params.get("customer_id") ?? "").slice(0, 80),
+    since: (MESSAGE_WINDOWS.includes(askedSince as MessageWindow) ? askedSince : "") as MessageWindow | "",
+  }
+  const initialQuery = (params.get("q") ?? "").slice(0, 254)
+  const clearScope = () => {
+    const next = new URLSearchParams(params)
+    for (const k of ["order_id", "customer_id", "since", "q", "filter"]) next.delete(k)
+    setParams(next, { replace: true })
+    setFilter("all")
+  }
   const [openMessage, setOpenMessage] = useState<string | null>(null)
   const [test, setTest] = useState<TestInitial | null | "open">(null)
   /* Demo mode: the status only says the outbox is stale (a GET never writes); the page asks for the seed once. */
@@ -89,7 +110,7 @@ const EmailsPage = () => {
       {s && nav.view === "panel" ? (
         <>
           <GallerySection status={s} lang={lang} onSendTest={(initial) => setTest(initial)} />
-          <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} />
+          <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} scope={scope} initialQuery={initialQuery} onClearScope={clearScope} />
           <ByTemplateSection status={s} lang={lang} />
         </>
       ) : null}
