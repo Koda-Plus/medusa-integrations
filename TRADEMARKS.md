@@ -6,7 +6,7 @@ The MIT license of this repository covers the code of Koda Plus. It does not cov
 
 - **Allegro** and its logo, of Allegro.pl sp. z o.o.: `packages/medusa-plugin-allegro/src/admin/lib/allegro-icon.tsx`, the wordmark from the official vector (as on allegro.tech), laid out like the app icon.
 - **OLX** and its logo, of OLX Global B.V. and its group: `packages/medusa-plugin-olx/src/admin/lib/olx-icon.tsx`, redrawn as a vector from the app icon.
-- **BaseLinker**, **Base** and their logos, of Base sp. z o.o.: `packages/medusa-plugin-baselinker/src/admin/lib/baselinker-icon.tsx`, traced from the image the Medusa integrations library shows for BaseLinker.
+- **BaseLinker**, **Base** and their logos, of Base sp. z o.o.: `packages/medusa-plugin-baselinker/src/admin/lib/baselinker-icon.tsx`, the Base wordmark in white on Base blue, redrawn as a vector.
 - **Subiekt nexo** and **InsERT**, of InsERT S.A.: `packages/medusa-plugin-subiekt-nexo/src/admin/lib/subiekt-icon.tsx`, redrawn from the program icon.
 - **Fakturownia** and its logo, of its owner: `packages/medusa-plugin-fakturownia/src/admin/lib/fakturownia-icon.tsx`, redrawn from the logo on fakturownia.pl. The original files the drawing was made from, if present in `packages/medusa-plugin-fakturownia/docs/brand-source/`, are kept only as the source of the drawing and are not part of any package.
 - **InPost** and **Paczkomat**, of InPost S.A.: `packages/medusa-plugin-inpost/src/admin/lib/inpost-icon.tsx`, the mark of InPost's own logo (inpost.pl) in the frame of the other icons.

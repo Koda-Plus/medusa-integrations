@@ -41,6 +41,10 @@
  *                                  of admin/widgets so Medusa does not mount
  *                                  them. Not needed with "host": the cards
  *                                  step aside by themselves in claimed zones.
+ *   { "widgetsDirFor": { "olx": "admin/extensions" } }
+ *                                  the same per plugin, for plugins whose
+ *                                  cards are not hostable yet: the app mounts
+ *                                  them itself (as tabs of its own card).
  */
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -65,11 +69,16 @@ if (!fs.existsSync(appSrc)) {
 /* The app's own settings (see above). */
 const appSettingsFile = path.resolve(process.cwd(), target, "koda-vendor.json")
 const appSettings = fs.existsSync(appSettingsFile) ? JSON.parse(fs.readFileSync(appSettingsFile, "utf8")) : {}
-const widgetsDir = String(appSettings.widgetsDir ?? "admin/widgets").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")
-if (!/^admin\/[a-z0-9-]+$/.test(widgetsDir)) {
-  console.error(`koda-vendor.json: widgetsDir must be a folder right under admin/, got "${widgetsDir}"`)
-  process.exit(1)
+function adminDir(value, name) {
+  const dir = String(value).replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")
+  if (!/^admin\/[a-z0-9-]+$/.test(dir)) {
+    console.error(`koda-vendor.json: ${name} must be a folder right under admin/, got "${dir}"`)
+    process.exit(1)
+  }
+  return dir
 }
+const widgetsDir = adminDir(appSettings.widgetsDir ?? "admin/widgets", "widgetsDir")
+const widgetsDirFor = Object.fromEntries(Object.entries(appSettings.widgetsDirFor ?? {}).map(([ns, dir]) => [ns, adminDir(dir, `widgetsDirFor.${ns}`)]))
 const hostWanted = appSettings.host === true
 
 const sha = (spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root, encoding: "utf8" }).stdout ?? "").trim() || "unknown"
@@ -119,7 +128,7 @@ function planFor(p) {
   for (const d of ["jobs", "subscribers", "policies", "admin/widgets", "admin/lib"]) {
     const dir = path.join(src, d)
     if (!fs.existsSync(dir)) continue
-    const into = d === "admin/widgets" ? widgetsDir : d
+    const into = d === "admin/widgets" ? (widgetsDirFor[p.ns] ?? widgetsDir) : d
     for (const f of fs.readdirSync(dir)) if (f.startsWith(`${p.ns}-`)) pairs.push([`${d}/${f}`, `${into}/${f}`])
   }
   for (const lang of ["en", "pl"]) {
