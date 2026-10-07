@@ -6,3 +6,4 @@ yalc.lock
 .env.*
 *.tgz
 .DS_Store
+live-check.json
