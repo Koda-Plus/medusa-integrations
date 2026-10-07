@@ -1,0 +1,42 @@
+name: release
+
+# Publishes with npm trusted publishing (OIDC, provenance). Inactive until a
+# trusted publisher is set for each package on npmjs.com (Settings, Trusted
+# Publisher: GitHub Actions, organization Koda-Plus, repository
+# medusa-integrations, workflow release.yml, environment npm). A package must
+# exist on npm before it can get a trusted publisher, so the first version of
+# a new package is published by hand (npm run release on a laptop).
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Packages to release (namespaces, comma separated); empty for every package with a new version"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm i -g npm@latest
+      - run: npm run install:all
+      - name: release
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$ONLY" ]; then node scripts/publish-all.mjs --only "$ONLY"; else node scripts/publish-all.mjs; fi
