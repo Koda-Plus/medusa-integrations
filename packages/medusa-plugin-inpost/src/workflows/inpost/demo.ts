@@ -21,10 +21,24 @@ export async function ensureDemoSeed(scope: Scope): Promise<number> {
   if (existing.length > 0) return 0
   const { data } = await queryOf(scope).graph({
     entity: "order",
-    fields: ["id", "display_id", "currency_code", "total", "created_at"],
+    fields: ["id", "display_id", "currency_code", "created_at"],
     pagination: { take: DEMO_ROWS, order: { created_at: "DESC" } },
   })
-  const orders = (data as DemoOrder[]).filter((o) => o && typeof o.id === "string")
+  const listed = (data as DemoOrder[]).filter((o) => o && typeof o.id === "string")
+  /* Totals one order at a time: Medusa refuses to compute the totals of an order whose shipping
+     method has no version (some orders imported by other plugins carry such methods), and in a
+     single query one of them failed the whole demo. Without a total a sample has no COD amount. */
+  const orders: DemoOrder[] = []
+  for (const order of listed) {
+    let total: unknown = null
+    try {
+      const { data: one } = await queryOf(scope).graph({ entity: "order", fields: ["id", "total"], filters: { id: order.id } })
+      total = (one as Array<{ total?: unknown }>)[0]?.total ?? null
+    } catch {
+      total = null
+    }
+    orders.push({ ...order, total })
+  }
   if (orders.length === 0) return 0
   const store = storeFor(scope)
   if (!(await store.claimSetting(DEMO_SEEDED_KEY, { at: new Date().toISOString(), orders: orders.length }))) return 0
