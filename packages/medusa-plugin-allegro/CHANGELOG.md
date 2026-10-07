@@ -1,7 +1,17 @@
 # Changelog
 
-## 0.2.1 (2026-10-07)
+## 0.2.1 (unreleased)
 
+### Fixed
+
+- Admin pages work when the plugin is installed from npm: the admin libraries are optional peers, so the app keeps the copies of Medusa's dashboard instead of a second, newer copy.
+
+### Changed
+
+- README describes this plugin only: the section comparing it with another Allegro integration is gone.
+- The admin page runs on the shared Koda Plus kit 1.0.1: the setup prompt pins this exact version, checks the package signatures (`npm audit signatures`) and shows the note before saving it; the prompt is copied only with its Copy button.
+- `prepublishOnly` runs the typecheck too.
+- README links are absolute, so they work on npm and medusajs.com.
 - References: stores that start soon (`soon: true`, shown with a Soon badge and no link); the since date is no longer shown.
 
 ## 0.2.0 (2026-10-06)

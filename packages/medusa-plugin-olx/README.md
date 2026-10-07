@@ -280,10 +280,6 @@ const { result } = await runOlxWriterWorkflow(container).run({
 - It does not move stock from OLX to Medusa: Medusa is the source of truth.
 - One OLX seller account and one market per Medusa store.
 
-## Compared with other OLX integrations for Medusa
-
-As of October 2026 there is no other OLX plugin in the Medusa integrations library, so there is nothing to compare feature by feature. General listing tools (for example BaseLinker) can publish to OLX from their own catalog; this plugin works from the Medusa catalog and keeps the OLX side in check inside the Medusa admin.
-
 ## Markets
 
 The same logic runs in production on OLX.pl. The other OLX markets on the same Partner API (olx.ro, olx.pt, olx.bg, olx.ua, olx.kz and olx.uz) are supported by the `market` option and not yet verified in production. Reports are welcome.

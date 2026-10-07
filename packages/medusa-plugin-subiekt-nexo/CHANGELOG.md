@@ -12,6 +12,7 @@
 - The setup prompt turns demo mode on only when `SUBIEKT_DEMO` is `"true"`, never because the bridge address is missing (the plugin itself already needed `demo: true`).
 - `prepublishOnly` runs the typecheck too.
 - README links are absolute, so they work on npm and medusajs.com.
+- README describes this plugin only: the section comparing it with other integrations is gone.
 - References: stores that start soon (`soon: true`, shown with a Soon badge and no link); the since date is no longer shown.
 
 ## 0.2.0 (2026-10-06)
