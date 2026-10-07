@@ -1,7 +1,7 @@
 /**
  * Shared plumbing of the BaseLinker flows: the module service, the client,
- * run records, one-run-at-a-time guards, per-order locks, order metadata and
- * events. Everything here calls the generated service methods from the
+ * run records, one-run-at-a-time guards and per-record locks (leases across
+ * every process, see ./leases), order metadata and events. Everything here calls the generated service methods from the
  * outside; the service itself stays thin.
  */
 
@@ -11,8 +11,11 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import type BaseLinkerModuleService from "../../modules/baselinker/service"
 import { BaseLinkerClient } from "../../modules/baselinker/lib/client"
 import { BASELINKER_MODULE, ORDER_LOCK_SECONDS, RUNS_TO_KEEP } from "../../modules/baselinker/lib/constants"
-import type { CheckResult, RunDto, RunKind, RunStatus, RunTrigger } from "../../modules/baselinker/lib/contract"
+import { RUN_KINDS, type CheckResult, type RunDto, type RunKind, type RunStatus, type RunTrigger } from "../../modules/baselinker/lib/contract"
 import { toRunDto, type RunRow } from "../../modules/baselinker/lib/dto"
+import { LockUnavailableError, liveLeases, withLease } from "./leases"
+
+export { LockUnavailableError } from "./leases"
 
 export type Scope = MedusaContainer | { resolve<T = unknown>(key: string): T }
 
@@ -105,10 +108,13 @@ export async function lastRun(svc: BaseLinkerModuleService, kind: RunKind): Prom
 }
 
 /* ------------------------------------------------------------------ */
-/* One run of each kind at a time per process                          */
+/* One run of each kind at a time, across every process                */
 /* ------------------------------------------------------------------ */
 
-export type JobKind = RunKind | "check" | "imports_statuses" | "journal"
+export type JobKind = RunKind | "check" | "imports_statuses" | "journal" | "demo"
+
+/** Every kind a lease can hold, for the "what runs right now" read. */
+export const JOB_KINDS: readonly JobKind[] = [...RUN_KINDS, "check", "imports_statuses", "journal", "demo"]
 
 const RUNNING_KEY = Symbol.for("koda.baselinker.running")
 type Holder = typeof globalThis & { [RUNNING_KEY]?: Set<string> }
@@ -119,44 +125,107 @@ function runningSet(): Set<string> {
   return holder[RUNNING_KEY] as Set<string>
 }
 
+/** Kinds running in THIS process. `activeRunKinds` answers for every process of the store. */
 export function runningKinds(): string[] {
   return [...runningSet()].sort()
 }
 
-export function isRunning(kind: JobKind): boolean {
-  return runningSet().has(kind)
+const jobKey = (kind: string) => `lease:job:${kind}`
+
+/** Kinds running in any process of the store right now (live job leases), plus this process. Reads only. */
+export async function activeRunKinds(scopeOrService: Scope | BaseLinkerModuleService): Promise<string[]> {
+  const local = runningKinds()
+  const svc = "getOptions" in scopeOrService ? (scopeOrService as BaseLinkerModuleService) : baselinkerService(scopeOrService)
+  try {
+    const keys = await liveLeases(svc, JOB_KINDS.map(jobKey))
+    return [...new Set([...local, ...keys.map((k) => k.slice("lease:job:".length))])].sort()
+  } catch {
+    return local
+  }
 }
 
-/** Runs `fn` unless the same kind already runs in this process; then returns `null`. */
-export async function exclusive<T>(kind: JobKind, fn: () => Promise<T>): Promise<T | null> {
+/** Whether a kind runs in any process right now. */
+export async function isJobRunning(scope: Scope, kind: JobKind): Promise<boolean> {
+  return runningSet().has(kind) || (await activeRunKinds(scope)).includes(kind)
+}
+
+/** A lock store that does not answer is an error in the history and the log, never a quiet "busy". */
+async function noteLockFailure(scope: Scope, kind: JobKind, err: LockUnavailableError): Promise<void> {
+  const svc = baselinkerService(scope)
+  svc.getLogger().error(`[baselinker] ${kind}: ${svc.mask(err.message)}`)
+  if (!(RUN_KINDS as readonly string[]).includes(kind)) return
+  await recordRun(svc, {
+    kind: kind as RunKind,
+    trigger: "auto",
+    status: "error",
+    startedAt: new Date(),
+    complete: false,
+    counts: { lockUnavailable: true },
+    message: err.message,
+  }).catch(() => undefined)
+}
+
+/**
+ * Runs `fn` unless the same kind already runs in this process or holds its
+ * lease in another one; then returns `null`. Manual runs from the admin and
+ * the scheduled jobs take the same lease, so a click never doubles a job.
+ */
+export async function exclusive<T>(scope: Scope, kind: JobKind, fn: () => Promise<T>): Promise<T | null> {
   const set = runningSet()
   if (set.has(kind)) return null
   set.add(kind)
   try {
-    return await fn()
+    return await withLease(baselinkerService(scope), jobKey(kind), fn)
+  } catch (err) {
+    if (err instanceof LockUnavailableError) {
+      await noteLockFailure(scope, kind, err)
+      return null
+    }
+    throw err
   } finally {
     set.delete(kind)
   }
 }
 
 /* ------------------------------------------------------------------ */
-/* The last connection check (per process, for the admin)              */
+/* The last connection check (stored, so every process shows it)       */
 /* ------------------------------------------------------------------ */
 
 const CHECK_KEY = Symbol.for("koda.baselinker.lastCheck")
 type CheckHolder = typeof globalThis & { [CHECK_KEY]?: CheckResult }
+const CHECK_SETTING = "check:last"
 
-export function rememberCheck(result: CheckResult): void {
+/** Keeps the result for the admin: in the settings table (every process reads it) and in this process. */
+export async function rememberCheck(svc: BaseLinkerModuleService, result: CheckResult): Promise<void> {
   ;(globalThis as CheckHolder)[CHECK_KEY] = result
+  try {
+    const demo = svc.isDemo()
+    const rows = (await svc.listBaseLinkerSettings({ key: CHECK_SETTING, demo } as never, { take: 1 } as never)) as unknown as Array<{ id: string }>
+    if (rows[0]) await svc.updateBaseLinkerSettings({ id: rows[0].id, value: result } as never)
+    else await svc.createBaseLinkerSettings({ key: CHECK_SETTING, demo, value: result } as never)
+  } catch (err) {
+    svc.getLogger().warn(`[baselinker] The connection check result was not stored: ${svc.mask((err as Error)?.message ?? String(err))}`)
+  }
 }
 
-export function lastCheck(mode: "demo" | "live"): CheckResult | null {
-  const result = (globalThis as CheckHolder)[CHECK_KEY] ?? null
-  return result && result.mode === mode ? result : null
+/** The last check of the current mode, from any process. Reads only. */
+export async function lastCheck(svc: BaseLinkerModuleService): Promise<CheckResult | null> {
+  const mode = svc.isDemo() ? "demo" : "live"
+  try {
+    const rows = (await svc.listBaseLinkerSettings({ key: CHECK_SETTING, demo: svc.isDemo() } as never, { take: 1 } as never)) as unknown as Array<{
+      value: CheckResult | null
+    }>
+    const stored = rows[0]?.value ?? null
+    if (stored && stored.mode === mode) return stored
+  } catch {
+    /* the copy of this process below */
+  }
+  const local = (globalThis as CheckHolder)[CHECK_KEY] ?? null
+  return local && local.mode === mode ? local : null
 }
 
 /* ------------------------------------------------------------------ */
-/* One sender per order                                                */
+/* One sender per record                                               */
 /* ------------------------------------------------------------------ */
 
 const LOCAL_LOCKS = Symbol.for("koda.baselinker.orderLocks")
@@ -167,48 +236,69 @@ interface LockingLike {
   release(keys: string | string[], args?: { ownerId?: string | null }): Promise<boolean>
 }
 
-/**
- * Runs `fn` while holding the order: an in-process guard plus the Medusa
- * Locking module (a try-lock, released in `finally`, expiring after five
- * minutes if a process dies). With a distributed locking provider (Redis,
- * Postgres) this also keeps a server and a worker process from sending the
- * same order at once. Returns `null` when somebody else holds the order: the
- * caller simply moves on, the holder finishes the job.
- */
-export async function withOrderLock<T>(scope: Scope, orderId: string, fn: () => Promise<T>): Promise<T | null> {
-  return withLock(scope, `baselinker:order:${orderId}`, fn)
-}
+/** Keys other plugins take in the Medusa Locking module too (the Koda Plus Allegro plugin takes the marketplace reference). */
+const SHARED_LOCK_PREFIXES = ["marketplace-order-ref:"]
 
 /**
- * The same try-lock for any key: imported marketplace orders lock their
- * BaseLinker id (`baselinker:import:<id>`) and their marketplace reference
- * (`marketplace-order-ref:<ref>`, a key other plugins can take too).
+ * A refusal of the Locking module because somebody holds the key (in-memory,
+ * Redis and Postgres providers), as opposed to a provider that failed.
  */
-export async function withLock<T>(scope: Scope, key: string, fn: () => Promise<T>): Promise<T | null> {
-  const holder = globalThis as LockHolder
-  const local = holder[LOCAL_LOCKS] ?? (holder[LOCAL_LOCKS] = new Set<string>())
-  if (local.has(key)) return null
-  local.add(key)
-  const ownerId = randomUUID()
+export function isLockConflict(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : String(err)
+  return /failed to acquire lock|timed[- ]?out (while )?acquiring lock|already locked|lock (is )?(already )?(held|taken|acquired|owned)/i.test(text)
+}
+
+const BUSY = Symbol("busy")
+
+async function withLockingModule<T>(scope: Scope, key: string, fn: () => Promise<T>): Promise<T | typeof BUSY> {
   let locking: LockingLike | null = null
   try {
     locking = resolve<LockingLike>(scope, Modules.LOCKING)
   } catch {
     locking = null
   }
+  if (!locking) return fn()
+  const ownerId = randomUUID()
   try {
-    if (locking) {
-      try {
-        await locking.acquire(key, { ownerId, expire: ORDER_LOCK_SECONDS })
-      } catch {
-        return null
-      }
-    }
-    try {
-      return await fn()
-    } finally {
-      if (locking) await locking.release(key, { ownerId }).catch(() => false)
-    }
+    await locking.acquire(key, { ownerId, expire: ORDER_LOCK_SECONDS })
+  } catch (err) {
+    if (isLockConflict(err)) return BUSY
+    throw new LockUnavailableError(key, err)
+  }
+  try {
+    return await fn()
+  } finally {
+    await locking.release(key, { ownerId }).catch(() => false)
+  }
+}
+
+/**
+ * Runs `fn` while holding the order: an in-process guard plus the lease
+ * `lease:lock:baselinker:order:<id>`, so a server and a worker never send
+ * the same order at once. Returns `null` when somebody else holds the order:
+ * the caller simply moves on, the holder finishes the job.
+ */
+export async function withOrderLock<T>(scope: Scope, orderId: string, fn: () => Promise<T>): Promise<T | null> {
+  return withLock(scope, `baselinker:order:${orderId}`, fn)
+}
+
+/**
+ * The same for any key: imported marketplace orders lock their BaseLinker id
+ * (`baselinker:import:<id>`) and their marketplace reference
+ * (`marketplace-order-ref:<ref>`, which also goes through the Medusa Locking
+ * module, because other plugins take that key there). Null when somebody
+ * holds the key; LockUnavailableError when the lease store or the Locking
+ * provider fails.
+ */
+export async function withLock<T>(scope: Scope, key: string, fn: () => Promise<T>): Promise<T | null> {
+  const holder = globalThis as LockHolder
+  const local = holder[LOCAL_LOCKS] ?? (holder[LOCAL_LOCKS] = new Set<string>())
+  if (local.has(key)) return null
+  local.add(key)
+  try {
+    const shared = SHARED_LOCK_PREFIXES.some((p) => key.startsWith(p))
+    const out = await withLease<T | typeof BUSY>(baselinkerService(scope), `lease:lock:${key}`, () => (shared ? withLockingModule(scope, key, fn) : fn()))
+    return out === BUSY ? null : (out as T | null)
   } finally {
     local.delete(key)
   }

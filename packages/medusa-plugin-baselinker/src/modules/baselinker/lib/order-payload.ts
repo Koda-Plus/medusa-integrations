@@ -76,6 +76,22 @@ export const ORDER_FIELDS: readonly string[] = [
   "payment_collections.payments.captures.*",
 ]
 
+const TOTAL_FIELDS: ReadonlySet<string> = new Set(["total", "item_total", "shipping_total", "discount_total", "tax_total"])
+
+/**
+ * THE SAME ORDER WITHOUT MEDUSA'S TOTALS. Asked for a total field, Medusa
+ * computes every total of the order, and for some orders it cannot (a
+ * shipping method without a version, as orders created by other plugins can
+ * have): the read throws and the order would never reach BaseLinker. This
+ * read leaves the totals out and takes what computing them needs (the
+ * adjustments of lines and shipping), and `withTotalsFromLines` does the sum.
+ */
+export const ORDER_FIELDS_WITHOUT_TOTALS: readonly string[] = [
+  ...ORDER_FIELDS.filter((f) => !TOTAL_FIELDS.has(f)),
+  "items.adjustments.*",
+  "shipping_methods.adjustments.*",
+]
+
 /* ------------------------------------------------------------------ */
 /* Input shape (loose on purpose: Medusa versions differ in details)   */
 /* ------------------------------------------------------------------ */
@@ -106,7 +122,9 @@ export interface OrderItemRecord {
   unit_price?: unknown
   total?: unknown
   discount_total?: unknown
+  is_tax_inclusive?: boolean | null
   tax_lines?: Array<{ rate?: unknown }> | null
+  adjustments?: Array<{ amount?: unknown }> | null
   variant?: { id?: string | null; sku?: string | null; barcode?: string | null; ean?: string | null; upc?: string | null } | null
 }
 
@@ -114,6 +132,9 @@ export interface ShippingMethodRecord {
   name?: string | null
   amount?: unknown
   total?: unknown
+  is_tax_inclusive?: boolean | null
+  tax_lines?: Array<{ rate?: unknown }> | null
+  adjustments?: Array<{ amount?: unknown }> | null
   data?: Record<string, unknown> | null
 }
 
@@ -127,6 +148,7 @@ export interface PaymentRecord {
 
 export interface PaymentCollectionRecord {
   status?: string | null
+  amount?: unknown
   payments?: PaymentRecord[] | null
 }
 
@@ -147,6 +169,8 @@ export interface OrderRecord {
   items?: OrderItemRecord[] | null
   shipping_methods?: ShippingMethodRecord[] | null
   payment_collections?: PaymentCollectionRecord[] | null
+  /** Set by `withTotalsFromLines`: the totals were computed here, not by Medusa. */
+  totals_from_lines?: boolean
 }
 
 /* ------------------------------------------------------------------ */
@@ -401,6 +425,69 @@ function lineQuantity(item: OrderItemRecord): number {
 }
 
 /* ------------------------------------------------------------------ */
+/* Totals computed from the lines (when Medusa cannot compute them)    */
+/* ------------------------------------------------------------------ */
+
+function sumAmounts(list: ReadonlyArray<{ amount?: unknown }> | null | undefined): number {
+  return (list ?? []).reduce((sum, a) => sum + toNumber(a?.amount), 0)
+}
+
+function sumRates(lines: ReadonlyArray<{ rate?: unknown }> | null | undefined): number {
+  return (lines ?? []).reduce((sum, l) => sum + toNumber(l?.rate), 0)
+}
+
+/** Gross amount of a line or a shipping method: net prices get the tax of their tax lines. */
+function gross(amount: number, discount: number, taxInclusive: boolean | null | undefined, rate: number): number {
+  const after = Math.max(0, amount - discount)
+  return taxInclusive ? after : after * (1 + rate / 100)
+}
+
+/**
+ * The order with totals computed from its lines: per line the unit price
+ * times the quantity, minus its adjustments, plus the tax of its tax lines
+ * when the price is net; the shipping methods the same way. A line without a
+ * readable quantity is left as it is (the payload refuses it later). The
+ * order is marked, so the payload says in BaseLinker how its totals came
+ * about and records a payment only when the captured money covers both this
+ * sum and the payment collection.
+ */
+export function withTotalsFromLines(order: OrderRecord): OrderRecord {
+  let itemsGross = 0
+  let discount = 0
+  const items = (order.items ?? []).map((item) => {
+    const quantity = toNumberOrNull(item.detail?.quantity ?? item.quantity)
+    if (quantity === null) return item
+    const off = sumAmounts(item.adjustments)
+    const total = gross(toNumber(item.unit_price) * quantity, off, item.is_tax_inclusive, sumRates(item.tax_lines))
+    itemsGross += total
+    discount += off
+    return { ...item, total: round(total, 2), discount_total: round(off, 2) }
+  })
+  let shippingGross = 0
+  const shippingMethods = (order.shipping_methods ?? []).map((m) => {
+    const off = sumAmounts(m.adjustments)
+    const total = gross(toNumber(m.amount), off, m.is_tax_inclusive, sumRates(m.tax_lines))
+    shippingGross += total
+    discount += off
+    return { ...m, total: round(total, 2) }
+  })
+  return {
+    ...order,
+    items,
+    shipping_methods: shippingMethods,
+    total: round(itemsGross + shippingGross, 2),
+    shipping_total: round(shippingGross, 2),
+    discount_total: round(discount, 2),
+    totals_from_lines: true,
+  }
+}
+
+/** What the live payment collections ask for, summed (0 when Medusa did not say). */
+function collectionAmount(collections: readonly PaymentCollectionRecord[]): number {
+  return money(collections.filter((c) => (c?.status ?? "") !== "canceled").reduce((sum, c) => sum + toNumber(c?.amount), 0))
+}
+
+/* ------------------------------------------------------------------ */
 /* Builder                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -454,6 +541,7 @@ export function buildAddOrderPayload(order: OrderRecord, links: ReadonlyMap<stri
         marker,
         typeof order.display_id === "number" ? `Medusa #${order.display_id}` : undefined,
         discount > 0 ? `discount ${discount.toFixed(2)} ${currency}` : undefined,
+        order.totals_from_lines ? "totals computed from the lines, check the payment" : undefined,
         unlinked.length > 0 ? `not in the BaseLinker catalog: ${unlinked.join(", ")}` : undefined,
       ],
       " | ",
@@ -471,7 +559,10 @@ export function buildAddOrderPayload(order: OrderRecord, links: ReadonlyMap<stri
       ? money(order.shipping_total)
       : money((order.shipping_methods ?? []).reduce((sum, m) => sum + toNumber(m.total ?? m.amount), 0))
 
-  const payment = paymentFacts(order.payment_collections ?? [], money(order.total), options.codProviders)
+  /* Totals computed here are a sum, not Medusa's word: a payment counts only when it covers the collection too. */
+  const collections = order.payment_collections ?? []
+  const payable = order.totals_from_lines ? Math.max(money(order.total), collectionAmount(collections)) : money(order.total)
+  const payment = paymentFacts(collections, payable, options.codProviders)
   const point = pickupPoint(method?.data)
 
   const payload: AddOrderPayload = {

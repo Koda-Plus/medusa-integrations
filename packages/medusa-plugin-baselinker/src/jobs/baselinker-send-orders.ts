@@ -4,7 +4,6 @@ import { canExportOrders, canWriteInvoiceNumbers } from "../modules/baselinker/l
 import { processDueInvoices } from "../workflows/baselinker/invoices"
 import { baselinkerService } from "../workflows/baselinker/runtime"
 import { processBaseLinkerOrdersWorkflow } from "../workflows/baselinker/process-baselinker-orders"
-import { refreshDemoStatuses } from "../workflows/baselinker/statuses"
 
 /**
  * THE ORDER OUTBOX, EVERY 2 MINUTES: due orders, including the retries of
@@ -15,15 +14,14 @@ import { refreshDemoStatuses } from "../workflows/baselinker/statuses"
  * Since 0.2 the same clock writes the due invoice numbers (only while the
  * `invoiceNumbers` writer is armed).
  *
- * In demo mode it also lets the simulated warehouse move orders on, so
- * statuses change within minutes, as they would on a busy account.
+ * In demo mode the simulated warehouse moves on in its own job
+ * (`baselinker-demo`, every minute).
  */
 export default async function baselinkerSendOrdersJob(container: MedusaContainer): Promise<void> {
   const svc = baselinkerService(container)
   const o = svc.getOptions()
   if (canExportOrders(o)) await processBaseLinkerOrdersWorkflow(container).run({ input: { trigger: "schedule" } })
   if (canWriteInvoiceNumbers(o)) await processDueInvoices(container, "schedule")
-  if (o.demo) await refreshDemoStatuses(container)
 }
 
 export const config = {

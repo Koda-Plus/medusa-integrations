@@ -34,7 +34,7 @@ export interface StockPushInput {
 }
 
 export async function runStockPushPlan(scope: Scope, input: StockPushInput): Promise<RunDto | null> {
-  return exclusive("stock_push", async () => {
+  return exclusive(scope, "stock_push", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const startedAt = new Date()

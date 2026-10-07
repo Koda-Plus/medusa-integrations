@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { CardFilter, CardsResponse } from "../../../../modules/baselinker/lib/contract"
 import { toCardDto, type ProductRow } from "../../../../modules/baselinker/lib/dto"
-import { baselinkerService, intParam, like, strParam } from "../helpers"
+import { baselinkerService, guarded, intParam, like, strParam } from "../helpers"
 
 const FILTERS: readonly CardFilter[] = ["all", "linked", "unmatched", "conflicts", "nosku"]
 
@@ -15,7 +15,7 @@ const SELLABLE = { $or: [{ match_source: null }, { match_source: { $ne: "parent"
  * without a variant and without a conflict: only in BaseLinker), conflicts,
  * nosku. `q` searches name, SKU, EAN, card id and the linked product.
  */
-export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const limit = intParam(req.query.limit, 20, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 1_000_000)
@@ -62,4 +62,4 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 
   const body: CardsResponse = { cards: rows.map(toCardDto), count, limit, offset }
   res.json(body)
-}
+})

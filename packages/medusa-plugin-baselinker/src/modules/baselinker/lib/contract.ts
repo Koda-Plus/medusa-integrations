@@ -193,8 +193,11 @@ export interface StatusResponse {
   }
   lastRuns: Partial<Record<RunKind, RunDto>>
   lastCheck: CheckResult | null
+  /** Kinds running right now in any process of the store (their leases). */
   running: string[]
   schedules: { catalog: string; orders: string; statuses: string; imports: string; returns: string }
+  /** Demo mode only: whether the simulated snapshot exists yet (the `baselinker-demo` job or "Prepare now" builds it). Null in live mode. */
+  demo: { prepared: boolean; createsOrders: boolean } | null
   /* ---- 0.2 ---- */
   directions: DirectionsDto
   writers: WriterDto[]
@@ -518,8 +521,25 @@ export interface OrderByMedusaResponse {
   order: OrderDto | null
   /** 0.2: the order came from BaseLinker (a marketplace order this plugin imported). */
   imported: ImportDto | null
-  /** 0.2: `metadata.marketplace_order_ref` of the order, whichever plugin set it. */
+  /** 0.2: `metadata.marketplace_order_ref` of the order, whichever plugin set it; only on orders backend code created (since 0.3). */
   marketplaceRef: string | null
+  /** 0.3: why the order stays out of BaseLinker before it has a row: `canceled`, `skip_key`, `marketplace_order`, or null. */
+  skipCode: string | null
+}
+
+/** `GET /admin/baselinker/running`: the light read the page polls while a run is under way. */
+export interface RunningResponse {
+  running: string[]
+  /** Demo mode: the snapshot exists. Null in live mode. */
+  demoPrepared: boolean | null
+}
+
+/** `POST /admin/baselinker/demo/prepare`. */
+export interface DemoPrepareResponse {
+  prepared: boolean
+  built: boolean
+  sent: number
+  status: StatusResponse
 }
 
 export interface ProductCardsResponse {

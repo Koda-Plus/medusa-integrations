@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { StockResponse } from "../../../../modules/baselinker/lib/contract"
 import { toStockChangeDto, type StockChangeRow } from "../../../../modules/baselinker/lib/dto"
 import { lastRun } from "../../../../workflows/baselinker/runtime"
-import { baselinkerService, intParam, like, strParam } from "../helpers"
+import { baselinkerService, guarded, intParam, like, strParam } from "../helpers"
 
 /**
  * GET /admin/baselinker/stock?q=&limit=&offset=
@@ -11,7 +11,7 @@ import { baselinkerService, intParam, like, strParam } from "../helpers"
  * Medusa stocked and reserved, the BaseLinker number, the target and the
  * units. Decreases first. In `plan` mode nothing of it was written.
  */
-export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const o = svc.getOptions()
   const demo = svc.isDemo()
@@ -53,4 +53,4 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     summary,
   }
   res.json(body)
-}
+})

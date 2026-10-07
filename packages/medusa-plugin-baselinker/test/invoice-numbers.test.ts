@@ -111,4 +111,17 @@ test("a simulated document is never written to a real account; the demo writes i
   assert.equal(demo.bl.calls.length, 0, "the simulation makes no request")
   const state = demo.s.table("Settings").rows.find((r) => r.key === "demo:state")?.value as Row
   assert.equal(state.invoiceNumbers["9100001"], "FV 1/10/2026")
+  assert.equal(demo.events.length, 0, "a store order in the simulation gets no event")
+})
+
+test("demo: the invoice number event goes out only for an order the demo created itself", async () => {
+  const demo = setup({ demo: true, demoCreatesOrders: true }, [])
+  demo.s.table("Imports").create({ bl_order_id: "9100002", source: "allegro", order_id: "order_2", status: "imported", demo: true })
+  await recordInvoiceDocument(demo.container, { id: "d2", order_id: "order_2", kind: "vat", number: "FV 2/10/2026", demo: true })
+  await setArm(demo.s.svc, "invoiceNumbers", true, actor)
+  const stats = await processDueInvoices(demo.container, "schedule")
+  assert.equal(stats?.written, 1)
+  assert.equal(demo.events.length, 1)
+  assert.equal(demo.events[0].name, "baselinker.invoice_number_written")
+  assert.equal(demo.events[0].data.demo, true)
 })

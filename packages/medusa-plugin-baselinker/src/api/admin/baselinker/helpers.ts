@@ -1,4 +1,4 @@
-import type { MedusaRequest } from "@medusajs/framework/http"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { IUserModuleService } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
 import type BaseLinkerModuleService from "../../../modules/baselinker/service"
@@ -12,7 +12,6 @@ import {
 import { PLAN_KINDS, RUN_KINDS, type PlanKind, type PlanSummary, type RunDto, type RunKind, type StatusResponse, type WriterDto } from "../../../modules/baselinker/lib/contract"
 import { iso } from "../../../modules/baselinker/lib/dto"
 import { journalHealth } from "../../../modules/baselinker/lib/journal"
-import { exportVerdict } from "../../../modules/baselinker/lib/order-import"
 import {
   canExportOrders,
   canImportOrders,
@@ -25,17 +24,39 @@ import {
   canWriteInvoiceNumbers,
 } from "../../../modules/baselinker/lib/options"
 import type { WriterState } from "../../../modules/baselinker/lib/writers"
-import { runCatalogSync } from "../../../workflows/baselinker/catalog"
+import { demoPrepared } from "../../../workflows/baselinker/demo"
 import { loadJournalState } from "../../../workflows/baselinker/journal"
 import { importRules } from "../../../workflows/baselinker/order-import"
-import { enqueueOrder, sendDueOrders } from "../../../workflows/baselinker/orders"
 import { quarantinedCount, storedSummary } from "../../../workflows/baselinker/plans"
-import { baselinkerService, isRunning, lastCheck, lastRun, queryOf, runningKinds, type Scope } from "../../../workflows/baselinker/runtime"
+import { activeRunKinds, baselinkerService, lastCheck, lastRun } from "../../../workflows/baselinker/runtime"
 import { loadWriters, type Actor } from "../../../workflows/baselinker/settings"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
 
 export { baselinkerService }
+
+type Handler = (req: MedusaRequest, res: MedusaResponse) => Promise<void>
+
+/**
+ * A route handler whose unexpected errors answer a plain sentence: the
+ * details (a SQL error, a stack) stay in the server log, masked, and never
+ * reach the browser. Refusals the handler answers itself keep their status.
+ */
+export function guarded(handler: Handler): Handler {
+  return async (req, res) => {
+    try {
+      await handler(req, res)
+    } catch (err) {
+      try {
+        const svc = baselinkerService(req.scope)
+        svc.getLogger().error(`[baselinker] ${req.method} ${req.path}: ${svc.mask((err as Error)?.stack ?? (err as Error)?.message ?? String(err))}`)
+      } catch {
+        /* no logger: the answer below still goes out */
+      }
+      if (!res.headersSent) res.status(500).json({ code: "error", message: "Something went wrong on the server; the details are in the server log." })
+    }
+  }
+}
 
 type Counted = "products" | "orders" | "imports" | "invoices"
 
@@ -62,8 +83,9 @@ export function toWriterDto(w: WriterState): WriterDto {
 
 /**
  * Status for the admin. READS OUR DATABASE ONLY: not a single call to
- * BaseLinker while rendering. Going to the network sits behind POST routes
- * and clicks.
+ * BaseLinker and not a single write while rendering, in demo mode too.
+ * Going to the network, and building the demo snapshot, sit behind POST
+ * routes, clicks and jobs.
  */
 export async function buildStatus(svc: BaseLinkerModuleService): Promise<StatusResponse> {
   const o = svc.getOptions()
@@ -110,15 +132,24 @@ export async function buildStatus(svc: BaseLinkerModuleService): Promise<StatusR
   }
 
   const lastRuns: Partial<Record<RunKind, RunDto>> = {}
-  for (const kind of RUN_KINDS) {
-    const run = await lastRun(svc, kind)
+  const runs = await Promise.all(RUN_KINDS.map((kind) => lastRun(svc, kind)))
+  RUN_KINDS.forEach((kind, i) => {
+    const run = runs[i]
     if (run) lastRuns[kind] = run
-  }
+  })
   const plans = {} as Record<PlanKind, PlanSummary>
-  for (const kind of PLAN_KINDS) plans[kind] = await storedSummary(svc, kind)
+  const summaries = await Promise.all(PLAN_KINDS.map((kind) => storedSummary(svc, kind)))
+  PLAN_KINDS.forEach((kind, i) => {
+    plans[kind] = summaries[i]
+  })
 
-  const { directions, writers } = await loadWriters(svc)
-  const journal = await loadJournalState(svc).catch(() => null)
+  const [{ directions, writers }, journal, check, running, prepared] = await Promise.all([
+    loadWriters(svc),
+    loadJournalState(svc).catch(() => null),
+    lastCheck(svc),
+    activeRunKinds(svc),
+    demo ? demoPrepared(svc) : Promise.resolve(true),
+  ])
 
   return {
     mode: demo ? "demo" : "live",
@@ -164,9 +195,10 @@ export async function buildStatus(svc: BaseLinkerModuleService): Promise<StatusR
       ordersSent24h: sent24h,
     },
     lastRuns,
-    lastCheck: lastCheck(demo ? "demo" : "live"),
-    running: runningKinds(),
+    lastCheck: check,
+    running,
     schedules: { catalog: CATALOG_SCHEDULE, orders: ORDERS_SCHEDULE, statuses: STATUSES_SCHEDULE, imports: IMPORT_SCHEDULE, returns: RETURNS_SCHEDULE },
+    demo: demo ? { prepared, createsOrders: o.demoCreatesOrders } : null,
     directions: { catalog: directions.catalog, stock: directions.stock, switchable: demo },
     writers: writers.map(toWriterDto),
     references: o.references,
@@ -220,33 +252,6 @@ export async function buildStatus(svc: BaseLinkerModuleService): Promise<StatusR
       quarantined: await quarantinedCount(svc),
     },
   }
-}
-
-/**
- * Demo mode, first visit: build the simulated catalog right away and send the
- * store's latest orders through the simulated account, so the page opens with
- * data instead of empty tables. Only when nothing ran yet. Orders that came
- * from BaseLinker (or straight from a marketplace) are never sent back.
- */
-export async function ensureDemoSnapshot(scope: Scope): Promise<void> {
-  const svc = baselinkerService(scope)
-  if (!svc.isDemo() || isRunning("catalog")) return
-  const [, runs] = await svc.listAndCountBaseLinkerSyncRuns({ kind: "catalog", source: "demo" } as never, { take: 1, select: ["id"] } as never)
-  if (runs === 0) await runCatalogSync(scope, { trigger: "auto" })
-
-  const [, orders] = await svc.listAndCountBaseLinkerOrders({ demo: true } as never, { take: 1, select: ["id"] } as never)
-  if (orders > 0 || !svc.getOptions().exportOrders) return
-  const { data } = await queryOf(scope).graph({
-    entity: "order",
-    fields: ["id", "display_id", "status", "created_at", "metadata"],
-    pagination: { take: 8, order: { created_at: "DESC" } },
-  })
-  const recent = (data as Array<{ id: string; display_id?: number | null; status?: string | null; metadata?: Record<string, unknown> | null }>).filter(
-    (r) => r.status !== "canceled" && exportVerdict(r.metadata, svc.getOptions().exportMarketplaceOrders).send,
-  )
-  if (recent.length === 0) return
-  for (const r of recent) await enqueueOrder(scope, { orderId: r.id, displayId: r.display_id ?? null })
-  await sendDueOrders(scope, "auto")
 }
 
 /** Who is doing this, for the record: the admin user's e-mail (or name), from the session. */

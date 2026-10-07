@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { toInvoiceDto, type InvoiceRow } from "../../../../../../modules/baselinker/lib/dto"
 import { retryInvoice } from "../../../../../../workflows/baselinker/invoices"
-import { baselinkerService } from "../../../helpers"
+import { baselinkerService, guarded } from "../../../helpers"
 
 /**
  * POST /admin/baselinker/invoices/:id/retry
@@ -10,7 +10,7 @@ import { baselinkerService } from "../../../helpers"
  * number writer is armed. Safe: the field is read before anything is
  * written, and a field holding another number is never overwritten.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const outcome = await retryInvoice(req.scope, req.params.id)
   const rows = (await svc.listBaseLinkerInvoices({ id: req.params.id, demo: svc.isDemo() } as never, { take: 1 } as never)) as unknown as InvoiceRow[]
@@ -19,4 +19,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
   res.json({ outcome, invoice: toInvoiceDto(rows[0]) })
-}
+})

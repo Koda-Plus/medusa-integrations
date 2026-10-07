@@ -306,7 +306,7 @@ async function linkCreated(ctx: ApplyContext, items: ImportItem[]): Promise<void
 const APPLICABLE = new Set(["create", "update", "draft"])
 
 export async function runCatalogImportPlan(scope: Scope, input: ImportRunInput): Promise<RunDto | null> {
-  return exclusive("catalog_import", async () => {
+  return exclusive(scope, "catalog_import", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const startedAt = new Date()

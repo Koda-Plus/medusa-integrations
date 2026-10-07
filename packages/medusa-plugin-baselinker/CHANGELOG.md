@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Fixed
+
+- Demo mode writes only its own rows. The store's orders no longer get a simulated BaseLinker number, status or parcel in their metadata, and no event goes out for them; invoice number events in demo mode only for orders the demo created; a demo plan or card snapshot never replaces what a real account read.
+- Reads never write: `GET /admin/baselinker` no longer builds the demo snapshot and sends orders, and the order list and the order widget no longer move the simulated statuses. The `baselinker-demo` job (every minute, demo mode only) and `POST /admin/baselinker/demo/prepare` do that work.
+- One run of each job and one worker per store order, marketplace order and invoice document across every process (a server and a worker, or several instances): leases in `baselinker_setting`, renewed while their holder works and expiring 5 minutes after a process died. A manual run from the admin takes the same lease as the scheduled job. Before this, the guard held only inside one process, so two processes could create the same card or the same fulfillment twice.
+- A lock store or Locking provider that does not answer is an error in the run history and the log, never a quiet "busy".
+- The queue, the import and the invoice numbers read a row again under its lease and leave it alone when another process sent, imported or leased it a moment ago.
+- Orders whose totals Medusa cannot compute (a shipping method without a version) still reach BaseLinker: they are read without the totals, which are computed from the lines (`admin_comments` says so, `paid` only when the capture covers that sum and the payment collection). When even that read fails, the row waits with `totals_unavailable`.
+- Order metadata a shopper can set decides nothing: an order counts as imported only by the plugin's import table; a marketplace reference counts only on an order created without a cart; a crash recovery adopts an order by its BaseLinker number only when it carries the row's id (`metadata.baselinker_import_id`) or has no cart.
+- The status reads choose their 60 orders in the database (never checked first, then the oldest check, closed statuses left out) instead of reading every followed order.
+
+### Changed
+
+- Demo mode only with `demo: true`, never because a token is missing. The setup prompt and the README use `demo: process.env.BASELINKER_DEMO === "true"`. A warning goes to the log when demo mode runs in a production build.
+- Simulated marketplace orders become Medusa orders only with the new option `demoCreatesOrders` (flagged `metadata.baselinker_demo`); without it they stay rows of the import list (`demo_no_orders`).
+- Writes to `/admin/baselinker/*` take a JSON body or the `x-koda-request` header (415 otherwise).
+- A shopper may not set `baselinker_*` metadata, `marketplace_order_ref` or the skip key through the Store API (400 `reserved_metadata_key`).
+- Skipped orders carry a code: `canceled`, `skip_key`, `marketplace_order` or `imported`.
+- Unexpected server errors answer a plain sentence; the details stay in the server log, masked.
+- The page polls the light `GET /admin/baselinker/running` while a run is under way and the full status every 30 seconds, never while the tab is hidden. The order widget asks every 3 seconds only during the first two minutes of a send, then around the next attempt.
+- The connection check result is stored, so every process shows the same one.
+- The BaseLinker requests name the plugin version in their user agent.
+
+### Added
+
+- `GET /admin/baselinker/running` and `POST /admin/baselinker/demo/prepare`, the `baselinker-demo` job, `demo` in the status (whether the snapshot exists), `skipCode` in the order widget answer.
+- `baselinker.order_status_changed` for imported orders too, with `imported: true`.
+- `activeRunKinds` in `/workflows`: what runs right now in any process.
+- README: running more than one process, metadata a buyer can write, the write guard.
+
 ## 0.2.1 (2026-10-07)
 
 ### Fixed

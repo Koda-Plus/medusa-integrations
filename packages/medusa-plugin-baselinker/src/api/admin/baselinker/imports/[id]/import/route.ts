@@ -3,7 +3,7 @@ import { toImportDto, type ImportRow } from "../../../../../../modules/baselinke
 import { writerState } from "../../../../../../modules/baselinker/lib/writers"
 import { findImportRow, importOrderNow } from "../../../../../../workflows/baselinker/order-import"
 import { loadWriters } from "../../../../../../workflows/baselinker/settings"
-import { baselinkerService } from "../../../helpers"
+import { baselinkerService, guarded } from "../../../helpers"
 
 /**
  * POST /admin/baselinker/imports/:id/import
@@ -13,7 +13,7 @@ import { baselinkerService } from "../../../helpers"
  * the order up in Medusa (by its BaseLinker id and its marketplace reference)
  * before it creates anything. Answers when the attempt is done.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const { writers } = await loadWriters(svc)
   if (!writerState(writers, "orderImport").live) {
@@ -28,4 +28,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   const outcome = await importOrderNow(req.scope, row.id)
   const fresh = (await findImportRow(svc, { id: row.id })) as ImportRow
   res.json({ outcome, import: toImportDto(fresh) })
-}
+})

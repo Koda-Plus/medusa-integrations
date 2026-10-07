@@ -1,9 +1,8 @@
 import type { SVGProps } from "react"
 
 /**
- * The Base (BaseLinker) mark as the Medusa integrations library shows it
- * (medusajs.com/integrations/medusa-baselinker): "Base" in white on Base blue
- * #0051FE, traced to a vector so it stays sharp at every size.
+ * The Base mark: the Base wordmark in white on Base blue #0051FE, drawn as a
+ * vector so it stays sharp at every size.
  * Shown in the admin sidebar, on the BaseLinker page and in the widgets.
  *
  * BaseLinker, Base and their logos are trademarks of their owner, used here

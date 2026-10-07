@@ -76,7 +76,7 @@ async function linkCard(svc: BaseLinkerModuleService, item: CardItem, blProductI
 }
 
 export async function runCardsPlan(scope: Scope, input: CardsRunInput): Promise<RunDto | null> {
-  return exclusive("cards", async () => {
+  return exclusive(scope, "cards", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const startedAt = new Date()

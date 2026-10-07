@@ -20,6 +20,8 @@ interface MedusaOrder {
   metadata: Row
   items: Array<{ id: string; quantity: number; detail: { quantity: number; fulfilled_quantity: number } }>
   payment_collections: Array<{ id: string; status: string }>
+  /** Orders placed from a storefront cart carry it (the order and cart link). */
+  cart?: { id: string } | null
 }
 
 function setup(options: BaseLinkerPluginOptions, opts: { ignoreJsonFilter?: boolean; afterLookup?: (key: string, orders: MedusaOrder[]) => void } = {}) {
@@ -330,14 +332,54 @@ test("the loop guard on the way out: an imported order never goes to BaseLinker"
     event_bus: silentEvents().bus,
   })
   s.table("Orders").create({ order_id: order.id, status: "pending", attempts: 0, demo: false, display_id: 9 })
+  /* The import table decides, never the metadata alone. */
+  s.table("Imports").create({ bl_order_id: "1", source: "allegro", order_id: order.id, status: "imported", demo: false })
   const out = await sendOrderNow(container, order.id)
   assert.equal(out.status, "skipped")
+  assert.equal(out.code, "imported")
   assert.ok(!bl.methods().includes("addOrder"))
   assert.match(String(s.table("Orders").rows[0].last_error), /came from BaseLinker/)
 })
 
-test("demo: simulated Allegro and Amazon orders are found, and become Medusa orders once the writer is armed", async () => {
+test("a shopper who copies a BaseLinker number into cart metadata takes no import over, and a shopper's reference blocks none", async () => {
+  const bl = fakeAccount([blOrder(1), blOrder(2)])
+  restore = bl.restore
+  const t = setup(live)
+  /* Both placed from a storefront cart: their metadata is the shopper's word. */
+  t.orders.push({ id: "order_shop1", display_id: 70, status: "pending", metadata: { baselinker_order_id: "1", baselinker_imported: true }, items: [], payment_collections: [], cart: { id: "cart_1" } })
+  t.orders.push({ id: "order_shop2", display_id: 71, status: "pending", metadata: { marketplace_order_ref: "allegro:ext-2" }, items: [], payment_collections: [], cart: { id: "cart_2" } })
+  await setArm(t.s.svc, "orderImport", true, actor)
+  const stats = await runOrderImport(t.container, "schedule")
+  assert.equal(stats?.imported, 2)
+  assert.equal(stats?.adopted ?? 0, 0)
+  const rows = new Map(t.s.table("Imports").rows.map((r) => [r.bl_order_id, r]))
+  assert.notEqual(rows.get("1")?.order_id, "order_shop1")
+  assert.notEqual(rows.get("2")?.order_id, "order_shop2")
+  const created = t.orders.find((o) => o.id === rows.get("1")?.order_id) as MedusaOrder
+  assert.equal(created.metadata.baselinker_import_id, rows.get("1")?.id, "the order carries the id of the row that created it")
+})
+
+test("demo: simulated marketplace orders stay rows of the import list unless demoCreatesOrders is on", async () => {
   const t = setup({ demo: true })
+  for (let i = 0; i < 6; i += 1) t.s.table("Products").create({ bl_product_id: String(500 + i), sku: `KS-${i}`, name: `Produkt ${i}`, variant_id: `var_${i}`, conflict: null, price: { "1001": 10 + i }, demo: true })
+  const fixed = new Date()
+  fixed.setUTCHours(22, 0, 0, 0)
+  mock.timers.enable({ apis: ["Date"], now: fixed.getTime() })
+  try {
+    await runOrderImport(t.container, "manual")
+    await setArm(t.s.svc, "orderImport", true, actor)
+    const second = await runOrderImport(t.container, "manual")
+    assert.equal(second?.imported ?? 0, 0)
+    assert.equal(t.orders.length, 0, "no Medusa order without demoCreatesOrders")
+    assert.ok(t.s.table("Imports").rows.length > 0)
+    assert.ok(t.s.table("Imports").rows.every((r) => r.status === "skipped" && r.last_error_code === "demo_no_orders"))
+  } finally {
+    mock.timers.reset()
+  }
+})
+
+test("demo with demoCreatesOrders: simulated Allegro and Amazon orders are found, and become Medusa orders once the writer is armed", async () => {
+  const t = setup({ demo: true, demoCreatesOrders: true })
   for (let i = 0; i < 6; i += 1) t.s.table("Products").create({ bl_product_id: String(500 + i), sku: `KS-${i}`, name: `Produkt ${i}`, variant_id: `var_${i}`, conflict: null, price: { "1001": 10 + i }, demo: true })
   /* Late in the day, so the simulated day has its orders. The whole Date is mocked, not only
      Date.now: the code also reads `new Date()`, and with the real clock the test failed every
@@ -354,6 +396,7 @@ test("demo: simulated Allegro and Amazon orders are found, and become Medusa ord
     assert.ok((second?.imported ?? 0) >= 1)
     assert.ok(t.orders.every((o) => String(o.email).endsWith("@example.com")))
     assert.ok(t.orders.every((o) => o.metadata.baselinker_imported === true && o.metadata.marketplace_order_ref))
+    assert.ok(t.orders.every((o) => o.metadata.baselinker_demo === true), "sample orders say so")
     assert.ok(t.s.table("Imports").rows.every((r) => r.demo === true))
   } finally {
     mock.timers.reset()

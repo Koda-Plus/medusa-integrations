@@ -44,6 +44,12 @@ export async function blOrderFor(
   return { state: "absent", blOrderId: null, displayId: sent[0]?.display_id ?? null }
 }
 
+/** Demo mode: the order is one the demo created from a simulated marketplace order (its import row says so). */
+async function demoCreatedOrder(svc: BaseLinkerModuleService, orderId: string): Promise<boolean> {
+  const rows = (await svc.listBaseLinkerImports({ order_id: orderId, demo: true } as never, { take: 1, select: ["id"] } as never)) as unknown as unknown[]
+  return rows.length > 0
+}
+
 /** The subscriber's half: a row per accepted document, before anything else. */
 export async function recordInvoiceDocument(scope: Scope, raw: unknown): Promise<"queued" | "known" | "ignored"> {
   const svc = baselinkerService(scope)
@@ -142,14 +148,17 @@ async function writeOne(scope: Scope, row: InvoiceRow): Promise<InvoiceOutcome> 
       last_error: decision === "adopt" ? "The number was already in BaseLinker: nothing written." : null,
       last_error_code: decision === "adopt" ? "adopted" : null,
     })
-    await emitEvent(scope, PLUGIN_EVENTS.invoiceNumberWritten, {
-      order_id: row.order_id,
-      baselinker_order_id: blOrderId,
-      number,
-      field: row.field,
-      adopted: decision === "adopt",
-      demo: o.demo,
-    })
+    /* Demo mode tells the event bus only about orders the demo created itself (demoCreatesOrders). */
+    if (!o.demo || (await demoCreatedOrder(svc, row.order_id))) {
+      await emitEvent(scope, PLUGIN_EVENTS.invoiceNumberWritten, {
+        order_id: row.order_id,
+        baselinker_order_id: blOrderId,
+        number,
+        field: row.field,
+        adopted: decision === "adopt",
+        demo: o.demo,
+      })
+    }
     return { status: decision === "adopt" ? "adopted" : "written", message: null }
   } catch (err) {
     const d = describeAnyError(err)
@@ -172,9 +181,9 @@ export interface InvoicePassStats {
   failed: number
 }
 
-/** Writes the due numbers while the writer is armed. One pass per process at a time; null when one already runs. */
+/** Writes the due numbers while the writer is armed. One pass at a time across every process; null when one already runs. */
 export async function processDueInvoices(scope: Scope, trigger: RunTrigger): Promise<InvoicePassStats | null> {
-  return exclusive("invoices", async () => {
+  return exclusive(scope, "invoices", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const stats: InvoicePassStats = { armed: false, processed: 0, written: 0, adopted: 0, conflict: 0, skipped: 0, waiting: 0, retry: 0, failed: 0 }
@@ -188,7 +197,13 @@ export async function processDueInvoices(scope: Scope, trigger: RunTrigger): Pro
       order: { next_attempt_at: "ASC", created_at: "ASC" },
     } as never)) as unknown as InvoiceRow[]
     for (const row of due) {
-      const out = await withLock(scope, `baselinker:invoice:${row.document_id}`, () => writeOne(scope, row))
+      /* Read again under the lock: a row another process wrote or leased a moment ago gets no extra attempt. */
+      const out = await withLock(scope, `baselinker:invoice:${row.document_id}`, async () => {
+        const fresh = ((await svc.listBaseLinkerInvoices({ id: row.id } as never, { take: 1 } as never)) as unknown as InvoiceRow[])[0]
+        const dueAt = fresh?.next_attempt_at ? new Date(fresh.next_attempt_at).getTime() : 0
+        if (!fresh || fresh.status !== "pending" || dueAt > Date.now()) return null
+        return writeOne(scope, fresh)
+      })
       if (!out) continue
       stats.processed += 1
       stats[out.status === "written" ? "written" : out.status === "adopted" ? "adopted" : out.status] += 1

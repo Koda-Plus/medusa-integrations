@@ -64,16 +64,16 @@ function chunks<T>(list: readonly T[], size: number): T[][] {
   return out
 }
 
-/** Replaces the stored plan (both modes: switching to a real account starts clean). */
+/** Replaces the stored plan. A live plan clears both modes (a real account starts clean); a demo plan never touches the live one. */
 async function replacePlan(
   svc: BaseLinkerModuleService,
   rows: Array<StockChange & { status: string; afterStocked: number | null }>,
   locationId: string,
   runId: string,
 ): Promise<void> {
-  const old = (await svc.listBaseLinkerStockChanges({}, { take: null, select: ["id"] } as never)) as unknown as Array<{ id: string }>
-  for (const part of chunks(old.map((r) => r.id), 500)) await svc.deleteBaseLinkerStockChanges(part)
   const demo = svc.isDemo()
+  const old = (await svc.listBaseLinkerStockChanges((demo ? { demo: true } : {}) as never, { take: null, select: ["id"] } as never)) as unknown as Array<{ id: string }>
+  for (const part of chunks(old.map((r) => r.id), 500)) await svc.deleteBaseLinkerStockChanges(part)
   const now = new Date()
   const data = rows.map((c) => ({
     run_id: runId,
@@ -113,7 +113,7 @@ export interface StockRunInput {
  * read. Returns the recorded run, or null when a plan already runs.
  */
 export async function runStockPlan(scope: Scope, input: StockRunInput): Promise<RunDto | null> {
-  return exclusive("stock", async () => {
+  return exclusive(scope, "stock", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const startedAt = new Date()

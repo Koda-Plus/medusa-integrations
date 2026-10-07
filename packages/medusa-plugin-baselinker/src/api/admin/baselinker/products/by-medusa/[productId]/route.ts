@@ -4,7 +4,7 @@ import type { ProductCardsResponse } from "../../../../../../modules/baselinker/
 import { toCardDto, type ProductRow } from "../../../../../../modules/baselinker/lib/dto"
 import { normalizeSku } from "../../../../../../modules/baselinker/lib/matching"
 import { queryOf } from "../../../../../../workflows/baselinker/runtime"
-import { baselinkerService } from "../../../helpers"
+import { baselinkerService, guarded } from "../../../helpers"
 
 /**
  * GET /admin/baselinker/products/by-medusa/:productId
@@ -15,7 +15,7 @@ import { baselinkerService } from "../../../helpers"
  * the variant cards hang under (or the product was imported from), which is
  * a container and never linked itself.
  */
-export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const demo = svc.isDemo()
   const productId = req.params.productId
@@ -43,4 +43,4 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 
   const body: ProductCardsResponse = { mode: demo ? "demo" : "live", cards: [...containers, ...rows].map(toCardDto) }
   res.json(body)
-}
+})

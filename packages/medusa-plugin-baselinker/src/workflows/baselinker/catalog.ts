@@ -318,8 +318,8 @@ async function applyRead(svc: BaseLinkerModuleService, read: CatalogRead, varian
   /* Incomplete read: what we did not see stays exactly as it was. */
   if (!read.complete) for (const r of sameMode) if (!fresh.has(r.bl_product_id)) universe.push({ card: rowToCard(r), row: r })
 
-  /* Demo rows go when a real account syncs (and the other way round). */
-  const removeIds = otherMode.map((r) => r.id)
+  /* Demo rows go when a real account syncs; a demo read never removes the rows of a real account. */
+  const removeIds = demo ? [] : otherMode.map((r) => r.id)
   if (read.complete) for (const r of sameMode) if (!fresh.has(r.bl_product_id)) removeIds.push(r.id)
 
   /* A main card with variants is a container: never matched. */
@@ -380,7 +380,7 @@ function availableByVariant(variants: readonly StockVariant[], levels: readonly 
 /* ------------------------------------------------------------------ */
 
 export async function runCatalogSync(scope: Scope, input: CatalogSyncInput = {}): Promise<CatalogSyncResult> {
-  const result = await exclusive("catalog", async (): Promise<CatalogSyncResult> => {
+  const result = await exclusive(scope, "catalog", async (): Promise<CatalogSyncResult> => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const trigger: CatalogTrigger = input.trigger ?? "manual"

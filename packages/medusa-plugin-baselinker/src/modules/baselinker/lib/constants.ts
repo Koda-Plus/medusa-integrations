@@ -69,6 +69,20 @@ export const SEND_LEASE_MS = 10 * 60 * 1000
 export const ORDER_LOCK_SECONDS = 300
 
 /**
+ * Leases in `baselinker_setting` (`lease:job:<kind>`, `lease:lock:<key>`):
+ * one run of each job and one worker per record across every process of the
+ * store (server, worker, several instances). A lease is renewed while its
+ * holder works and expires this long after a process died.
+ */
+export const LEASE_TTL_MS = 5 * 60 * 1000
+
+/** How often a holder renews its lease. */
+export const LEASE_RENEW_MS = 60 * 1000
+
+/** Demo mode only: the simulated warehouse moves orders on and the first snapshot is built, every minute. */
+export const DEMO_SCHEDULE = "* * * * *"
+
+/**
  * Retry delays in seconds, by attempt; the last value repeats. 14 attempts
  * cover about two and a half days, so a BaseLinker outage over a weekend
  * catches up by itself and only then does a row wait for a person.
@@ -109,6 +123,14 @@ export const ORDER_METADATA = {
    * whichever plugin imports it first.
    */
   marketplaceRef: "marketplace_order_ref",
+  /**
+   * The id of the import row the order was created from (a plugin id a
+   * shopper cannot guess): the recovery after a crash adopts an order by its
+   * BaseLinker number only when this matches, or when the order has no cart.
+   */
+  importId: "baselinker_import_id",
+  /** `true` on orders the demo created (`demoCreatesOrders`): sample data, safe to delete. */
+  demo: "baselinker_demo",
 } as const
 
 /** Product metadata of products created by the catalog import. */
@@ -128,6 +150,15 @@ export const PLUGIN_EVENTS = {
   planApplied: "baselinker.plan_applied",
   invoiceNumberWritten: "baselinker.invoice_number_written",
 } as const
+
+/**
+ * Order metadata keys a shopper may not set through the Store API (the
+ * kit's reservedMetadataGuard): every `baselinker_*` key and the shared
+ * marketplace reference. The plugin never decides anything by them anyway;
+ * its own tables are the record.
+ */
+export const RESERVED_METADATA_PREFIXES: readonly string[] = ["baselinker_"]
+export const RESERVED_METADATA_KEYS: readonly string[] = ["marketplace_order_ref"]
 
 /**
  * Emitted by the Fakturownia plugin of Koda Plus when it issues a document:

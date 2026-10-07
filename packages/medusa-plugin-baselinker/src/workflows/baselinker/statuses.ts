@@ -7,8 +7,8 @@
  * and the buyer had no way to know the parcel was on its way.
  *
  * WHAT IS READ. Sent orders of the last 30 days that are not closed (a
- * status in `closedStatusIds` closes an order), oldest check first, 60 per
- * pass. With `customSourceId` the plugin reads its own orders in batches of
+ * status in `closedStatusIds` closes an order), never checked first, then
+ * the oldest check, 60 per pass, all chosen by the database. With `customSourceId` the plugin reads its own orders in batches of
  * 100 (`getOrders` filtered by that source); whatever the batch did not
  * return, and every order without a custom source, is read one by one with
  * `getOrders({ order_id })`. Status names come from `getOrderStatusList`,
@@ -19,6 +19,8 @@
  * `baselinker_tracking_number`, `baselinker_tracking_url`,
  * `baselinker_carrier`, so the storefront and the e-mails can show the parcel
  * without a new route. `baselinker.order_status_changed` is emitted on change.
+ * Demo mode writes the rows only: the store's orders never get a simulated
+ * status or parcel, and no event goes out for them.
  *
  * FULFILLMENT. When the status is one of `fulfillOnStatusIds`, the Medusa
  * fulfillment is created ONCE for the items still unfulfilled, with
@@ -196,13 +198,34 @@ async function fulfill(scope: Scope, row: OrderRow, stats: StatusesStats): Promi
 const FULFILL_RETRY_MS = 60 * 60 * 1000
 
 /**
+ * The rows to read in this pass, chosen by the database: sent in the window,
+ * not closed, never checked first, then the oldest check.
+ */
+async function statusCandidates(svc: BaseLinkerModuleService, since: Date, onlyOrderIds?: string[], onlyBlIds?: string[]): Promise<OrderRow[]> {
+  const o = svc.getOptions()
+  const base: Record<string, unknown> = { status: "sent", demo: o.demo, sent_at: { $gte: since }, bl_order_id: onlyBlIds ?? { $ne: null } }
+  if (onlyOrderIds && onlyOrderIds.length > 0) base.order_id = onlyOrderIds
+  if (o.closedStatusIds.length > 0) base.$or = [{ bl_status_id: null }, { bl_status_id: { $nin: o.closedStatusIds } }]
+  const never = (await svc.listBaseLinkerOrders({ ...base, status_checked_at: null } as never, {
+    take: STATUSES_PER_PASS,
+    order: { sent_at: "ASC" },
+  } as never)) as unknown as OrderRow[]
+  if (never.length >= STATUSES_PER_PASS) return never
+  const checked = (await svc.listBaseLinkerOrders({ ...base, status_checked_at: { $ne: null } } as never, {
+    take: STATUSES_PER_PASS - never.length,
+    order: { status_checked_at: "ASC" },
+  } as never)) as unknown as OrderRow[]
+  return [...never, ...checked]
+}
+
+/**
  * Reads status and tracking of sent orders and creates fulfillments.
- * `onlyOrderIds` limits the read to Medusa orders (the order widget in demo
- * mode), `onlyBlIds` to BaseLinker orders (the ones the journal named).
- * Returns null when a read already runs in this process.
+ * `onlyOrderIds` limits the read to Medusa orders, `onlyBlIds` to BaseLinker
+ * orders (the ones the journal named). Returns null when a read already runs
+ * in any process.
  */
 export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderIds?: string[], onlyBlIds?: string[]): Promise<StatusesStats | null> {
-  return exclusive("statuses", async () => {
+  return exclusive(scope, "statuses", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const stats = emptyStats()
@@ -211,14 +234,9 @@ export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderI
     const startedAt = new Date()
     const now = new Date()
     const since = new Date(now.getTime() - STATUS_WINDOW_DAYS * 24 * 3600 * 1000)
-    const filters: Record<string, unknown> = { status: "sent", demo: o.demo, sent_at: { $gte: since } }
-    if (onlyOrderIds && onlyOrderIds.length > 0) filters.order_id = onlyOrderIds
-    if (onlyBlIds) filters.bl_order_id = onlyBlIds
-    const rows = (await svc.listBaseLinkerOrders(filters as never, { take: null } as never)) as unknown as OrderRow[]
-    const candidates = rows
-      .filter((r) => r.bl_order_id && !(r.bl_status_id !== null && o.closedStatusIds.includes(r.bl_status_id)))
-      .sort((a, b) => ms(a.status_checked_at) - ms(b.status_checked_at))
-      .slice(0, STATUSES_PER_PASS)
+    const candidates = (await statusCandidates(svc, since, onlyOrderIds, onlyBlIds)).filter(
+      (r) => r.bl_order_id && !(r.bl_status_id !== null && o.closedStatusIds.includes(r.bl_status_id)),
+    )
     stats.candidates = candidates.length
 
     if (candidates.length > 0) {
@@ -270,6 +288,8 @@ export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderI
         })
         if (!statusChanged && !trackingChanged && !nameChanged) continue
         stats.changed += 1
+        /* Demo mode: the simulation lives in the plugin's rows only. */
+        if (o.demo) continue
         try {
           await patchOrderMetadata(scope, row.order_id, {
             [ORDER_METADATA.statusId]: statusId,
@@ -292,7 +312,8 @@ export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderI
             tracking_number: number,
             tracking_url: url,
             carrier,
-            demo: o.demo,
+            imported: false,
+            demo: false,
           })
         }
       }
@@ -332,27 +353,4 @@ export async function syncStatuses(scope: Scope, trigger: RunTrigger, onlyOrderI
     }
     return stats
   })
-}
-
-/* ------------------------------------------------------------------ */
-/* Demo: let the simulated warehouse move while someone watches        */
-/* ------------------------------------------------------------------ */
-
-const DEMO_REFRESH_KEY = Symbol.for("koda.baselinker.demoRefresh")
-const DEMO_REFRESH_MS = 20_000
-
-/**
- * Demo mode only: reads the simulated statuses again when the admin looks at
- * orders, at most every 20 seconds per process. In-process and cheap, so an
- * evaluator sees an order move from "Nowe" to "Wysłane" without waiting for
- * the 15 minute job.
- */
-export async function refreshDemoStatuses(scope: Scope): Promise<void> {
-  const svc = baselinkerService(scope)
-  if (!svc.isDemo()) return
-  const holder = globalThis as typeof globalThis & { [DEMO_REFRESH_KEY]?: number }
-  const last = holder[DEMO_REFRESH_KEY] ?? 0
-  if (Date.now() - last < DEMO_REFRESH_MS) return
-  holder[DEMO_REFRESH_KEY] = Date.now()
-  await syncStatuses(scope, "auto").catch(() => null)
 }

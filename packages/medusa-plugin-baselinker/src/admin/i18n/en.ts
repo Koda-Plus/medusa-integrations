@@ -44,7 +44,13 @@ const en = {
   },
   demo: {
     label: "Demo mode",
-    text: "A simulated BaseLinker account is built from your own catalog: cards for most variants, products with variants, a duplicated SKU, an EAN on two cards, a bundle, products only in BaseLinker, a simulated Allegro and Amazon with a few orders a day. Store orders get BaseLinker ids in seconds and move to \"Wysłane\" with an InPost number minutes later. Arm a writer to see it apply: catalog, stock, prices and invoice numbers change only the simulation, marketplace orders become real orders of this demo store. Nothing leaves Medusa. To connect a real account, set apiToken, inventoryId, warehouseId and orderStatusId in the plugin options.",
+    text: "A simulated BaseLinker account is built from your own catalog: cards for most variants, products with variants, a duplicated SKU, an EAN on two cards, a bundle, products only in BaseLinker, a simulated Allegro and Amazon with a few orders a day. Store orders get BaseLinker ids in seconds and move to \"Wysłane\" with an InPost number minutes later, in the plugin's own rows only: the orders themselves never get a simulated number, status or parcel. Arm a writer to see it apply: catalog, stock, prices and invoice numbers change only the simulation; marketplace orders become orders of this store only with demoCreatesOrders. Nothing leaves Medusa. Demo mode runs only with demo: true. To connect a real account, set apiToken, inventoryId, warehouseId and orderStatusId in the plugin options.",
+    preparing: {
+      label: "Demo data",
+      text: "The simulated account is not built yet. The demo job builds it within a minute; prepare it now to see the data at once.",
+      action: "Prepare now",
+      done: "Demo data ready.",
+    },
   },
   missing: {
     label: "Configuration",
@@ -294,6 +300,13 @@ const en = {
     marketplaceNote: "A marketplace order taken straight from the marketplace: BaseLinker gets it from its own integration.",
     payment: "Payment",
     importedAt: "Imported",
+    loading: "Loading BaseLinker data",
+    failed: "Could not read the BaseLinker data of this order.",
+    skip: {
+      canceled: "The order is canceled, so it does not go to BaseLinker.",
+      skip_key: "Marked as a test order (skip key in the order metadata), so it stays out of BaseLinker.",
+      marketplace_order: "A marketplace order taken straight from the marketplace: BaseLinker gets it from its own integration.",
+    },
   },
   productWidget: {
     title: "BaseLinker",
@@ -304,6 +317,13 @@ const en = {
     more: "All cards",
     container: "Main card with variants",
     containerNote: "Holds the variant cards and is never linked to a variant itself.",
+    loading: "Loading BaseLinker cards",
+    failed: "Could not read the BaseLinker cards of this product.",
+    moreCards_one: "and {{count}} more card",
+    /* Polish plural forms; English uses one and other. */
+    moreCards_few: "and {{count}} more cards",
+    moreCards_many: "and {{count}} more cards",
+    moreCards_other: "and {{count}} more cards",
   },
   toast: {
     started: "Started. Results appear here in a moment.",

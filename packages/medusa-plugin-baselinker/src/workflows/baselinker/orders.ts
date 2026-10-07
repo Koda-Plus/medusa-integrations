@@ -34,15 +34,18 @@ import type { OrderRow } from "../../modules/baselinker/lib/dto"
 import { describeError } from "../../modules/baselinker/lib/errors"
 import { findOrderByMarker } from "../../modules/baselinker/lib/exactly-once"
 import { canExportOrders } from "../../modules/baselinker/lib/options"
-import { exportVerdict, type ExportVerdict } from "../../modules/baselinker/lib/order-import"
+import type { ExportVerdict } from "../../modules/baselinker/lib/order-import"
 import {
   ORDER_FIELDS,
+  ORDER_FIELDS_WITHOUT_TOTALS,
   PayloadError,
   buildAddOrderPayload,
   isSkipped,
   orderMarker,
+  withTotalsFromLines,
   type OrderRecord,
 } from "../../modules/baselinker/lib/order-payload"
+import { exportVerdictOf } from "./order-facts"
 import {
   baselinkerService,
   clientFor,
@@ -54,6 +57,13 @@ import {
   withOrderLock,
   type Scope,
 } from "./runtime"
+
+/**
+ * Why an order stays out of BaseLinker, as the code of its `skipped` row:
+ * canceled in Medusa, marked by the skip key, imported by this plugin, or
+ * taken straight from a marketplace by another plugin.
+ */
+export type SkipCode = "canceled" | "skip_key" | "imported" | "marketplace_order"
 
 /* ------------------------------------------------------------------ */
 /* Rows                                                                */
@@ -68,9 +78,30 @@ async function updateRow(svc: BaseLinkerModuleService, id: string, patch: Record
   return (await svc.updateBaseLinkerOrders({ id, ...patch } as never)) as unknown as OrderRow
 }
 
+/**
+ * The order as the payload needs it. When Medusa cannot compute its totals
+ * (a shipping method without a version), it is read again without them and
+ * the totals are computed from the lines; when that read fails too, the
+ * error says so (`totals_unavailable`) and the row tries again later.
+ */
 export async function loadOrder(scope: Scope, orderId: string): Promise<OrderRecord | null> {
-  const { data } = await queryOf(scope).graph({ entity: "order", fields: [...ORDER_FIELDS], filters: { id: orderId } })
-  return (data[0] as OrderRecord | undefined) ?? null
+  const query = queryOf(scope)
+  try {
+    const { data } = await query.graph({ entity: "order", fields: [...ORDER_FIELDS], filters: { id: orderId } })
+    return (data[0] as OrderRecord | undefined) ?? null
+  } catch (first) {
+    try {
+      const { data } = await query.graph({ entity: "order", fields: [...ORDER_FIELDS_WITHOUT_TOTALS], filters: { id: orderId } })
+      const order = data[0] as OrderRecord | undefined
+      return order ? withTotalsFromLines(order) : null
+    } catch (second) {
+      const text = (e: unknown) => (e instanceof Error ? e.message : String(e))
+      throw Object.assign(new Error(`Medusa could not read order ${orderId} with its totals (${text(first)}) nor without them (${text(second)}).`), {
+        code: "totals_unavailable",
+        retryable: true,
+      })
+    }
+  }
 }
 
 interface OrderHead {
@@ -92,6 +123,8 @@ export interface EnqueueInput {
   force?: boolean
   /** Why the order does not go, recorded as a `skipped` row. */
   skipReason?: string | null
+  /** The code of that reason. */
+  skipCode?: SkipCode | null
 }
 
 /**
@@ -111,7 +144,7 @@ export async function enqueueOrder(scope: Scope, input: EnqueueInput): Promise<O
         attempts: 0,
         next_attempt_at: input.skipReason ? null : now,
         last_error: input.skipReason ?? null,
-        last_error_code: input.skipReason ? "skipped" : null,
+        last_error_code: input.skipReason ? (input.skipCode ?? "skipped") : null,
         demo: svc.isDemo(),
       } as never)) as unknown as OrderRow
     } catch {
@@ -177,9 +210,14 @@ export function exportSkipReason(verdict: Extract<ExportVerdict, { send: false }
     : `A marketplace order taken straight from the marketplace (${verdict.ref}): BaseLinker gets it from its own integration. Set exportMarketplaceOrders to send such orders.`
 }
 
-async function markSkipped(svc: BaseLinkerModuleService, row: OrderRow, reason: string): Promise<SendOutcome> {
-  await updateRow(svc, row.id, { status: "skipped", next_attempt_at: null, last_error: reason, last_error_code: "skipped" })
-  return { status: "skipped", orderId: row.order_id, blOrderId: null, adopted: false, code: "skipped", message: reason }
+/** The skip code of a loop guard verdict. */
+export function exportSkipCode(verdict: Extract<ExportVerdict, { send: false }>): SkipCode {
+  return verdict.reason === "imported" ? "imported" : "marketplace_order"
+}
+
+async function markSkipped(svc: BaseLinkerModuleService, row: OrderRow, code: SkipCode, reason: string): Promise<SendOutcome> {
+  await updateRow(svc, row.id, { status: "skipped", next_attempt_at: null, last_error: reason, last_error_code: code })
+  return { status: "skipped", orderId: row.order_id, blOrderId: null, adopted: false, code, message: reason }
 }
 
 /**
@@ -187,7 +225,7 @@ async function markSkipped(svc: BaseLinkerModuleService, row: OrderRow, reason: 
  * earlier attempt: that attempt may have created it in BaseLinker without an
  * answer. Scan first, so a BaseLinker order is never hidden behind "skipped".
  */
-async function stopOrAdopt(scope: Scope, row: OrderRow, order: OrderRecord, reason: string): Promise<SendOutcome> {
+async function stopOrAdopt(scope: Scope, row: OrderRow, order: OrderRecord, code: SkipCode, reason: string): Promise<SendOutcome> {
   const svc = baselinkerService(scope)
   if ((row.attempts ?? 0) > 0 && !svc.isDemo()) {
     const placedAt = Math.floor(new Date(order.created_at ?? Date.now()).getTime() / 1000)
@@ -207,7 +245,7 @@ async function stopOrAdopt(scope: Scope, row: OrderRow, order: OrderRecord, reas
       return { status: "sent", orderId: row.order_id, blOrderId: found, adopted: true, code: "stopped_after_send", message: note }
     }
   }
-  return markSkipped(svc, row, reason)
+  return markSkipped(svc, row, code, reason)
 }
 
 /** One attempt of one row. Every BaseLinker failure lands in the row. Call it holding the order lock. */
@@ -221,13 +259,14 @@ async function attempt(scope: Scope, row: OrderRow): Promise<SendOutcome> {
   try {
     const order = await loadOrder(scope, row.order_id)
     if (!order) throw new PayloadError("order_not_found", `Order ${row.order_id} does not exist in Medusa.`)
-    if (order.status === "canceled") return await stopOrAdopt(scope, row, order, "The order was canceled in Medusa.")
+    if (order.status === "canceled") return await stopOrAdopt(scope, row, order, "canceled", "The order was canceled in Medusa.")
     if (isSkipped(order.metadata, o.skipOrderMetadataKey)) {
-      return await stopOrAdopt(scope, row, order, `order.metadata.${o.skipOrderMetadataKey} is true, so the order stays out of BaseLinker.`)
+      return await stopOrAdopt(scope, row, order, "skip_key", `order.metadata.${o.skipOrderMetadataKey} is true, so the order stays out of BaseLinker.`)
     }
-    /* The loop guard: an order that came from BaseLinker (or straight from a marketplace) never goes back. */
-    const verdict = exportVerdict(order.metadata, o.exportMarketplaceOrders)
-    if (!verdict.send) return await markSkipped(svc, row, exportSkipReason(verdict))
+    /* The loop guard: an order that came from BaseLinker (or straight from a marketplace) never goes back.
+       Decided by the import table and Medusa's records, never by metadata a shopper could set. */
+    const verdict = await exportVerdictOf(scope, order)
+    if (!verdict.send) return await markSkipped(svc, row, exportSkipCode(verdict), exportSkipReason(verdict))
     if (!o.demo && o.orderStatusId === null) throw new PayloadError("not_configured", "orderStatusId is not set in the plugin options.")
 
     const links = await linksFor(svc, order)
@@ -262,20 +301,25 @@ async function attempt(scope: Scope, row: OrderRow): Promise<SendOutcome> {
       last_error_code: null,
       display_id: displayId,
     })
-    try {
-      await patchOrderMetadata(scope, row.order_id, { [ORDER_METADATA.orderId]: blOrderId })
-    } catch (err) {
-      svc.getLogger().warn(`[baselinker] ${label}: sent as ${blOrderId}, but the order metadata was not written: ${svc.mask((err as Error)?.message ?? String(err))}`)
+    /* Demo mode writes only its own rows: the store's order gets no simulated number in its
+       metadata and no event goes out for it, so nothing downstream (the storefront, e-mails,
+       other plugins) ever acts on a simulation. */
+    if (!o.demo) {
+      try {
+        await patchOrderMetadata(scope, row.order_id, { [ORDER_METADATA.orderId]: blOrderId })
+      } catch (err) {
+        svc.getLogger().warn(`[baselinker] ${label}: sent as ${blOrderId}, but the order metadata was not written: ${svc.mask((err as Error)?.message ?? String(err))}`)
+      }
+      await emitEvent(scope, PLUGIN_EVENTS.orderSent, {
+        order_id: row.order_id,
+        display_id: displayId,
+        baselinker_order_id: blOrderId,
+        adopted,
+        linked_lines: built.linked,
+        free_lines: built.unlinked.length,
+        demo: false,
+      })
     }
-    await emitEvent(scope, PLUGIN_EVENTS.orderSent, {
-      order_id: row.order_id,
-      display_id: displayId,
-      baselinker_order_id: blOrderId,
-      adopted,
-      linked_lines: built.linked,
-      free_lines: built.unlinked.length,
-      demo: o.demo,
-    })
     svc
       .getLogger()
       .info(`[baselinker] ${label} ${adopted ? "was already in BaseLinker as" : "sent as"} ${blOrderId} (${built.linked} linked, ${built.unlinked.length} free line(s))`)
@@ -287,14 +331,16 @@ async function attempt(scope: Scope, row: OrderRow): Promise<SendOutcome> {
     await updateRow(svc, row.id, { status: plan.status, next_attempt_at: plan.nextAttemptAt, last_error: message, last_error_code: d.code })
     if (plan.status === "failed") {
       svc.getLogger().warn(`[baselinker] ${label} failed after ${attempts} attempt(s): [${d.code}] ${message}`)
-      await emitEvent(scope, PLUGIN_EVENTS.orderFailed, {
-        order_id: row.order_id,
-        display_id: row.display_id,
-        code: d.code,
-        message,
-        attempts,
-        demo: o.demo,
-      })
+      if (!o.demo) {
+        await emitEvent(scope, PLUGIN_EVENTS.orderFailed, {
+          order_id: row.order_id,
+          display_id: row.display_id,
+          code: d.code,
+          message,
+          attempts,
+          demo: false,
+        })
+      }
       return { status: "failed", orderId: row.order_id, blOrderId: null, adopted: false, code: d.code, message }
     }
     svc.getLogger().info(`[baselinker] ${label}: attempt ${attempts} failed [${d.code}], next at ${plan.nextAttemptAt?.toISOString()}`)
@@ -306,12 +352,20 @@ async function attempt(scope: Scope, row: OrderRow): Promise<SendOutcome> {
  * Sends one order now: creates its row when missing, holds the order lock,
  * stops at a row that is already in BaseLinker. Used by the outbox, the
  * admin and `sendOrderToBaseLinkerWorkflow`.
+ *
+ * `due` (the queue): the row is read again under the lock and goes only
+ * when it is still pending and due, so a row another process just sent,
+ * leased or closed gets no extra attempt.
  */
-export async function sendOrderNow(scope: Scope, orderId: string, options: { force?: boolean } = {}): Promise<SendOutcome> {
+export async function sendOrderNow(scope: Scope, orderId: string, options: { force?: boolean; due?: boolean } = {}): Promise<SendOutcome> {
   const svc = baselinkerService(scope)
   const busy: SendOutcome = { status: "busy", orderId, blOrderId: null, adopted: false, code: "busy", message: "The order is being sent right now." }
   const result = await withOrderLock(scope, orderId, async (): Promise<SendOutcome> => {
     let row = await findOrderRow(svc, orderId)
+    if (options.due) {
+      const dueAt = row?.next_attempt_at ? new Date(row.next_attempt_at).getTime() : 0
+      if (!row || row.status !== "pending" || dueAt > Date.now()) return busy
+    }
     if (!row || options.force) {
       const head = await loadOrderHead(scope, orderId)
       if (!head) {
@@ -347,9 +401,9 @@ export interface OrdersPassStats {
 /** Codes meaning "BaseLinker is not reachable", not "this order is wrong": the rest of the pass would only wait for the same timeout. */
 const CONNECTIVITY = new Set(["ERROR_NETWORK", "HTTP_502", "HTTP_503", "HTTP_504", "unknown_result"])
 
-/** Sends the due rows, oldest first. One pass per process at a time; null when a pass already runs. */
+/** Sends the due rows, oldest first. One pass at a time across every process; null when a pass already runs. */
 export async function sendDueOrders(scope: Scope, trigger: RunTrigger): Promise<OrdersPassStats | null> {
-  return exclusive("orders", async () => {
+  return exclusive(scope, "orders", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const stats: OrdersPassStats = { processed: 0, sent: 0, adopted: 0, retry: 0, failed: 0, skipped: 0, busy: 0 }
@@ -364,7 +418,7 @@ export async function sendDueOrders(scope: Scope, trigger: RunTrigger): Promise<
 
     const startedAt = new Date()
     for (const row of due) {
-      const outcome = await sendOrderNow(scope, row.order_id)
+      const outcome = await sendOrderNow(scope, row.order_id, { due: true })
       stats.processed += 1
       if (outcome.status === "sent") {
         stats.sent += 1

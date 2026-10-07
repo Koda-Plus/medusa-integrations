@@ -4,6 +4,7 @@ import type {
   CardFilter,
   CardsResponse,
   CheckResponse,
+  DemoPrepareResponse,
   ImportDto,
   ImportFilter,
   ImportsResponse,
@@ -19,6 +20,7 @@ import type {
   ProductCardsResponse,
   ReleaseResponse,
   ReturnsResponse,
+  RunningResponse,
   RunsResponse,
   SendResponse,
   StatusResponse,
@@ -28,17 +30,10 @@ import type {
   WriterKey,
 } from "../../modules/baselinker/lib/contract"
 
-declare const __BACKEND_URL__: string | undefined
+import { backendUrl, kitRequestInit } from "./baselinker-kit"
 
-/** Same origin by default; the admin build defines `__BACKEND_URL__` when the backend lives elsewhere. */
-function backendUrl(): string {
-  try {
-    if (typeof __BACKEND_URL__ !== "undefined" && __BACKEND_URL__) return String(__BACKEND_URL__).replace(/\/+$/, "")
-  } catch {
-    /* not defined in this build */
-  }
-  return ""
-}
+/* The backend the dashboard talks to, with its auth (session or JWT): from the kit. */
+export { backendUrl }
 
 export class BaseLinkerRequestError extends Error {
   readonly status: number
@@ -50,13 +45,9 @@ export class BaseLinkerRequestError extends Error {
 }
 
 export async function baselinkerFetch<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
-  const hasBody = init?.body !== undefined
-  const res = await fetch(`${backendUrl()}${path}`, {
-    method: init?.method ?? "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...(hasBody ? { "Content-Type": "application/json" } : {}) },
-    body: hasBody ? JSON.stringify(init?.body) : undefined,
-  })
+  /* The kit adds the dashboard's auth (session cookie or JWT) and, on writes, the JSON body and the
+     x-koda-request header the server's write guard asks for. */
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: init?.method ?? "GET", body: init?.body }))
   const text = await res.text()
   let json: unknown = null
   try {
@@ -82,6 +73,7 @@ export const baselinkerKeys = {
   stock: (q: string, offset: number, limit: number) => ["baselinker", "stock", q, offset, limit] as const,
   orders: (filter: OrderFilter, q: string, offset: number, limit: number) => ["baselinker", "orders", filter, q, offset, limit] as const,
   runs: ["baselinker", "runs"] as const,
+  running: ["baselinker", "running"] as const,
   order: (id: string) => ["baselinker", "order", id] as const,
   product: (id: string) => ["baselinker", "product", id] as const,
   plans: (kind: PlanKind, filter: PlanFilter, q: string, offset: number, limit: number) => ["baselinker", "plans", kind, filter, q, offset, limit] as const,
@@ -90,15 +82,50 @@ export const baselinkerKeys = {
   invoices: (filter: string, offset: number, limit: number) => ["baselinker", "invoices", filter, offset, limit] as const,
 }
 
-/** Status of the page. Polls while a job runs or right after an action. */
-export function useBaseLinkerStatus(pollUntil: number) {
+function hidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden"
+}
+
+/**
+ * Status of the page: the full read every 30 seconds (never while the tab is
+ * hidden). While a job runs, or right after an action, the light
+ * `/running` read is polled instead (`useBaseLinkerRunning`), and the full
+ * status is read again when what runs changes.
+ */
+export function useBaseLinkerStatus() {
   return useQuery<StatusResponse>({
     queryKey: baselinkerKeys.status,
     queryFn: () => baselinkerFetch<StatusResponse>("/admin/baselinker"),
+    refetchInterval: () => (hidden() ? false : 30_000),
+  })
+}
+
+/**
+ * What runs right now in any process: two small reads every 3 seconds while
+ * the status says something runs, while the answer says so, or until
+ * `pollUntil` (right after an action). Never while the tab is hidden.
+ */
+export function useBaseLinkerRunning(statusRunning: boolean, pollUntil: number) {
+  return useQuery<RunningResponse>({
+    queryKey: baselinkerKeys.running,
+    queryFn: () => baselinkerFetch<RunningResponse>("/admin/baselinker/running"),
+    enabled: statusRunning || pollUntil > Date.now(),
     refetchInterval: (query) => {
-      const data = query.state.data
-      if ((data?.running?.length ?? 0) > 0 || Date.now() < pollUntil) return 2_500
-      return 30_000
+      if (hidden()) return false
+      const runningNow = (query.state.data?.running.length ?? 0) > 0
+      return runningNow || statusRunning || Date.now() < pollUntil ? 3_000 : false
+    },
+  })
+}
+
+/** Demo mode: builds the simulated snapshot now instead of waiting for the demo job. */
+export function useBaseLinkerDemoPrepare() {
+  const client = useQueryClient()
+  return useMutation<DemoPrepareResponse, Error, void>({
+    mutationFn: () => baselinkerFetch<DemoPrepareResponse>("/admin/baselinker/demo/prepare", { method: "POST", body: {} }),
+    onSuccess: (data) => {
+      client.setQueryData(baselinkerKeys.status, data.status)
+      void client.invalidateQueries({ queryKey: baselinkerKeys.all, predicate: (q) => q.queryKey[1] !== "status" })
     },
   })
 }
@@ -145,19 +172,32 @@ export function useBaseLinkerRuns(poll: boolean) {
   })
 }
 
+/**
+ * How soon the order widget asks again: every 3 seconds only during the
+ * first two minutes of a send, then around the next attempt (from 30
+ * seconds to 5 minutes, the queue backs off up to hours), never once the
+ * row is done, and never while the tab is hidden.
+ */
+export function orderPollInterval(data: OrderByMedusaResponse | undefined, now = Date.now()): number | false {
+  const row = data?.order
+  if (!row) return false
+  if (row.status === "pending") {
+    const created = row.createdAt ? new Date(row.createdAt).getTime() : now
+    if (row.attempts <= 1 && now - created < 2 * 60_000) return 3_000
+    const next = row.nextAttemptAt ? new Date(row.nextAttemptAt).getTime() - now : 30_000
+    return Math.min(5 * 60_000, Math.max(30_000, Number.isFinite(next) ? next + 5_000 : 30_000))
+  }
+  if (data?.mode === "demo" && row.status === "sent" && !row.trackingNumber) return 30_000
+  return false
+}
+
 /** The order widget. Polls while the order waits in the queue or travels through the simulated warehouse. */
 export function useBaseLinkerOrder(orderId: string) {
   return useQuery<OrderByMedusaResponse>({
     queryKey: baselinkerKeys.order(orderId),
     queryFn: () => baselinkerFetch<OrderByMedusaResponse>(`/admin/baselinker/orders/by-medusa/${encodeURIComponent(orderId)}`),
     enabled: Boolean(orderId),
-    refetchInterval: (query) => {
-      const data = query.state.data
-      const row = data?.order
-      if (row?.status === "pending") return 3_000
-      if (data?.mode === "demo" && row?.status === "sent" && !row.trackingNumber) return 20_000
-      return false
-    },
+    refetchInterval: (query) => (hidden() ? false : orderPollInterval(query.state.data)),
   })
 }
 

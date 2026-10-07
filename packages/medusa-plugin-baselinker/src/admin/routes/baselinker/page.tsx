@@ -11,7 +11,9 @@ import {
   errorMessage,
   useBaseLinkerCards,
   useBaseLinkerCheck,
+  useBaseLinkerDemoPrepare,
   useBaseLinkerOrders,
+  useBaseLinkerRunning,
   useBaseLinkerRuns,
   useBaseLinkerSend,
   useBaseLinkerStatus,
@@ -77,9 +79,19 @@ const BaseLinkerPage = () => {
   const client = useQueryClient()
   const nav = usePageNav(SETTINGS_TABS)
   const [pollUntil, setPollUntil] = useState(0)
-  const status = useBaseLinkerStatus(pollUntil)
+  const status = useBaseLinkerStatus()
   const s = status.data
-  const polling = (s?.running.length ?? 0) > 0 || Date.now() < pollUntil
+  /* While something runs (or right after an action) only the light /running read is polled;
+     the full status is read again when what runs changes. */
+  const running = useBaseLinkerRunning((s?.running.length ?? 0) > 0, pollUntil)
+  const runningKey = JSON.stringify([running.data?.running ?? null, running.data?.demoPrepared ?? null])
+  const seenRunning = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!running.data) return
+    if (seenRunning.current !== undefined && seenRunning.current !== runningKey) void client.invalidateQueries({ queryKey: baselinkerKeys.status })
+    seenRunning.current = runningKey
+  }, [runningKey, running.data, client])
+  const polling = (running.data?.running.length ?? s?.running.length ?? 0) > 0 || Date.now() < pollUntil
   const [cardFilter, setCardFilter] = useState<CardFilter>("all")
 
   /* A finished run refreshes the tables below. */
@@ -106,6 +118,7 @@ const BaseLinkerPage = () => {
           </div>
         ) : null}
         {s ? <Warnings status={s} /> : null}
+        {s?.demo && !s.demo.prepared ? <DemoPreparing onDone={() => setPollUntil(Date.now() + 30_000)} /> : null}
         {s && nav.view === "panel" ? (
           <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4 xl:grid-cols-8">
             <StatTile label={t("stats.cards")} value={fmtNumber(s.counts.cards, lang)} active={cardFilter === "all"} onClick={() => setCardFilter("all")} />
@@ -297,6 +310,31 @@ function Warnings({ status }: { status: StatusResponse }) {
       <InlineTip variant="warning" label={t("missing.label")}>
         {t("missing.text", { missing: status.missing.join(", ") })}
       </InlineTip>
+    </div>
+  )
+}
+
+/** Demo mode before the first snapshot: the demo job builds it within a minute, or a person does it now. A read never builds it. */
+function DemoPreparing({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation("baselinker")
+  const prepare = useBaseLinkerDemoPrepare()
+  const run = async () => {
+    try {
+      await prepare.mutateAsync()
+      toast.success(t("demo.preparing.done"))
+      onDone()
+    } catch (err) {
+      toast.error(t("toast.error", { error: errorMessage(err) }))
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+      <InlineTip variant="info" label={t("demo.preparing.label")} className="min-w-0 flex-1">
+        {t("demo.preparing.text")}
+      </InlineTip>
+      <Button size="small" variant="secondary" isLoading={prepare.isPending} onClick={() => void run()}>
+        {t("demo.preparing.action")}
+      </Button>
     </div>
   )
 }

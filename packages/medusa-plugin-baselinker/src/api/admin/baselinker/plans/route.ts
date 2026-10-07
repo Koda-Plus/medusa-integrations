@@ -5,7 +5,7 @@ import { writerState, type WriterKey } from "../../../../modules/baselinker/lib/
 import { quarantineRows, storedSummary } from "../../../../workflows/baselinker/plans"
 import { lastRun } from "../../../../workflows/baselinker/runtime"
 import { loadWriters } from "../../../../workflows/baselinker/settings"
-import { baselinkerService, intParam, like, strParam, toWriterDto } from "../helpers"
+import { baselinkerService, guarded, intParam, like, strParam, toWriterDto } from "../helpers"
 
 const FILTERS: readonly PlanFilter[] = ["all", "changes", "create", "update", "draft", "conflict", "skip", "failed", "quarantined"]
 
@@ -24,7 +24,7 @@ const WRITER_OF: Record<PlanKind, WriterKey> = {
  * `filter`: all, changes (create, update, draft), one action, failed or
  * quarantined. Reads the database only.
  */
-export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const kindParam = strParam(req.query.kind) as PlanKind
   if (!PLAN_KINDS.includes(kindParam)) {
@@ -66,4 +66,4 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     writer: toWriterDto(writerState(writers, WRITER_OF[kind])),
   }
   res.json(body)
-}
+})

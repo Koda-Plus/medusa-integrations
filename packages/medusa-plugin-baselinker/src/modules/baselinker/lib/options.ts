@@ -81,8 +81,18 @@ export interface BaseLinkerPluginOptions {
   paymentLabels?: Record<string, string>
   /** `order.metadata[key] === true` never goes to BaseLinker. Default `baselinker_skip`. */
   skipOrderMetadataKey?: string
-  /** Simulated BaseLinker built from your own catalog. Nothing leaves Medusa. */
+  /**
+   * Simulated BaseLinker built from your own catalog. Nothing leaves Medusa.
+   * Only an explicit `true` (or the string "true") switches it on: a missing
+   * token never does.
+   */
   demo?: boolean | string
+  /**
+   * Demo mode only: simulated marketplace orders become real Medusa orders
+   * (flagged `metadata.baselinker_demo`) once the order import writer is
+   * armed. Default false: they stay rows of the import list.
+   */
+  demoCreatesOrders?: boolean | string
   /** Self-imposed rate limit. Default 80 per minute (BaseLinker allows 100). */
   requestsPerMinute?: number | string
   /** Timeout of one BaseLinker request in ms. Default 20000. */
@@ -192,6 +202,7 @@ export interface ResolvedBaseLinkerOptions {
   paymentLabels: Array<[string, string]>
   skipOrderMetadataKey: string
   demo: boolean
+  demoCreatesOrders: boolean
   requestsPerMinute: number
   timeoutMs: number
   catalogSyncEnabled: boolean
@@ -351,6 +362,7 @@ export function resolveOptions(o: BaseLinkerPluginOptions | undefined | null): R
     paymentLabels: labelList(opts.paymentLabels),
     skipOrderMetadataKey: str(opts.skipOrderMetadataKey) || DEFAULT_SKIP_METADATA_KEY,
     demo: bool(opts.demo, false),
+    demoCreatesOrders: bool(opts.demoCreatesOrders, false),
     requestsPerMinute: bounded(opts.requestsPerMinute, DEFAULT_REQUESTS_PER_MINUTE, 1, MAX_REQUESTS_PER_MINUTE),
     timeoutMs: bounded(opts.timeoutMs, DEFAULT_TIMEOUT_MS, 1000, 120_000),
     catalogSyncEnabled: bool(opts.catalogSyncEnabled, true),

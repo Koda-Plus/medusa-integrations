@@ -93,6 +93,7 @@ import {
 import { carrierName, trackingUrl } from "../../modules/baselinker/lib/tracking"
 import { writerState } from "../../modules/baselinker/lib/writers"
 import { loadOrderHead } from "./orders"
+import { orderCartId } from "./order-facts"
 import { baselinkerService, clientFor, emitEvent, exclusive, patchOrderMetadata, queryOf, recordRun, withLock, type Scope } from "./runtime"
 import { loadWriters, readSetting, writeSetting } from "./settings"
 
@@ -333,9 +334,35 @@ export async function findOrdersByMetadata(scope: Scope, key: string, value: str
   })
 }
 
-async function findImportedOrder(scope: Scope, blOrderId: string, sinceUnix: number | null): Promise<OrderHit | null> {
-  const hits = await findOrdersByMetadata(scope, ORDER_METADATA.orderId, blOrderId, sinceUnix)
-  return hits.find((h) => h.metadata?.[ORDER_METADATA.imported] === true || h.metadata?.[ORDER_METADATA.imported] === "true") ?? null
+/**
+ * The Medusa order an earlier attempt of THIS row created (the recovery after
+ * a crash between creating the order and storing its id). A hit by the
+ * BaseLinker number counts only when it carries this row's id
+ * (`metadata.baselinker_import_id`, a plugin id nobody can guess) or was
+ * created by backend code (no cart): a shopper who copies a BaseLinker number
+ * into cart metadata takes nothing over.
+ */
+async function findImportedOrder(scope: Scope, row: ImportRow, sinceUnix: number | null): Promise<OrderHit | null> {
+  const hits = await findOrdersByMetadata(scope, ORDER_METADATA.orderId, row.bl_order_id, sinceUnix)
+  for (const h of hits) {
+    const imported = h.metadata?.[ORDER_METADATA.imported] === true || h.metadata?.[ORDER_METADATA.imported] === "true"
+    if (!imported) continue
+    if (h.metadata?.[ORDER_METADATA.importId] === row.id) return h
+    if ((await orderCartId(scope, h.id)) === null) return h
+  }
+  return null
+}
+
+/**
+ * A Medusa order that already holds this marketplace reference, written by
+ * backend code (another marketplace plugin, or this one). A reference on an
+ * order placed from a cart came from a shopper and blocks nothing.
+ */
+async function orderWithRef(scope: Scope, ref: string, sinceUnix: number | null): Promise<OrderHit | null> {
+  for (const h of await findOrdersByMetadata(scope, ORDER_METADATA.marketplaceRef, ref, sinceUnix)) {
+    if (typeof (await orderCartId(scope, h.id)) !== "string") return h
+  }
+  return null
 }
 
 /* ------------------------------------------------------------------ */
@@ -497,7 +524,7 @@ async function importOne(scope: Scope, row: ImportRow, opts: { force?: boolean }
     let orderId = row.order_id
     let displayId = row.display_id
     if (!orderId) {
-      const existing = await findImportedOrder(scope, row.bl_order_id, confirmedUnix)
+      const existing = await findImportedOrder(scope, row, confirmedUnix)
       if (existing) {
         orderId = existing.id
         displayId = existing.display_id ?? null
@@ -508,7 +535,7 @@ async function importOne(scope: Scope, row: ImportRow, opts: { force?: boolean }
       const ref = marketplaceRef(order)
       const duplicateOf = async (): Promise<ImportOutcome | null> => {
         if (!ref) return null
-        const other = (await findOrdersByMetadata(scope, ORDER_METADATA.marketplaceRef, ref, confirmedUnix))[0]
+        const other = await orderWithRef(scope, ref, confirmedUnix)
         if (!other) return null
         return skip(
           svc,
@@ -519,7 +546,17 @@ async function importOne(scope: Scope, row: ImportRow, opts: { force?: boolean }
       }
       const early = await duplicateOf()
       if (early) return early
+      if (o.demo && !o.demoCreatesOrders) {
+        return await skip(
+          svc,
+          row,
+          "demo_no_orders",
+          "Demo mode creates no Medusa orders from simulated marketplace orders unless demoCreatesOrders is on.",
+        )
+      }
       const mapped = mapOrder(order, {
+        importId: row.id,
+        demo: o.demo,
         regionId: await regionFor(scope, o.orderImportRegionId, String(order.currency ?? "")),
         salesChannelId: await salesChannelFor(scope, o.orderImportSalesChannelId),
         shippingOptionId: o.orderImportShippingOptionId || null,
@@ -657,7 +694,7 @@ function emptyPass(): ImportPassStats {
  * at a time; null when a pass already runs. Quiet when nothing happened.
  */
 export async function runOrderImport(scope: Scope, trigger: RunTrigger): Promise<ImportPassStats | null> {
-  return exclusive("imports", async () => {
+  return exclusive(scope, "imports", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const stats = emptyPass()
@@ -678,7 +715,13 @@ export async function runOrderImport(scope: Scope, trigger: RunTrigger): Promise
         order: { next_attempt_at: "ASC", created_at: "ASC" },
       } as never)) as unknown as ImportRow[]
       for (const row of due) {
-        const out = await withLock(scope, `baselinker:import:${row.bl_order_id}`, () => importOne(scope, row))
+        /* Read again under the lock: a row another process imported or leased a moment ago gets no extra attempt. */
+        const out = await withLock(scope, `baselinker:import:${row.bl_order_id}`, async () => {
+          const fresh = await findImportRow(svc, { id: row.id })
+          const dueAt = fresh?.next_attempt_at ? new Date(fresh.next_attempt_at).getTime() : 0
+          if (!fresh || fresh.status !== "pending" || dueAt > Date.now()) return null
+          return importOne(scope, fresh)
+        })
         if (!out || out.status === "busy") stats.busy += 1
         else if (out.status === "imported") stats.imported += 1
         else if (out.status === "adopted") stats.adopted += 1
@@ -750,17 +793,27 @@ async function fulfilledQuantity(scope: Scope, orderId: string): Promise<{ fulfi
  * limits the read (the journal names the orders that changed).
  */
 export async function syncImportedStatuses(scope: Scope, trigger: RunTrigger, onlyBlIds?: string[]): Promise<ImportedStatusStats | null> {
-  return exclusive("imports_statuses", async () => {
+  return exclusive(scope, "imports_statuses", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const stats: ImportedStatusStats = { candidates: 0, read: 0, changed: 0, canceled: 0, flagged: 0, paid: 0, fulfilled: 0, errors: [] }
     const since = new Date(Date.now() - STATUS_WINDOW_DAYS * 24 * 3600 * 1000)
-    const where: Record<string, unknown> = { status: "imported", demo: o.demo, imported_at: { $gte: since }, canceled_at: null }
+    const where: Record<string, unknown> = { status: "imported", demo: o.demo, imported_at: { $gte: since }, canceled_at: null, order_id: { $ne: null } }
     if (onlyBlIds) where.bl_order_id = onlyBlIds
-    const rows = ((await svc.listBaseLinkerImports(where as never, { take: null } as never)) as unknown as ImportRow[])
-      .filter((r) => r.order_id && !(r.bl_status_id !== null && o.closedStatusIds.includes(r.bl_status_id)))
-      .sort((a, b) => new Date(a.status_checked_at ?? 0).getTime() - new Date(b.status_checked_at ?? 0).getTime())
-      .slice(0, STATUSES_PER_PASS)
+    if (o.closedStatusIds.length > 0) where.$or = [{ bl_status_id: null }, { bl_status_id: { $nin: o.closedStatusIds } }]
+    /* Chosen by the database: never checked first, then the oldest check. */
+    const never = (await svc.listBaseLinkerImports({ ...where, status_checked_at: null } as never, {
+      take: STATUSES_PER_PASS,
+      order: { imported_at: "ASC" },
+    } as never)) as unknown as ImportRow[]
+    const checked =
+      never.length < STATUSES_PER_PASS
+        ? ((await svc.listBaseLinkerImports({ ...where, status_checked_at: { $ne: null } } as never, {
+            take: STATUSES_PER_PASS - never.length,
+            order: { status_checked_at: "ASC" },
+          } as never)) as unknown as ImportRow[])
+        : []
+    const rows = [...never, ...checked].filter((r) => r.order_id && !(r.bl_status_id !== null && o.closedStatusIds.includes(r.bl_status_id)))
     stats.candidates = rows.length
     if (rows.length === 0) return stats
 
@@ -803,6 +856,20 @@ export async function syncImportedStatuses(scope: Scope, trigger: RunTrigger, on
           [ORDER_METADATA.trackingUrl]: trackingUrl(module, number),
           [ORDER_METADATA.carrier]: carrierName(module),
         }).catch(() => false)
+        /* The same event as for sent orders, so code that follows statuses sees marketplace orders too. */
+        await emitEvent(scope, PLUGIN_EVENTS.orderStatusChanged, {
+          order_id: row.order_id,
+          display_id: row.display_id,
+          baselinker_order_id: row.bl_order_id,
+          status_id: statusId,
+          status_name: name,
+          previous_status_id: row.bl_status_id ?? null,
+          tracking_number: number,
+          tracking_url: trackingUrl(module, number),
+          carrier: carrierName(module),
+          imported: true,
+          demo: o.demo,
+        })
       }
 
       try {

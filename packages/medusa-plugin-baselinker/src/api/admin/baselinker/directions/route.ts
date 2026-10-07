@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { StatusResponse } from "../../../../modules/baselinker/lib/contract"
 import { runCatalogSync } from "../../../../workflows/baselinker/catalog"
 import { readSetting, writeSetting } from "../../../../workflows/baselinker/settings"
-import { actorOf, baselinkerService, buildStatus } from "../helpers"
+import { actorOf, baselinkerService, buildStatus, guarded } from "../helpers"
 
 /**
  * POST /admin/baselinker/directions  { "catalog"?: "medusa" | "baselinker", "stock"?: "baselinker" | "medusa" }
@@ -12,7 +12,7 @@ import { actorOf, baselinkerService, buildStatus } from "../helpers"
  * options (`catalogSource`, `stockSource`), deployed like any other setting,
  * never a click; this route refuses it. A new pick plans again right away.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   if (!svc.isDemo()) {
     res.status(409).json({ message: "Directions are set in the plugin options (catalogSource, stockSource) on a real account." })
@@ -32,4 +32,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   })
   const status: StatusResponse = await buildStatus(svc)
   res.json(status)
-}
+})

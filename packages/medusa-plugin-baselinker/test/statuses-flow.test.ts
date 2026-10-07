@@ -6,54 +6,23 @@
  */
 import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
-import { resolveOptions, type BaseLinkerPluginOptions } from "../src/modules/baselinker/lib/options.ts"
-import { maskSecrets } from "../src/modules/baselinker/lib/security.ts"
+import type { BaseLinkerPluginOptions } from "../src/modules/baselinker/lib/options.ts"
 import { syncStatuses } from "../src/workflows/baselinker/statuses.ts"
 import { demoPace } from "../src/modules/baselinker/lib/demo.ts"
+import { fakeService } from "./fakes.ts"
 
 type Row = Record<string, any>
 
-function matches(row: Row, filter: Record<string, unknown>): boolean {
-  for (const [key, cond] of Object.entries(filter)) {
-    const v = row[key]
-    if (Array.isArray(cond)) {
-      if (!cond.includes(v)) return false
-    } else if (cond === null) {
-      if (v !== null && v !== undefined) return false
-    } else if (cond && typeof cond === "object" && !(cond instanceof Date)) {
-      const c = cond as Record<string, unknown>
-      if ("$gte" in c && !(v && new Date(v).getTime() >= new Date(c.$gte as Date).getTime())) return false
-    } else if (v !== cond) return false
-  }
-  return true
-}
-
 function setup(options: BaseLinkerPluginOptions, rows: Row[]) {
-  const o = resolveOptions(options)
-  const orders = rows.map((r, i) => ({ id: `blord_${i + 1}`, created_at: new Date(), updated_at: new Date(), demo: o.demo, status: "sent", ...r }))
-  const runs: Row[] = []
-  const svc = {
-    getOptions: () => o,
-    getLogger: () => ({ info: () => undefined, warn: () => undefined, error: () => undefined }),
-    isDemo: () => o.demo,
-    mask: (s: string) => maskSecrets(s, [o.apiToken]),
-    listBaseLinkerOrders: async (f: Row, c: Row) => {
-      const found = orders.filter((r) => matches(r, f)).map((r) => ({ ...r }))
-      return c?.take ? found.slice(0, c.take) : found
-    },
-    updateBaseLinkerOrders: async (d: Row) => Object.assign(orders.find((r) => r.id === d.id) as Row, d),
-    createBaseLinkerSyncRuns: async (d: Row) => {
-      const run = { id: `blrun_${runs.length + 1}`, ...d }
-      runs.push(run)
-      return run
-    },
-    listBaseLinkerSyncRuns: async () => [],
-    deleteBaseLinkerSyncRuns: async () => undefined,
-  }
+  const f = fakeService(options)
+  const o = f.svc.getOptions()
+  const table = f.table("Orders")
+  for (const r of rows) table.create({ demo: o.demo, status: "sent", status_checked_at: null, ...r })
+  const runs = f.table("SyncRuns")
   const metadata = new Map<string, Row>()
   const events: Array<{ name: string; data: Row }> = []
   const registry: Record<string, unknown> = {
-    baselinker: svc,
+    baselinker: f.svc,
     order: {
       retrieveOrder: async (id: string) => ({ id, metadata: { ...(metadata.get(id) ?? {}) } }),
       updateOrders: async (id: string, data: Row) => void metadata.set(id, data.metadata),
@@ -61,7 +30,17 @@ function setup(options: BaseLinkerPluginOptions, rows: Row[]) {
     event_bus: { emit: async (e: { name: string; data: Row }) => void events.push(e) },
   }
   const container = { resolve: (key: string) => registry[key] }
-  return { container, orders, runs, metadata, events }
+  return {
+    container,
+    get orders() {
+      return table.rows
+    },
+    get runs() {
+      return runs.rows
+    },
+    metadata,
+    events,
+  }
 }
 
 const realFetch = globalThis.fetch
@@ -145,12 +124,37 @@ test("live: with a custom order source, one batched read covers the orders", asy
   assert.equal(s.orders[0].carrier, "InPost")
 })
 
-test("demo: the simulated warehouse ships an order sent four minutes ago (at its pace)", async () => {
+test("demo: the simulated warehouse ships an order sent four minutes ago (at its pace), in the plugin's row only", async () => {
   const s = setup({ demo: true }, [{ order_id: "order_9", display_id: 9, bl_order_id: "9100001", bl_status_id: null, sent_at: new Date(Date.now() - 4 * 60 * 1000 * demoPace("order_9")) }])
   const stats = await syncStatuses(s.container, "auto")
   assert.equal(stats?.changed, 1)
   assert.equal(s.orders[0].bl_status_name, "Wysłane")
   assert.equal(s.orders[0].carrier, "InPost")
   assert.match(String(s.orders[0].tracking_number), /^\d{24}$/)
-  assert.equal(s.metadata.get("order_9")?.baselinker_status_name, "Wysłane")
+  assert.equal(s.metadata.has("order_9"), false, "a real order never gets a simulated status or parcel")
+  assert.equal(s.events.length, 0, "no event for a simulation")
+})
+
+test("the database picks the candidates: never checked first, then the oldest check, closed statuses left out", async () => {
+  fakeBaseLinker([])
+  const old = new Date(Date.now() - 3 * 3600 * 1000)
+  const rows: Row[] = []
+  for (let i = 0; i < 70; i += 1) rows.push({ order_id: `order_c${i}`, bl_order_id: String(800 + i), bl_status_id: 4, sent_at: sentAt, status_checked_at: new Date(old.getTime() + i * 1000) })
+  rows.push({ order_id: "order_new", bl_order_id: "900", bl_status_id: null, sent_at: sentAt, status_checked_at: null })
+  rows.push({ order_id: "order_closed", bl_order_id: "901", bl_status_id: 9, sent_at: sentAt, status_checked_at: null })
+  const s = setup(live, rows)
+  const svc = s.container.resolve("baselinker") as Record<string, (...a: unknown[]) => Promise<unknown>>
+  const list = svc.listBaseLinkerOrders
+  const takes: unknown[] = []
+  svc.listBaseLinkerOrders = async (...args: unknown[]) => {
+    takes.push((args[1] as Row | undefined)?.take)
+    return list(...args)
+  }
+  const stats = await syncStatuses(s.container, "manual")
+  assert.equal(stats?.candidates, 60)
+  assert.ok(!takes.includes(null) && !takes.includes(undefined), "never a read of every row")
+  const checked = new Set(s.orders.filter((r) => r.status_checked_at && new Date(r.status_checked_at).getTime() > Date.now() - 60_000).map((r) => r.order_id))
+  assert.ok(checked.has("order_new"), "the never checked order goes first")
+  assert.ok(!checked.has("order_closed"), "a closed status is never read")
+  assert.ok(checked.has("order_c0") && !checked.has("order_c69"), "then the oldest check")
 })

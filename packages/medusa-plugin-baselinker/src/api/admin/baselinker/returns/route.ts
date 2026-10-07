@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { ReturnsResponse } from "../../../../modules/baselinker/lib/contract"
 import { toReturnDto, type ReturnRow } from "../../../../modules/baselinker/lib/dto"
-import { baselinkerService, intParam, strParam } from "../helpers"
+import { baselinkerService, guarded, intParam, strParam } from "../helpers"
 
 /**
  * GET /admin/baselinker/returns?q=&linked=&limit=&offset=
@@ -11,7 +11,7 @@ import { baselinkerService, intParam, strParam } from "../helpers"
  * imported. `q` matches a return id, a BaseLinker order id or a Medusa order
  * number; `linked=1` shows only returns of Medusa orders.
  */
-export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const limit = intParam(req.query.limit, 20, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 1_000_000)
@@ -26,4 +26,4 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   } as never)) as unknown as [ReturnRow[], number]
   const body: ReturnsResponse = { returns: rows.map(toReturnDto), count, limit, offset }
   res.json(body)
-}
+})

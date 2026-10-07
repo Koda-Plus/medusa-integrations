@@ -7,8 +7,8 @@ import { runStatusPass } from "../../../../workflows/baselinker/journal"
 import { importRules, runOrderImport } from "../../../../workflows/baselinker/order-import"
 import { sendDueOrders } from "../../../../workflows/baselinker/orders"
 import { syncReturns } from "../../../../workflows/baselinker/returns"
-import { isRunning, type JobKind } from "../../../../workflows/baselinker/runtime"
-import { baselinkerService } from "../helpers"
+import { isJobRunning, type JobKind } from "../../../../workflows/baselinker/runtime"
+import { baselinkerService, guarded } from "../helpers"
 
 const WHAT: readonly SyncWhat[] = ["catalog", "statuses", "orders", "imports", "returns", "invoices"]
 
@@ -16,12 +16,13 @@ const WHAT: readonly SyncWhat[] = ["catalog", "statuses", "orders", "imports", "
  * POST /admin/baselinker/sync  { "what": "catalog" | "statuses" | "orders" | "imports" | "returns" | "invoices" }
  *
  * Runs the same code as the scheduled job, now. Answers 202 right away and
- * works in the background; the admin polls GET /admin/baselinker while the
- * kind is listed in `running`. `catalog` reads the cards and makes every plan
+ * works in the background, holding the same lease as the job, so a click
+ * never runs next to the job in the worker; the admin polls
+ * GET /admin/baselinker/running while the kind is listed. `catalog` reads the cards and makes every plan
  * (an armed writer applies its plan in the same run); `statuses` reads every
  * followed order, sent and imported, the full way.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const o = svc.getOptions()
   const mode = o.demo ? "demo" : "live"
@@ -53,7 +54,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
   const job: JobKind = what === "imports" ? "imports" : what
-  if (isRunning(job)) {
+  if (await isJobRunning(req.scope, job)) {
     const body: SyncResponse = { started: false, alreadyRunning: true, mode, what }
     res.status(202).json(body)
     return
@@ -76,4 +77,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   })
   const body: SyncResponse = { started: true, alreadyRunning: false, mode, what }
   res.status(202).json(body)
-}
+})

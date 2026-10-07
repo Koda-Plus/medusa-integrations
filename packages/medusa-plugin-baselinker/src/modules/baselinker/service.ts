@@ -53,6 +53,11 @@ class BaseLinkerModuleService extends MedusaService({
     this.options_ = resolveOptions(options)
     if (this.options_.demo) {
       this.logger_.info("[baselinker] Demo mode: a simulated BaseLinker built from the catalog, nothing leaves Medusa.")
+      if (process.env.NODE_ENV === "production") {
+        this.logger_.warn(
+          "[baselinker] Demo mode is on in a production build: it writes only the plugin's own demo rows, never real orders, and nothing reaches BaseLinker until demo is off.",
+        )
+      }
     } else if (!this.isConfigured()) {
       this.logger_.info(`[baselinker] Waiting for configuration, missing: ${this.missingOptions().join(", ")}.`)
     }
