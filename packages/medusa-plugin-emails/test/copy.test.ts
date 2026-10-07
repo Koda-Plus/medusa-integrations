@@ -5,6 +5,7 @@
  * migration name unique across the packages.
  */
 import { test } from "node:test"
+import { spawnSync } from "node:child_process"
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
@@ -37,25 +38,25 @@ test("the Polish dictionary is typed by the English one and typeset", () => {
   assert.match(pl, /from "\.\.\/lib\/emails-guide"/)
 })
 
-test("both dictionaries carry the shared community block of the Koda Plus integrations", () => {
+test("both dictionaries carry the shared community block of the Koda Plus integrations, from the kit", () => {
+  const kit = readFileSync(join(root, "src/admin/lib/emails-kit-community.ts"), "utf8")
+  for (const key of ["addStore:", "prompt:", "discord:", "greeting:", "failed:"]) assert.ok(kit.includes(key), `kit community: ${key}`)
   for (const lang of ["en", "pl"]) {
     const text = readFileSync(join(root, `src/admin/i18n/${lang}.ts`), "utf8")
-    for (const key of ["addStore:", "prompt:", "discord:", "greeting:", "failed:"]) assert.ok(text.includes(key), `${lang}: ${key}`)
+    assert.ok(text.includes(`community: community${lang === "en" ? "En" : "Pl"},`), `${lang}: community from the kit`)
+    for (const key of ["soonMore:", "badgeSoonOne:"]) assert.ok(text.includes(key), `${lang}: ${key}`)
   }
 })
 
-test("the page kit is a byte for byte copy of the kit of the other integrations, never edited here", () => {
-  const md5 = (file: string) => createHash("md5").update(readFileSync(file)).digest("hex")
-  const mine = md5(join(root, "src/admin/lib/emails-guide.tsx"))
-  const siblings = join(root, "..")
-  const theirs: string[] = []
-  for (const dir of existsSync(siblings) ? readdirSync(siblings) : []) {
-    const libDir = join(siblings, dir, "src/admin/lib")
-    if (dir === "medusa-plugin-emails" || !existsSync(libDir)) continue
-    for (const f of readdirSync(libDir).filter((n) => n.endsWith("-guide.tsx"))) theirs.push(md5(join(libDir, f)))
+test("the page kit is generated from kit/ and never edited here", () => {
+  const text = readFileSync(join(root, "src/admin/lib/emails-guide.tsx"), "utf8")
+  assert.ok(text.startsWith("// GENERATED from kit/admin/guide.tsx"), "emails-guide.tsx must come from npm run kit:sync")
+  /* Inside the monorepo the kit itself says whether every copy is current. */
+  const script = join(root, "../../scripts/kit.mjs")
+  if (existsSync(script)) {
+    const run = spawnSync(process.execPath, [script, "check", "--only", "emails"], { encoding: "utf8" })
+    assert.equal(run.status, 0, run.stderr || run.stdout)
   }
-  /* While a kit change is copied from package to package, the packages differ for a moment: this copy must equal one of them. */
-  if (theirs.length > 0) assert.ok(theirs.includes(mine), `emails-guide.tsx (${mine}) matches no other package: copy the kit, never edit it here`)
 })
 
 test("every file outside the namespace folders carries the namespace prefix, as the copy script expects", () => {

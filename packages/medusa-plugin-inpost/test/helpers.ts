@@ -435,7 +435,8 @@ export function setup(options: InpostPluginOptions, orders: Row[] = [], fake: Fa
     query: {
       graph: async ({ entity, filters, pagination }: Row) => {
         if (entity !== "order") throw new Error(`Query does not know the entity "${entity}"`)
-        let data = filters?.id ? (orderMap.has(filters.id) ? [orderMap.get(filters.id)] : []) : [...orderMap.values()]
+        const ids: string[] | null = filters?.id ? (Array.isArray(filters.id) ? filters.id : [filters.id]) : null
+        let data = ids ? ids.filter((id) => orderMap.has(id)).map((id) => orderMap.get(id)) : [...orderMap.values()]
         data = data.map((x) => structuredClone(x))
         if (pagination?.order?.created_at === "DESC") data = data.sort((a: Row, b: Row) => time(b.created_at) - time(a.created_at))
         if (pagination?.take) data = data.slice(0, pagination.take)

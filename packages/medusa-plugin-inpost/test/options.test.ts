@@ -11,11 +11,13 @@ import { normalizeReferences, normalizeReview, pickText } from "../src/modules/i
 import { effectiveSettings, readStoredSettings, validateSettingsInput } from "../src/modules/inpost/lib/settings.ts"
 import { writerState } from "../src/modules/inpost/lib/writers.ts"
 
-test("demo mode without a token; live mode needs the token and the organization", () => {
+test("demo mode only with demo: true; without a token the plugin is not configured, never demo", () => {
   const none = resolveOptions(undefined)
-  assert.equal(none.demo, true)
-  assert.equal(none.demoReason, "no_token")
-  assert.deepEqual(missingOptions(none), [])
+  assert.equal(none.demo, false)
+  assert.equal(none.demoReason, null)
+  assert.deepEqual(missingOptions(none), ["apiToken", "organizationId"])
+  assert.equal(resolveOptions({ demo: true }).demo, true)
+  assert.equal(resolveOptions({ demo: "true" }).demo, true)
   const live = resolveOptions({ apiToken: "t".repeat(40) })
   assert.equal(live.demo, false)
   assert.deepEqual(missingOptions(live), ["organizationId"])
@@ -29,7 +31,8 @@ test("demo mode without a token; live mode needs the token and the organization"
 
 test("writers: off by default in live mode, on in demo mode, only true opens them, false always wins", () => {
   assert.deepEqual(resolveOptions({ apiToken: "x" }).writers, { shipment: false, fulfillmentStatus: false })
-  assert.deepEqual(resolveOptions({}).writers, { shipment: true, fulfillmentStatus: true })
+  assert.deepEqual(resolveOptions({}).writers, { shipment: false, fulfillmentStatus: false })
+  assert.deepEqual(resolveOptions({ demo: true }).writers, { shipment: true, fulfillmentStatus: true })
   assert.deepEqual(resolveOptions({ demo: true, shipmentWriter: false }).writers, { shipment: false, fulfillmentStatus: true })
   assert.equal(resolveOptions({ apiToken: "x", shipmentWriter: "true" }).writers.shipment, true)
   const broken = resolveOptions({ apiToken: "x", shipmentWriter: "yes please" as never })

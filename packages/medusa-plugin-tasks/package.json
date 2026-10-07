@@ -94,5 +94,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "tasks",
+    "moduleDir": "tasks",
+    "brand": "Tasks",
+    "title": "Tasks by Koda Plus",
+    "kind": "module",
+    "catalog": null
   }
 }

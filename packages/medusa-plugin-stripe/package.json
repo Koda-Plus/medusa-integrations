@@ -99,5 +99,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "stripe",
+    "moduleDir": "stripe",
+    "brand": "Stripe",
+    "title": "Stripe by Koda Plus",
+    "kind": "integration",
+    "catalog": "payment"
   }
 }

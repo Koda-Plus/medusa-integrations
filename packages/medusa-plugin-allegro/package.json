@@ -98,5 +98,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "koda": {
+    "ns": "allegro",
+    "moduleDir": "allegro",
+    "brand": "Allegro",
+    "title": "Allegro by Koda Plus",
+    "kind": "integration",
+    "catalog": "other"
   }
 }

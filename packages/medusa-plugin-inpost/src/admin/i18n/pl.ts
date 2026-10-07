@@ -1,5 +1,7 @@
 import type en from "./en"
 import { typeset } from "../lib/inpost-guide"
+import { communityPl } from "../lib/inpost-kit-community"
+import { integrationPl } from "../../modules/inpost/lib/integration-texts"
 
 const pl: typeof en = {
   title: "InPost",
@@ -251,7 +253,10 @@ const pl: typeof en = {
     country_unsupported: "Kurier InPost doręcza tylko w Polsce (adres jest w kraju {{detail}}).",
     cod_currency: "Pobranie jest możliwe tylko w PLN (zamówienie jest w {{detail}}).",
     cod_amount_unknown: "Nie da się odczytać sumy zamówienia na potrzeby pobrania.",
-    cod_zero: "Suma zamówienia wynosi zero: nie ma czego pobrać.",
+    cod_zero: "Nie ma czego pobrać: suma zamówienia wynosi zero albo jest już zapłacona.",
+    cod_paid_online: "Zamówienie opłacono online ({{detail}}): pobranie kazałoby kupującemu zapłacić drugi raz. Najpierw zmień opcję wysyłki albo zwróć płatność.",
+    fulfillment_shipped: "Medusa ma już tę realizację jako wysłaną: przesyłka teraz byłaby drugą, płatną paczką. Powiąż istniejącą albo pomiń.",
+    fulfillment_delivered: "Medusa ma już tę realizację jako doręczoną: nie ma czego wysyłać.",
     too_heavy: "Za ciężka na jedną paczkę ({{detail}}). Podziel pozycje na więcej realizacji.",
     pickup_sender_missing: "Odbiór kurierem wymaga nazwy nadawcy, telefonu i pełnego adresu (Ustawienia, Nadawca i paczka).",
   },
@@ -261,6 +266,7 @@ const pl: typeof en = {
     sender_organization: "Nadawca nie jest wysyłany: InPost użyje danych Twojej organizacji z InPost Managera.",
     sample_contact: "Demo: zamówienie nie ma telefonu albo e-maila, pokazane są przykładowe.",
     parcel_size_default: "Obowiązuje domyślny gabaryt z Ustawień.",
+    cod_on_other_parcel: "Pobranie jest raz na zamówienie, przy jego pierwszej paczce: ta idzie bez pobrania.",
   },
   plan: {
     title: "Plan przesyłki",
@@ -531,6 +537,9 @@ const pl: typeof en = {
     waitingForArm: "Czeka na człowieka: przeczytaj plan i utwórz przesyłkę, gdy zapis przesyłek będzie uzbrojony.",
     showHistory: "Historia ({{count}})",
     hideHistory: "Ukryj historię",
+    loading: "Czytam przesyłki InPost tego zamówienia",
+    failed: "Nie udało się odczytać przesyłek InPost tego zamówienia",
+    notInpost: "To zamówienie nie idzie przez InPost.",
   },
   references: {
     title: "Działa w sklepach wdrożonych przez Koda Plus",
@@ -544,34 +553,8 @@ const pl: typeof en = {
     soonMore: "+{{count}} wkrótce",
     review: "Zobacz opinię",
   },
-  community: {
-    addStore: {
-      button: "Dodaj swój sklep",
-      title: "Twój sklep działa na tej integracji?",
-      text: "Daj nam znać. Po sprawdzeniu dodamy go do tej listy z linkiem i oceną.",
-      name: "Nazwa sklepu",
-      url: "Adres sklepu",
-      note: "Kilka słów o wdrożeniu (opcjonalnie)",
-      send: "Wyślij zgłoszenie",
-      copy: "Kopiuj treść",
-      copied: "Treść skopiowana, wklej ją w mail do hello@koda.plus",
-      hint: "Otworzy się Twoja poczta z gotową wiadomością do {{email}}.",
-      subject: "Zgłoszenie sklepu: {{integration}}",
-      greeting: "Dzień dobry, mój sklep działa na integracji {{integration}}. Proszę o dodanie go do listy sklepów.",
-    },
-    prompt: {
-      button: "Kopiuj prompt",
-      title: "Dodaj tę integrację do swojego sklepu",
-      text: "Wklej go w Claude Code, Cursorze albo innym agencie AI otwartym w projekcie Twojej Medusy. Agent zainstaluje wtyczkę, ustawi ją tak jak tutaj i zostawi notatki do dalszej pracy.",
-      copy: "Kopiuj jeszcze raz",
-      copied: "Prompt skopiowany",
-      failed: "Nie udało się skopiować. Zaznacz tekst i skopiuj go ręcznie.",
-    },
-    discord: {
-      button: "Pomoc na Discordzie",
-      title: "Dołącz do serwera Koda Plus na Discordzie",
-    },
-  },
+  community: communityPl,
+  integration: integrationPl,
   guide: {
     demoNote: "Ten sklep uruchamia wtyczkę w trybie demo: kroki poniżej pokazują wdrożenie prawdziwego konta InPost, a ich stan zostaje na „Do zrobienia”.",
     intro: {

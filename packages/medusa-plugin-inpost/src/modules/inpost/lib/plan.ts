@@ -26,7 +26,10 @@ import type { EffectiveSettings } from "./settings"
  *     last name, an address with the street and the building number apart,
  *     and real dimensions and a weight;
  *   - cash on delivery comes with insurance of at least the same amount
- *     (required for courier services); both are the order's gross total;
+ *     (required for courier services); both are the amount still due on the
+ *     order (its gross total minus what was captured), collected ONCE: on
+ *     the first live cash on delivery parcel of the order, never on a
+ *     second one, and never when the order was paid online;
  *   - the reference has 3 to 100 characters;
  *   - the sender is optional: without it ShipX uses the organization's data.
  */
@@ -56,7 +59,10 @@ export interface PlanOrder {
   metadata?: Record<string, unknown> | null
   shipping_address?: PlanOrderAddress | null
   items?: Array<{ id: string; quantity?: unknown; variant?: { weight?: unknown } | null }> | null
-  payment_collections?: Array<{ captured_amount?: unknown } | null> | null
+  payment_collections?: Array<{
+    captured_amount?: unknown
+    payments?: Array<{ provider_id?: string | null; canceled_at?: unknown } | null> | null
+  } | null> | null
 }
 
 /**
@@ -78,6 +84,8 @@ export const PLAN_ORDER_FIELDS: readonly string[] = [
   "items.quantity",
   "items.variant.weight",
   "payment_collections.captured_amount",
+  "payment_collections.payments.provider_id",
+  "payment_collections.payments.canceled_at",
   "shipping_methods.id",
   "shipping_methods.name",
   "shipping_methods.data",
@@ -107,6 +115,9 @@ export interface PlanRow {
   parcel_no: number
   demo: boolean
   fulfillment_canceled_at?: Date | string | null
+  /** Medusa already marked the fulfillment shipped or delivered (by hand, or another system did). */
+  fulfillment_shipped_at?: Date | string | null
+  fulfillment_delivered_at?: Date | string | null
   /** The fulfillment's items, for the weight. Null: every item of the order. */
   items?: Array<{ line_item_id: string; quantity: unknown }> | null
 }
@@ -116,6 +127,12 @@ export interface PlanContext {
   settings: EffectiveSettings
   /** Demo mode: a receiver without a phone or an e-mail gets sample ones, marked as such. */
   demo?: boolean
+  /**
+   * This row carries the order's cash on delivery: the first live cash on
+   * delivery parcel of the order. Further ones go without it, so the buyer
+   * pays once. Undefined reads as true (a single parcel).
+   */
+  codCarrier?: boolean
 }
 
 export interface ShipxAddress {
@@ -182,8 +199,11 @@ export type PlanProblemCode =
   | "cod_zero"
   | "too_heavy"
   | "pickup_sender_missing"
+  | "cod_paid_online"
+  | "fulfillment_shipped"
+  | "fulfillment_delivered"
 
-export type PlanWarningCode = "weight_estimated" | "order_paid" | "sender_organization" | "sample_contact" | "parcel_size_default"
+export type PlanWarningCode = "weight_estimated" | "order_paid" | "sender_organization" | "sample_contact" | "parcel_size_default" | "cod_on_other_parcel"
 
 export interface PlanNote<C extends string> {
   code: C
@@ -280,6 +300,24 @@ export function capturedMinor(order: PlanOrder | null): number {
   return sum
 }
 
+/** Payment providers that stand for "pay at the door" (Medusa's manual provider by default). */
+export const DEFAULT_COD_PROVIDERS: readonly string[] = ["pp_system_default"]
+
+/**
+ * Payments taken by any other provider (a card, BLIK, Przelewy24): the order
+ * was paid online, so cash on delivery would make the buyer pay twice.
+ */
+export function onlinePaymentProviders(order: PlanOrder | null, codProviders: readonly string[]): string[] {
+  const out = new Set<string>()
+  for (const pc of order?.payment_collections ?? []) {
+    for (const p of pc?.payments ?? []) {
+      const id = typeof p?.provider_id === "string" ? p.provider_id : ""
+      if (id && !p?.canceled_at && !codProviders.includes(id)) out.add(id)
+    }
+  }
+  return [...out]
+}
+
 export function buildPlan(row: PlanRow, order: PlanOrder | null, ctx: PlanContext): Plan {
   const o = ctx.options
   const problems: Array<PlanNote<PlanProblemCode>> = []
@@ -291,6 +329,9 @@ export function buildPlan(row: PlanRow, order: PlanOrder | null, ctx: PlanContex
   if (!order) problems.push({ code: "order_missing" })
   if (order && order.status === "canceled") problems.push({ code: "order_canceled" })
   if (row.fulfillment_canceled_at) problems.push({ code: "fulfillment_canceled" })
+  /* Somebody shipped it already (by hand, or another system): a shipment now would be a second, paid parcel. */
+  if (row.fulfillment_delivered_at) problems.push({ code: "fulfillment_delivered" })
+  else if (row.fulfillment_shipped_at) problems.push({ code: "fulfillment_shipped" })
   const outsideKey = order ? shippedOutsideKey(order.metadata, o.skipMetadataKeys) : null
   if (outsideKey) problems.push({ code: "shipped_outside", detail: outsideKey })
 
@@ -347,15 +388,21 @@ export function buildPlan(row: PlanRow, order: PlanOrder | null, ctx: PlanContex
   let insurance: Plan["insurance"] = null
   if (row.cod) {
     const currency = clean(order?.currency_code, 3).toUpperCase()
-    const minor = order ? orderTotalMinor(order) : null
+    const online = onlinePaymentProviders(order, o.codPaymentProviders ?? DEFAULT_COD_PROVIDERS)
     if (order && currency && currency !== "PLN") problems.push({ code: "cod_currency", detail: currency })
-    else if (order && minor === null) problems.push({ code: "cod_amount_unknown" })
-    else if (minor !== null && minor <= 0) problems.push({ code: "cod_zero" })
-    else if (minor !== null) {
-      cod = { minor, amount: formatMinor(minor), currency: "PLN" }
-      insurance = { minor, amount: formatMinor(minor), currency: "PLN" }
+    else if (online.length > 0) problems.push({ code: "cod_paid_online", detail: online.join(", ") })
+    else if (ctx.codCarrier === false) warnings.push({ code: "cod_on_other_parcel" })
+    else {
+      const total = order ? orderTotalMinor(order) : null
       const paid = capturedMinor(order)
-      if (paid > 0 && paid >= minor) warnings.push({ code: "order_paid", detail: formatMinor(paid) })
+      const due = total === null ? null : total - paid
+      if (order && due === null) problems.push({ code: "cod_amount_unknown" })
+      else if (due !== null && due <= 0) problems.push({ code: "cod_zero" })
+      else if (due !== null) {
+        cod = { minor: due, amount: formatMinor(due), currency: "PLN" }
+        insurance = { minor: due, amount: formatMinor(due), currency: "PLN" }
+        if (paid > 0) warnings.push({ code: "order_paid", detail: formatMinor(paid) })
+      }
     }
   }
 

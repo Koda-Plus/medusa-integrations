@@ -6,6 +6,7 @@
  * every file the copy script picks by name, and no tables (so no migration).
  */
 import { test } from "node:test"
+import { spawnSync } from "node:child_process"
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
@@ -22,8 +23,16 @@ const FORBIDDEN = new RegExp(`[${String.fromCharCode(0x2013, 0x2014, 0xb7)}]`)
  * which `node --test` cannot load): the same object, read from a copy of
  * the file with the import and the typeset call taken out.
  */
+/** A relative import of pl.ts as an absolute file URL, so the copy in a temp folder still finds the kit and the texts. */
+function absoluteImport(spec: string): string {
+  const base = join(root, "src/admin/i18n", spec)
+  for (const candidate of [`${base}.ts`, `${base}.tsx`, join(base, "index.ts"), base]) if (existsSync(candidate)) return pathToFileURL(candidate).href
+  return spec
+}
+
 async function loadPl(): Promise<unknown> {
   const text = readFileSync(join(root, "src/admin/i18n/pl.ts"), "utf8")
+    .replace(/from "(\.\.?\/[^"]+)"/g, (_m: string, spec: string) => (spec === "./en" ? `from "${spec}"` : `from "${absoluteImport(spec)}"`))
     .replace(/^import \{ typeset \} from .*$/m, "")
     .replace(/export default typeset\(pl\)\s*$/, "export default pl\n")
   const dir = mkdtempSync(join(tmpdir(), "stripe-pl-"))
@@ -76,9 +85,11 @@ function leaves(tree: Tree, prefix = ""): Map<string, string> {
 test("both dictionaries have the same keys and the same placeholders", async () => {
   const e = leaves(en as unknown as Tree)
   const p = leaves((await loadPl()) as Tree)
-  assert.deepEqual([...p.keys()].sort(), [...e.keys()].sort())
+  /* Polish has more plural forms (_few, _many) than English; the keys must match once those are set aside. */
+  const plural = (k: string) => k.replace(/_(zero|one|two|few|many|other)$/, "_n")
+  assert.deepEqual([...new Set([...p.keys()].map(plural))].sort(), [...new Set([...e.keys()].map(plural))].sort())
   const holes = (s: string) => [...s.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort()
-  const mismatched = [...e.entries()].filter(([k, v]) => JSON.stringify(holes(v)) !== JSON.stringify(holes(p.get(k) ?? ""))).map(([k]) => k)
+  const mismatched = [...e.entries()].filter(([k, v]) => p.has(k) && JSON.stringify(holes(v)) !== JSON.stringify(holes(p.get(k) ?? ""))).map(([k]) => k)
   assert.deepEqual(mismatched, [])
   /* A Polish text that is the English one, untranslated, would show up here (Stripe's endpoint and resource names repeat on purpose). */
   const names = /^(checksTab\.reads|access\.resource)\./
@@ -86,25 +97,25 @@ test("both dictionaries have the same keys and the same placeholders", async () 
   assert.deepEqual(same, [])
 })
 
-test("both dictionaries carry the shared community block of the Koda Plus integrations", () => {
+test("both dictionaries carry the shared community block of the Koda Plus integrations, from the kit", () => {
+  const kit = readFileSync(join(root, "src/admin/lib/stripe-kit-community.ts"), "utf8")
+  for (const key of ["addStore:", "prompt:", "discord:", "greeting:", "failed:"]) assert.ok(kit.includes(key), `kit community: ${key}`)
   for (const lang of ["en", "pl"]) {
     const text = readFileSync(join(root, `src/admin/i18n/${lang}.ts`), "utf8")
-    for (const key of ["addStore:", "prompt:", "discord:", "greeting:", "failed:", "soonMore:", "badgeSoonOne:"]) assert.ok(text.includes(key), `${lang}: ${key}`)
+    assert.ok(text.includes(`community: community${lang === "en" ? "En" : "Pl"},`), `${lang}: community from the kit`)
+    for (const key of ["soonMore:", "badgeSoonOne:"]) assert.ok(text.includes(key), `${lang}: ${key}`)
   }
 })
 
-test("the page kit is a byte for byte copy of the kit of the other integrations, never edited here", () => {
-  const md5 = (file: string) => createHash("md5").update(readFileSync(file)).digest("hex")
-  const mine = md5(join(root, "src/admin/lib/stripe-guide.tsx"))
-  const siblings = join(root, "..")
-  const theirs: string[] = []
-  for (const dir of existsSync(siblings) ? readdirSync(siblings) : []) {
-    const libDir = join(siblings, dir, "src/admin/lib")
-    if (dir === "medusa-plugin-stripe" || !existsSync(libDir)) continue
-    for (const f of readdirSync(libDir).filter((n) => n.endsWith("-guide.tsx"))) theirs.push(md5(join(libDir, f)))
+test("the page kit is generated from kit/ and never edited here", () => {
+  const text = readFileSync(join(root, "src/admin/lib/stripe-guide.tsx"), "utf8")
+  assert.ok(text.startsWith("// GENERATED from kit/admin/guide.tsx"), "stripe-guide.tsx must come from npm run kit:sync")
+  /* Inside the monorepo the kit itself says whether every copy is current. */
+  const script = join(root, "../../scripts/kit.mjs")
+  if (existsSync(script)) {
+    const run = spawnSync(process.execPath, [script, "check", "--only", "stripe"], { encoding: "utf8" })
+    assert.equal(run.status, 0, run.stderr || run.stdout)
   }
-  /* While a kit change is copied from package to package, the packages differ for a moment: this copy must equal one of them. */
-  if (theirs.length > 0) assert.ok(theirs.includes(mine), `stripe-guide.tsx (${mine}) matches no other package: copy the kit, never edit it here`)
 })
 
 test("every file outside the namespace folders carries the namespace prefix, as the copy script expects", () => {

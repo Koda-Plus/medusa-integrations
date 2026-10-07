@@ -254,15 +254,35 @@ function planRowOf(row: ParcelRow, order: OrderRecord | null): PlanRow {
     parcel_no: Number(row.parcel_no ?? 1) || 1,
     demo: Boolean(row.demo),
     fulfillment_canceled_at: row.fulfillment_canceled_at ?? f?.canceled_at ?? null,
+    fulfillment_shipped_at: f?.shipped_at ?? null,
+    fulfillment_delivered_at: f?.delivered_at ?? null,
     items: f?.items ?? null,
   }
+}
+
+/** A parcel that still goes out (or went out): not canceled, not skipped, not a ShipX shipment canceled since. */
+function liveParcel(r: ParcelRow): boolean {
+  return r.state !== "canceled" && r.state !== "skipped" && r.status !== "canceled"
+}
+
+/**
+ * The parcel of the order that carries its cash on delivery: the first live
+ * cash on delivery parcel (by number, then age). The buyer pays once, on
+ * that one; a further parcel of the same order goes without it.
+ */
+export async function codCarrierOf(scope: Scope, row: ParcelRow): Promise<string | null> {
+  if (!row.cod) return null
+  const svc = inpostService(scope)
+  const siblings = await listParcels(svc, { order_id: row.order_id, demo: Boolean(row.demo) }, { take: 50, order: { parcel_no: "ASC", created_at: "ASC" } })
+  return siblings.find((r) => r.cod && liveParcel(r))?.id ?? row.id
 }
 
 export async function planOf(scope: Scope, row: ParcelRow): Promise<{ plan: Plan; order: OrderRecord | null }> {
   const svc = inpostService(scope)
   const order = await loadOrder(scope, row.order_id)
   const settings = await settingsOf(svc)
-  const plan = buildPlan(planRowOf(row, order), order, { options: svc.getOptions(), settings, demo: svc.isDemo() })
+  const codCarrier = row.cod ? (await codCarrierOf(scope, row)) === row.id : undefined
+  const plan = buildPlan(planRowOf(row, order), order, { options: svc.getOptions(), settings, demo: svc.isDemo(), codCarrier })
   return { plan, order }
 }
 

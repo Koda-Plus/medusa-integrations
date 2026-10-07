@@ -1,5 +1,6 @@
 import type en from "./en"
 import { typeset } from "../lib/olx-guide"
+import { communityPl } from "../lib/olx-kit-community"
 
 const pl: typeof en = {
   title: "OLX",
@@ -85,34 +86,7 @@ const pl: typeof en = {
     soonMore: "+{{count}} wkrótce",
     review: "Zobacz opinię",
   },
-  community: {
-    addStore: {
-      button: "Dodaj swój sklep",
-      title: "Twój sklep działa na tej integracji?",
-      text: "Daj nam znać. Po sprawdzeniu dodamy go do tej listy z linkiem i oceną.",
-      name: "Nazwa sklepu",
-      url: "Adres sklepu",
-      note: "Kilka słów o wdrożeniu (opcjonalnie)",
-      send: "Wyślij zgłoszenie",
-      copy: "Kopiuj treść",
-      copied: "Treść skopiowana, wklej ją w mail do hello@koda.plus",
-      hint: "Otworzy się Twoja poczta z gotową wiadomością do {{email}}.",
-      subject: "Zgłoszenie sklepu: {{integration}}",
-      greeting: "Dzień dobry, mój sklep działa na integracji {{integration}}. Proszę o dodanie go do listy sklepów.",
-    },
-    prompt: {
-      button: "Kopiuj prompt",
-      title: "Dodaj tę integrację do swojego sklepu",
-      text: "Wklej go w Claude Code, Cursorze albo innym agencie AI otwartym w projekcie Twojej Medusy. Agent zainstaluje wtyczkę, ustawi ją tak jak tutaj i zostawi notatki do dalszej pracy.",
-      copy: "Kopiuj jeszcze raz",
-      copied: "Prompt skopiowany",
-      failed: "Nie udało się skopiować. Zaznacz tekst i skopiuj go ręcznie.",
-    },
-    discord: {
-      button: "Pomoc na Discordzie",
-      title: "Dołącz do serwera Koda Plus na Discordzie",
-    },
-  },
+  community: communityPl,
   connection: {
     title: "Konto OLX",
     subtitle: "Konto sprzedawcy na {{host}}. OAuth 2.0, zgoda obejmuje: {{scope}}.",

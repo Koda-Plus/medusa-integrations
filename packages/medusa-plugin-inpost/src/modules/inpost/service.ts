@@ -49,13 +49,11 @@ class InpostModuleService extends MedusaService({
     this.logger_ = loggerOf(deps)
     this.options_ = resolveOptions(options)
     if (this.options_.demo) {
-      this.logger_.info(
-        this.options_.demoReason === "no_token"
-          ? "[inpost] Demo mode (no apiToken): simulated shipments from the store's orders, nothing goes to InPost."
-          : "[inpost] Demo mode: simulated shipments from the store's orders, nothing goes to InPost.",
-      )
+      this.logger_.info("[inpost] Demo mode (demo: true): simulated shipments from the store's orders, nothing goes to InPost.")
     } else if (!this.isConfigured()) {
-      this.logger_.warn(`[inpost] Waiting for configuration, missing: ${this.missingOptions().join(", ")}.`)
+      this.logger_.warn(
+        `[inpost] NOT CONFIGURED, missing: ${this.missingOptions().join(", ")}. Fulfillments are recorded and wait in "To ship"; nothing goes to InPost until the token and the organization are set. For sample data set demo: true.`,
+      )
     } else if (this.options_.sandbox) {
       this.logger_.info("[inpost] ShipX sandbox.")
     }
