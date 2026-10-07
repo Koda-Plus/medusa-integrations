@@ -1,7 +1,9 @@
 import { communityEn } from "../lib/baselinker-kit-community"
+import { integrationEn } from "../../modules/baselinker/lib/integration-texts"
 
 const en = {
   title: "BaseLinker",
+  integration: integrationEn,
   by: "by Koda Plus",
   subtitle:
     "Medusa and BaseLinker in both directions: cards linked or created, products imported, stock and prices carried the way you choose, store orders sent exactly once, marketplace orders imported exactly once, statuses, parcels, returns and invoice numbers in step. Every write waits behind a plan and a switch a person arms.",

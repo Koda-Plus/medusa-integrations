@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
@@ -33,7 +33,9 @@ import {
   Pagination,
   PlanSection,
   ReturnsSection,
+  pick,
   useDebounced,
+  useDeepLink,
 } from "../../lib/baselinker-panel"
 import {
   ChangeStatusBadge,
@@ -92,7 +94,21 @@ const BaseLinkerPage = () => {
     seenRunning.current = runningKey
   }, [runningKey, running.data, client])
   const polling = (running.data?.running.length ?? s?.running.length ?? 0) > 0 || Date.now() < pollUntil
-  const [cardFilter, setCardFilter] = useState<CardFilter>("all")
+  const cardLink = useDeepLink("cards")
+  const [cardFilter, setCardFilter] = useState<CardFilter>(() => pick(cardLink.filter, CARD_FILTERS, "all"))
+  useEffect(() => {
+    if (cardLink.filter) setCardFilter(pick(cardLink.filter, CARD_FILTERS, "all"))
+  }, [cardLink.filter])
+
+  /* A deep link (a board counter, a summary, a widget) opens one list: its section scrolls into view,
+     and the sections start over with the filter and search of the address when it changes. */
+  const [params] = useSearchParams()
+  const deepKey = ["section", "filter", "q", "tab"].map((k) => params.get(k) ?? "").join("|")
+  const section = params.get("section")
+  useEffect(() => {
+    if (!section || !s) return
+    document.getElementById(`baselinker-${section}`)?.scrollIntoView({ block: "start", behavior: "smooth" })
+  }, [section, Boolean(s)])
 
   /* A finished run refreshes the tables below. */
   const runKey = JSON.stringify(Object.values(s?.lastRuns ?? {}).map((r) => r?.id ?? ""))
@@ -153,10 +169,20 @@ const BaseLinkerPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          <CardsSection status={s} lang={lang} filter={cardFilter} onFilter={setCardFilter} />
-          <OrdersSection status={s} lang={lang} poll={polling} onAction={poll} />
-          <ImportsSection status={s} lang={lang} poll={polling} />
-          {s.more.returnsSync || s.counts2.returns > 0 ? <ReturnsSection status={s} lang={lang} /> : null}
+          <div id="baselinker-cards">
+            <CardsSection key={deepKey} status={s} lang={lang} filter={cardFilter} onFilter={setCardFilter} />
+          </div>
+          <div id="baselinker-orders">
+            <OrdersSection key={deepKey} status={s} lang={lang} poll={polling} onAction={poll} />
+          </div>
+          <div id="baselinker-imports">
+            <ImportsSection key={deepKey} status={s} lang={lang} poll={polling} />
+          </div>
+          {s.more.returnsSync || s.counts2.returns > 0 ? (
+            <div id="baselinker-returns">
+              <ReturnsSection status={s} lang={lang} />
+            </div>
+          ) : null}
         </>
       ) : null}
 
@@ -178,9 +204,19 @@ const BaseLinkerPage = () => {
           {nav.tab === "account" ? <ConnectionSection status={s} lang={lang} /> : null}
           {nav.tab === "plans" ? (
             <>
-              {s.directions.catalog === "baselinker" ? <PlanSection kind="catalog_import" status={s} lang={lang} /> : <PlanSection kind="cards" status={s} lang={lang} />}
-              {s.options.stockSync !== "off" ? s.directions.stock === "medusa" ? <PlanSection kind="stock_push" status={s} lang={lang} /> : <StockSection status={s} lang={lang} /> : null}
-              {s.directions.catalog === "medusa" && s.more.priceGroupId !== null ? <PlanSection kind="prices" status={s} lang={lang} /> : null}
+              {s.directions.catalog === "baselinker" ? (
+                <PlanSection key={`catalog_import|${deepKey}`} kind="catalog_import" status={s} lang={lang} />
+              ) : (
+                <PlanSection key={`cards|${deepKey}`} kind="cards" status={s} lang={lang} />
+              )}
+              {s.options.stockSync !== "off" ? (
+                s.directions.stock === "medusa" ? (
+                  <PlanSection key={`stock_push|${deepKey}`} kind="stock_push" status={s} lang={lang} />
+                ) : (
+                  <StockSection key={`stock|${deepKey}`} status={s} lang={lang} />
+                )
+              ) : null}
+              {s.directions.catalog === "medusa" && s.more.priceGroupId !== null ? <PlanSection key={`prices|${deepKey}`} kind="prices" status={s} lang={lang} /> : null}
             </>
           ) : null}
           {nav.tab === "invoices" ? <InvoicesSection status={s} lang={lang} /> : null}
@@ -526,7 +562,8 @@ const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0
 
 function StockSection({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("baselinker")
-  const [search, setSearch] = useState("")
+  const link = useDeepLink("plans")
+  const [search, setSearch] = useState(link.q)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [q])
@@ -674,7 +711,8 @@ function cardCount(status: StatusResponse, f: CardFilter): number {
 
 function CardsSection({ status, lang, filter, onFilter }: { status: StatusResponse; lang: string; filter: CardFilter; onFilter: (f: CardFilter) => void }) {
   const { t } = useTranslation("baselinker")
-  const [search, setSearch] = useState("")
+  const link = useDeepLink("cards")
+  const [search, setSearch] = useState(link.q)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])
@@ -840,8 +878,9 @@ function orderCount(status: StatusResponse, f: OrderFilter): number {
 
 function OrdersSection({ status, lang, poll, onAction }: { status: StatusResponse; lang: string; poll: boolean; onAction: () => void }) {
   const { t } = useTranslation("baselinker")
-  const [filter, setFilter] = useState<OrderFilter>(status.counts.ordersFailed > 0 ? "failed" : "all")
-  const [search, setSearch] = useState("")
+  const link = useDeepLink("orders")
+  const [filter, setFilter] = useState<OrderFilter>(() => pick(link.filter, ORDER_FILTERS, link.q ? "all" : status.counts.ordersFailed > 0 ? "failed" : "all"))
+  const [search, setSearch] = useState(link.q)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])

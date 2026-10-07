@@ -35,6 +35,11 @@ export function trackingUrl(module: string | null | undefined, number: string | 
   return carrier ? carrier.url(encodeURIComponent(n)) : null
 }
 
+/** Hosts of the carriers' tracking pages, for the allowlist of external links. */
+export function trackingHosts(): string[] {
+  return [...new Set(CARRIERS.map((c) => new URL(c.url("0")).hostname))]
+}
+
 /** Readable carrier name; an unknown module code is returned as is. */
 export function carrierName(module: string | null | undefined): string | null {
   const code = String(module ?? "").trim()

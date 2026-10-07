@@ -36,6 +36,7 @@ const BaseLinkerProduct = model
     { on: ["bl_product_id", "demo"], unique: true, where: "deleted_at IS NULL" },
     { on: ["variant_id"], where: "deleted_at IS NULL" },
     { on: ["product_id"], where: "deleted_at IS NULL" },
+    { on: ["match_key"], where: "deleted_at IS NULL" },
   ])
 
 export default BaseLinkerProduct

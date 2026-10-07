@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowLongRight, ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast, usePrompt } from "@medusajs/ui"
@@ -84,6 +84,28 @@ export function useDebounced(value: string, ms = 300): string {
     return () => window.clearTimeout(id)
   }, [value, ms])
   return out
+}
+
+/** Sections of the page a link can open: the Panel lists and the plans of Settings. */
+export type DeepSection = "cards" | "orders" | "imports" | "returns" | "plans"
+
+/**
+ * DEEP LINKS. The board counters, the summaries and the widgets open the page
+ * on one list: `/baselinker?section=orders&filter=failed`,
+ * `/baselinker?section=cards&q=prod_...`,
+ * `/baselinker?view=settings&tab=plans&filter=quarantined&q=OP-1`. A section
+ * reads its first filter and search from the address when the link names it.
+ */
+export function useDeepLink(section: DeepSection): { filter: string | null; q: string } {
+  const [params] = useSearchParams()
+  const asked = params.get("section") ?? (params.get("view") === "settings" && params.get("tab") === "plans" ? "plans" : null)
+  if (asked !== section) return { filter: null, q: "" }
+  return { filter: params.get("filter"), q: (params.get("q") ?? "").trim().slice(0, 80) }
+}
+
+/** One of the allowed values, or the fallback. */
+export function pick<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
+  return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
 }
 
 export function EmptyRow({ cols, text }: { cols: number; text: string }) {
@@ -435,10 +457,13 @@ function ChangeLine({ change, lang }: { change: PlanChange; lang: string }) {
   )
 }
 
+const PLAN_FILTER_VALUES: readonly PlanFilter[] = ["all", "changes", "create", "update", "draft", "conflict", "skip", "failed", "quarantined"]
+
 export function PlanSection({ kind, status, lang }: { kind: PlanKind; status: StatusResponse; lang: string }) {
   const { t } = useTranslation("baselinker")
-  const [filter, setFilter] = useState<PlanFilter>("changes")
-  const [search, setSearch] = useState("")
+  const link = useDeepLink("plans")
+  const [filter, setFilter] = useState<PlanFilter>(() => pick(link.filter, PLAN_FILTER_VALUES, "changes"))
+  const [search, setSearch] = useState(link.q)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])
@@ -617,8 +642,9 @@ const IMPORT_FILTERS: ImportFilter[] = ["all", "pending", "imported", "skipped",
 export function ImportsSection({ status, lang, poll }: { status: StatusResponse; lang: string; poll: boolean }) {
   const { t } = useTranslation("baselinker")
   const c = status.counts2.imports
-  const [filter, setFilter] = useState<ImportFilter>(c.failed > 0 ? "failed" : "all")
-  const [search, setSearch] = useState("")
+  const link = useDeepLink("imports")
+  const [filter, setFilter] = useState<ImportFilter>(() => pick(link.filter, IMPORT_FILTERS, link.q ? "all" : c.failed > 0 ? "failed" : "all"))
+  const [search, setSearch] = useState(link.q)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])

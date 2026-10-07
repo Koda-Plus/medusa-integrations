@@ -34,7 +34,8 @@ Every write that changes data ships switched off. It waits behind a plan your te
 ## Features
 
 - **Admin page with two views.** The **Panel**: connection check with everything the account offers (catalogs, warehouses and which of them take stock, price groups, order sources, statuses, custom order fields, journal state), the directions and writers, the plan of every direction in force with its filters and quarantine, the cards, the store orders, the marketplace orders, the returns, the invoice numbers and the history of runs. The **Setup guide**: a diagram of the parts, eleven steps from the token to go-live with a live state each, a go-live checklist ticked from the store itself, and answers to the failures this integration really meets.
-- **Order widget** on every order: the BaseLinker order, its status and the tracking link with **Send to BaseLinker now**; for an imported marketplace order its source, payment state and parcel instead. **Product widget** on every product: the linked cards, their BaseLinker stock and the main card they hang under.
+- **Order widget** on every order: the BaseLinker order, its status and the tracking link with **Send to BaseLinker now**, or why the order stays out; for an imported marketplace order its source, payment state and parcel instead. **Product widget** on every product: the linked cards, their BaseLinker stock and the main card they hang under. Both can be embedded by an app that hosts every Koda Plus plugin in one card (see "Works with Koda Plus hosts").
+- **Deep links**: the page opens on one list from a link, for example `/baselinker?section=orders&filter=failed`, `/baselinker?section=cards&q=prod_...` or `/baselinker?view=settings&tab=plans&filter=quarantined`.
 - **References** ("Running in production"): stores you pass in the `references` option are shown on the Panel and at the end of the guide.
 - **Demo mode**: a simulated BaseLinker account built from your own catalog, with duplicated SKUs and EANs, price groups, both stock directions, Allegro and Amazon orders and returns. Nothing leaves Medusa.
 - **Admin in English and Polish.**
@@ -42,7 +43,7 @@ Every write that changes data ships switched off. It waits behind a plan your te
 
 ## Requirements
 
-- Medusa 2.12 or newer (tested on 2.15.3) and Node.js 20+.
+- Medusa 2.12 to 2.21 and Node.js 20+ (see "Compatibility").
 - For a real account: a BaseLinker API token (in BaseLinker: Account & other, My account, API) and a catalog (inventory) with a `bl_` warehouse. The plugin works with catalogs, not with BaseLinker's old storage.
 - For marketplace orders: a Medusa region for the order currency and a sales channel whose stock location holds the stock. For invoice numbers: the Fakturownia plugin of Koda Plus (optional, never imported as a package).
 
@@ -303,6 +304,7 @@ Without an account, `demo: true` runs every feature against a simulated BaseLink
 - `GET /admin/baselinker/invoices?filter=`: invoice numbers.
 - `POST /admin/baselinker/invoices/:id/retry`: write one invoice number again.
 - `GET /admin/baselinker/runs?kind=`: the history.
+- `GET /admin/baselinker/integration`, `/integration/summary` and `/integration/attention`: the koda.integration/1 contract, described in "Works with Koda Plus hosts".
 
 No route deletes anything. Every write route takes a JSON body or the `x-koda-request` header (415 otherwise), and an unexpected error answers a plain sentence while the details stay in the server log.
 
@@ -344,12 +346,25 @@ Order metadata the plugin writes in live mode, readable by your storefront throu
 
 - **Write barrier by method name**, as described above: nothing outside the permitted methods leaves the process, and a writer that is not armed cannot use its method.
 - **One HTTP client:** the BaseLinker URL appears in one file, behind the barrier, a process-wide rate limiter and a timeout.
-- **Masked token:** the token and every token-like run of characters are masked in logs, stored errors and the admin.
+- **Masked token:** the token and every token-like run of characters are masked in logs, stored errors and the admin. The token never leaves the server: the admin only learns whether it is set.
 - **Personal data:** the plugin's own tables hold ids, statuses, totals and tracking, never buyer data. The order payload sent to BaseLinker is built at send time and not stored. An imported marketplace order carries the buyer's name, address, e-mail and phone on the Medusa order itself, as any order does, because the store has to ship it. Returns are stored without the buyer's data.
 - **Reads only while rendering:** the admin never calls BaseLinker and never writes to draw a page; network calls and the demo snapshot sit behind jobs and clicks.
 - **One worker per item:** leases in the plugin's own table (per job, per store order, per marketplace order, per invoice document) that hold across processes, plus the Medusa Locking module for the shared `marketplace-order-ref:<ref>` key, plus the lookups before every create.
 - **Write guard:** writes to `/admin/baselinker/*` need a JSON body or the `x-koda-request` header, so a form on another site cannot arm a writer or send an order with an admin's session cookie.
 - **Metadata a buyer can write:** the Store API takes any cart metadata and Medusa copies it to the order. The plugin decides by its own tables, never by order metadata (an order counts as imported only by its import row; a marketplace reference counts only on an order created without a cart), and the store routes refuse `baselinker_*` keys, `marketplace_order_ref` and the skip key with 400 `reserved_metadata_key`. A tax id or a note the buyer types stays allowed.
+
+## Works with Koda Plus hosts
+
+An app that shows every Koda Plus plugin in one place (like [medusa.koda.plus](https://medusa.koda.plus/app/orders?demo=en)) reads BaseLinker through the shared contract `koda.integration/1` and never needs to know its tables:
+
+- `GET /admin/baselinker/integration`: the manifest (mode, configuration and what is missing, writers armed, the last run, widgets, the hosts an external link may point to: the carriers' tracking pages and baselinker.com).
+- `GET /admin/baselinker/integration/summary?entity=order&id=order_...` (or `ids=`, up to 50; also `entity=product` and `entity=inventory_item`): one line per record, the worst row speaking. An order: in BaseLinker or imported is green, on its way is blue, a send retrying after an error, a failed Medusa fulfillment or a cancellation blocked by a fulfillment is orange, a failed send or import is red, and a skipped order is grey with its reason in the title key (`integration.order.skip.canceled`, `skip_key`, `marketplace_order`, `imported`). Its facts: `channel` for an imported order ("BaseLinker: Allegro", code `baselinker`, the external order reference, priority 60), `payment` as BaseLinker reports it (code `paid`, `cod` or `pending`, priority 50), `delivery` with the carrier, the parcel number and its tracking page (priority 50), `document` with the invoice number BaseLinker holds (priority 50, so the invoicing plugin's own document wins). A product: linked cards green, a card conflict on its SKU orange, an item held in quarantine red, and a `stock` fact while a stock plan has changes for it. An inventory item: in step with BaseLinker green, a difference waiting for the stock writer orange, a quarantined or failed stock write red, with a `stock` fact. Facts come from the plugin's rows (and from Medusa records read by id), never from order metadata.
+- `GET /admin/baselinker/integration/attention?scope=orders,products,inventory`: the counters `orders_failed` and `imports_failed` (red, orders), `quarantined` (red, inventory) and `cards_conflict` (orange, products), each with a link to its filtered list (`/baselinker?section=orders&filter=failed`, `/baselinker?section=imports&filter=failed`, `/baselinker?view=settings&tab=plans&filter=quarantined`, `/baselinker?section=cards&filter=conflicts`).
+- The order card registers as `baselinker.order` for the zone `order.details` (hidden while the order summary says "none") and the product card as `baselinker.product` for `product.details`, both at tab order 60. A host that claims a zone shows the card as a tab (`embedded`: no frame or header of its own, a line while loading, on an error and when there is nothing to show) and Medusa's own spot stays empty. Without a host nothing changes.
+
+## Public API
+
+What other code may import: `@koda-plus/medusa-plugin-baselinker/workflows` (the workflows, `checkConnection`, `loadWriters`, `setArm`, `activeRunKinds` and the rest listed in "Use it from your code"), `@koda-plus/medusa-plugin-baselinker/modules/baselinker` (the module, its options and service) and `/admin`. Type declarations ship with the package. Every other path is internal and may change in any release.
 
 ## Running more than one process
 
@@ -367,6 +382,16 @@ Medusa can run a store as a server and a worker, or as several instances. The pl
 - It does not send e-mails, and it cannot see your e-mail code: skipping the confirmation e-mail for marketplace orders is up to your `order.placed` subscriber.
 - The Allegro reference of imported orders assumes BaseLinker's `external_order_id` of an Allegro order is the Allegro checkout form id, as BaseLinker documents it ("Allegro transaction number"); it has not been checked against an account connected to Allegro yet.
 
+## Uninstall
+
+1. Disarm the writers in Settings (or switch them off with `writers: { <name>: false }`) and set `exportOrders: false`, so nothing is written while you remove the plugin.
+2. Remove the plugin from `medusa-config.ts` and the package from `package.json`.
+3. What stays, on purpose: the plugin's tables (`baselinker_product`, `baselinker_order`, `baselinker_stock_change`, `baselinker_sync_run`, `baselinker_setting`, `baselinker_plan_item`, `baselinker_quarantine`, `baselinker_import`, `baselinker_return`, `baselinker_invoice`) with their history, the `baselinker_*` and `marketplace_order_ref` keys in order metadata, the cards created in BaseLinker and the orders imported into Medusa. Drop the tables by hand when you no longer need the history; nothing in BaseLinker is deleted.
+
+## Compatibility
+
+Medusa 2.12 to 2.21 (peer range `^2.12.0`) and Node.js 20+. The release of each version runs the smoke test on a fresh Medusa 2.12.6 and 2.21.2 app: migrations, build, start and the admin pages. Developing the plugin needs Node.js 22.6+ (the tests run the TypeScript sources directly).
+
 ## Development
 
 ```bash
@@ -376,7 +401,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the write barrier, token masking, response errors, the client retry policy, linking with variants and containers, every planner (catalog import, cards, stock both ways, prices) with the caps and the quarantine, the writers and their switches, the order payload, the marker scan, the marketplace order import across a crash and a race, statuses and the journal, returns without personal data, invoice numbers, demo data and backoff, without a network or a build.
+`npm test` covers the write barrier, token masking, response errors, the client retry policy, linking with variants and containers, every planner (catalog import, cards, stock both ways, prices) with the caps and the quarantine, the writers and their switches, the order payload and the totals computed from the lines, the marker scan, the leases across processes, the marketplace order import across a crash and a race, metadata a shopper could set, statuses and the journal, returns without personal data, invoice numbers, demo isolation, the admin reads that never write, the guards, the koda.integration/1 contract and backoff, without a network or a build.
 
 ## Commercial support
 
@@ -391,6 +416,15 @@ BaseLinker and Base are trademarks of their owner, used here only to identify th
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-baselinker/LICENSE).
 
 ## Changelog
+
+The full notes of every version are in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-baselinker/CHANGELOG.md).
+
+### 0.3.0 (unreleased)
+
+- Demo mode only with `demo: true`, and it writes only its own rows: the store's orders never get simulated numbers, statuses or parcels, and simulated marketplace orders become Medusa orders only with `demoCreatesOrders`.
+- Reads never write; the demo snapshot comes from the `baselinker-demo` job or **Prepare now**.
+- One run of each job and one worker per order across every process (leases), orders whose totals Medusa cannot compute still go, order metadata a shopper can set decides nothing.
+- The koda.integration/1 contract (summaries of orders, products and inventory items, board counters), embeddable order and product cards, deep links, type declarations.
 
 ### 0.2.1 (2026-10-07)
 

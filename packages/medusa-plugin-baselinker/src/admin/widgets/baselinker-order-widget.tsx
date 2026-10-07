@@ -4,10 +4,11 @@ import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
 import { ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, Text, toast } from "@medusajs/ui"
+import { Badge, Button, Heading, Text, toast } from "@medusajs/ui"
 import type { ImportDto } from "../../modules/baselinker/lib/contract"
 import { errorMessage, useBaseLinkerOrder, useBaseLinkerSend } from "../lib/baselinker-api"
 import { BaseLinkerIcon } from "../lib/baselinker-icon"
+import { WidgetFrame, hostable } from "../lib/baselinker-kit"
 import { ImportStatusBadge, OrderStatusBadge, fmtDateTime } from "../lib/baselinker-ui"
 
 /**
@@ -18,8 +19,12 @@ import { ImportStatusBadge, OrderStatusBadge, fmtDateTime } from "../lib/baselin
  * state; such an order never goes back. For a marketplace order another
  * plugin took straight from the marketplace: its reference, and why it is not
  * sent.
+ *
+ * A host (an app that shows every integration as tabs of one card) embeds it
+ * with `embedded`: no frame and header of its own, a line while loading, on
+ * an error and when BaseLinker has nothing to say about the order.
  */
-const BaseLinkerOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
+const BaseLinkerOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { embedded?: boolean }) => {
   const { t, i18n } = useTranslation("baselinker")
   const lang = i18n.language || "en"
   const q = useBaseLinkerOrder(data.id)
@@ -41,30 +46,49 @@ const BaseLinkerOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
 
   const showSend = !imported && Boolean(info?.canSend) && !canceled && (!row || row.status === "failed" || (row.status === "pending" && row.attempts > 0))
 
-  return (
-    <Container className="divide-y p-0">
-      <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-x-2">
-          <BaseLinkerIcon width={18} height={18} className="shrink-0" />
-          <Heading level="h2">{t("widget.title")}</Heading>
-          {info?.mode === "demo" ? (
-            <Badge size="2xsmall" color="purple">
-              {t("widget.demo")}
-            </Badge>
-          ) : null}
-        </div>
-        <Link to="/baselinker" className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-          {t("widget.more")}
-        </Link>
-      </div>
+  if (q.isLoading) return embedded ? <Quiet>{t("widget.loading")}</Quiet> : null
+  if (q.isError || !info) return <Quiet frame={!embedded}>{t("widget.failed")}</Quiet>
+  if (embedded && !row && !imported && !info.marketplaceRef && !info.skipCode && !info.canSend) return <Quiet>{t("widget.none")}</Quiet>
 
-      {q.isLoading ? null : imported ? (
+  /* The page opens on this order: its import, or its row of the outbox. */
+  const more = imported
+    ? `/baselinker?section=imports&q=${encodeURIComponent(imported.blOrderId)}`
+    : `/baselinker?section=orders&q=${encodeURIComponent(String(data.display_id ?? data.id))}`
+
+  return (
+    <WidgetFrame
+      embedded={embedded}
+      header={
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-x-2">
+            <BaseLinkerIcon width={18} height={18} className="shrink-0" />
+            <Heading level="h2">{t("widget.title")}</Heading>
+            {info.mode === "demo" ? (
+              <Badge size="2xsmall" color="purple">
+                {t("widget.demo")}
+              </Badge>
+            ) : null}
+          </div>
+          <Link to={more} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+            {t("widget.more")}
+          </Link>
+        </div>
+      }
+    >
+      {embedded && info.mode === "demo" ? (
+        <div className="px-6 py-2">
+          <Badge size="2xsmall" color="purple">
+            {t("widget.demo")}
+          </Badge>
+        </div>
+      ) : null}
+      {imported ? (
         <ImportedOrder row={imported} lang={lang} />
       ) : (
         <>
           {!row ? (
             <div className="flex flex-col gap-y-3 px-6 py-4">
-              {info?.marketplaceRef ? (
+              {info.marketplaceRef ? (
                 <>
                   <Line label={t("widget.marketplaceRef")}>
                     <span className="break-all font-mono txt-compact-small">{info.marketplaceRef}</span>
@@ -76,9 +100,13 @@ const BaseLinkerOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
                   ) : null}
                 </>
               ) : null}
-              {!info?.marketplaceRef || info.canSend ? (
+              {info.skipCode && info.skipCode !== "marketplace_order" ? (
                 <Text size="small" className="text-ui-fg-subtle">
-                  {!info?.exportOrders ? t("widget.exportOff") : !info?.canSend ? t("widget.notConfigured") : t("widget.none")}
+                  {t(`widget.skip.${info.skipCode}`, { defaultValue: t("widget.none") })}
+                </Text>
+              ) : !info.marketplaceRef || info.canSend ? (
+                <Text size="small" className="text-ui-fg-subtle">
+                  {!info.exportOrders ? t("widget.exportOff") : !info.canSend ? t("widget.notConfigured") : t("widget.none")}
                 </Text>
               ) : null}
             </div>
@@ -132,8 +160,20 @@ const BaseLinkerOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
           ) : null}
         </>
       )}
-    </Container>
+    </WidgetFrame>
   )
+}
+
+/** A quiet line instead of nothing: while loading, on an error, or when there is nothing to show. */
+function Quiet({ children, frame = false }: { children: ReactNode; frame?: boolean }) {
+  const body = (
+    <div className="px-6 py-4">
+      <Text size="small" className="text-ui-fg-subtle">
+        {children}
+      </Text>
+    </div>
+  )
+  return frame ? <WidgetFrame header={null}>{body}</WidgetFrame> : body
 }
 
 function Line({ label, children }: { label: string; children: ReactNode }) {
@@ -218,4 +258,7 @@ export const config = defineWidgetConfig({
   zone: "order.details.side.after",
 })
 
-export default BaseLinkerOrderWidget
+export default hostable(
+  { id: "baselinker.order", ns: "baselinker", zone: "order.details", name: "BaseLinker", order: 60, Icon: BaseLinkerIcon, hideWhenNone: true },
+  BaseLinkerOrderCard,
+)

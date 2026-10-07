@@ -27,10 +27,15 @@
 
 ### Added
 
+- The koda.integration/1 contract: `GET /admin/baselinker/integration` (the manifest), `/integration/summary` (one line per order, product and inventory item, the worst row speaking, with the `channel`, `payment`, `delivery`, `document` and `stock` facts) and `/integration/attention` (the counters `orders_failed`, `imports_failed`, `quarantined` and `cards_conflict`, each with a link to its filtered list).
+- The order and product cards can be embedded by a host (`baselinker.order` for `order.details`, `baselinker.product` for `product.details`): no frame or header of their own, a line while loading, on an error and when there is nothing to show. The order card says why an order stays out of BaseLinker and no longer reads "export off" when the request failed; the product card says how many cards it does not show.
+- Deep links: the page reads `section`, `filter` and `q` (`/baselinker?section=orders&filter=failed`, `/baselinker?section=cards&q=prod_...`, `/baselinker?view=settings&tab=plans&filter=quarantined`) and scrolls to the list; the card search finds the cards of a product or variant id.
+- TypeScript declarations ship with the package; the export of a `providers` folder the package never had is gone.
+- Indexes for the exact reads of the contract (cards by SKU, the stock plan of an inventory item and of a product, the push plan of a variant, flagged imports): run `npx medusa db:migrate`.
 - `GET /admin/baselinker/running` and `POST /admin/baselinker/demo/prepare`, the `baselinker-demo` job, `demo` in the status (whether the snapshot exists), `skipCode` in the order widget answer.
 - `baselinker.order_status_changed` for imported orders too, with `imported: true`.
 - `activeRunKinds` in `/workflows`: what runs right now in any process.
-- README: running more than one process, metadata a buyer can write, the write guard.
+- README: works with Koda Plus hosts, public API, running more than one process, metadata a buyer can write, the write guard, uninstall, compatibility (Medusa 2.12 to 2.21).
 
 ## 0.2.1 (2026-10-07)
 
