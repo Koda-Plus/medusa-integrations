@@ -21,10 +21,24 @@ import { correctionReasonText, simulatedReturn, totalsOf } from "../../modules/f
 import { DEMO_BACKDATE_DAYS, DEMO_KSEF_REJECTION, demoGovId, demoNumber, encodeDemoId } from "../../modules/fakturownia/lib/demo"
 import type { DocumentRow } from "../../modules/fakturownia/lib/dto"
 import { planCorrections } from "./corrections"
+import { ensureDemoDocuments } from "./documents"
 import { recordKsefEvent } from "./ksef"
 import { exclusive, fakturowniaService, isRunning, listDocuments, patchDocument, planStoreFor, type Scope } from "./runtime"
 
 export const DEMO_SEED_KEY = "demo:seeded:0.2.0"
+
+/**
+ * Demo mode: everything the simulated account shows, prepared once (the
+ * documents of the newest orders, then the KSeF histories, a plan and the
+ * reminders). Called by the issue job and by `POST /admin/fakturownia/demo/seed`,
+ * never by a GET. Idempotent and quiet in live mode.
+ */
+export async function prepareDemo(scope: Scope): Promise<void> {
+  const svc = fakturowniaService(scope)
+  if (!svc.isDemo()) return
+  await ensureDemoDocuments(scope)
+  await ensureDemoExtras(scope)
+}
 
 function at(base: Date, minutes: number): Date {
   return new Date(base.getTime() + minutes * 60_000)

@@ -26,12 +26,12 @@ test("NIP checksum (informational)", () => {
 
 test("the tax ID: order metadata first, then billing address metadata, then a billing tax_id field", () => {
   assert.equal(findTaxId(order({ metadata: { invoice_nip: "PL1234563218" } }) as never, KEYS), "1234563218")
-  const o = order({ billing_address: { ...order().billing_address, metadata: { nip: "5252445767" } } })
-  assert.equal(findTaxId(o as never, KEYS), "5252445767")
-  const field = order({ billing_address: { ...order().billing_address, tax_id: "525-244-57-67" } })
-  assert.equal(findTaxId(field as never, KEYS), "5252445767")
-  assert.equal(findTaxId(order({ metadata: { vat_id: "5252445767" } }) as never, KEYS), null, "only the configured keys")
-  assert.equal(findTaxId(order({ metadata: { vat_id: "5252445767" } }) as never, ["vat_id"]), "5252445767")
+  const o = order({ billing_address: { ...order().billing_address, metadata: { nip: "0123456789" } } })
+  assert.equal(findTaxId(o as never, KEYS), "0123456789")
+  const field = order({ billing_address: { ...order().billing_address, tax_id: "012-345-67-89" } })
+  assert.equal(findTaxId(field as never, KEYS), "0123456789")
+  assert.equal(findTaxId(order({ metadata: { vat_id: "0123456789" } }) as never, KEYS), null, "only the configured keys")
+  assert.equal(findTaxId(order({ metadata: { vat_id: "0123456789" } }) as never, ["vat_id"]), "0123456789")
 })
 
 test("a buyer with a tax ID is a company: the billing company name, the NIP, buyer_company true", () => {

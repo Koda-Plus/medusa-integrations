@@ -75,7 +75,8 @@ export interface BuyerFields {
 
 /** Why a buyer that looks like a company got a consumer document. */
 export interface BuyerWarning {
-  code: "invalid_nip" | "company_without_nip"
+  /** `nip_on_receipt`: a valid NIP showed up after the row became a receipt; the receipt names a person anyway. */
+  code: "invalid_nip" | "company_without_nip" | "nip_on_receipt"
   /** For an invalid NIP: what is wrong with it. */
   reason: "checksum" | "length" | "shape" | null
   /** Where the value was found ("order.metadata.nip"). */
@@ -147,7 +148,12 @@ function sourcesOf(sourcesOrKeys: readonly NipSource[] | readonly string[]): Nip
   return [...(sourcesOrKeys as readonly NipSource[])]
 }
 
-export function mapBuyer(order: BuyerSource, sourcesOrKeys: readonly NipSource[] | readonly string[]): Buyer {
+/**
+ * The buyer of a document. `consumer: true` (a receipt): never a company,
+ * whatever NIP is found; a valid NIP then becomes a warning on the row, so a
+ * receipt never carries `buyer_company` or `buyer_tax_no`.
+ */
+export function mapBuyer(order: BuyerSource, sourcesOrKeys: readonly NipSource[] | readonly string[], opts: { consumer?: boolean } = {}): Buyer {
   const billing = order.billing_address ?? null
   const shipping = order.shipping_address ?? null
   const address = hasAddress(billing) ? billing : hasAddress(shipping) ? shipping : null
@@ -171,7 +177,7 @@ export function mapBuyer(order: BuyerSource, sourcesOrKeys: readonly NipSource[]
 
   const companyName = text(billing?.company) ?? text(found.companyName) ?? metaText(order.metadata, COMPANY_METADATA_KEYS) ?? text(shipping?.company)
 
-  if (found.verdict.kind === "valid") {
+  if (found.verdict.kind === "valid" && !opts.consumer) {
     const taxId = found.verdict.taxId
     return {
       type: "company",
@@ -186,11 +192,13 @@ export function mapBuyer(order: BuyerSource, sourcesOrKeys: readonly NipSource[]
   if (person?.first) fields.buyer_first_name = person.first
   if (person?.last) fields.buyer_last_name = person.last
   const warning: BuyerWarning | null =
-    found.verdict.kind === "invalid"
-      ? { code: "invalid_nip", reason: found.verdict.reason, source: found.source }
-      : text(billing?.company) || text(found.companyName)
-        ? { code: "company_without_nip", reason: null, source: null }
-        : null
+    found.verdict.kind === "valid"
+      ? { code: "nip_on_receipt", reason: null, source: found.source }
+      : found.verdict.kind === "invalid"
+        ? { code: "invalid_nip", reason: found.verdict.reason, source: found.source }
+        : text(billing?.company) || text(found.companyName)
+          ? { code: "company_without_nip", reason: null, source: null }
+          : null
   return { type: "person", taxId: null, fields, warning, taxIdSource: found.source }
 }
 

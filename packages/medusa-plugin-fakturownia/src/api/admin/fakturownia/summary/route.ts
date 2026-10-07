@@ -20,7 +20,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const rows = (await listDocuments(svc, { demo: svc.isDemo(), status: ["issued", "needs_correction"], issue_date: { $gte: from } }, {
     take: SUMMARY_MAX_ROWS + 1,
     order: { issue_date: "DESC" },
-    select: ["kind", "status", "issue_date", "total_gross", "currency", "paid", "gov_status", "fakturownia_id", "from_fakturownia_id"],
+    select: ["kind", "status", "issue_date", "total_gross", "currency", "paid", "gov_status", "fakturownia_id", "from_fakturownia_id", "converted_at", "cancel_requested_at"],
   })) as unknown as SummaryRow[]
   const body: SummaryResponse = { months: monthlySummary(rows.slice(0, SUMMARY_MAX_ROWS), now, SUMMARY_MONTHS), capped: rows.length > SUMMARY_MAX_ROWS }
   res.json(body)

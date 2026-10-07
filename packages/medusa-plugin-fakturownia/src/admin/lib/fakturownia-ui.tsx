@@ -19,7 +19,7 @@ import type {
   WriterDto,
 } from "../../modules/fakturownia/lib/contract"
 import type { Reference } from "./fakturownia-guide"
-import { errorMessage, pdfUrl, useFakturowniaDocumentAction, useFakturowniaMarkIssued, type DocumentAction } from "./fakturownia-api"
+import { errorMessage, openFile, pdfPath, useFakturowniaDocumentAction, useFakturowniaMarkIssued, type DocumentAction } from "./fakturownia-api"
 
 type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
@@ -256,10 +256,16 @@ export function DocumentLinks({ doc }: { doc: DocumentDto }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
       {doc.actions.pdf ? (
-        <a href={pdfUrl(doc.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-1 txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+        <button
+          type="button"
+          className="inline-flex items-center gap-x-1 txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover"
+          onClick={() =>
+            void openFile(pdfPath(doc.id), `${doc.number ?? doc.id}.pdf`).catch((err: unknown) => toast.error(t("toast.error", { error: errorMessage(err) })))
+          }
+        >
           {t("actions.pdf")}
           <ArrowUpRightOnBox className="shrink-0" />
-        </a>
+        </button>
       ) : null}
       {doc.fakturowniaUrl ? (
         <a href={doc.fakturowniaUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-1 txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
@@ -494,7 +500,9 @@ export function BuyerWarningText({ warning }: { warning: BuyerWarningDto | null 
   const text =
     warning.code === "invalid_nip"
       ? t("documents.buyerWarning.invalid", { reason: t(`documents.buyerWarning.reasons.${warning.reason ?? "checksum"}`), source: warning.source ?? "?" })
-      : t("documents.buyerWarning.companyWithoutNip")
+      : warning.code === "nip_on_receipt"
+        ? t("documents.buyerWarning.nipOnReceipt", { source: warning.source ?? "?" })
+        : t("documents.buyerWarning.companyWithoutNip")
   return (
     <Text size="xsmall" className="text-ui-tag-orange-text">
       {text}

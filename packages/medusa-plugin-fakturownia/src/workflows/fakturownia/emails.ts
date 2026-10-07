@@ -22,12 +22,13 @@
  * would have gone out, with a subject like Fakturownia's template.
  */
 
-import { REMINDER_MIN_INTERVAL_HOURS } from "../../modules/fakturownia/lib/constants"
+import { EMAIL_CLAIM_STALE_MS, REMINDER_MIN_INTERVAL_HOURS } from "../../modules/fakturownia/lib/constants"
 import { canRemind, demoSubject, maskEmail, maskEmailsIn, parseRecipients } from "../../modules/fakturownia/lib/email"
 import { toDate, type DocumentRow, type EmailRow } from "../../modules/fakturownia/lib/dto"
 import { describeError, FakturowniaApiError } from "../../modules/fakturownia/lib/errors"
 import { isWaitingForKsef } from "../../modules/fakturownia/lib/status"
-import { ActionError, clientFor, fakturowniaService, getDocument, isArmed, loadOrder, patchDocument, type Scope } from "./runtime"
+import type { DocumentPatch } from "../../modules/fakturownia/lib/store"
+import { ActionError, clientFor, fakturowniaService, getDocument, isArmed, listDocuments, loadOrder, patchDocument, storeFor, type Scope } from "./runtime"
 
 export type EmailKind = "auto" | "manual" | "reminder"
 
@@ -115,10 +116,21 @@ export async function sendDocumentEmail(scope: Scope, documentId: string, input:
   const recipients = parseRecipients(input.to ?? "")
   if (recipients.invalid.length > 0) throw new ActionError(400, `Not e-mail addresses (or more than five): ${recipients.invalid.map((x) => maskEmail(x)).join(", ")}.`)
   const now = new Date()
+  const store = storeFor(scope)
+  let reminderTaken: Date | null = null
   if (input.kind === "reminder") {
     if (row.paid || (row.kind !== "proforma" && row.kind !== "vat")) throw new ActionError(409, "A reminder is for an unpaid proforma or VAT invoice.")
     const last = await lastReminder(scope, row.id)
     if (!canRemind(toDate(last?.created_at), now, REMINDER_MIN_INTERVAL_HOURS)) throw new ActionError(409, "A reminder of this document went out less than a day ago.")
+    /* Taken atomically: two clicks (two tabs, two admins) send one reminder. */
+    if (!(await store.claimStamp(row.id, "reminder_at", now, REMINDER_MIN_INTERVAL_HOURS * 3600 * 1000))) {
+      throw new ActionError(409, "A reminder of this document is being sent or went out less than a day ago.")
+    }
+    reminderTaken = now
+  }
+  /* A reminder that did not go out may be tried again at once. */
+  const giveBack = async () => {
+    if (reminderTaken) await store.releaseStamp(row.id, "reminder_at", reminderTaken).catch(() => undefined)
   }
   const withPdf = input.attachPdf ?? o.emailPdf
   const recipient = recipients.valid.length > 0 ? recipients.valid.map(maskEmail).join(", ") : await buyerAddress(scope, row)
@@ -141,6 +153,8 @@ export async function sendDocumentEmail(scope: Scope, documentId: string, input:
     const unknown = err instanceof FakturowniaApiError && err.transient && !err.refused
     const refused = !unknown && (isWaitingForKsef(message) || (err instanceof FakturowniaApiError && err.refused))
     const note = unknown ? `${message} The e-mail may have gone out; it is not sent again automatically. Check the document in Fakturownia.` : message
+    /* A lost answer may have sent the reminder: it stays taken. A refusal gives it back. */
+    if (!unknown) await giveBack()
     const email = await recordEmail(scope, row, { ...base, status: refused ? "refused" : "failed", error: note })
     return { outcome: refused ? "refused" : "failed", message: note, email, row }
   }
@@ -152,26 +166,35 @@ export type AutoEmailOutcome = "sent" | "waiting" | "failed" | "skipped"
  * The automatic e-mail after issue (`sendByEmail`): sent once, waiting while
  * a company document has no KSeF number yet (for up to three days), recorded
  * in the history when it went out or failed for good.
+ *
+ * TAKEN ATOMICALLY. The row moves from `pending` to `sending` in one
+ * conditional UPDATE before the request, so the issuing process and the
+ * status pass (or two processes) never both send it. A waiting e-mail goes
+ * back to `pending`; one left in `sending` by a process that stopped becomes
+ * `failed` with a note that it may have gone out (`expireEmailClaims`).
  */
 export async function sendAutoEmail(scope: Scope, row: DocumentRow, retryDays: number): Promise<AutoEmailOutcome> {
   const svc = fakturowniaService(scope)
   const o = svc.getOptions()
+  const store = storeFor(scope)
   if (row.email_status !== "pending" || row.status !== "issued" || !row.fakturownia_id) return "skipped"
   const now = new Date()
   if (o.writers.emails === false) {
-    await patchDocument(svc, row.id, { email_status: null, email_error: "E-mails are turned off in the plugin options (writers.emails: false)." })
+    await store.transitionEmail(row.id, ["pending"], { email_status: null, email_error: "E-mails are turned off in the plugin options (writers.emails: false)." })
     return "skipped"
   }
+  if (!(await store.claimEmail(row.id, now))) return "skipped"
+  const settle = (patch: DocumentPatch) => store.transitionEmail(row.id, ["sending"], patch)
   const base = { kind: "auto" as const, recipient: await buyerAddress(scope, row), withPdf: o.emailPdf, requestedBy: "system" }
   if (row.demo) {
     await recordEmail(scope, row, { ...base, status: "sent" })
-    await patchDocument(svc, row.id, { email_status: "sent", emailed_at: now, email_error: null })
+    await settle({ email_status: "sent", emailed_at: now, email_error: null })
     return "sent"
   }
   try {
     await clientFor(svc).sendByEmail(row.fakturownia_id, { pdf: o.emailPdf })
     await recordEmail(scope, row, { ...base, status: "sent" })
-    await patchDocument(svc, row.id, { email_status: "sent", emailed_at: now, email_error: null })
+    await settle({ email_status: "sent", emailed_at: now, email_error: null })
     return "sent"
   } catch (err) {
     const d = describeError(err)
@@ -180,7 +203,7 @@ export async function sendAutoEmail(scope: Scope, row: DocumentRow, retryDays: n
     const tooOld = now.getTime() - issuedAt.getTime() > retryDays * 24 * 3600 * 1000
     const refusedTransient = err instanceof FakturowniaApiError && err.transient && err.refused
     if ((isWaitingForKsef(message) || refusedTransient) && !tooOld) {
-      await patchDocument(svc, row.id, { email_error: message })
+      await settle({ email_status: "pending", email_error: message })
       return "waiting"
     }
     const note =
@@ -188,7 +211,27 @@ export async function sendAutoEmail(scope: Scope, row: DocumentRow, retryDays: n
         ? `${message} The e-mail may have gone out; it is not sent again automatically. Check the document in Fakturownia.`
         : message
     await recordEmail(scope, row, { ...base, status: "failed", error: note })
-    await patchDocument(svc, row.id, { email_status: "failed", email_error: note.slice(0, 1000) })
+    await settle({ email_status: "failed", email_error: note.slice(0, 1000) })
     return "failed"
   }
+}
+
+/**
+ * Automatic e-mails a process took (`sending`) and never finished, older than
+ * `EMAIL_CLAIM_STALE_MS`: `failed`, with a note that they may have gone out.
+ * Never sent again by the plugin; a person checks Fakturownia.
+ */
+export async function expireEmailClaims(scope: Scope, now: Date = new Date()): Promise<number> {
+  const svc = fakturowniaService(scope)
+  const store = storeFor(scope)
+  const stale = await listDocuments(svc, { demo: svc.isDemo(), email_status: "sending", email_claimed_at: { $lte: new Date(now.getTime() - EMAIL_CLAIM_STALE_MS) } }, { take: 50 })
+  const note = "The e-mail was being sent when the process stopped, so it may have gone out. It is not sent again automatically: check the document in Fakturownia."
+  let n = 0
+  for (const row of stale) {
+    const moved = await store.transitionEmail(row.id, ["sending"], { email_status: "failed", email_error: note })
+    if (!moved) continue
+    n += 1
+    await recordEmail(scope, row, { kind: "auto", status: "failed", recipient: null, withPdf: svc.getOptions().emailPdf, error: note, requestedBy: "system" })
+  }
+  return n
 }

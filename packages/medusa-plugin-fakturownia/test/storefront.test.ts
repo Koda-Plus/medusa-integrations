@@ -150,7 +150,7 @@ test("ten PDFs a minute per customer", async () => {
 
 test("demo: the customer gets the simulated PDF, without a request", async () => {
   const customer = nextCustomer()
-  const { s } = await issuedFor(customer, {})
+  const { s } = await issuedFor(customer, { demo: true })
   const own = s.documents.rows.find((r) => r.order_id === order().id)!
   const res = response()
   await pdfRoute(request(s, { params: { id: own.id }, customer }), res as never)

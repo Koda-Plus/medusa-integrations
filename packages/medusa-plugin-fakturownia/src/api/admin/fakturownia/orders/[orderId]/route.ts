@@ -3,7 +3,6 @@ import type { OrderDocumentsResponse } from "../../../../../modules/fakturownia/
 import { manualKind } from "../../../../../modules/fakturownia/lib/document"
 import { orderFacts } from "../../../../../workflows/fakturownia/documents"
 import { documentsOfOrder, listPlans, loadOrder } from "../../../../../workflows/fakturownia/runtime"
-import { refreshDemoStatuses } from "../../../../../workflows/fakturownia/statuses"
 import { documentDto, fakturowniaService, planDtos, writersDto } from "../../helpers"
 
 /**
@@ -12,12 +11,11 @@ import { documentDto, fakturowniaService, planDtos, writersDto } from "../../hel
  * The documents of one order (corrections included) and its correction
  * plans, for the order page widget, and whether "Issue now" makes sense
  * (configured, the order is not canceled, and the document it would issue is
- * not there yet). Reads the database and Medusa only.
+ * not there yet). Reads the database and Medusa only, never writes.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = fakturowniaService(req.scope)
   const o = svc.getOptions()
-  await refreshDemoStatuses(req.scope)
   const rows = await documentsOfOrder(svc, req.params.orderId)
   let canIssue = false
   let nextKind: OrderDocumentsResponse["nextKind"] = null

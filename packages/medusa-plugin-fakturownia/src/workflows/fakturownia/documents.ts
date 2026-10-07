@@ -29,12 +29,12 @@ import {
   CORRECTIONS_PER_PASS,
   DEMO_BACKFILL_ORDERS,
   DOCUMENTS_PER_PASS,
-  ISSUE_LEASE_MS,
   LOOKUP_DAYS_BEFORE,
   MAX_ATTEMPTS,
   PLUGIN_EVENTS,
-  RECONCILE_GRACE_MS,
   RECONCILE_PER_PASS,
+  claimLeaseMs,
+  reconcileGraceMs,
 } from "../../modules/fakturownia/lib/constants"
 import type { RunTrigger } from "../../modules/fakturownia/lib/contract"
 import { buildFinalFromProforma } from "../../modules/fakturownia/lib/conversion"
@@ -57,7 +57,7 @@ import {
   type OrderRecord,
 } from "../../modules/fakturownia/lib/document"
 import { toDate, type DocumentRow } from "../../modules/fakturownia/lib/dto"
-import { FakturowniaApiError, FakturowniaUnknownResultError, PayloadError } from "../../modules/fakturownia/lib/errors"
+import { ClaimLostError, FakturowniaApiError, FakturowniaUnknownResultError, PayloadError } from "../../modules/fakturownia/lib/errors"
 import {
   createOnce,
   lookupExisting,
@@ -170,7 +170,7 @@ export async function enqueueDue(scope: Scope, orderId: string, source: EnqueueS
 /* Building and looking up                                             */
 /* ------------------------------------------------------------------ */
 
-type Prepared = { built: BuiltDocument; wait?: undefined } | { built?: undefined; wait: string }
+type Prepared = { built: BuiltDocument; wait?: undefined } | { built?: undefined; wait: string; code?: string }
 
 /** The document of a row: from the order, or (a final document after a proforma) from the proforma. */
 async function prepareDocument(scope: Scope, row: DocumentRow, order: OrderRecord): Promise<Prepared> {
@@ -371,12 +371,24 @@ export async function announceIssued(scope: Scope, row: DocumentRow, adopted: bo
   if (event) await emitEvent(scope, event.name, { ...event.data })
 }
 
+/**
+ * A final document made from a proforma: the proforma is converted
+ * (`converted_at`), so it is no longer money to collect (`lib/unpaid.ts`).
+ */
+export async function markProformaConverted(scope: Scope, row: DocumentRow): Promise<void> {
+  if ((row.kind !== "vat" && row.kind !== "receipt") || !row.from_fakturownia_id) return
+  const svc = fakturowniaService(scope)
+  const proformas = await listDocuments(svc, { order_id: row.order_id, demo: Boolean(row.demo), kind: "proforma", fakturownia_id: row.from_fakturownia_id, converted_at: null }, { take: 5 })
+  for (const p of proformas) await patchDocument(svc, p.id, { converted_at: new Date() })
+}
+
 /** E-mail, event and a cancellation that arrived while the document was on its way. Never throws. */
 async function afterIssued(scope: Scope, rowId: string, adopted: boolean): Promise<void> {
   const svc = fakturowniaService(scope)
   try {
     const row = await getDocument(svc, rowId)
     if (!row || row.status !== "issued") return
+    await markProformaConverted(scope, row)
     await announceIssued(scope, row, adopted)
     if (goesToKsef(row.kind) && row.gov_status) {
       const errors = Array.isArray(row.gov_errors) ? (row.gov_errors as unknown[]).map(String) : null
@@ -416,6 +428,14 @@ export interface IssueOutcome {
  * One attempt of one row: claim, build, look, create once, write the result.
  * Every Fakturownia failure lands in the row. `demoFailure` makes the
  * simulated account refuse the document (the demo backfill shows that state).
+ *
+ * THE CLAIM IS PROVEN TWICE. The lease follows `timeoutMs`, and the owner
+ * renews it with one conditional UPDATE (by its claim token) when it writes
+ * what it is about to send, and again right before the create request
+ * leaves, after the queue of the rate limit; that second renewal also stamps
+ * `create_sent_at`. When a renewal finds the claim gone (the lease ran out
+ * during a slow lookup and another process took the row over), the attempt
+ * stops and sends nothing.
  */
 export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailure?: boolean } = {}): Promise<IssueOutcome> {
   const svc = fakturowniaService(scope)
@@ -423,9 +443,16 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
   const store = storeFor(scope)
   const now = new Date()
   const token = randomUUID()
+  const leaseMs = claimLeaseMs(o.timeoutMs)
+  const leaseFromNow = () => new Date(Date.now() + leaseMs)
   const base = { rowId: row.id, orderId: row.order_id, number: null, adopted: false, code: null, message: null }
-  const claimed = await store.claim(row.id, { now, leaseUntil: new Date(now.getTime() + ISSUE_LEASE_MS), token })
+  const claimed = await store.claim(row.id, { now, leaseUntil: new Date(now.getTime() + leaseMs), token })
   if (!claimed) return { ...base, status: "busy", code: "busy", message: "Another process is issuing this document." }
+  /** Renews the claim; throws `ClaimLostError` (nothing sent) when it is no longer ours. */
+  const stillOurs = async (args: { patch?: DocumentPatch; sending?: boolean } = {}) => {
+    const ok = await store.renew(claimed.id, token, { leaseUntil: leaseFromNow(), patch: args.patch, createSentAt: args.sending ? new Date() : undefined })
+    if (!ok) throw new ClaimLostError(claimed.id)
+  }
   const label = `#${claimed.display_id ?? claimed.order_id} ${claimed.kind}`
   let built: BuiltDocument | null = null
 
@@ -445,20 +472,21 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
 
     const prepared = await prepareDocument(scope, claimed, order)
     if (prepared.wait !== undefined) {
+      const code = prepared.code ?? (claimed.kind === "correction" ? "waiting_for_writer" : "waiting_for_proforma")
       await store.finish(claimed.id, token, {
         status: "pending",
         attempts: Math.max(0, claimed.attempts - 1),
-        next_attempt_at: new Date(now.getTime() + 60_000),
+        next_attempt_at: new Date(now.getTime() + (code === "waiting_for_ksef" ? 5 * 60_000 : 60_000)),
         error: prepared.wait,
-        error_code: claimed.kind === "correction" ? "waiting_for_writer" : "waiting_for_proforma",
+        error_code: code,
       })
-      return { ...base, status: "waiting", code: claimed.kind === "correction" ? "waiting_for_writer" : "waiting_for_proforma", message: prepared.wait }
+      return { ...base, status: "waiting", code, message: prepared.wait }
     }
     const current = prepared.built
     built = current
 
-    /* Before the network: what is about to be sent, so a lost answer can be looked up. */
-    await patchDocument(svc, claimed.id, summaryPatch(current.summary))
+    /* Before the network: what is about to be sent, so a lost answer can be looked up (only while the claim is ours). */
+    await stillOurs({ patch: summaryPatch(current.summary) })
 
     let doc: RemoteDocument
     let adopted = false
@@ -466,6 +494,7 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
       if (opts.demoFailure) {
         throw new FakturowniaApiError({ code: DEMO_FAILURE.code, operation: "create", message: DEMO_FAILURE.detail, transient: false, refused: true, status: DEMO_FAILURE.status })
       }
+      await stillOurs({ sending: true })
       doc = await demoCreate(svc, claimed, order, current, now)
     } else {
       const client = clientFor(svc)
@@ -477,7 +506,8 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
       const result = await createOnce({
         lookup,
         create: async () => {
-          const created = toRemoteDocument(await client.createInvoice(current.invoice))
+          /* The last proof of the claim, after the queue of the rate limit: a lost claim sends nothing. */
+          const created = toRemoteDocument(await client.createInvoice(current.invoice, { beforeSend: () => stillOurs({ sending: true }) }))
           if (!created) throw new FakturowniaUnknownResultError("create", new Error("an unreadable answer"))
           return created
         },
@@ -500,6 +530,11 @@ export async function issueRow(scope: Scope, row: DocumentRow, opts: { demoFailu
     }
     return { ...base, status: "issued", number: doc.number, adopted }
   } catch (err) {
+    if (err instanceof ClaimLostError) {
+      /* Nothing was sent and the row is someone else's now: no write, no event. */
+      svc.getLogger().warn(`[fakturownia] ${label}: the claim ran out before the create request, nothing was sent; the row is handled by another attempt.`)
+      return { ...base, status: "busy", code: err.code, message: err.message }
+    }
     const plan = planAfterFailure(err, { attempts: claimed.attempts, now: new Date() })
     const message = svc.mask(plan.message).slice(0, 2000)
     await store
@@ -568,13 +603,20 @@ export async function reconcileRow(scope: Scope, row: DocumentRow): Promise<{ ou
 
   const client = clientFor(svc)
   const plan = lookupPlan(row, summary, now)
-  const lastAttemptAt = toDate(row.claimed_at) ?? toDate(row.updated_at)
+  /*
+   * The grace counts from the create request itself (`create_sent_at`, since
+   * 0.3.0), never from the claim: a slow lookup before the create must not
+   * shorten it. Rows of 0.2.x have no stamp and count from the claim. The
+   * request may take `timeoutMs` to reach Fakturownia, so the grace adds it.
+   */
+  const lastAttemptAt = toDate(row.create_sent_at) ?? toDate(row.claimed_at) ?? toDate(row.updated_at)
+  const graceMs = reconcileGraceMs(o.timeoutMs)
   try {
     const lookup =
       row.kind === "correction"
         ? await correctionLookup(scope, row, summary.totalGross, summary.currency)
         : () => lookupExisting(lookupDeps(client), plan.spec, plan.window)
-    const verdict = await reconcile({ lookup, lastAttemptAt, now })
+    const verdict = await reconcile({ lookup, lastAttemptAt, now, graceMs })
     if (verdict.action === "adopt") {
       const moved = await store.transition(
         row.id,
@@ -607,7 +649,7 @@ export async function reconcileRow(scope: Scope, row: DocumentRow): Promise<{ ou
       return { outcome: "conflict", message }
     }
     if (verdict.action === "wait") {
-      const until = new Date((lastAttemptAt ?? now).getTime() + RECONCILE_GRACE_MS)
+      const until = new Date((lastAttemptAt ?? now).getTime() + graceMs)
       await store.transition(row.id, ["unknown"], { next_attempt_at: until > now ? until : now })
       return { outcome: "waiting", message: null }
     }
@@ -788,15 +830,24 @@ export { ActionError }
 
 /**
  * "Mark as issued": a person found (or issued) the document in Fakturownia.
- * With its Fakturownia id (live mode) the document is read and its number
- * must match, so a typo cannot link the order to someone else's invoice.
+ * With its Fakturownia id (live mode) the document is read and its number,
+ * its kind and its order number must match, so a typo cannot link the order
+ * to someone else's invoice; and one Fakturownia document belongs to one row
+ * only (other plugins hear of it as this order's document).
  */
 export async function markIssued(scope: Scope, id: string, input: { number: string; fakturowniaId?: string | null }): Promise<DocumentRow> {
   const svc = fakturowniaService(scope)
+  const o = svc.getOptions()
   const number = String(input.number ?? "").trim().slice(0, 100)
   const remoteId = String(input.fakturowniaId ?? "").trim()
   if (!number) throw new ActionError(400, "Give the document number, as Fakturownia shows it.")
   if (remoteId && !/^\d{1,15}$/.test(remoteId)) throw new ActionError(400, "The Fakturownia id is the number in the document address, like 123456789.")
+  const row = await getDocument(svc, id)
+  if (!row || Boolean(row.demo) !== svc.isDemo()) throw new ActionError(404, "Document not found.")
+  if (remoteId) {
+    const twin = (await listDocuments(svc, { demo: Boolean(row.demo), fakturownia_id: remoteId, id: { $ne: row.id } }, { take: 1 }))[0]
+    if (twin) throw new ActionError(409, `Fakturownia document ${remoteId} is already the document of order #${twin.display_id ?? twin.order_id} in the plugin.`)
+  }
   const now = new Date()
   const patch: DocumentPatch = {
     status: "issued",
@@ -818,6 +869,9 @@ export async function markIssued(scope: Scope, id: string, input: { number: stri
     if (doc.number && doc.number.replace(/\s+/g, "") !== number.replace(/\s+/g, "")) {
       throw new ActionError(409, `Fakturownia document ${remoteId} is ${doc.number}, not ${number}.`)
     }
+    const kind = apiKind(row.kind as DocumentKind, o.receiptKind)
+    if (doc.kind && doc.kind !== kind) throw new ActionError(409, `Fakturownia document ${remoteId} is of kind ${doc.kind}, not ${kind}.`)
+    if (row.oid && doc.oid && doc.oid !== row.oid) throw new ActionError(409, `Fakturownia document ${remoteId} carries order number ${doc.oid}, not ${row.oid}.`)
     Object.assign(patch, {
       number: doc.number ?? number,
       total_gross: doc.gross,
@@ -830,6 +884,7 @@ export async function markIssued(scope: Scope, id: string, input: { number: stri
   const moved = await storeFor(scope).transition(id, ["unknown", "failed"], patch)
   if (!moved) throw new ActionError(409, "Only a document that failed or whose result is unknown can be marked as issued.")
   /* With its Fakturownia id the document is as good as issued by the plugin: other plugins hear of it (once: the transition above happens once). */
+  await markProformaConverted(scope, moved)
   if (moved.fakturownia_id) await announceIssued(scope, moved, true)
   if (moved.kind === "correction") await onCorrectionIssued(scope, moved)
   return moved

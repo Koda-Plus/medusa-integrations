@@ -39,17 +39,21 @@ test("defaults: the final document at payment capture, VAT 23, Polish, 7 days, m
   assert.equal(o.timeoutMs, 30_000)
 })
 
-test("demo mode: on without a token, on by option, off only when asked with demo: false", () => {
-  assert.equal(resolveOptions(undefined).demo, true)
-  assert.equal(resolveOptions({}).demoReason, "no_token")
-  assert.equal(resolveOptions({ apiToken: "t0ken-long-enough", demo: true }).demoReason, "option")
-  const off = resolveOptions({ demo: "false" })
-  assert.equal(off.demo, false)
-  assert.equal(off.demoReason, null)
-  assert.deepEqual(missingOptions(off), ["apiToken", "account"])
-  assert.equal(canIssue(off), false)
-  assert.deepEqual(missingOptions(resolveOptions({})), [], "nothing is missing in demo mode")
-  assert.equal(canIssue(resolveOptions({})), true)
+test("demo mode only when asked for: a missing token is 'not configured', never simulated documents", () => {
+  for (const missing of [undefined, {}, { demo: "false" }, { demo: false }, { demo: "maybe" }, { account: "mojafirma" }]) {
+    const o = resolveOptions(missing as never)
+    assert.equal(o.demo, false, JSON.stringify(missing))
+    assert.equal(o.demoReason, null)
+    assert.equal(canIssue(o), false, "nothing is issued without a token")
+  }
+  assert.deepEqual(missingOptions(resolveOptions({})), ["apiToken", "account"])
+  for (const on of [{ demo: true }, { demo: "true" }, { demo: "1" }, { apiToken: "t0ken-long-enough", demo: true }]) {
+    const o = resolveOptions(on as never)
+    assert.equal(o.demo, true, JSON.stringify(on))
+    assert.equal(o.demoReason, "option")
+    assert.deepEqual(missingOptions(o), [], "nothing is missing in demo mode")
+    assert.equal(canIssue(o), true)
+  }
 })
 
 test("values from environment strings: numbers, lists, booleans, flows", () => {
@@ -129,7 +133,7 @@ test("account: the full address works, anything that is not a subdomain is refus
   assert.deepEqual(missingOptions(o), ["account (the subdomain, like mojafirma)"])
   assert.equal(accountUrl(o), null)
   assert.equal(accountUrl(resolveOptions({ apiToken: "t0ken-long-enough", account: "mojafirma" })), "https://mojafirma.fakturownia.pl")
-  assert.equal(accountUrl(resolveOptions({ account: "mojafirma" })), null, "no panel link in demo mode")
+  assert.equal(accountUrl(resolveOptions({ account: "mojafirma", demo: true })), null, "no panel link in demo mode")
 })
 
 test("oid prefix: whitespace removed, at most 20 characters", () => {

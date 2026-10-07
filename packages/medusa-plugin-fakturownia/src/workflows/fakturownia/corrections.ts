@@ -50,6 +50,7 @@ import { PayloadError } from "../../modules/fakturownia/lib/errors"
 import { toRemoteDocument, type MatchOutcome, type RemoteDocument } from "../../modules/fakturownia/lib/exactly-once"
 import { canIssue } from "../../modules/fakturownia/lib/options"
 import { DECIDED_PLAN_STATUSES, OPEN_PLAN_STATUSES, type PlanStatus } from "../../modules/fakturownia/lib/plan-store"
+import { goesToKsef, govState } from "../../modules/fakturownia/lib/status"
 import { Modules } from "@medusajs/framework/utils"
 import {
   ActionError,
@@ -164,6 +165,8 @@ export async function planCorrections(scope: Scope, orderId: string, source: Pla
     if (plans.some((p) => p.simulated)) return { ...base, result: "skipped", reason: "simulated" }
     const order = await loadOrder(scope, orderId)
     if (!order) return { ...base, result: "none", reason: "order_not_found" }
+    /* `cancelOnOrderCanceled: false`: the plugin does not react to a cancellation, a plan to zero included. */
+    if (order.status === "canceled" && !o.cancelOnOrderCanceled) return { ...base, result: "skipped", reason: "cancel_rule_off" }
 
     const now = new Date()
     const open = plans.find(isOpen) ?? null
@@ -404,7 +407,7 @@ export async function settleDocument(scope: Scope, documentId: string | null | u
 /* 3. Issue (called by the outbox)                                     */
 /* ------------------------------------------------------------------ */
 
-export type PreparedCorrection = { built: BuiltDocument; wait?: undefined } | { built?: undefined; wait: string }
+export type PreparedCorrection = { built: BuiltDocument; wait?: undefined } | { built?: undefined; wait: string; code?: string }
 
 /** The correction invoice of a claimed outbox row, from its approved plan and the corrected invoice. */
 export async function prepareCorrection(scope: Scope, row: DocumentRow): Promise<PreparedCorrection> {
@@ -417,6 +420,14 @@ export async function prepareCorrection(scope: Scope, row: DocumentRow): Promise
   if (!(await isArmed(svc, "corrections"))) return { wait: "Waiting for the corrections writer: turn it on in the admin to issue approved corrections." }
   const original = await getDocument(svc, plan.document_id)
   if (!original || (!original.fakturownia_id && !original.demo)) throw new PayloadError("original_unknown", "The corrected document has no Fakturownia id.")
+  /* A correction names the KSeF number of the invoice it corrects: it waits until KSeF accepted that invoice. */
+  const ksef = govState(original.gov_status)
+  if (goesToKsef(original.kind) && (ksef === "processing" || ksef === "offline" || ksef === "problem")) {
+    return {
+      wait: `Waiting for KSeF to accept the corrected invoice (${original.gov_status}); the correction is issued once it has its KSeF number.`,
+      code: "waiting_for_ksef",
+    }
+  }
   const positions = plannedPositionsOf(plan.positions)
   const today = warsawDate(new Date())
   const currency = plan.currency ?? original.currency ?? "PLN"
@@ -485,6 +496,17 @@ export async function correctionLookup(scope: Scope, row: DocumentRow, totalGros
     const docs = (rows: Array<Record<string, unknown>>) => rows.map(toRemoteDocument).filter((d): d is RemoteDocument => d !== null)
     const candidates = docs(await client.findInvoices({ fromInvoiceId: originalId }))
     if (row.oid) candidates.push(...docs(await client.findInvoices({ oid: row.oid, kind: "correction", dateFrom: notBefore, dateTo: addDays(warsawDate(new Date()), 1) })))
+    /*
+     * The marker lives in the private note, which the documented list does
+     * not promise to return: a correction of this invoice that came without
+     * it is read on its own (a few at most), so two corrections of the same
+     * value in flight never take each other's document.
+     */
+    const withoutNote = candidates.filter((c) => c.kind === "correction" && c.internalNote === null && (c.invoiceId === originalId || c.fromInvoiceId === originalId)).slice(0, 10)
+    for (const c of withoutNote) {
+      const full = toRemoteDocument(await client.getInvoice(c.id, ["id", "internal_note"]))
+      if (full?.internalNote) for (const same of candidates) if (same.id === c.id) same.internalNote = full.internalNote
+    }
     return matchCorrection(candidates, spec)
   }
 }
@@ -526,15 +548,25 @@ export async function scanCorrections(scope: Scope, trigger: RunTrigger): Promis
     const approved = await listPlans(svc, { demo: o.demo, status: "approved", correction_document_id: null }, { take: 20 })
     for (const plan of approved) if (await ensureCorrectionDocument(scope, plan)) stats.repaired += 1
 
-    const docs = await listDocuments(svc, { demo: o.demo, kind: ["vat", "receipt"], status: ["issued", "needs_correction"], issued_at: { $gte: since } }, {
-      take: 500,
-      select: ["id", "order_id", "corrections_checked_at"],
-    })
-    const due = [...docs]
-      .sort((a, b) => (toDate(a.corrections_checked_at)?.getTime() ?? 0) - (toDate(b.corrections_checked_at)?.getTime() ?? 0))
-      .slice(0, CORRECTIONS_SCAN_PER_PASS)
+    /* Chosen in the database: never checked first, then the least recently checked, whatever the number of documents. */
+    const window = { demo: o.demo, kind: ["vat", "receipt"], status: ["issued", "needs_correction"], issued_at: { $gte: since } }
+    const fields = { select: ["id", "order_id", "corrections_checked_at"] }
+    const never = await listDocuments(svc, { ...window, corrections_checked_at: null }, { ...fields, take: CORRECTIONS_SCAN_PER_PASS, order: { issued_at: "ASC" } })
+    const due =
+      never.length >= CORRECTIONS_SCAN_PER_PASS
+        ? never
+        : [
+            ...never,
+            ...(await listDocuments(svc, { ...window, corrections_checked_at: { $ne: null } }, {
+              ...fields,
+              take: CORRECTIONS_SCAN_PER_PASS - never.length,
+              order: { corrections_checked_at: "ASC" },
+            })),
+          ]
     for (const d of due) {
       const r = await planCorrections(scope, d.order_id, null).catch(() => null)
+      /* Stamped whatever the outcome, so a document planning skips cannot hold the head of the queue. */
+      await patchDocument(svc, d.id, { corrections_checked_at: new Date() }).catch(() => null)
       stats.checked += 1
       if (r?.result === "created") stats.created += 1
       else if (r?.result === "updated") stats.updated += 1

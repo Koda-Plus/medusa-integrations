@@ -49,10 +49,11 @@ const pl: typeof en = {
     text: "Symulowane konto Fakturowni wystawia dokumenty do Twoich prawdziwych zamówień: najnowsze dostały je przy pierwszej wizycie, nowe dostają swoje w kilka sekund. Część jest opłacona, faktury VAT kilka minut po wystawieniu przechodzą w KSeF z „Przetwarzanie” na „Przyjęta”, a jeden dokument został odrzucony, żeby pokazać i ten stan. Nic nie wychodzi poza Medusę.",
     new: "Symulujemy też resztę: jedną fakturę KSeF odrzucił i czeka na ponowną wysyłkę, inna ma w historii odrzucenie i ponowną wysyłkę, plan korekty czeka na zatwierdzenie, kilka faktur jest nieopłaconych do przypomnienia, a e-maile trafiają do symulowanej skrzynki. Pliki PDF są generowane. Włącz zapisy, żeby przeklikać wszystko.",
     noToken: "Tryb demo jest włączony, bo nie ustawiono apiToken. Aby wystawiać prawdziwe dokumenty, ustaw w opcjach wtyczki apiToken i account (subdomenę adresu Twojej Fakturowni).",
+    preparing: "Przygotowujemy przykładowe dokumenty trybu demo dla najnowszych zamówień...",
   },
   missing: {
-    label: "Konfiguracja",
-    text: "Brakuje opcji wtyczki: {{missing}}. Token znajdziesz w Fakturowni w sekcji Ustawienia, Ustawienia konta, Integracja, Kod autoryzacyjny API; account to pierwsza część adresu Twojej Fakturowni (mojafirma dla mojafirma.fakturownia.pl). Do tego czasu nic nie jest wystawiane.",
+    label: "Nie skonfigurowano: dokumenty nie są wystawiane",
+    text: "Brakuje opcji wtyczki: {{missing}}. Token znajdziesz w Fakturowni w sekcji Ustawienia, Ustawienia konta, Integracja, Kod autoryzacyjny API; account to pierwsza część adresu Twojej Fakturowni (mojafirma dla mojafirma.fakturownia.pl). Do tego czasu nic nie jest wystawiane, a opłacone zamówienia czekają i można je wystawić później. Jeśli chcesz zobaczyć przykładowe dane, ustaw demo: true.",
   },
   stats: {
     issued24h: "Wystawione w 24 h",
@@ -101,6 +102,9 @@ const pl: typeof en = {
     never: "Nikt go jeszcze nie włączył.",
     turnedOn: "{{name}}: włączone.",
     turnedOff: "{{name}}: wyłączone.",
+    beta: "Beta",
+    betaHint:
+      "Zbudowane według dokumentacji API Fakturowni i sprawdzone na symulowanym koncie, jeszcze nie na prawdziwym koncie z KSeF. Zanim włączysz to w sklepie, sprawdź na koncie testowym (z KSeF DEMO).",
   },
   connection: {
     title: "Połączenie",
@@ -325,6 +329,7 @@ const pl: typeof en = {
     buyerWarning: {
       invalid: "Wystawiono dla konsumenta: NIP z {{source}} {{reason}}.",
       companyWithoutNip: "Wystawiono dla konsumenta: adres rozliczeniowy podaje firmę, ale nie znaleziono NIP.",
+      nipOnReceipt: "Paragon jest na konsumenta: NIP z {{source}} pojawił się, gdy paragon czekał już w kolejce. Fakturę do paragonu wystaw w Fakturowni.",
       reasons: {
         checksum: "ma błędną sumę kontrolną",
         length: "nie ma 10 cyfr",
@@ -333,6 +338,7 @@ const pl: typeof en = {
     },
     email: {
       pending: "E-mail czeka",
+      sending: "E-mail w trakcie wysyłki",
       sent: "Wysłano e-mailem {{time}}",
       failed: "E-mail nieudany",
     },
@@ -628,7 +634,7 @@ const pl: typeof en = {
       ksef: {
         title: "Podłącz KSeF w Fakturowni",
         p1: "Wtyczka sama niczego nie wysyła do KSeF: robi to Fakturownia. W Fakturowni: Ustawienia, Integracje i dodatki, KSeF. Aktywuj integrację, wybierz NIP i zautoryzuj się certyfikatem albo plikiem autoryzacyjnym. KSeF (DEMO) w tym samym menu służy do próby.",
-        p2: "Potem Ustawienia, KSeF, Automatyczna wysyłka: wybierz, co wysyłać automatycznie (tylko polskie firmy, wszystkie firmy albo firmy i osoby prywatne). Wtyczka zawsze wysyła buyer_company, po którym to ustawienie decyduje.",
+        p2: "Potem Ustawienia, KSeF, Automatyczna wysyłka: wybierz, co wysyłać automatycznie (tylko polskie firmy, wszystkie firmy albo firmy i osoby prywatne). Wtyczka zawsze wysyła buyer_company, po którym to ustawienie decyduje. KSeF jest obowiązkowy w 2026 roku (od 1 lutego dla największych podatników, od 1 kwietnia dla pozostałych), a tryby wysyłające tylko firmy zostawiają faktury dla osób prywatnych poza KSeF: o trybie dla swojego sklepu zdecyduj z księgową albo doradcą podatkowym.",
         p3: "Zostaw włączone „Zablokuj tworzenie faktur niezgodnych z KSeF”: dokument, który KSeF by odrzucił, zostaje wtedy odrzucony od razu (HTTP 422), a wiersz mówi dlaczego, zamiast odrzucenia później.",
         link: "Przewodnik KSeF w dokumentacji API Fakturowni",
         check: "Faktura VAT dostaje numer KSeF kilka minut po wystawieniu (KSeF: Przyjęta).",
@@ -713,7 +719,7 @@ const pl: typeof en = {
       },
       nip: {
         q: "Fakturownia odrzuciła dokument (HTTP 422)",
-        a1: "Komunikat podaje pole. NIP z błędną sumą kontrolną nie trafia już do Fakturowni: taki nabywca dostaje dokument dla konsumenta, a wiersz mówi dlaczego; popraw NIP w zamówieniu i skoryguj dokument w Fakturowni, jeśli nabywca potrzebuje faktury na firmę.",
+        a1: "Komunikat podaje pole. NIP z błędną sumą kontrolną nie trafia już do Fakturowni: taki nabywca dostaje dokument dla konsumenta, a wiersz mówi dlaczego. Jeśli nabywca potrzebuje faktury na firmę: na koncie z KSeF korekta nie zmieni NIP ani typu nabywcy, więc wystaw w Fakturowni korektę tego dokumentu do zera i ręcznie nową fakturę na firmę (wtyczka wystawia jeden dokument końcowy na zamówienie).",
         a2: "Na koncie z KSeF Fakturownia odrzuca też to, co odrzuciłby KSeF, i podaje pole. Popraw dane w Medusie i kliknij Ponów. Pozycje ze stawką zw (zwolnione) na koncie z KSeF wymagają podstawy zwolnienia, której ta wtyczka jeszcze nie wysyła: daj znać, jeśli sprzedajesz towary zwolnione.",
       },
       ksefRejected: {

@@ -96,13 +96,13 @@ Run the migrations, then open **Fakturownia** in the admin sidebar and click **C
 npx medusa db:migrate
 ```
 
-Without `apiToken` the plugin runs in demo mode. With `demo: false` and no token it registers, the admin says "Not configured" and nothing is issued. Missing options never break the boot.
+Without `apiToken` (or `account`) the plugin registers, the admin says "Not configured" in red, the log says so (an error with `NODE_ENV=production`) and nothing is issued: paid orders wait and can be issued later. Demo mode runs only when you ask for it with `demo: true`, so a token lost on production never turns real orders into simulated documents. Missing options never break the boot.
 
 ### Options
 
 - `apiToken`: the Fakturownia API token. Sent only in the `Authorization` header, masked in every log, error and admin screen.
 - `account`: the account subdomain, like `mojafirma` (the full address works too). It becomes part of the host name, so anything that is not a valid subdomain is refused.
-- `demo` (default: on when `apiToken` is missing): the simulated account.
+- `demo` (default `false`): the simulated account, only when set to `true` (for example `demo: process.env.FAKTUROWNIA_DEMO === "true"`). Since 0.3.0 a missing token no longer turns it on.
 - `documentFlow` (default `vat`): `vat` issues the final document at the trigger; `proforma_then_vat` issues a proforma at the trigger and the final document after the first fulfillment, linked with `from_invoice_id`.
 - `trigger` (default `payment_captured`): `payment_captured` (the order captured in full) or `order_placed`.
 - `receiptForConsumers` (default `false`): buyers without a tax ID get a receipt instead of a VAT invoice.
@@ -153,7 +153,7 @@ A duplicate VAT invoice on a KSeF account can only be undone with a correction i
 3. **Look before you write.** Before the create request, the document is looked up in Fakturownia by its order number and kind (`GET /invoices.json?oid=`), a final document made from a proforma also by `?from_invoice_id=`, and a correction by the corrections of the invoice it corrects, where it carries a marker in its private note (`internal_note`). A matching document is adopted and nothing is sent; one with another amount is a conflict for a person.
 4. **One shot, never blind.** The create request is never repeated. A timeout, a 5xx or a broken answer means "unknown": the plugin looks again a few seconds later and adopts the document when it is there. Otherwise the row becomes `unknown`, and it is looked up again after a two minute grace period before anything else is sent. On top, `oid_unique: "yes"` makes Fakturownia itself refuse a second document with the same order number (not sent on corrections and on a final document made from a proforma, which carry the order number of their original).
 
-A request that Fakturownia refused (any 4xx, or a network error before the request left) created nothing, so it is retried with backoff for about two and a half days when it may pass (429) and fails at once when it will not (422). A row with a Fakturownia id is never sent again by any road. An `unknown` row also waits for a person in the admin: **Check in Fakturownia**, **Issue again** (after a confirmation), **Mark as issued**. Details and sources: [docs/fakturownia-api-notes.md](docs/fakturownia-api-notes.md).
+A request that Fakturownia refused (any 4xx, or a network error before the request left) created nothing, so it is retried with backoff for about two and a half days when it may pass (429) and fails at once when it will not (422). A row with a Fakturownia id is never sent again by any road. An `unknown` row also waits for a person in the admin: **Check in Fakturownia**, **Issue again** (after a confirmation), **Mark as issued**. Details and sources: [docs/fakturownia-api-notes.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/docs/fakturownia-api-notes.md).
 
 ## Corrections
 
@@ -374,7 +374,7 @@ Fakturownia and its logo are trademarks of their owner, used here only to identi
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/LICENSE).
 
 ## Changelog
 
@@ -401,4 +401,4 @@ MIT, see [LICENSE](./LICENSE).
 
 ### 0.1.0 (2026-10-05)
 
-First public release, generalized from the Fakturownia integration Koda Plus runs in production for a Polish cosmetics wholesaler: documents exactly once, proforma then VAT, receipts for consumers, payments, KSeF status, e-mail after issue, canceled orders, the admin page and the order widget, demo mode. Full list in [CHANGELOG.md](./CHANGELOG.md).
+First public release, generalized from the Fakturownia integration Koda Plus runs in production for a Polish cosmetics wholesaler: documents exactly once, proforma then VAT, receipts for consumers, payments, KSeF status, e-mail after issue, canceled orders, the admin page and the order widget, demo mode. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/CHANGELOG.md).

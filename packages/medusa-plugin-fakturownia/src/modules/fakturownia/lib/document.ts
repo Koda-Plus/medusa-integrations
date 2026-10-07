@@ -304,7 +304,8 @@ export interface BuildArgs {
 
 export function buildDocument(order: OrderRecord, o: ResolvedFakturowniaOptions, args: BuildArgs): BuiltDocument {
   const { positions, totalGross, currency } = buildPositions(order, o)
-  const buyer = mapBuyer(order, o.nipSources)
+  /* A receipt names a person even when a NIP appeared after the row was queued (as the conversion from a proforma does). */
+  const buyer = mapBuyer(order, o.nipSources, { consumer: args.kind === "receipt" })
   /* "Captured in full" compares with what the customer had to pay: the order total. */
   const payment = paymentFacts(order.payment_collections ?? [], toNumberOrNull(order.total) ?? totalGross, o.codProviders)
   const paymentType = paymentTypeFor(payment.providerId, payment.cod, o.paymentTypes)

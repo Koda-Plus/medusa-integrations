@@ -98,8 +98,13 @@ async function markOne(scope: Scope, row: DocumentRow, stats: PaymentsStats): Pr
     const d = describeError(err)
     const message = svc.mask(d.message).slice(0, 500)
     if (stats.errors.length < 10) stats.errors.push(`#${row.display_id ?? row.order_id}: ${message}`)
-    /* Transient: the request stays and the next pass tries again. Permanent: a person decides. */
+    /*
+     * Transient: the request stays and goes to the END of the queue (a new
+     * `pay_requested_at`), so a few documents that keep failing never hold
+     * back the rest of the pass. Permanent: a person decides.
+     */
     if (!d.retryable) await patchDocument(svc, row.id, { pay_requested_at: null, error: `Could not mark paid: ${message}`, error_code: "mark_paid_failed" })
+    else await patchDocument(svc, row.id, { pay_requested_at: new Date() })
   }
 }
 

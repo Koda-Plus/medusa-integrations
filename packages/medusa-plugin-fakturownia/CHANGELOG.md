@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Fixed
+
+- Exactly once under a slow Fakturownia: the lease of an attempt follows `timeoutMs` (at least ten minutes, half an hour at 120 s), and the owner proves its claim with one conditional update when it writes what it will send and again right before the create request leaves, after the queue of the rate limit. When the claim ran out and another process took the row over, nothing is sent (`claim_lost`). The grace of a lost answer counts from the moment the create request left (`create_sent_at`, plus `timeoutMs`), never from the claim, so a slow lookup can no longer produce a second final document or correction.
+- The automatic e-mail is taken atomically (`email_status` from `pending` to `sending` in one update): the issuing process and the status pass never both send it. One left in `sending` by a stopped process becomes `failed` after 15 minutes, with a note that it may have gone out, and is never sent again.
+- A payment reminder and "Send to KSeF again" are taken atomically too: two clicks from two tabs send once. A refused reminder may be tried again at once.
+- The KSeF status pass, the correction scan and the backlog of final documents after proformas pick their rows in the database (never checked first, then the least recently checked), also in stores with more than 500 documents in the window. A document sent to KSeF again is read for 14 days after the resend; one deleted in Fakturownia is no longer read in every pass.
+- `GET /admin/fakturownia/documents?filter=corrections` and `GET /admin/fakturownia/runs?kind=corrections` filter as documented; a search keeps the filter.
+- One definition of "unpaid" for the filter, the counter, the reminders and the monthly summary: no corrections, no proformas turned into a final document (new column `converted_at`, filled for 0.2.x documents by the migration), no documents of canceled orders.
+- "Needs attention" includes a proforma of a canceled order whose rejection Fakturownia refused, and every tile of the page counts exactly its own list.
+- PDF, UPO and KSeF XML downloads work for document numbers with Polish letters: an ASCII file name plus the name as printed in `filename*` (RFC 6266). Files carry `X-Content-Type-Options: nosniff`; the KSeF files are always `application/xml` and read with a 5 MB limit, checked before the whole body is read.
+- An e-mail refusal is treated as "waiting for the KSeF number" only for the documented sentence ("brak numeru KSeF"), not for any message that names KSeF.
+- EU VAT numbers are checked by country prefix and shape (EL for Greece, XI for Northern Ireland); any two letters followed by digits no longer make a company buyer.
+- A receipt always names a consumer: a NIP that appeared after the row was queued is shown as a warning, never sent as `buyer_tax_no`.
+- "Mark as issued" with a Fakturownia id checks the document's kind and order number too, and refuses a document another row already holds.
+- `cancelOnOrderCanceled: false` also stops the plan of a correction to zero for a canceled order, as documented.
+- A correction waits until KSeF accepted the invoice it corrects (it names that invoice's KSeF number).
+- The lookup of a correction reads the private note of a candidate whose list answer left it out, so two corrections of the same value in flight never take each other's document.
+- A payment that keeps failing goes to the end of the queue instead of holding its head.
+- The history of runs keeps 50 per kind in each mode: the demo no longer pushes the real account's runs out.
+- Stored and logged error texts mask e-mail addresses too (KSeF and document numbers stay readable).
+- A shopper never reads why a PDF failed (a plain sentence, the reason in the server log); a store that lost its token answers 503 instead of a simulated PDF.
+- Admin pages work when the plugin is installed from npm: the admin libraries are optional peers, so the app keeps the copies of Medusa's dashboard instead of a second, newer copy.
+
+### Changed
+
+- Demo mode runs only with `demo: true`. Without a token the plugin is "not configured": nothing is issued, the admin shows it in red and the log says so (an error on production). Before, a lost token quietly switched a live store to the simulated account. Set `demo: process.env.FAKTUROWNIA_DEMO === "true"` where you want the demo.
+- GET routes never write: the sample data of the demo comes from the issue job or from `POST /admin/fakturownia/demo/seed`, which the page calls once on a first visit (`demoPrepared` in `GET /admin/fakturownia`); the simulated KSeF moves in the job, not when someone looks.
+- Writes to `/admin/fakturownia` need a JSON body or the `x-koda-request` header (the kit's `writeGuard`), so a form on another site cannot trigger them with the admin's cookie.
+- The admin calls the routes through the kit (`kitRequestInit`), so an admin signed in with a token (JWT) works too; the PDF, UPO and XML are fetched as files the same way instead of plain links.
+- The admin asks again only while something moves by itself (5 s while issuing, 60 s for KSeF, e-mails and retries, never for what waits for a person), and never while the tab is hidden.
+- The writers of 0.2.0 (corrections, e-mails and reminders, KSeF sending) carry a Beta badge in the admin: they are built from the API documentation and tested against a simulated account, not yet against a real one with KSeF.
+
+### Added
+
+- RBAC policies for Medusa 2.15 and newer with the `rbac` feature flag: `fakturownia:read` on every admin route, `fakturownia:update` on every write, and `approve` (corrections), `send` (e-mails, reminders, KSeF again) and `manage` (writers) on top. Older Medusa versions and stores without the flag work as before.
+- Exact lookups: `GET /admin/fakturownia/documents?order_id=a,b` and `?number=`.
+- Deep links into the page: `?filter=`, `?q=`, `?doc=`.
+- Migration `Migration20261008093000_fakturownia`: `create_sent_at`, `email_claimed_at`, `reminder_at`, `finals_checked_at`, `converted_at` (columns only, idempotent).
+
 ## 0.2.2 (2026-10-07)
 
 - References: stores that start soon (`soon: true`, shown with a Soon badge and no link); the since date is no longer shown.

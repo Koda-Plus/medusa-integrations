@@ -25,11 +25,11 @@ test("masking: api_token in a query string or a JSON body, and Bearer headers", 
 test("masking: long token-like runs go, readable ids, numbers and KSeF numbers stay", () => {
   const other = "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4"
   const out = maskSecrets(
-    `other ${other}, order order_01JDEMO0000000000000000001, FV 12/10/2026, NIP 1234563218, KSeF 5252445767-20260201-ABC123DEF456`,
+    `other ${other}, order order_01JDEMO0000000000000000001, FV 12/10/2026, NIP 1234563218, KSeF 1234563218-20260201-ABC123DEF456`,
     [null, undefined, ""],
   )
   assert.ok(!out.includes(other))
-  for (const keep of ["order_01JDEMO0000000000000000001", "FV 12/10/2026", "1234563218", "5252445767-20260201-ABC123DEF456"]) assert.ok(out.includes(keep), keep)
+  for (const keep of ["order_01JDEMO0000000000000000001", "FV 12/10/2026", "1234563218", "1234563218-20260201-ABC123DEF456"]) assert.ok(out.includes(keep), keep)
 })
 
 test("masking: short configured values are never used as needles", () => {

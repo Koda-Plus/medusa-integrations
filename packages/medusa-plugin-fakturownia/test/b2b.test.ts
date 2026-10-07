@@ -36,7 +36,7 @@ test("sources: paths of the option, a company module, and the default of 0.1.0",
 
 test("a NIP passes the checksum; an EU VAT number keeps its shape; the rest is not a tax ID", () => {
   assert.deepEqual(checkTaxId("PL 123-456-32-18"), { kind: "valid", taxId: "1234563218" })
-  assert.deepEqual(checkTaxId("NIP: 525-244-57-67"), { kind: "valid", taxId: "5252445767" })
+  assert.deepEqual(checkTaxId("NIP: 012-345-67-89"), { kind: "valid", taxId: "0123456789" })
   assert.deepEqual(checkTaxId("1234563219"), { kind: "invalid", reason: "checksum" })
   assert.deepEqual(checkTaxId("123456"), { kind: "invalid", reason: "length" })
   assert.deepEqual(checkTaxId("DE123456789"), { kind: "valid", taxId: "DE123456789" })
@@ -47,7 +47,7 @@ test("a NIP passes the checksum; an EU VAT number keeps its shape; the rest is n
 
 test("a NIP typed into the company name is found only when it passes the checksum", () => {
   assert.equal(nipInText("Salon Anna sp. z o.o., NIP 123-456-32-18"), "1234563218")
-  assert.equal(nipInText("Firma PL5252445767"), "5252445767")
+  assert.equal(nipInText("Firma PL0123456789"), "0123456789")
   assert.equal(nipInText("Firma, tel. 600 700 800 9"), null)
   assert.equal(nipInText("Firma 1234563219"), null)
   assert.equal(nipInText(undefined), null)
@@ -55,9 +55,9 @@ test("a NIP typed into the company name is found only when it passes the checksu
 
 test("the first source with a value decides; a wrong NIP is reported, not replaced by a later one", () => {
   const sources = resolveNipSources(["order.metadata.nip", "billing_address.metadata.nip"], [])
-  const found = findTaxIdIn({ metadata: { nip: "1234563219" }, billing_address: { metadata: { nip: "5252445767" } } }, sources)
+  const found = findTaxIdIn({ metadata: { nip: "1234563219" }, billing_address: { metadata: { nip: "0123456789" } } }, sources)
   assert.deepEqual([found.verdict.kind, found.source], ["invalid", "order.metadata.nip"])
-  const later = findTaxIdIn({ metadata: { nip: "" }, billing_address: { metadata: { nip: "5252445767" } } }, sources)
+  const later = findTaxIdIn({ metadata: { nip: "" }, billing_address: { metadata: { nip: "0123456789" } } }, sources)
   assert.deepEqual([later.verdict.kind, later.source], ["valid", "billing_address.metadata.nip"])
 })
 
@@ -86,13 +86,13 @@ test("live: an invalid NIP gives a consumer document (a receipt here) with the w
 
 test("a company module of the store: the NIP and the name of the order's customer's company", async () => {
   const s = setup({ ...LIVE, nipSources: ["order.metadata.nip", { entity: "company" }] }, [order({ customer_id: "cus_1" })])
-  s.entities.set("company", [{ customer_id: "cus_1", nip: "525-244-57-67", name: "Radgost sp. z o.o." }])
+  s.entities.set("company", [{ customer_id: "cus_1", nip: "012-345-67-89", name: "Firma Testowa sp. z o.o." }])
   const fake = new FakeFakturownia()
   globalThis.fetch = fake.fetch
   await enqueueDue(s.container, order().id, "payment_captured")
   await issueDue(s.container, "schedule")
   const sent = fake.calls.find((c) => c.method === "POST")!.body.invoice
-  assert.deepEqual([sent.buyer_company, sent.buyer_tax_no, sent.buyer_name], [true, "5252445767", "Radgost sp. z o.o."])
+  assert.deepEqual([sent.buyer_company, sent.buyer_tax_no, sent.buyer_name], [true, "0123456789", "Firma Testowa sp. z o.o."])
   assert.equal(s.documents.rows[0].buyer_type, "company")
 
   const unknown = setup({ ...LIVE, nipSources: [{ entity: "no_such_module" }] }, [order({ customer_id: "cus_1" })])

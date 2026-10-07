@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { contentDisposition } from "../../../../../../modules/fakturownia/lib/pdf"
 import { ksefFile } from "../../../../../../workflows/fakturownia/ksef"
 import { getDocument } from "../../../../../../workflows/fakturownia/runtime"
 import { ActionError, fakturowniaService, strParam } from "../../../helpers"
@@ -24,7 +25,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   try {
     const f = await ksefFile(req.scope, row, file)
     res.setHeader("Content-Type", f.contentType)
-    res.setHeader("Content-Disposition", `attachment; filename="${f.filename.replace(/"/g, "")}"`)
+    res.setHeader("Content-Disposition", contentDisposition("attachment", f.filename, f.unicodeName))
+    res.setHeader("X-Content-Type-Options", "nosniff")
     res.setHeader("Cache-Control", "private, no-store")
     res.status(200).send(f.data)
   } catch (err) {

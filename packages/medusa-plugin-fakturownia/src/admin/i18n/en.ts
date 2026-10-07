@@ -47,10 +47,11 @@ const en = {
     text: "A simulated Fakturownia account issues documents for your real orders: the newest ones got documents on the first visit, new orders get theirs within seconds. Some are paid, VAT invoices move from \"Processing\" to \"Accepted\" in KSeF a few minutes after issue, and one document was refused to show that state. Nothing leaves Medusa.",
     new: "Also simulated: one invoice was rejected by KSeF and waits to be sent again, another shows a rejection and a resend in its history, a correction plan waits for approval, a few invoices are unpaid for a reminder, and e-mails land in a simulated mailbox. PDFs are generated. Turn the writers on to click everything through.",
     noToken: "Demo mode is on because apiToken is not set. To issue real documents, set apiToken and account (the subdomain of your Fakturownia address) in the plugin options.",
+    preparing: "Preparing the sample documents of the demo for your newest orders...",
   },
   missing: {
-    label: "Configuration",
-    text: "Missing plugin options: {{missing}}. The token is in Fakturownia under Ustawienia, Ustawienia konta, Integracja, Kod autoryzacyjny API; the account is the first part of your Fakturownia address (mojafirma for mojafirma.fakturownia.pl). Nothing is issued until then.",
+    label: "Not configured: no documents are issued",
+    text: "Missing plugin options: {{missing}}. The token is in Fakturownia under Ustawienia, Ustawienia konta, Integracja, Kod autoryzacyjny API; the account is the first part of your Fakturownia address (mojafirma for mojafirma.fakturownia.pl). Nothing is issued until then; paid orders wait and can be issued later. For sample data instead, set demo: true.",
   },
   stats: {
     issued24h: "Issued in 24 h",
@@ -99,6 +100,9 @@ const en = {
     never: "Nobody has turned it on yet.",
     turnedOn: "{{name}}: on.",
     turnedOff: "{{name}}: off.",
+    beta: "Beta",
+    betaHint:
+      "Built from the Fakturownia API documentation and tested against a simulated account, not yet against a real account with KSeF. Try it on a test account (with KSeF DEMO) before you turn it on in your store.",
   },
   connection: {
     title: "Connection",
@@ -323,6 +327,7 @@ const en = {
     buyerWarning: {
       invalid: "Issued for a consumer: the NIP from {{source}} {{reason}}.",
       companyWithoutNip: "Issued for a consumer: the billing address names a company but no NIP was found.",
+      nipOnReceipt: "A receipt names a consumer: the NIP from {{source}} came after the receipt was queued. For an invoice to this receipt, issue it in Fakturownia.",
       reasons: {
         checksum: "fails the checksum",
         length: "does not have 10 digits",
@@ -331,6 +336,7 @@ const en = {
     },
     email: {
       pending: "E-mail waiting",
+      sending: "E-mail being sent",
       sent: "E-mailed {{time}}",
       failed: "E-mail failed",
     },
@@ -626,7 +632,7 @@ const en = {
       ksef: {
         title: "Connect KSeF inside Fakturownia",
         p1: "The plugin does not send anything to KSeF itself: Fakturownia does. In Fakturownia: Ustawienia, Integracje i dodatki, KSeF. Activate it, choose the NIP and authorize with a certificate or an authorization file. KSeF (DEMO) under the same menu is for a test run.",
-        p2: "Then Ustawienia, KSeF, Automatyczna wysyłka: choose what goes automatically (only Polish companies, all companies, or companies and private persons). The plugin always sends buyer_company, which this setting decides by.",
+        p2: "Then Ustawienia, KSeF, Automatyczna wysyłka: choose what goes automatically (only Polish companies, all companies, or companies and private persons). The plugin always sends buyer_company, which this setting decides by. KSeF is mandatory in 2026 (from 1 February for the largest taxpayers, from 1 April for the others), and the modes that send only companies leave invoices for private persons outside KSeF: decide with your accountant or tax adviser which mode your store needs.",
         p3: "Leave \"Zablokuj tworzenie faktur niezgodnych z KSeF\" on: a document KSeF would reject is then refused at once (HTTP 422) and the row says why, instead of a rejection later.",
         link: "KSeF guide of the Fakturownia API",
         check: "A VAT invoice gets a KSeF number a few minutes after issue (KSeF: Accepted).",
@@ -711,7 +717,7 @@ const en = {
       },
       nip: {
         q: "Fakturownia refused a document (HTTP 422)",
-        a1: "The message names the field. A NIP that fails the checksum no longer reaches Fakturownia: such a buyer gets a consumer document and the row says why; fix the NIP in the order and correct the document in Fakturownia if the buyer needs a company invoice.",
+        a1: "The message names the field. A NIP that fails the checksum no longer reaches Fakturownia: such a buyer gets a consumer document and the row says why. If the buyer needs a company invoice: on an account with KSeF a correction cannot change the buyer's NIP or type, so issue a correction to zero of that document and a new invoice for the company by hand in Fakturownia (the plugin issues one final document per order).",
         a2: "On a KSeF account Fakturownia also refuses what KSeF would, and says which field. Fix the data in Medusa, then click Retry. Lines with the zw (exempt) rate need the basis of the exemption on a KSeF account, which this plugin does not send yet: tell us if you sell exempt goods.",
       },
       ksefRejected: {

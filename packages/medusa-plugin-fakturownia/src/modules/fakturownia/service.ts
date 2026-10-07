@@ -9,7 +9,7 @@ import FakturowniaSetting from "./models/fakturownia-setting"
 import { FakturowniaClient } from "./lib/client"
 import { fetchDocumentPdf, type PdfDownload } from "./lib/files"
 import { missingOptions, resolveOptions, type FakturowniaPluginOptions, type ResolvedFakturowniaOptions } from "./lib/options"
-import { maskSecrets } from "./lib/security"
+import { maskForStorage } from "./lib/security"
 
 type InjectedDependencies = {
   logger: Logger
@@ -28,9 +28,9 @@ type InjectedDependencies = {
  * demo with a `fork` error of the entity manager, and every flow outside is
  * reusable from your own workflows anyway.
  *
- * MISSING OPTIONS DO NOT BREAK THE BOOT. Without a token the module runs in
- * demo mode; with `demo: false` and no token it registers, the admin says
- * "not configured" and nothing is issued.
+ * MISSING OPTIONS DO NOT BREAK THE BOOT. Without a token the module
+ * registers, the admin says "not configured" and nothing is issued (an error
+ * in the log on production). Demo mode runs only with `demo: true`.
  */
 class FakturowniaModuleService extends MedusaService({
   FakturowniaDocument,
@@ -49,13 +49,13 @@ class FakturowniaModuleService extends MedusaService({
     this.logger_ = deps.logger
     this.options_ = resolveOptions(options)
     if (this.options_.demo) {
-      this.logger_.info(
-        this.options_.demoReason === "no_token"
-          ? "[fakturownia] Demo mode (no apiToken): a simulated Fakturownia account, nothing leaves Medusa."
-          : "[fakturownia] Demo mode: a simulated Fakturownia account, nothing leaves Medusa.",
-      )
+      this.logger_.info("[fakturownia] Demo mode (demo: true): a simulated Fakturownia account, nothing leaves Medusa.")
     } else if (!this.isConfigured()) {
-      this.logger_.info(`[fakturownia] Waiting for configuration, missing: ${this.missingOptions().join(", ")}.`)
+      const text =
+        `[fakturownia] NOT CONFIGURED, missing: ${this.missingOptions().join(", ")}. No document is issued until the token and the account are set; ` +
+        "orders wait and can be issued later. For sample data set demo: true."
+      if (process.env.NODE_ENV === "production") this.logger_.error(text)
+      else this.logger_.warn(text)
     }
   }
 
@@ -72,7 +72,7 @@ class FakturowniaModuleService extends MedusaService({
     return this.options_.demo
   }
 
-  /** Documents can be issued: demo mode, or a token and a valid account. */
+  /** Documents can be issued: demo mode (`demo: true`), or a token and a valid account. */
   isConfigured(): boolean {
     return missingOptions(this.options_).length === 0
   }
@@ -81,9 +81,9 @@ class FakturowniaModuleService extends MedusaService({
     return missingOptions(this.options_)
   }
 
-  /** Masks the API token and every token-like run of characters. */
+  /** Masks the API token, every token-like run of characters and every e-mail address: for the tables and the logs. */
   mask(text: string): string {
-    return maskSecrets(text, [this.options_.apiToken])
+    return maskForStorage(text, [this.options_.apiToken])
   }
 
   private client_: FakturowniaClient | null = null

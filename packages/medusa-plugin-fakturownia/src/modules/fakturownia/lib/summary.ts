@@ -5,9 +5,11 @@
  *
  *   value     gross totals per currency, never added across currencies;
  *             a correction counts with its own (usually negative) value
- *   unpaid    VAT invoices, receipts and proformas issued unpaid; a proforma
- *             already turned into a final document is left out, so one
- *             order's money is not counted twice
+ *   unpaid    `lib/unpaid.ts`, the one definition of the plugin: VAT
+ *             invoices, receipts and proformas issued unpaid; a proforma
+ *             already turned into a final document and the documents of
+ *             canceled orders are left out, so one order's money is not
+ *             counted twice
  *   KSeF      accepted among the VAT invoices and corrections that went to
  *             KSeF (a status other than none or not applicable); null when
  *             none did (an account without KSeF)
@@ -16,6 +18,7 @@
 import type { DocumentKind, MoneyDto, SummaryMonthDto } from "./contract"
 import { round, toNumber } from "./numbers"
 import { baseGovStatus } from "./status"
+import { isUnpaid } from "./unpaid"
 
 export interface SummaryRow {
   kind: string
@@ -27,6 +30,8 @@ export interface SummaryRow {
   gov_status: string | null
   fakturownia_id: string | null
   from_fakturownia_id: string | null
+  converted_at?: Date | string | null
+  cancel_requested_at?: Date | string | null
 }
 
 const KINDS: readonly DocumentKind[] = ["vat", "proforma", "receipt", "correction"]
@@ -65,8 +70,7 @@ export function monthlySummary(rows: readonly SummaryRow[], now: Date, months = 
     const gross = toNumber(r.total_gross)
     month.kinds[kind].count += 1
     add(month.kinds[kind].gross, currency, gross)
-    const turnedIntoFinal = kind === "proforma" && Boolean(r.fakturownia_id) && converted.has(String(r.fakturownia_id))
-    if (!r.paid && kind !== "correction" && !turnedIntoFinal && gross > 0) {
+    if (isUnpaid(r, converted)) {
       month.unpaidCount += 1
       add(month.unpaid, currency, gross)
     }

@@ -37,17 +37,39 @@ export const DOCUMENTS_PER_PASS = 20
 export const RECONCILE_PER_PASS = 20
 
 /**
- * A claimed row holds this lease. A process that dies between the claim and
- * the answer leaves an `issuing` row; after the lease it becomes `unknown`,
- * and an unknown row is reconciled before anything is sent again.
+ * A claimed row holds at least this lease. A process that dies between the
+ * claim and the answer leaves an `issuing` row; after the lease it becomes
+ * `unknown`, and an unknown row is reconciled before anything is sent again.
  */
 export const ISSUE_LEASE_MS = 10 * 60 * 1000
+
+/**
+ * The lease of one attempt, from `timeoutMs`: at least ten minutes, and
+ * fifteen request timeouts (lookups of several pages, each read up to three
+ * tries, the create and the second look), so about half an hour at the
+ * longest timeout. The owner renews it right before the create request
+ * leaves; when the renewal finds the claim gone, nothing is sent.
+ */
+export function claimLeaseMs(timeoutMs: number): number {
+  const t = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30_000
+  return Math.max(ISSUE_LEASE_MS, 15 * t)
+}
 
 /**
  * After an unknown result Fakturownia may still be committing the document.
  * The reconciliation waits this long before it trusts a "not found".
  */
 export const RECONCILE_GRACE_MS = 2 * 60 * 1000
+
+/**
+ * The grace of a row whose create request got no answer, counted from the
+ * moment the request left: the request may take up to `timeoutMs` to arrive,
+ * and Fakturownia a while more to commit it.
+ */
+export function reconcileGraceMs(timeoutMs: number): number {
+  const t = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30_000
+  return RECONCILE_GRACE_MS + t
+}
 
 /** Right after an unknown create, one more look a few seconds later. */
 export const UNKNOWN_RESULT_RECHECK_MS = 3000
@@ -114,6 +136,13 @@ export const PAYMENTS_PER_PASS = 30
 
 /** A waiting e-mail (KSeF number not assigned yet) is tried for this many days. */
 export const EMAIL_RETRY_DAYS = 3
+
+/**
+ * An automatic e-mail taken for sending (`sending`) longer than this belongs
+ * to a process that stopped mid-request: it becomes `failed` with a note that
+ * it may have gone out, and is never sent again by the plugin.
+ */
+export const EMAIL_CLAIM_STALE_MS = 15 * 60 * 1000
 
 /** Proformas checked for a fulfillment the event missed, per pass, and how far back. */
 export const FINALS_PER_PASS = 30

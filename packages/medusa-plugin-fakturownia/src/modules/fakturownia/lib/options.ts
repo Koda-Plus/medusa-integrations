@@ -23,9 +23,10 @@ import { WRITERS, type WriterKey } from "./writers"
  *   plugins: [{ resolve: "@koda-plus/medusa-plugin-fakturownia", options: { ... } }]
  *
  * Every key is optional. Missing values never break the boot: without an API
- * token the plugin runs in demo mode (a simulated Fakturownia account), and
- * with `demo: false` but no token it registers, says "not configured" in the
- * admin and issues nothing.
+ * token the plugin registers, says "not configured" in the admin (in red) and
+ * issues nothing. Demo mode (a simulated Fakturownia account) runs ONLY with
+ * `demo: true`: a token lost on production must never turn real orders into
+ * simulated documents.
  *
  * Numbers may come as strings (environment variables), lists as comma
  * separated strings.
@@ -40,7 +41,7 @@ export interface FakturowniaPluginOptions {
   apiToken?: string
   /** The account subdomain: "mojafirma" for https://mojafirma.fakturownia.pl. The full address works too. */
   account?: string
-  /** Simulated account, nothing leaves Medusa. Default: true when apiToken is missing. */
+  /** Simulated account, nothing leaves Medusa. Only when set to true (default false, also without a token). */
   demo?: boolean | string
   /** "vat" (default): the final document at the trigger. "proforma_then_vat": a proforma at the trigger, the final document after the first fulfillment. */
   documentFlow?: DocumentFlow | string
@@ -121,7 +122,7 @@ export interface ResolvedFakturowniaOptions {
   apiToken: string
   account: string
   demo: boolean
-  /** Why demo mode is on: the option, or no token. Null in live mode. */
+  /** Why demo mode is on: the `demo` option (the only way since 0.3.0). Null in live mode. */
   demoReason: "option" | "no_token" | null
   documentFlow: DocumentFlow
   trigger: IssueTrigger
@@ -268,8 +269,8 @@ function channelDepartments(v: unknown): Array<[string, number]> {
 export function resolveOptions(o: FakturowniaPluginOptions | undefined | null): ResolvedFakturowniaOptions {
   const opts = o ?? {}
   const apiToken = str(opts.apiToken)
-  const demoOption = boolOrNull(opts.demo)
-  const demo = demoOption === true || (demoOption === null && !apiToken)
+  /* Demo only when asked for: a missing token on production means "not configured", never simulated documents. */
+  const demo = boolOrNull(opts.demo) === true
   const flow = str(opts.documentFlow).toLowerCase()
   const trigger = str(opts.trigger).toLowerCase()
   const receiptKind = str(opts.receiptKind).toLowerCase()
@@ -278,7 +279,7 @@ export function resolveOptions(o: FakturowniaPluginOptions | undefined | null): 
     apiToken,
     account: normalizeAccount(opts.account),
     demo,
-    demoReason: !demo ? null : demoOption === true ? "option" : "no_token",
+    demoReason: demo ? "option" : null,
     documentFlow: flow === "proforma_then_vat" ? "proforma_then_vat" : "vat",
     trigger: trigger === "order_placed" ? "order_placed" : "payment_captured",
     receiptForConsumers: bool(opts.receiptForConsumers, false),

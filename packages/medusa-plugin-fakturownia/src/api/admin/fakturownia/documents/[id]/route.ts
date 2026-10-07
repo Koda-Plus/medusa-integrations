@@ -2,7 +2,6 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { DocumentDetailResponse } from "../../../../../modules/fakturownia/lib/contract"
 import { toEmailDto, toKsefEventDto, type EmailRow, type KsefEventRow } from "../../../../../modules/fakturownia/lib/dto"
 import { actorNames, getDocument, listDocuments, listPlans } from "../../../../../workflows/fakturownia/runtime"
-import { refreshDemoStatuses } from "../../../../../workflows/fakturownia/statuses"
 import { documentDto, fakturowniaService, planDtos, writersDto } from "../../helpers"
 
 /**
@@ -11,11 +10,10 @@ import { documentDto, fakturowniaService, planDtos, writersDto } from "../../hel
  * One document for the drawer of the admin: its KSeF history (every status
  * the plugin saw, every "send again"), its e-mail history (addresses
  * masked), its corrections and correction plans, and the writer switches.
- * Reads the database only.
+ * Reads the database only, never writes.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = fakturowniaService(req.scope)
-  await refreshDemoStatuses(req.scope)
   const row = await getDocument(svc, req.params.id)
   if (!row || Boolean(row.demo) !== svc.isDemo()) {
     res.status(404).json({ message: "Document not found." })

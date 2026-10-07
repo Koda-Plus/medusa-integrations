@@ -157,7 +157,7 @@ test("fetchDocumentPdf: demo never calls the network", async () => {
     throw new Error("no network in demo")
   }) as typeof fetch
   const file = await fetchDocumentPdf({
-    options: resolveOptions({}),
+    options: resolveOptions({ demo: true }),
     client: () => {
       throw new Error("no client in demo")
     },
@@ -185,7 +185,7 @@ test("fetchDocumentPdf: live reads the number, then the PDF, with the token in t
     (e: unknown) => e instanceof FakturowniaApiError && e.code === "PDF_NOT_READY",
   )
   await assert.rejects(
-    fetchDocumentPdf({ options: resolveOptions({}), client: () => client, externalId: String(doc.id), demo: false }),
+    fetchDocumentPdf({ options: resolveOptions({ demo: true }), client: () => client, externalId: String(doc.id), demo: false }),
     (e: unknown) => e instanceof FakturowniaApiError && e.code === "DEMO_MODE",
   )
   await assert.rejects(

@@ -20,16 +20,16 @@ afterEach(() => {
 
 test("addresses are masked to the first letters and the top level domain", () => {
   assert.equal(maskEmail("anna.nowak@example.com"), "a***@e***.com")
-  assert.equal(maskEmail("x@mail.firma.co.uk"), "x***@m***.uk")
+  assert.equal(maskEmail("x@mail.example.com"), "x***@m***.com")
   assert.equal(maskEmail("not an address"), "***")
   assert.equal(maskEmail(null), "***")
-  assert.equal(maskEmailsIn("Nie można wysłać do anna@example.com ani do b@c.pl"), "Nie można wysłać do a***@e***.com ani do b***@c***.pl")
+  assert.equal(maskEmailsIn("Nie można wysłać do anna@example.com ani do b@c.test"), "Nie można wysłać do a***@e***.com ani do b***@c***.test")
 })
 
 test("addresses typed by a person: separators, repeats, invalid ones and the limit of five", () => {
-  assert.deepEqual(parseRecipients("a@x.pl, b@x.pl;c@x.pl  A@X.PL"), { valid: ["a@x.pl", "b@x.pl", "c@x.pl"], invalid: [] })
-  assert.deepEqual(parseRecipients("a@x.pl, nope"), { valid: ["a@x.pl"], invalid: ["nope"] })
-  assert.deepEqual(parseRecipients("1@x.pl 2@x.pl 3@x.pl 4@x.pl 5@x.pl 6@x.pl").invalid, ["6@x.pl"])
+  assert.deepEqual(parseRecipients("a@x.test, b@x.test;c@x.test  A@X.TEST"), { valid: ["a@x.test", "b@x.test", "c@x.test"], invalid: [] })
+  assert.deepEqual(parseRecipients("a@x.test, nope"), { valid: ["a@x.test"], invalid: ["nope"] })
+  assert.deepEqual(parseRecipients("1@x.test 2@x.test 3@x.test 4@x.test 5@x.test 6@x.test").invalid, ["6@x.test"])
   assert.deepEqual(parseRecipients(""), { valid: [], invalid: [] })
   assert.equal(isEmail("a@b"), false)
 })
@@ -74,11 +74,11 @@ test("a manual e-mail needs the armed writer; then it goes once, recorded with t
 test("to other addresses, with the PDF: the documented parameters; a wrong address is refused before anything leaves", async () => {
   const { s, fake, doc } = await issuedLive()
   await armEmails(s)
-  await assert.rejects(sendDocumentEmail(s.container, doc.id, { kind: "manual", to: "biuro@firma.pl, nope", actorId: null }), (e: unknown) => e instanceof ActionError && e.status === 400)
-  await sendDocumentEmail(s.container, doc.id, { kind: "manual", to: "biuro@firma.pl; ksiegowa@firma.pl", attachPdf: true, actorId: null })
+  await assert.rejects(sendDocumentEmail(s.container, doc.id, { kind: "manual", to: "biuro@example.com, nope", actorId: null }), (e: unknown) => e instanceof ActionError && e.status === 400)
+  await sendDocumentEmail(s.container, doc.id, { kind: "manual", to: "biuro@example.com; ksiegowa@example.com", attachPdf: true, actorId: null })
   const call = fake.calls.find((c) => c.path.endsWith("/send_by_email.json"))!
-  assert.deepEqual([call.query.get("email_to"), call.query.get("email_pdf")], ["biuro@firma.pl,ksiegowa@firma.pl", "true"])
-  assert.deepEqual([s.emails.rows[0].recipient, s.emails.rows[0].with_pdf], ["b***@f***.pl, k***@f***.pl", true])
+  assert.deepEqual([call.query.get("email_to"), call.query.get("email_pdf")], ["biuro@example.com,ksiegowa@example.com", "true"])
+  assert.deepEqual([s.emails.rows[0].recipient, s.emails.rows[0].with_pdf], ["b***@e***.com, k***@e***.com", true])
 })
 
 test("Fakturownia's refusal (no KSeF number yet) is recorded as refused; a lost answer is never sent again", async () => {
@@ -106,7 +106,9 @@ test("a reminder: an unpaid proforma or VAT invoice only, at most once a day", a
   const r = await sendDocumentEmail(s.container, doc.id, { kind: "reminder", actorId: "user_1" })
   assert.equal(r.outcome, "sent")
   await assert.rejects(sendDocumentEmail(s.container, doc.id, { kind: "reminder", actorId: "user_1" }), (e: unknown) => e instanceof ActionError && /less than a day/.test(e.message))
+  /* A day later (the history and the claim of the last reminder). */
   s.emails.rows[0].created_at = new Date(Date.now() - 25 * 3600 * 1000)
+  doc.reminder_at = new Date(Date.now() - 25 * 3600 * 1000)
   assert.equal((await sendDocumentEmail(s.container, doc.id, { kind: "reminder", actorId: "user_1" })).outcome, "sent")
   doc.paid = true
   s.emails.rows.forEach((e) => (e.created_at = new Date(0)))
@@ -125,7 +127,7 @@ test("the automatic e-mail is recorded once it goes out; writers.emails: false s
 })
 
 test("demo: the simulated mailbox, nothing sent", async () => {
-  const s = setup({}, [order()])
+  const s = setup({ demo: true }, [order()])
   globalThis.fetch = (async () => {
     throw new Error("demo mode must not call the network")
   }) as typeof fetch
@@ -133,9 +135,9 @@ test("demo: the simulated mailbox, nothing sent", async () => {
   await issueDue(s.container, "schedule")
   const doc = s.documents.rows[0]
   await armEmails(s, true)
-  const r = await sendDocumentEmail(s.container, doc.id, { kind: "manual", to: "biuro@firma.pl", actorId: "user_1" })
+  const r = await sendDocumentEmail(s.container, doc.id, { kind: "manual", to: "biuro@example.com", actorId: "user_1" })
   assert.equal(r.outcome, "sent")
   const mail = s.emails.rows[0]
-  assert.deepEqual([mail.demo, mail.recipient, mail.status], [true, "b***@f***.pl", "sent"])
+  assert.deepEqual([mail.demo, mail.recipient, mail.status], [true, "b***@e***.com", "sent"])
   assert.match(mail.subject, /^Faktura VAT FV 1\//)
 })

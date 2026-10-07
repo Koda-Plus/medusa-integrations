@@ -4,7 +4,7 @@ import { sendDocumentEmail } from "../../../../../../workflows/fakturownia/email
 import { ActionError, actorOf, documentDto, fakturowniaService } from "../../../helpers"
 
 /**
- * POST /admin/fakturownia/documents/:id/email  { "kind": "manual" | "reminder", "to": "ksiegowosc@firma.pl", "attachPdf": true }
+ * POST /admin/fakturownia/documents/:id/email  { "kind": "manual" | "reminder", "to": "ksiegowosc@example.com", "attachPdf": true }
  *
  * Fakturownia e-mails the document: to the buyer's address on the document,
  * or to `to` (up to five addresses, separated by commas), with the PDF
