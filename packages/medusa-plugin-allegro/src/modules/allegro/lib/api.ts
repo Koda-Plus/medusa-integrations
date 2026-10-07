@@ -28,7 +28,7 @@ export function getCheckoutForm(svc: AllegroModuleService, id: string): Promise<
   return apiGet<unknown>(svc, `/order/checkout-forms/${encodeURIComponent(id)}`, {})
 }
 
-/** One page of `GET /order/checkout-forms` by purchase date, for the operator import window. */
+/** One page of `GET /order/checkout-forms` by purchase date, for the catch-up import. */
 export function getCheckoutFormsByPurchase(
   svc: AllegroModuleService,
   from: Date,

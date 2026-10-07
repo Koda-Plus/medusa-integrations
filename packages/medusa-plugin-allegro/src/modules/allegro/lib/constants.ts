@@ -181,7 +181,7 @@ export const IMPORT_MAX_ATTEMPTS = 5
 /** Outbox attempts before an item needs a person. */
 export const OUTBOX_MAX_ATTEMPTS = 6
 
-/** The operator import window reads at most this many checkout forms. */
+/** The catch-up import reads at most this many checkout forms at once. */
 export const WINDOW_MAX_FORMS = 3000
 export const WINDOW_MAX_DAYS = 62
 

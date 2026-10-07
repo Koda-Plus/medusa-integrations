@@ -153,7 +153,7 @@ test("user agent: the registered app name, the version and the docs address", ()
   assert.equal(userAgentFor({ appName: "My Store Allegro", docsUrl: "https://shop.example.com/allegro" }), `My-Store-Allegro/${PKG.version} (+https://shop.example.com/allegro)`)
   assert.equal(userAgentFor({ appName: "Shop", docsUrl: "http://insecure" }), `Shop/${PKG.version} (+https://koda.plus)`)
   assert.equal(userAgentFor({ userAgent: "Custom/1.0 (+https://x.example)" }), "Custom/1.0 (+https://x.example)")
-  assert.equal(userAgentFor({}), `KodaPlus-Medusa-Allegro/${PKG.version} (+https://koda.plus)`)
+  assert.equal(userAgentFor({}), `KodaPlus-Allegro-Medusa/${PKG.version} (+https://koda.plus)`)
 })
 
 test("options: publish location validates the Polish province, invoice kinds are filtered", () => {

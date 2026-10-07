@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Fixed
+
+- Order import: Allegro event ids are opaque. The journal is read in the order Allegro returns it, the cursor moves to the last event of a page only after that page's rows are written, and only the cursor itself and repeats inside a page are left out. Ids used to be compared as text, and Allegro's own example id (a number in base64) does not sort that way, so events could be skipped and their orders never imported.
+- Demo mode runs only with `demo: true`. The setup prompt writes `demo: process.env.ALLEGRO_DEMO === "true"` and no longer switches demo on when `ALLEGRO_CLIENT_ID` is missing.
+- Demo orders are never placed or paid: they move from draft to `pending` in the order module, so no stock is reserved and no `order.placed` or `payment.captured` reaches invoicing, the ERP or e-mails; a cancellation on the simulated account cancels them without `order.canceled` or a refund. They carry `metadata.koda_demo`, and the arming dialog of the demo import says they land in this store.
+- Prices and draft offers go to Allegro only as gross prices: with net PLN prices in Medusa (its default) both plans are refused with `tax_exclusive_prices` and the old plan is cleared.
+- A price command goes only while Allegro still shows the price the plan started from; a price changed in the seller panel after the plan waits for the next one.
+- A wrong encryption key or client secret no longer deletes the stored tokens: the account reads as not connected and the status says why. Only `invalid_grant` disconnects. `invalid_client` and `unauthorized_client` come with a hint.
+- `GET /admin/allegro` no longer starts flows in demo mode; it only reads.
+- Which orders are the plugin's own is decided by its import table, never by order metadata: cart metadata cannot make an order look like an Allegro order the import would adopt and mark paid, and a duplicate of another integration's order no longer goes into `order_id`.
+- A change of the delivery address, the pickup point or the invoice data on Allegro after the import asks a person to compare (it only refreshed the status before).
+- A server error answers a plain message; the exception text goes to the server log, masked.
+- The User-Agent and the status report the package version (they said 0.2.0).
+
+### Changed
+
+- The import window is now the catch-up import ("Catch-up import", "Import zaległych zamówień"), and the exported `queueImportWindow` is `queueCatchUpImport`. The route `POST /admin/allegro/imports/window` and the stored rows stay as they were.
+- In demo mode `writes.orders` must be set explicitly; the other writers stay allowed by default in demo mode.
+- Without `appName` the User-Agent starts with `KodaPlus-Allegro-Medusa`.
+- Writes to `/admin/allegro*` need a JSON body or the `x-koda-request` header; the admin sends both and works for JWT admins too.
+- The page polls the status every 5 seconds while something runs (it was every 2), and the product card keeps its data for 30 seconds.
+- The product widget is the hostable card `allegro.product` with an `embedded` mode.
+- The import row keeps the buyer login, the delivery method, the pickup point and a short hash of the delivery and invoice data in `details`, so the order card and the summaries never read order metadata.
+- README: the demo option is explicit, new Events, Works with Koda Plus hosts, Public API, Uninstall and Compatibility sections, the Out of scope list reworded; a shorter package description; the unused `./providers/*` export is gone.
+
+### Added
+
+- The `koda.integration/1` contract: `GET /admin/allegro/integration`, `GET /admin/allegro/integration/summary` (orders, products and variants) and `GET /admin/allegro/integration/attention` (counters `imports_attention`, `imports_held`, `issues_open`, `offers_stock_problem`), with the facts `channel` (code `allegro`), `payment` (codes `cod` and `paid`), `delivery`, `buyer` and `listing`.
+- The order card `allegro.order` (zone `order.details`) over `GET /admin/allegro/medusa-orders/:id`: the import, payment, buyer login, delivery, totals, parcels and invoices sent and the returns and disputes of an imported order.
+- "Mark as handled" for an order that needs attention (`POST /admin/allegro/imports/:id/handled`), on the order card and in Imported orders.
+- Deep links into the page: `?filter=`, `?q=` and `?list=`.
+- Options `previousEncryptionKeys` (key rotation) and `prices.taxInclusive`.
+- Demo data from the job `allegro-demo-seed` or `POST /admin/allegro/demo/seed`, with `demoSeed` in the status and a "Prepare now" button.
+- Events `allegro.writer.tripped`, `allegro.import.held` and `allegro.outbox.failed`.
+- The store routes refuse `allegro_*`, `marketplace_order_ref` and `koda_demo` in shopper metadata.
+- Type declarations in the package.
+
 ## 0.2.1 (2026-10-07)
 
 ### Fixed

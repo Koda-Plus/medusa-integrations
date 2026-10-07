@@ -749,12 +749,14 @@ export async function runOrderImport(container: MedusaContainer, input: ImportRu
 }
 
 /**
- * The operator import window: checkout forms bought between two dates, ready
- * for processing, queued as import rows (once each). They are imported by
- * the next armed run. The event cursor is not touched: the window fills a
- * gap behind it.
+ * The catch-up import: checkout forms bought between two dates, ready for
+ * processing, queued as import rows (once each), for orders from before the
+ * import was armed or from a pause longer than Allegro keeps events. They are
+ * imported by the next armed run. The event cursor is not touched: this fills
+ * a gap behind it. (The route stays /admin/allegro/imports/window and the
+ * rows keep `source: "window"`.)
  */
-export async function queueImportWindow(container: MedusaContainer, from: Date, to: Date): Promise<AllegroImportWindowResponse> {
+export async function queueCatchUpImport(container: MedusaContainer, from: Date, to: Date): Promise<AllegroImportWindowResponse> {
   const svc = allegroOf(container)
   const o = svc.getOptions()
   if (!(from.getTime() < to.getTime())) return { queued: 0, known: 0, read: 0, complete: true, message: "The start must be before the end." }
@@ -794,7 +796,7 @@ export async function queueImportWindow(container: MedusaContainer, from: Date, 
     known: ids.length - queued,
     read: ids.length,
     complete,
-    message: complete ? null : `Stopped at ${WINDOW_MAX_FORMS} forms; run the window again with a later start.`,
+    message: complete ? null : `Stopped at ${WINDOW_MAX_FORMS} forms; run the catch-up import again with a later start.`,
   }
 }
 
@@ -810,4 +812,22 @@ export async function retryImport(container: MedusaContainer, id: string): Promi
       : {}
   const row = await store.transition(id, ["held", "skipped"], { status: "pending", attempts: 0, next_attempt_at: null, reason_code: null, reason: null, ...legacyDuplicate })
   return Boolean(row)
+}
+
+/**
+ * A person checked an order that needed attention (changed or cancelled on
+ * Allegro after the import, a total that differs): the flag goes, the reason
+ * stays, the row says who and when. Only rows with something to handle.
+ */
+export async function markImportHandled(container: MedusaContainer, id: string, actorId: string | null): Promise<boolean> {
+  const svc = allegroOf(container)
+  const [row] = (await svc.listAllegroOrderImports({ id } as never, { take: 1 })) as unknown as ImportRowDb[]
+  if (!row || (!row.attention && !row.total_mismatch)) return false
+  const store = importStoreOf(container)
+  const done = await store.transition(id, ["imported", "cancelled", "held", "skipped", "pending", "unknown"], {
+    attention: null,
+    total_mismatch: false,
+    details: { ...(row.details ?? {}), handled_at: new Date().toISOString(), handled_by: actorId },
+  })
+  return Boolean(done)
 }

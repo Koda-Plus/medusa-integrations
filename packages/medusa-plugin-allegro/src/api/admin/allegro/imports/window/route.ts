@@ -1,12 +1,12 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { AllegroImportWindowResponse } from "../../../../../modules/allegro/lib/contract"
-import { queueImportWindow } from "../../../../../workflows/allegro/run-import"
+import { queueCatchUpImport } from "../../../../../workflows/allegro/run-import"
 import { allegroService, sendError } from "../../helpers"
 
 /**
  * POST /admin/allegro/imports/window  { from: ISO date, to: ISO date }
  *
- * The operator import window: checkout forms bought in the range and ready
+ * The catch-up import: checkout forms bought in the range and ready
  * for processing are queued once each, and imported by the next armed run.
  * For history before the import was armed, and for gaps longer than the 60
  * days Allegro keeps order events. The event cursor is not touched.
@@ -21,7 +21,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
   try {
-    const answer: AllegroImportWindowResponse = await queueImportWindow(req.scope, from, to)
+    const answer: AllegroImportWindowResponse = await queueCatchUpImport(req.scope, from, to)
     res.json(answer)
   } catch (err) {
     sendError(res, svc, err, "catch-up import")

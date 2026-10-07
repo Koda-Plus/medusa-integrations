@@ -10,6 +10,7 @@ import type {
   AllegroIssuesResponse,
   AllegroOfferFilter,
   AllegroOffersResponse,
+  AllegroOrderCardResponse,
   AllegroOrderFilter,
   AllegroOrdersResponse,
   AllegroOutboxResponse,
@@ -69,6 +70,7 @@ export const allegroKeys = {
   orders: (filter: AllegroOrderFilter, q: string, offset: number, limit: number) => ["allegro", "orders", filter, q, offset, limit] as const,
   runs: ["allegro", "runs"] as const,
   product: (id: string) => ["allegro", "product", id] as const,
+  order: (id: string) => ["allegro", "order", id] as const,
   plan: (kind: AllegroPlanKind, filter: string, q: string, offset: number, limit: number) => ["allegro", "plan", kind, filter, q, offset, limit] as const,
   imports: (filter: AllegroImportFilter, q: string, offset: number, limit: number) => ["allegro", "imports", filter, q, offset, limit] as const,
   outbox: (writer: "shipping" | "invoices", status: string, offset: number, limit: number) => ["allegro", "outbox", writer, status, offset, limit] as const,
@@ -275,6 +277,30 @@ export function useAllegroOutboxRetry() {
   const client = useQueryClient()
   return useMutation<AllegroActionResponse, unknown, string>({
     mutationFn: (id) => allegroFetch<AllegroActionResponse>(`/admin/allegro/outbox/${encodeURIComponent(id)}/retry`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: allegroKeys.all })
+    },
+  })
+}
+
+/* ---- the order card ----------------------------------------------------- */
+
+/** What Allegro knows about one Medusa order (import, parcels, invoices, issues). */
+export function useAllegroOrderCard(orderId: string) {
+  return useQuery<AllegroOrderCardResponse>({
+    queryKey: allegroKeys.order(orderId),
+    queryFn: () => allegroFetch<AllegroOrderCardResponse>(`/admin/allegro/medusa-orders/${encodeURIComponent(orderId)}`),
+    enabled: Boolean(orderId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/** A person checked an order that needed attention. */
+export function useAllegroImportHandled() {
+  const client = useQueryClient()
+  return useMutation<AllegroActionResponse, unknown, string>({
+    mutationFn: (id) => allegroFetch<AllegroActionResponse>(`/admin/allegro/imports/${encodeURIComponent(id)}/handled`, { method: "POST", body: {} }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: allegroKeys.all })
     },
