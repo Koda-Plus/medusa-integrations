@@ -1,61 +1,50 @@
-# CLAUDE.md — medusa-integrations
+# CLAUDE.md: medusa-integrations
 
-Monorepo wtyczek Koda Plus dla Medusy v2 (`Koda-Plus/medusa-integrations`). Dziesięć paczek npm, każda publikowana osobno. Osiem integruje zewnętrzną usługę i nadaje się do katalogu medusajs.com/integrations; Negocjacje i Zadania to nasze własne moduły (katalog bierze tylko integracje z usługą zewnętrzną, więc nie mają słowa `medusa-plugin-integration`):
+Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Ten npm packages, each published on its own. Eight integrate an outside service and belong in the medusajs.com/integrations catalog; Negotiations and Tasks are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
 
-| Paczka | Namespace | Moduł (klucz kontenera) | Kategoria w katalogu |
+| Package | Namespace | Module (container key) | Catalog |
 | --- | --- | --- | --- |
 | `packages/medusa-plugin-olx` | `olx` | `olx` | Other |
 | `packages/medusa-plugin-allegro` | `allegro` | `allegro` | Other |
 | `packages/medusa-plugin-baselinker` | `baselinker` | `baselinker` | ERP |
 | `packages/medusa-plugin-subiekt-nexo` | `subiekt` | `subiekt_nexo` | ERP |
 | `packages/medusa-plugin-fakturownia` | `fakturownia` | `fakturownia` | Other |
-| `packages/medusa-plugin-inpost` | `inpost` | patrz README paczki (moduł danych + provider fulfillment `inpost`) | Fulfillment (`medusa-plugin-shipping`) |
-| `packages/medusa-plugin-stripe` | `stripe` | patrz README paczki (obok oficjalnego providera Stripe) | Payment |
-| `packages/medusa-plugin-emails` | `emails` | `emails` (+ provider powiadomień `emails`) | Notification |
-| `packages/medusa-plugin-negotiations` | `negotiations` | `negotiations` | poza katalogiem |
-| `packages/medusa-plugin-tasks` | `tasks` | patrz README paczki | poza katalogiem |
+| `packages/medusa-plugin-inpost` | `inpost` | data module `inpost` and fulfillment provider `inpost` | Shipping |
+| `packages/medusa-plugin-stripe` | `stripe` | next to the official Stripe provider | Payment |
+| `packages/medusa-plugin-emails` | `emails` | `emails` and notification provider `emails` | Notification |
+| `packages/medusa-plugin-negotiations` | `negotiations` | `negotiations` | outside the catalog |
+| `packages/medusa-plugin-tasks` | `tasks` | see the package README | outside the catalog |
 
-Mostek Subiekta (.NET 8, Sfera) to OSOBNE, komercyjne repo `Koda-Plus/subiekt-nexo-bridge` (lokalnie `Desktop/koda/subiekt-nexo-bridge`). Kontrakt `packages/medusa-plugin-subiekt-nexo/contract/` jest źródłem prawdy, mostek trzyma jego kopię.
+The list of packages lives in each `package.json` (`koda` block: `ns`, `moduleDir`, `brand`, `title`, `kind`, `catalog`); every script reads it from there (`scripts/lib/packages.mjs`). The Subiekt plugin talks to a separate bridge on the store's Windows machine; the contract in `packages/medusa-plugin-subiekt-nexo/contract/` is the source of truth for it.
 
-## Skąd to się wzięło
+The repository is PUBLIC: nothing about clients, machines, accounts, tokens or real stores goes here, only code, documentation and demo data.
 
-- OLX, Allegro, BaseLinker: uogólnione z integracji klienta OponyKola (Moto M5, `clients/oponykola/apps/backend`). Allegro i OLX tam tylko czytają; BaseLinker tam jest hubem (zamówienia do BL dokładnie raz, statusy i numery przesyłek z powrotem, stany z BL na planie).
-- Fakturownia: uogólnione z produkcyjnej integracji Crème Bar (`Desktop/cremebar/cremebar/apps/backend/src/modules/fakturownia`), z poprawkami: stan we własnych tabelach zamiast `order.metadata`, unikalny wiersz na zamówienie i rodzaj dokumentu, atomowe przejęcie wiersza, wyszukiwanie po `?oid=` przed każdym wystawieniem, stawki VAT z linii podatkowych Medusy. Notatki o API (zweryfikowane w dokumentacji): `packages/medusa-plugin-fakturownia/docs/fakturownia-api-notes.md`.
-- Subiekt nexo: uogólnione z produkcyjnego mostka Crème Bar (`Desktop/cremebar/NexoMedusaBridge`, v1.2.3), z odwróconą architekturą (Medusa ciągnie zdarzenia i stany, mostek nie ma klucza admina).
-- Negocjacje i E-maile (07.10.2026): uogólnione z modułów aplikacji demo (`koda-plus-demo/medusa-backend`: `modules/negotiations`, `modules/emails-resend`); demo działa już na paczkach (tabele negocjacji te same, migracja tylko dokłada kolumny).
-- InPost (07.10.2026): z produkcji Crème Bar (provider w `cremebar/apps/backend/src/modules/inpost` i OMS `cremebar oms/src/lib/inpost*.ts`, który nadaje paczki). Hosty ShipX to `api-shipx-pl.easypack24.net` i `sandbox-api-shipx-pl.easypack24.net` (stary provider miał błędne `api.inpost.pl`).
-- Stripe (07.10.2026): nakładka na oficjalnego providera Medusy (`@medusajs/medusa/payment-stripe`, karty, BLIK, Przelewy24), tylko odczyt; konfiguracje z OponyKola i Crème Bar.
-- Zadania (07.10.2026): moduł KODA Panel z demo (`modules/koda-panel`, tam prawdziwa roadmapa zespołu) i ze sklepów klientów; paczka przejmuje stare tabele `task`, `task_comment`, `activity_log` kopią do własnych.
-- Historia OLX i Subiekta przeniesiona przez `git subtree` (stare `koda-plus-demo/packages/medusa-plugin-olx` i repo `Koda-Plus/medusa-plugin-subiekt-nexo` są zastąpione tym monorepo).
+## Conventions (the vendor script depends on them)
 
-## Konwencje (twarde, od nich zależy skrypt kopiowania)
+- Files outside the namespace folders carry the namespace prefix: `jobs/<ns>-*`, `subscribers/<ns>-*`, `admin/widgets/<ns>-*`, `admin/lib/<ns>-*`. Folders: `modules/<ns>`, `workflows/<ns>`, `api/admin/<ns>`, `api/store/<ns>`, `api/hooks/<ns>`, `api/<ns>`, `admin/routes/<ns>`.
+- Admin i18n: `src/admin/i18n/{index,en,pl}.ts`, the namespace is the plugin namespace, components use `useTranslation("<ns>")`. `pl.ts` is typed by `en.ts` and ends with `export default typeset(pl)`; text outside the dictionaries goes through `nb()`.
+- A THIN module service: the generated CRUD, the options, masking. Logic lives in `lib/*` and `workflows/*`, which call `svc.listX()` from outside (own service methods calling `this.listX()` break when the module runs as app code).
+- Missing options never break the boot. Demo mode only with `demo: true`, never because a key is missing; demo rows carry a `demo` flag.
+- Hand written migrations with `create table if not exists`. `model.bigNumber` needs a `raw_` column, so we use `number` or `json`.
+- **A migration name (file and class) is unique across ALL packages.** Medusa records migrations by name in one shared table, so a second migration with the same name counts as done and its tables never appear. `node scripts/check-repo.mjs` checks it.
+- Order and cart metadata are not state: a shopper sets them through the Store API. Facts and decisions come from the plugin's own tables; plugin keys are reserved on the store routes with the kit's `reservedMetadataGuard`.
+- READMEs have no tables, and links are absolute (`https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/<dir>/...`), because npm and medusajs.com render them outside the repo. Images from `raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/<dir>/docs/`.
+- Copy: English in code and README, Polish in `pl.ts` with full diacritics. No en dash, em dash or middle dot anywhere.
 
-- Pliki poza katalogami namespace mają przedrostek namespace: `jobs/<ns>-*`, `subscribers/<ns>-*`, `admin/widgets/<ns>-*`, `admin/lib/<ns>-*`. Katalogi: `modules/<ns>`, `workflows/<ns>`, `api/admin/<ns>`, `api/store/<ns>`, `api/hooks/<ns>`, `api/<ns>`, `admin/routes/<ns>`.
-- i18n admina: `src/admin/i18n/{index,en,pl}.ts`, przestrzeń nazw = namespace, komponenty `useTranslation("<ns>")`. `pl.ts` typowany przez `en.ts`.
-- Serwis modułu CIENKI: wygenerowany CRUD + opcje + maskowanie. Logika w `lib/*` i `workflows/*`, które wołają `svc.listX()` z zewnątrz. Własne metody serwisu wołające `this.listX()` wywalają się na demo (błąd `fork`, patrz `koda-plus-demo/CLAUDE.md`).
-- Brak opcji nigdy nie wywraca startu. Tryb demo: dane z katalogu sklepu przez te same parsery, wiersze z flagą `demo`.
-- Migracje pisane ręcznie z `create table if not exists`. `model.bigNumber` wymaga kolumny `raw_`, więc używamy `number`/`json`.
-- **Nazwa migracji (plik i klasa) musi być unikalna we WSZYSTKICH paczkach.** Medusa zapisuje wykonane migracje po samej nazwie we wspólnej tabeli `mikro_orm_migrations`, więc druga migracja o tej samej nazwie w innym module uchodzi za wykonaną i jej tabele nigdy nie powstają (06.10.2026: cztery paczki miały `Migration20261006090000`, na demo przeszła tylko OLX, BaseLinker padł na „relation baselinker_import does not exist”). Przed dodaniem migracji: `ls packages/*/src/modules/*/migrations/`.
-- README każdej paczki BEZ tabel i z opcjonalnymi obrazkami (medusajs.com spłaszcza tabele). Obrazki z `raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/<paczka>/docs/`.
-- Copy: angielski w kodzie i README, polski w `pl.ts` z pełnymi znakami diakrytycznymi. Nigdzie myślnika półpauzy, pauzy ani kropki środkowej.
-- Polskie słowniki kończą się `export default typeset(pl)` (nasz skrypt bez sierotek, `nb()` w kicie), tekst spoza słowników (opisy i opinie referencji) idzie przez `nb()`.
+## The shared kit
 
-## Strona w panelu (wspólny kit)
+`kit/` is the one source of what every package shares: the `koda.integration/1` contract (types, server routes for the manifest, record summaries and board counters), the guards (`writeGuard`, `reservedMetadataGuard`), the admin fetch (backend URL, session or JWT), the card registry (`hostable`, `WidgetFrame`), the page kit (`<ns>-guide.tsx`), the community strings and the conformance tests. `npm run kit:sync` writes the copies into the packages, `npm run kit:check` fails on drift. Never edit a generated copy. How to put a package on the contract: `kit/README.md`.
 
-- `src/admin/lib/<ns>-guide.tsx` jest IDENTYCZNY we wszystkich paczkach: zmieniasz w jednej, kopiujesz plik 1:1 do pozostałych i sprawdzasz `md5sum packages/*/src/admin/lib/*-guide.tsx`.
-- Referencje (opcja `references`, odznaka „Działa w sklepach” i koniec przewodnika): od 07.10.2026 wpis może mieć `soon: true` (sklep, który wkrótce rusza na Medusie: odznaka „Wkrótce”, bez linku, `url` niewymagany), a daty „od kiedy” (`since`) nie pokazujemy nigdzie; stary `since` w konfiguracji jest po cichu ignorowany. Parser `lib/references.ts` i etykiety `count(live, soon)`, `soonMore`, `soon` jak w OLX.
-- Nagłówek każdej strony: tytuł z odznakami (tryb demo, zapisy), opis, pod nim odznaka „Działa w sklepach” i „Dodaj swój sklep” (formularz otwiera mail na `KODA_EMAIL` = hello@koda.plus). Po prawej Panel | Przewodnik, zębatka Ustawień i akcje, a pod nimi `HelpButtons`: „Kopiuj prompt” i „Pomoc na Discordzie” (`KODA_DISCORD`, oficjalny symbol z discord.com/branding, kolor Blurple). Napisy z bloku `community` w słownikach (te same klucze w pięciu paczkach, `communityLabels()`).
-- Prompt składa `buildSetupPrompt()` w kicie (PL i EN, według języka panelu) z `usePromptSpec()` eksportowanego przez `<ns>-guide-view.tsx`: ta sama konfiguracja co w przewodniku plus przełącznik demo w wersji z medusa.koda.plus. Zmieniasz konfigurację w przewodniku, prompt idzie za nią. Prompt każe instalować paczkę z npm, więc u obcych zadziała dopiero po publikacji (do tego czasu kieruje do Koda Plus).
+## Commands
 
-## Komendy
+- `npm run check`: kit check, then tests and types in every package (`--keep-going`, a summary at the end). `node scripts/check-repo.mjs` (add `--strict` before a release): the repository rules.
+- `npm run build`: `medusa plugin:build` in each package.
+- `npm run vendor`: copies every plugin into a Medusa app as app code (`../koda-plus-demo/medusa-backend`), plus the host side of the kit when the app asks for it in `koda-vendor.json`.
+- `node scripts/smoke.mjs`: the packed tarballs in a fresh Medusa app (migrations, build, start, admin pages).
+- Each package: `npm install` (lockfiles are per package), `npm test`, `npm run typecheck`, `npm run build`.
 
-- `npm run check`: testy + typy we wszystkich paczkach. `npm run build`: `medusa plugin:build` w każdej. `npm run release`: publikacja na npm (patrz Publikacja).
-- `npm run vendor`: kopia wszystkich wtyczek do `../koda-plus-demo/medusa-backend` (medusa.koda.plus). Potem w koda-plus-demo: commit + push na `main` = wdrożenie na Railway. Zmiana `package.json` backendu psuje cache Dockera, więc wtyczki NIE są tam zależnościami npm, tylko kodem aplikacji.
-- Widżety wtyczek trafiają tam, gdzie każe aplikacja: `koda-vendor.json` obok jej `package.json` (`{ "widgetsDir": "admin/extensions" }`). medusa.koda.plus trzyma je w `src/admin/extensions`, więc Medusa nie montuje ich pojedynczo; własne widżety aplikacji (`koda-*`) pokazują je jako zakładki jednej karty „Integracje” na stronie zamówienia, produktu i klienta, a liczniki wtyczek w tablicach nad listami. Nowy widżet wtyczki trzeba więc dopisać do `src/admin/lib/koda-integrations.tsx` w koda-plus-demo, inaczej nigdzie się nie pokaże.
-- Każda paczka: `npm install` (nie `npm ci`: skopiowany lockfile OLX bywał rozjechany), `npm test`, `npm run typecheck`, `npm run build`.
+## Releasing
 
-## Publikacja
+`npm run release -- --dry-run` shows what would go out and preflights all of it (tests, types, build, tarball contents). `npm run release -- --stamp` dates the CHANGELOG headings. `npm run release` publishes from a clean `main` equal to `origin/main`, tags each version and pushes the tags. Details in the header of `scripts/publish-all.mjs`.
 
-- Repo `Koda-Plus/medusa-integrations` jest PUBLICZNE od 06.10.2026 (decyzja Remika, po audycie całej historii: bez sekretów, plików `.env`, danych klientów; wszystkie zrzuty w historii to dane demo). Wszystko, co tu trafia, jest od razu publiczne: żadnych tokenów, danych klientów ani zrzutów z prawdziwych sklepów.
-- npm: `npm run release` publikuje wszystkie paczki po kolei (pomija wersje już opublikowane, więc można go ponowić). Wymaga `npm login` na koncie npm `koda-plus` (scope `@koda-plus` należy do konta, organizacja niepotrzebna). Konto ma 2FA przy logowaniu i każdym zapisie: sesja CLI sprzed włączenia 2FA dostaje E403, a każdy `npm publish` czeka w terminalu na potwierdzenie w przeglądarce (link `npmjs.com/auth/cli/...`). Logowanie i potwierdzenia robi Remik. `npm publish` odpala testy i `medusa plugin:build` każdej paczki, a po wysłaniu npm potrzebuje kilku minut, zanim `npm view` pokaże nową wersję. Pierwsza publikacja nowej paczki zostawia w rejestrze zaślepkę `0.0.0-stage` (opis „Temporary package placeholder for staged publishing”, `stub: true`): przez te minuty to ona jest `latest`, potem `latest` przechodzi na wydaną wersję, a zaślepka zostaje na liście wersji. To mechanizm npm, nie błąd wydania. Sprawdzaj `npm view <paczka> dist-tags.latest`, nie samo `version`. Nowa wersja: podnieś `version` i CHANGELOG w paczce, potem `npm run release`.
-- Katalog medusajs.com/integrations zbiera paczki z npm po słowach kluczowych `medusa-v2`, `medusa-plugin-integration` i kategorii (`medusa-plugin-other` dla OLX, Allegro, Fakturowni, `medusa-plugin-erp` dla BaseLinkera i Subiekta, `medusa-plugin-shipping` dla InPost, `medusa-plugin-payment` dla Stripe, `medusa-plugin-notification` dla E-maili). Dokumentacja Medusy: „Only plugins that integrate third-party services are listed”, dlatego Negocjacje i Zadania nie mają `medusa-plugin-integration` (deck dla Medusy prosi o listing ośmiu).
+The medusajs.com catalog picks packages from npm by the keywords `medusa-v2`, `medusa-plugin-integration` and a category (`medusa-plugin-other`, `medusa-plugin-erp`, `medusa-plugin-shipping`, `medusa-plugin-payment`, `medusa-plugin-notification`).

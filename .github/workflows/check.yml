@@ -1,0 +1,86 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: tests and types (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: koda
+          POSTGRES_PASSWORD: koda
+          POSTGRES_DB: koda_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U koda" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      INPOST_TEST_PG_URL: postgres://koda:koda@localhost:5432/koda_test
+      NEGOTIATIONS_TEST_PG_URL: postgres://koda:koda@localhost:5432/koda_test
+      TASKS_TEST_PG_URL: postgres://koda:koda@localhost:5432/koda_test
+      KODA_TEST_PG_URL: postgres://koda:koda@localhost:5432/koda_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: packages/*/package-lock.json
+      - run: npm run install:all
+      - run: node scripts/kit.mjs check
+      - run: node scripts/check-repo.mjs
+      - run: node scripts/each.mjs --keep-going npm test
+      - run: node scripts/each.mjs --keep-going npm run typecheck
+      - run: node scripts/each.mjs --keep-going npm run build
+      - name: npm audit (information only)
+        run: node scripts/each.mjs --keep-going npm audit --omit=dev || true
+
+  smoke:
+    name: smoke test in fresh Medusa apps
+    needs: check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smoke
+          POSTGRES_PASSWORD: smoke
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U smoke" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SMOKE_PG_URL: postgres://smoke:smoke@localhost:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/*/package-lock.json
+      - run: npm run install:all
+      - run: npm i -g playwright@1.56.1 && npx playwright install --with-deps chromium
+      - run: node scripts/smoke.mjs --medusa latest --medusa 2.12 --workdir ${{ runner.temp }}/smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-report
+          path: |
+            ${{ runner.temp }}/smoke/report.json
+            ${{ runner.temp }}/smoke/screens/

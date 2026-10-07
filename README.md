@@ -42,12 +42,18 @@ Every package follows the same rules, so a merchant who installed one already kn
 Packages are independent: own `package.json`, own lockfile, own `node_modules`. The root scripts run a command in every package:
 
 ```bash
-npm run install:all   # npm ci in every package
-npm run check         # unit tests and strict TypeScript, every package
+npm run install:all   # npm install in every package
+npm run check         # the kit check, unit tests and strict TypeScript, every package
 npm run build         # medusa plugin:build, every package
+node scripts/check-repo.mjs   # the repository rules (migration names, prefixes, copy, READMEs, keywords, secrets)
+node scripts/smoke.mjs        # the packed tarballs in a fresh Medusa app
 ```
 
-To work on one package, `cd packages/<name>` and use its own `npm test`, `npm run typecheck` and `npm run build`. Try a package in a Medusa app with `npx medusa plugin:publish` in the package and `npx medusa plugin:add <name>` in the app.
+Development needs Node.js 22.6 or newer (`.nvmrc`); the published packages run on Node.js 20+. To work on one package, `cd packages/<name>` and use its own `npm test`, `npm run typecheck` and `npm run build`. Try a package in a Medusa app with `npx medusa plugin:publish` in the package and `npx medusa plugin:add <name>` in the app.
+
+### The shared kit and the contract for hosts
+
+What every package shares (the `koda.integration/1` contract for apps that show all plugins in one place, the write and metadata guards, the admin fetch with session or JWT, the card registry, the page kit) lives once in [`kit/`](kit/README.md) and is copied into the packages by `npm run kit:sync`. Each plugin answers `GET /admin/<ns>/integration`, `/integration/summary` and `/integration/attention`, and its admin cards can be embedded by a host as tabs.
 
 ### The demo admin
 
@@ -65,6 +71,6 @@ Subiekt nexo has no web API; its SDK (Sfera) is a Windows .NET library. The plug
 
 ## License and trademarks
 
-MIT, see the LICENSE file of each package. Built and maintained by [Koda Plus](https://koda.plus).
+MIT, see [LICENSE](LICENSE) (and the same file in each package). Built and maintained by [Koda Plus](https://koda.plus).
 
-OLX, Allegro, BaseLinker, Base, Subiekt nexo, nexo PRO, Sfera, InsERT, Fakturownia, InPost, Paczkomat, Stripe, BLIK, Przelewy24 and Resend are trademarks of their owners, used only to identify the systems these plugins connect to. These are independent integrations, not affiliated with or endorsed by them.
+OLX, Allegro, BaseLinker, Base, Subiekt nexo, nexo PRO, Sfera, InsERT, Fakturownia, InPost, Paczkomat, Stripe, Link, Apple Pay, Google Pay, BLIK, Przelewy24, Resend, Discord, Medusa and Clutch are trademarks of their owners, used only to identify the systems these plugins connect to. These are independent integrations, not affiliated with or endorsed by them. The MIT license covers the code of Koda Plus, not these marks: see [TRADEMARKS.md](TRADEMARKS.md).
