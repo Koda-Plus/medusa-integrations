@@ -76,7 +76,7 @@ const en = {
   },
   stats: {
     volume: "Volume",
-    volumeHint: "Payments: {{count}}",
+    volumeHint: "Payments: {{n}}",
     fees: "Stripe fees",
     feesHint: "{{rate}} of the volume",
     feesPending: "Not settled yet: {{count}}",
@@ -499,7 +499,7 @@ const en = {
     cacheSeconds: "Cache (cacheSeconds)",
     seconds: "{{count}} s",
     maxPages: "List pages per read (maxPages)",
-    maxPagesHint: "up to {{count}} payments",
+    maxPagesHint: "up to {{n}} payments",
     requestsPerSecond: "Requests per second (requestsPerSecond)",
     timeoutMs: "Request timeout (timeoutMs)",
     apiVersion: "Stripe API version",
