@@ -3,6 +3,7 @@
  * do, who flipped what and when, and the circuit breaker.
  */
 
+import { emitAllegroEvent } from "../../modules/allegro/lib/notify"
 import type AllegroModuleService from "../../modules/allegro/service"
 import { grantedScope, isConnected } from "../../modules/allegro/lib/connection"
 import type { AllegroWriterDto } from "../../modules/allegro/lib/contract"
@@ -123,7 +124,11 @@ export async function recordOutcome(svc: AllegroModuleService, key: WriterKey, o
     new Date(),
   )
   await upsertWriter(svc, key, patch as Record<string, unknown>)
-  if (tripped) svc.getLogger().warn(`[allegro] writer ${key} disarmed by the circuit breaker: ${outcome.kind === "ok" ? "" : outcome.message}`)
+  if (tripped) {
+    const message = outcome.kind === "ok" ? "" : svc.mask(outcome.message).slice(0, 300)
+    svc.getLogger().warn(`[allegro] writer ${key} disarmed by the circuit breaker: ${message}`)
+    await emitAllegroEvent(svc, "allegro.writer.tripped", { writer: key, failures: (patch as { failure_streak?: number }).failure_streak ?? null, message, demo: svc.isDemo() })
+  }
   return tripped
 }
 

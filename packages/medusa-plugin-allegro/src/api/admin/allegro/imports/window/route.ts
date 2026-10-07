@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { AllegroImportWindowResponse } from "../../../../../modules/allegro/lib/contract"
 import { queueImportWindow } from "../../../../../workflows/allegro/run-import"
-import { allegroService, errorOf } from "../../helpers"
+import { allegroService, sendError } from "../../helpers"
 
 /**
  * POST /admin/allegro/imports/window  { from: ISO date, to: ISO date }
@@ -24,6 +24,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     const answer: AllegroImportWindowResponse = await queueImportWindow(req.scope, from, to)
     res.json(answer)
   } catch (err) {
-    res.status(502).json({ message: errorOf(svc, err) })
+    sendError(res, svc, err, "catch-up import")
   }
 }

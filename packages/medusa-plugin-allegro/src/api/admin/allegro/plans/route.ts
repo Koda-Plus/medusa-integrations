@@ -5,7 +5,7 @@ import { planSummary } from "../../../../workflows/allegro/plans"
 import { isRunning } from "../../../../workflows/allegro/runtime"
 import { publishAllegroOffersWorkflow, pushAllegroPricesWorkflow, pushAllegroStockWorkflow } from "../../../../workflows/allegro/writer-workflows"
 import { isArmed } from "../../../../workflows/allegro/writers"
-import { allegroService, errorOf, intParam, like, strParam } from "../helpers"
+import { allegroService, errorOf, intParam, like, sendError, strParam } from "../helpers"
 
 const KINDS: readonly AllegroPlanKind[] = ["stock", "prices", "publish"]
 const FILTERS = ["all", "changes", "planned", "deferred", "quarantined", "skipped", "in_sync", "applied", "failed"] as const
@@ -96,6 +96,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     }
     res.json(answer)
   } catch (err) {
-    res.status(500).json({ message: errorOf(svc, err) })
+    sendError(res, svc, err, `${kind} plan`)
   }
 }

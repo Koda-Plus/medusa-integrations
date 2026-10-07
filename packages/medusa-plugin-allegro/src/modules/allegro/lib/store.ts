@@ -381,6 +381,12 @@ export async function releaseRefreshLease(sql: SqlRunner, id: string, owner: str
  * Medusa orders carrying `metadata.marketplace_order_ref`. Any of them counts,
  * whoever created it: the BaseLinker integration writes the same key for
  * Allegro orders it imports, and the second importer must step back.
+ *
+ * `ours` (this plugin may finish and pay the order) never rests on metadata
+ * alone, which a shopper could have put on a cart: the order is ours when an
+ * import row names it in `order_id`, or when it is still a draft with our
+ * checkout form key that no cart ever placed (a draft an attempt created
+ * just before it stopped, before it could write the id on its row).
  */
 export async function ordersByRef(
   sql: SqlRunner,
@@ -389,12 +395,16 @@ export async function ordersByRef(
   if (refs.length === 0) return []
   const placeholders = refs.map(() => "?").join(", ")
   const result = await sql.raw(
-    `select "id", "display_id", "metadata"->>'marketplace_order_ref' as "ref",
-            ("metadata"->>'allegro_checkout_form_id') is not null as "ours",
-            ("status" = 'draft' or coalesce("is_draft_order", false)) as "draft"
-     from "order"
-     where "deleted_at" is null and "metadata"->>'marketplace_order_ref' in (${placeholders})
-     order by "created_at" asc`,
+    `select o."id", o."display_id", o."metadata"->>'marketplace_order_ref' as "ref",
+            (exists (select 1 from "allegro_order_import" i
+                     where i."order_id" = o."id" and i."deleted_at" is null and i."reason_code" is distinct from 'duplicate_ref')
+             or ((o."status" = 'draft' or coalesce(o."is_draft_order", false))
+                 and (o."metadata"->>'allegro_checkout_form_id') is not null
+                 and not exists (select 1 from "order_cart" oc where oc."order_id" = o."id" and oc."deleted_at" is null))) as "ours",
+            (o."status" = 'draft' or coalesce(o."is_draft_order", false)) as "draft"
+     from "order" o
+     where o."deleted_at" is null and o."metadata"->>'marketplace_order_ref' in (${placeholders})
+     order by o."created_at" asc`,
     [...refs],
   )
   return rowsOf<{ id: string; ref: string; display_id: number | string | null; ours: boolean; draft: boolean }>(result).map((r) => ({

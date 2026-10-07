@@ -3,16 +3,17 @@
  *
  *   drain     the order event journal (`GET /order/events?from=`) becomes one
  *             row per checkout form in `allegro_order_import`; the cursor
- *             moves only after the rows are written. A fresh install starts
- *             at the newest event: history comes in through the operator
- *             import window, deliberately.
+ *             moves only after the rows are written, to the last event of
+ *             the page (event ids are opaque, never compared). A fresh
+ *             install starts at the newest event: history comes in through
+ *             the catch-up import, deliberately.
  *   process   every due row is claimed atomically, looked up in Medusa
  *             (`metadata.marketplace_order_ref`), read fresh from Allegro and
  *             mapped (`lib/import.ts`); then, holding the shared lock
  *             `marketplace-order-ref:allegro:<id>` and after a second
  *             lookup, created as a draft, placed (reservations,
  *             `order.placed`) and paid (`import-order.ts`), or held with
- *             the reason.
+ *             the reason. A demo order is never placed or paid.
  *   cancel    a cancellation on Allegro cancels the Medusa order only when
  *             nothing was fulfilled; otherwise the row asks for a person.
  *   refresh   a status change on Allegro updates the row.
@@ -43,12 +44,14 @@ import {
   refLockKey,
 } from "../../modules/allegro/lib/constants"
 import type { AllegroImportRunResponse, AllegroImportWindowResponse, AllegroRunDto } from "../../modules/allegro/lib/contract"
-import { dayStart, demoEventId, demoEventsRaw, demoSeedsUntil } from "../../modules/allegro/lib/demo-stream"
+import { dayStart, demoEventId, demoEventsAfter, demoSeedsUntil } from "../../modules/allegro/lib/demo-stream"
 import type { ImportRow as ImportRowDb } from "../../modules/allegro/lib/dto"
-import { compareEventIds, cursorExpired, eventsFromApi, intentsByForm, latestEventId, type OrderEvent } from "../../modules/allegro/lib/events"
+import { cursorExpired, drainJournal, eventsAfter, eventsFromApi, intentsByForm, latestEventId, type OrderEvent } from "../../modules/allegro/lib/events"
 import {
+  buyerChange,
   cancelDecision,
   drainAction,
+  importDetails,
   planImport,
   processImport,
   type ImportContext,
@@ -58,11 +61,12 @@ import {
   type LineVariant,
 } from "../../modules/allegro/lib/import"
 import { normalizeKey } from "../../modules/allegro/lib/matching"
+import { emitAllegroEvent } from "../../modules/allegro/lib/notify"
 import { planReservations } from "../../modules/allegro/lib/reservations"
 import { ordersByRef, type ImportStore } from "../../modules/allegro/lib/store"
 import { channelLocationIds, loadCatalog, loadVariantInventory, type QueryLike } from "./catalog"
 import { demoFormFromStream, demoStream, type DemoStream } from "./demo-sim"
-import { completeAllegroOrder, createAllegroDraft } from "./import-order"
+import { cancelDemoOrder, completeAllegroOrder, createAllegroDraft } from "./import-order"
 import { allegroOf, errorText, exclusive, getState, importStoreOf, queryOf, recordRun, requireSql, setState } from "./runtime"
 import { armedWriters, recordOutcome, touchWriterRun } from "./writers"
 
@@ -123,8 +127,9 @@ async function firstRegionIn(query: QueryLike, currency: string): Promise<{ id: 
 
 /**
  * The demo sales channel "Allegro (demo)", created on first use and linked
- * to the stock locations of the store's default channel, so reservations of
- * simulated orders land where the store keeps its stock.
+ * to the stock locations of the store's default channel, so the stock check
+ * of a simulated order sees the store's stock. Nothing is reserved: demo
+ * orders are never placed (`import-order.ts`).
  */
 async function ensureDemoChannel(container: MedusaContainer, query: QueryLike): Promise<{ id: string; name: string } | null> {
   const { data } = await query.graph({ entity: "sales_channel", fields: ["id", "name"], filters: { name: DEMO_SALES_CHANNEL } })
@@ -309,26 +314,20 @@ async function drainLive(svc: AllegroModuleService, store: ImportStore): Promise
   if (!cursor || cursorExpired(cursor.at ? new Date(cursor.at) : null, now, EVENT_RETENTION_DAYS)) {
     /* A fresh start, or a pause longer than Allegro keeps events: begin at the newest event. */
     const latest = latestEventId(await getOrderEventStats(svc))
-    const note = cursor ? "The import was paused longer than Allegro keeps order events (60 days). It restarted at the newest event: bring the gap in through the import window." : null
+    const note = cursor ? "The import was paused longer than Allegro keeps order events (60 days). It restarted at the newest event: bring the gap in with the catch-up import." : null
     await setState(svc, CURSOR_ID, { id: latest ?? "0", at: now.toISOString(), updatedAt: now.toISOString(), note } satisfies Cursor)
-    return { read: 0, touched: 0, note: note ?? "Started at the newest Allegro order event. Earlier orders come in through the import window." }
+    return { read: 0, touched: 0, note: note ?? "Started at the newest Allegro order event. Earlier orders come in with the catch-up import." }
   }
-  let read = 0
-  let touched = 0
-  for (let page = 0; page < MAX_EVENT_PAGES; page += 1) {
-    const from: string = cursor.id
-    const events: OrderEvent[] = eventsFromApi(await getOrderEvents(svc, from === "0" ? null : from, EVENTS_PAGE_SIZE))
-      .filter((e) => compareEventIds(e.id, from) > 0)
-      .sort((a, b) => compareEventIds(a.id, b.id))
-    if (events.length === 0) break
-    read += events.length
-    touched += await applyIntents(svc, store, intentsByForm(events), false, "events")
-    const last: OrderEvent = events[events.length - 1]
-    cursor = { id: last.id, at: last.occurredAt, updatedAt: new Date().toISOString(), note: null }
-    await setState(svc, CURSOR_ID, cursor)
-    if (events.length < EVENTS_PAGE_SIZE) break
-  }
-  return { read, touched, note: null }
+  const from = cursor.id
+  const drained = await drainJournal({
+    from,
+    pageSize: EVENTS_PAGE_SIZE,
+    maxPages: MAX_EVENT_PAGES,
+    fetchPage: async (after) => eventsFromApi(await getOrderEvents(svc, after, EVENTS_PAGE_SIZE)),
+    apply: (events) => applyIntents(svc, store, intentsByForm(events), false, "events"),
+    save: (c) => setState(svc, CURSOR_ID, { id: c.id, at: c.at, updatedAt: new Date().toISOString(), note: null } satisfies Cursor),
+  })
+  return { read: drained.read, touched: drained.touched, note: null }
 }
 
 async function drainDemo(svc: AllegroModuleService, store: ImportStore, stream: DemoStream): Promise<{ read: number; touched: number; note: string | null }> {
@@ -340,11 +339,17 @@ async function drainDemo(svc: AllegroModuleService, store: ImportStore, stream: 
     cursor = { id: demoEventId(today, 0, 0), at: today.toISOString(), updatedAt: new Date().toISOString() }
     note = "Demo: started at the beginning of today."
   }
-  const events = eventsFromApi({ events: demoEventsRaw(stream.seeds, stream.now) }).filter((e) => compareEventIds(e.id, (cursor as Cursor).id) > 0)
-  const touched = await applyIntents(svc, store, intentsByForm(events), true, "demo")
-  const last = events[events.length - 1]
-  await setState(svc, DEMO_CURSOR_ID, last ? { id: last.id, at: last.occurredAt, updatedAt: new Date().toISOString() } : cursor)
-  return { read: events.length, touched, note }
+  const start: Cursor = cursor
+  if (note) await setState(svc, DEMO_CURSOR_ID, start)
+  const drained = await drainJournal({
+    from: start.id,
+    pageSize: EVENTS_PAGE_SIZE,
+    maxPages: MAX_EVENT_PAGES,
+    fetchPage: async (after) => eventsFromApi({ events: demoEventsAfter(stream.seeds, stream.now, after, EVENTS_PAGE_SIZE) }),
+    apply: (events) => applyIntents(svc, store, intentsByForm(events), true, "demo"),
+    save: (c) => setState(svc, DEMO_CURSOR_ID, { id: c.id, at: c.at, updatedAt: new Date().toISOString() } satisfies Cursor),
+  })
+  return { read: drained.read, touched: drained.touched, note }
 }
 
 /* ------------------------------------------------------------------ */
@@ -441,7 +446,7 @@ function portsFor(
       return plan.problems.length > 0 ? plan.problems.join(" ") : null
     },
     createDraft: (decision: Extract<ImportDecision, { kind: "create" }>) => createAllegroDraft(container, decision.order),
-    complete: (orderId, args) => completeAllegroOrder(container, orderId, args),
+    complete: (orderId, args) => completeAllegroOrder(container, orderId, { ...args, demo: svc.isDemo() }),
     withRefLock: (ref, fn) => withRefLock(container, ref, fn),
   }
 }
@@ -509,6 +514,9 @@ async function processDue(
       continue
     }
     counts[outcome.kind] = (counts[outcome.kind] ?? 0) + 1
+    if (outcome.kind === "held") {
+      await emitAllegroEvent(svc, "allegro.import.held", { import_id: row.id, checkout_form_id: row.checkout_form_id, reason_code: outcome.code, demo })
+    }
     if (outcome.kind === "imported") {
       svc.getLogger().info(`[allegro] imported ${marketplaceRef(row.checkout_form_id)} as order ${outcome.displayId ?? outcome.orderId}`)
     }
@@ -533,7 +541,8 @@ async function processCancels(container: MedusaContainer, svc: AllegroModuleServ
     )
     if (decision.kind === "cancel") {
       try {
-        await coreFlows.cancelOrderWorkflow(container).run({ input: { order_id: row.order_id, no_notification: true } })
+        if (demo) await cancelDemoOrder(container, row.order_id)
+        else await coreFlows.cancelOrderWorkflow(container).run({ input: { order_id: row.order_id, no_notification: true } })
         await store.transition(row.id, ["imported"], { status: "cancelled", cancel_requested: false, reason_code: "cancelled_on_allegro", reason: "Cancelled on Allegro; the Medusa order was cancelled and its stock released." })
         done += 1
       } catch (err) {
@@ -561,10 +570,14 @@ async function processRefreshes(svc: AllegroModuleService, store: ImportStore, d
         await store.transition(row.id, ["imported"], { refresh_requested: false })
         continue
       }
+      const changed = buyerChange(row.details, form)
       await store.transition(row.id, ["imported"], {
         refresh_requested: false,
         allegro_status: form.status,
         fulfillment_status: form.fulfillmentStatus,
+        /* The login and the delivery for the order card; a row from 0.2 gets them on its first refresh. */
+        details: { ...(row.details ?? {}), ...importDetails(form) },
+        ...(changed ? { attention: changed } : {}),
         ...(form.status === "CANCELLED" ? { cancel_requested: true, cancelled_on_allegro_at: new Date() } : {}),
       })
       done += 1
@@ -597,14 +610,15 @@ async function peekNewForms(svc: AllegroModuleService, demo: boolean, stream: De
   if (demo && stream) {
     const cursor = await getState<Cursor>(svc, DEMO_CURSOR_ID)
     const from = cursor?.id ?? demoEventId(dayStart(stream.now), 0, 0)
-    events = eventsFromApi({ events: demoEventsRaw(stream.seeds, stream.now) }).filter((e) => compareEventIds(e.id, from) > 0)
+    events = eventsAfter(eventsFromApi({ events: demoEventsAfter(stream.seeds, stream.now, from, EVENTS_PAGE_SIZE) }), from)
   } else {
     const cursor = await getState<Cursor>(svc, CURSOR_ID)
-    if (!cursor) return { forms: [], note: "The first armed run starts at the newest Allegro order event; orders bought before it come in through the import window." }
+    if (!cursor) return { forms: [], note: "The first armed run starts at the newest Allegro order event; orders bought before it come in with the catch-up import." }
     if (cursorExpired(cursor.at ? new Date(cursor.at) : null, new Date(), EVENT_RETENTION_DAYS)) {
       return { forms: [], note: "The cursor is older than Allegro keeps order events (60 days): the next run restarts at the newest event." }
     }
-    events = eventsFromApi(await getOrderEvents(svc, cursor.id === "0" ? null : cursor.id, EVENTS_PAGE_SIZE)).filter((e) => compareEventIds(e.id, cursor.id) > 0)
+    const after = cursor.id === "0" ? null : cursor.id
+    events = eventsAfter(eventsFromApi(await getOrderEvents(svc, after, EVENTS_PAGE_SIZE)), after)
     if (events.length >= EVENTS_PAGE_SIZE) note = `Only the first ${EVENTS_PAGE_SIZE} new events were read for the preview.`
   }
   const wanted = [...intentsByForm(events)].filter(([, info]) => info.intent === "import").map(([form]) => form)
@@ -786,7 +800,14 @@ export async function queueImportWindow(container: MedusaContainer, from: Date, 
 
 /** A person retries a held (or skipped) form: back to pending, attempts reset. */
 export async function retryImport(container: MedusaContainer, id: string): Promise<boolean> {
+  const svc = allegroOf(container)
   const store = importStoreOf(container)
-  const row = await store.transition(id, ["held", "skipped"], { status: "pending", attempts: 0, next_attempt_at: null, reason_code: null, reason: null })
+  const [current] = (await svc.listAllegroOrderImports({ id } as never, { take: 1 })) as unknown as ImportRowDb[]
+  /* A duplicate written by 0.2 kept the other integration's order in order_id; that id moves to details, so it never reads as ours. */
+  const legacyDuplicate =
+    current?.reason_code === "duplicate_ref" && current.order_id
+      ? { order_id: null, display_id: null, details: { ...(current.details ?? {}), duplicate_order_id: current.order_id, duplicate_display_id: current.display_id } }
+      : {}
+  const row = await store.transition(id, ["held", "skipped"], { status: "pending", attempts: 0, next_attempt_at: null, reason_code: null, reason: null, ...legacyDuplicate })
   return Boolean(row)
 }

@@ -3,7 +3,7 @@ import { pollConnecting } from "../../../../../modules/allegro/lib/connection"
 import type { AllegroConnectPollResponse } from "../../../../../modules/allegro/lib/contract"
 import { syncAllegroOffersWorkflow } from "../../../../../workflows/allegro/sync-allegro-offers"
 import { syncAllegroOrdersWorkflow } from "../../../../../workflows/allegro/sync-allegro-orders"
-import { allegroService } from "../../helpers"
+import { allegroService, sendError } from "../../helpers"
 
 /**
  * POST /admin/allegro/connect/poll
@@ -25,6 +25,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     const body: AllegroConnectPollResponse = { state: step.state, intervalS: step.intervalS }
     res.json(body)
   } catch (err) {
-    res.status(502).json({ message: svc.mask(err instanceof Error ? err.message : String(err)) })
+    sendError(res, svc, err, "connect poll")
   }
 }

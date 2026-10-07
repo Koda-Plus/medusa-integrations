@@ -4,7 +4,7 @@ import { toImportDto, type ImportRow } from "../../../../modules/allegro/lib/dto
 import { isRunning } from "../../../../workflows/allegro/runtime"
 import { importAllegroOrdersWorkflow } from "../../../../workflows/allegro/writer-workflows"
 import { isArmed } from "../../../../workflows/allegro/writers"
-import { allegroService, errorOf, intParam, like, strParam } from "../helpers"
+import { allegroService, errorOf, intParam, like, sendError, strParam } from "../helpers"
 
 const FILTERS: readonly AllegroImportFilter[] = ["all", "imported", "held", "pending", "skipped", "attention", "cancelled"]
 
@@ -75,6 +75,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     const answer: AllegroImportRunResponse = { started: true, alreadyRunning: false, dryRun: true, preview: result.preview, message: result.message }
     res.json(answer)
   } catch (err) {
-    res.status(500).json({ message: errorOf(svc, err) })
+    sendError(res, svc, err, "import plan")
   }
 }

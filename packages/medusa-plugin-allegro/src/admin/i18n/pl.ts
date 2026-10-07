@@ -58,6 +58,11 @@ const pl: typeof en = {
     label: "Tryb demo",
     text: "Symulowane konto Allegro zbudowane z Twojego katalogu: oferty, kilka zakupów dziennie (kupujący w domenie example.com), przesyłki, zwroty, dyskusje i wiadomości. Przechodzi przez te same parsery, plany i workflowy co prawdziwe konto. Uzbrojone zapisy zmieniają symulację i tworzą prawdziwe zamówienia w tym sklepie, w kanale sprzedaży Allegro (demo); nic nie trafia do Allegro. Aby połączyć prawdziwe konto, dodaj do opcji wtyczki clientId, clientSecret i encryptionKey.",
   },
+  demoSeed: {
+    label: "Dane demo",
+    text: "Przykładowe oferty, zamówienia, plany i sprawy są w przygotowaniu; zadanie zrobi to w ciągu minuty.",
+    action: "Przygotuj teraz",
+  },
   missing: {
     label: "Konfiguracja",
     text: "Brakuje opcji wtyczki: {{missing}}. Identyfikator i sekret daje aplikacja zarejestrowana w portalu deweloperskim Allegro dla {{host}} jako aplikacja „bez dostępu do przeglądarki”, klucz szyfru polecenie openssl rand -base64 32. Adres zwrotny nie jest potrzebny.",
@@ -197,6 +202,8 @@ const pl: typeof en = {
     armText: "Od teraz zapisuje na prawdziwym koncie Allegro według harmonogramu. Najpierw zrób próbę na sucho i przeczytaj plan.",
     armTextOrders: "Od teraz zamówienia z Allegro stają się zamówieniami w Medusie. Najpierw zrób próbę na sucho i sprawdź, co stałoby się z czekającymi formularzami.",
     armTextDemo: "Działa na symulowanym koncie Allegro z demo.",
+    armTextDemoOrders:
+      "Zakupy są symulowane, ale zamówienia powstają w TYM sklepie Medusa: w kanale sprzedaży „Allegro (demo)”, oznaczone jako demo, nigdy nie złożone ani nie opłacone, więc nic nie zostaje zarezerwowane, zafakturowane ani wysłane mailem. Uzbrajaj tylko w sklepie demo albo testowym.",
     armConfirm: "Uzbrój",
     disarmTitle: "Rozbroić zapis „{{name}}”?",
     disarmText: "Zatrzymuje się od razu. Nic, co już wysłano, nie jest cofane.",
@@ -223,6 +230,8 @@ const pl: typeof en = {
     plannedAt: "Zaplanowano {{when}}",
     never: "Jeszcze nie zaplanowano",
     refused: "Plan odrzucony",
+    taxExclusive:
+      "Medusa trzyma ceny w PLN bez podatku, a Allegro przyjmuje ceny brutto, więc nic nie zostało zaplanowane. Ustaw w Medusie preferencję cen PLN z podatkiem albo prices.taxInclusive: true, jeśli Twoje ceny PLN już zawierają podatek.",
     lastApply: "Ostatnie zastosowanie {{when}}: zmienione {{applied}}, błędy {{failed}}",
     optionsMissing: "Aby tworzyć szkice, ustaw: {{missing}}.",
     filter: {

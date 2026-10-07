@@ -28,6 +28,8 @@ export interface PlanEntryInput {
 interface SummaryState {
   plannedAt: string | null
   refused: string | null
+  /** A code the admin translates, e.g. "tax_exclusive_prices". */
+  refusedCode?: string | null
   counts: Record<string, number>
   lastApply: { at: string | null; applied: number; failed: number; message: string | null } | null
 }
@@ -95,7 +97,7 @@ export async function planSummary(svc: AllegroModuleService, kind: AllegroPlanKi
   const rows = (await svc.listAllegroPlanItems({ kind } as never, { take: null, select: ["status"] })) as unknown as Array<{ status: string }>
   const counts: Record<string, number> = {}
   for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1
-  return { kind, plannedAt: s?.plannedAt ?? null, refused: s?.refused ?? null, counts, lastApply: s?.lastApply ?? null }
+  return { kind, plannedAt: s?.plannedAt ?? null, refused: s?.refused ?? null, refusedCode: s?.refusedCode ?? null, counts, lastApply: s?.lastApply ?? null }
 }
 
 export async function setPlanSummary(svc: AllegroModuleService, kind: AllegroPlanKind, patch: Partial<SummaryState>): Promise<void> {

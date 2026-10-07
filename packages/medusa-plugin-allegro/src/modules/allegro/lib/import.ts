@@ -29,8 +29,9 @@
  * fixes the catalog or the signature and retries.
  */
 
+import { createHash } from "node:crypto"
 import { isPaid, type CheckoutForm, type Money } from "./checkout"
-import { IMPORT_MAX_ATTEMPTS, NOT_READY_GIVE_UP_DAYS, marketplaceRef } from "./constants"
+import { DEMO_ORDER_MARKER, IMPORT_MAX_ATTEMPTS, NOT_READY_GIVE_UP_DAYS, marketplaceRef } from "./constants"
 import type { EventIntent } from "./events"
 
 export interface LineVariant {
@@ -258,6 +259,7 @@ export function planImport(form: CheckoutForm, ctx: ImportContext): ImportDecisi
       allegro_invoice_required: form.invoice.required || null,
       nip: inv?.nip ?? null,
       allegro_demo: ctx.demo || null,
+      [DEMO_ORDER_MARKER]: ctx.demo || null,
     }),
   }
 
@@ -398,11 +400,55 @@ function message(err: unknown): string {
   return (err instanceof Error ? err.message : String(err)).slice(0, 800)
 }
 
+/**
+ * What the order card shows about the buyer and the delivery, kept on the
+ * import row (the plugin's own record) instead of read back from order
+ * metadata: the Allegro login, the delivery method and the pickup point. No
+ * name, address, e-mail or phone.
+ */
+export function importDetails(form: CheckoutForm): Record<string, string | null> {
+  const point = form.delivery.pickupPoint
+  return {
+    buyer_login: form.buyer.login,
+    delivery_method: form.delivery.methodName,
+    delivery_method_id: form.delivery.methodId,
+    pickup_point_id: point?.id ?? null,
+    pickup_point_name: point?.name ?? null,
+    buyer_fp: buyerFingerprint(form),
+  }
+}
+
+/**
+ * A short hash of what decides where the parcel goes and who the invoice is
+ * for: the delivery address, the method, the pickup point and the invoice
+ * data. Stored instead of the data itself, so a later change on Allegro can
+ * be noticed without keeping the buyer's address in the plugin's table.
+ */
+export function buyerFingerprint(form: CheckoutForm): string {
+  const parts = JSON.stringify([form.delivery.address, form.delivery.methodId, form.delivery.pickupPoint?.id ?? null, form.invoice.required, form.invoice.address])
+  return createHash("sha256").update(parts).digest("hex").slice(0, 16)
+}
+
+/**
+ * After `BUYER_MODIFIED` or `FILLED_IN` on an imported order: the sentence for
+ * a person when the delivery or the invoice changed on Allegro, or null. The
+ * Medusa order is never changed by itself.
+ */
+export function buyerChange(before: Record<string, unknown> | null | undefined, form: CheckoutForm): string | null {
+  const known = typeof before?.buyer_fp === "string" ? before.buyer_fp : null
+  if (!known || known === buyerFingerprint(form)) return null
+  return "The buyer changed the delivery address, the pickup point or the invoice data on Allegro after the import. The Medusa order was left as it is: compare it with the order on Allegro before shipping or invoicing."
+}
+
+/**
+ * Another integration's order. Its id goes in `details`, never in
+ * `order_id`: `order_id` names only orders this plugin created, so it can
+ * prove ownership (adoption, facts, cancellations) without order metadata.
+ */
 function duplicatePatch(found: FoundOrder): Record<string, unknown> {
   return {
     status: "skipped",
-    order_id: found.id,
-    display_id: found.display_id,
+    details: { duplicate_order_id: found.id, duplicate_display_id: found.display_id },
     reason_code: "duplicate_ref",
     reason: `Another integration already imported this Allegro order as Medusa order ${found.display_id ? `#${found.display_id}` : found.id}. Skipped, so it is not imported twice.`,
   }
@@ -452,6 +498,7 @@ export async function processImport(row: ImportRow, ports: ImportPorts, mask: (s
     total: form.total,
     line_count: form.lines.length,
     bought_at: form.boughtAt ? new Date(form.boughtAt) : null,
+    details: importDetails(form),
   }
   const completion = { email: form.buyer.email, paid: isPaid(form) }
 

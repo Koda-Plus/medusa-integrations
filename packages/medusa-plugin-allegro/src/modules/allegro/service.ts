@@ -78,7 +78,7 @@ class AllegroModuleService extends MedusaService({
 
   /** Masks the client secret, the key and every long token-like run of characters. */
   mask(text: string): string {
-    return maskSecrets(text, [this.options_.clientSecret, this.options_.encryptionKey])
+    return maskSecrets(text, [this.options_.clientSecret, this.options_.encryptionKey, ...this.options_.previousEncryptionKeys])
   }
 }
 

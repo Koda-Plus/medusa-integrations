@@ -38,6 +38,12 @@ import type { Logger } from "@medusajs/framework/types"
 import { DEVICE_GRANT, MEDIA_TYPE, type AllegroUrls } from "./constants"
 import { AllegroWriteBlockedError, isRequestAllowed, maskSecrets } from "./security"
 
+/** The OAuth `error` of an answer (`invalid_grant`, `invalid_client`...), lowercase, or null. */
+export function oauthCode(json: Record<string, unknown> | null | undefined): string | null {
+  const code = json && typeof json.error === "string" ? json.error.trim().toLowerCase() : ""
+  return /^[a-z_]{1,64}$/.test(code) ? code : null
+}
+
 export class AllegroApiError extends Error {
   readonly status: number
   readonly transient: boolean
@@ -224,7 +230,7 @@ export class AllegroClient {
   async startDevice(): Promise<DeviceStart> {
     const url = `${this.o.urls.device}?client_id=${encodeURIComponent(this.o.clientId)}`
     const { res, json } = await this.oauthPost(url, `scope=${encodeURIComponent(this.o.scope)}`)
-    if (!res.ok) throw new AllegroApiError(res.status, this.describeOauthError(json), res.status >= 500)
+    if (!res.ok) throw new AllegroApiError(res.status, this.describeOauthError(json), res.status >= 500, oauthCode(json))
     const start = {
       user_code: String(json.user_code ?? ""),
       device_code: String(json.device_code ?? ""),
@@ -258,7 +264,7 @@ export class AllegroClient {
     if (error === "expired_token" || error === "invalid_grant" || /invalid device code/i.test(error)) {
       return { state: "expired" }
     }
-    throw new AllegroApiError(res.status, this.describeOauthError(json), res.status >= 500)
+    throw new AllegroApiError(res.status, this.describeOauthError(json), res.status >= 500, oauthCode(json))
   }
 
   /** New pair for a refresh token. The old pair keeps working for 60 s after this. */
@@ -272,7 +278,7 @@ export class AllegroClient {
         if (res.ok) return this.pair(json, res.status)
         /* 400 invalid_grant: the refresh token was revoked (consent removed,
          * password changed, three months without a refresh). Final. */
-        const err = new AllegroApiError(res.status, this.describeOauthError(json), res.status >= 500)
+        const err = new AllegroApiError(res.status, this.describeOauthError(json), res.status >= 500, oauthCode(json))
         if (!err.transient) throw err
         last = err
       } catch (err) {

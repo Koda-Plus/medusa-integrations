@@ -1,16 +1,17 @@
 /**
- * Constants of the Allegro module. ZERO IMPORTS on purpose: this file is
- * loaded by the unit tests through `node --test` with type stripping, without
- * a build.
+ * Constants of the Allegro module. One import only, the generated kit meta
+ * (itself without imports): this file is loaded by the unit tests through
+ * `node --test` with type stripping, without a build.
  *
  * Every Allegro fact below is verified in the official documentation; the
  * sources are listed in `docs/allegro-api-notes.md`.
  */
+import { KIT_META } from "./kit-meta"
 
 export const ALLEGRO_MODULE = "allegro"
 
-/** Version of the plugin, part of the User-Agent Allegro asks for. */
-export const PLUGIN_VERSION = "0.2.0"
+/** The package version, from package.json through the generated kit meta: the User-Agent and the status report it. */
+export const PLUGIN_VERSION: string = KIT_META.version
 
 /** The only row of `allegro_connection`. One Allegro seller account per store. */
 export const CONNECTION_ID = "default"
@@ -114,6 +115,9 @@ export const ISSUES_SCHEDULE = "20,50 * * * *"
 /** Publish by EAN: the plan once an hour. */
 export const PUBLISH_SCHEDULE = "57 * * * *"
 
+/** Demo data until it exists: every minute, demo mode only. */
+export const DEMO_SEED_SCHEDULE = "* * * * *"
+
 /** How many runs of each kind we keep for the admin history. */
 export const RUNS_TO_KEEP = 50
 
@@ -211,6 +215,13 @@ export const REF_LOCK_SECONDS = 300
 
 /** Name of the sales channel the demo creates for simulated Allegro orders. */
 export const DEMO_SALES_CHANNEL = "Allegro (demo)"
+
+/**
+ * Order metadata key every Koda Plus plugin reads as "a demo order, do not
+ * invoice, export or mail it". The proof stays the plugin's own table
+ * (`allegro_order_import.demo`); the store routes refuse the key from a shopper.
+ */
+export const DEMO_ORDER_MARKER = "koda_demo"
 
 /** At most this many simulated checkout forms a day. */
 export const DEMO_FORMS_PER_DAY = 5

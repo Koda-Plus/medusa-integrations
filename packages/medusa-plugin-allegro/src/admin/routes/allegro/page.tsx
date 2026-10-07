@@ -20,6 +20,7 @@ import {
   errorMessage,
   pollAllegroConnect,
   useAllegroConnect,
+  useAllegroDemoSeed,
   useAllegroDisconnect,
   useAllegroOffers,
   useAllegroOrders,
@@ -133,6 +134,7 @@ const AllegroPage = () => {
           </div>
         ) : null}
         {s && nav.view !== "guide" ? <Warnings status={s} /> : null}
+        {s && nav.view !== "guide" ? <DemoSeedNotice status={s} onStarted={poll} /> : null}
         {s && nav.view === "panel" ? (
           /* One block with two labelled groups, like OLX: a second block would get the container's divider glued to its tiles. */
           <div className="flex flex-col gap-y-4 px-6 py-4">
@@ -362,6 +364,33 @@ function Warnings({ status }: { status: AllegroStatusResponse }) {
       <InlineTip variant="warning" label={t("missing.label")}>
         {t("missing.text", { missing: status.missing.join(", "), host: status.webHost })}
       </InlineTip>
+    </div>
+  )
+}
+
+/** Demo mode while the sample data is not there yet: the job prepares it within a minute, or now on a click. */
+function DemoSeedNotice({ status, onStarted }: { status: AllegroStatusResponse; onStarted: () => void }) {
+  const { t } = useTranslation("allegro")
+  const seed = useAllegroDemoSeed()
+  if (!status.demoSeed || status.demoSeed.missing.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+      <InlineTip variant="info" label={t("demoSeed.label")}>
+        {t("demoSeed.text")}
+      </InlineTip>
+      <Button
+        size="small"
+        variant="secondary"
+        isLoading={seed.isPending}
+        onClick={() =>
+          seed.mutate(undefined, {
+            onSuccess: () => onStarted(),
+            onError: (err) => toast.error(errorMessage(err)),
+          })
+        }
+      >
+        {t("demoSeed.action")}
+      </Button>
     </div>
   )
 }
