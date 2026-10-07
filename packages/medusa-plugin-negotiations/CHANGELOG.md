@@ -10,6 +10,7 @@
 
 - The admin page runs on the shared Koda Plus kit 1.0.1: the setup prompt pins this exact version, checks the package signatures (`npm audit signatures`) and shows the note before saving it; the prompt is copied only with its Copy button.
 - `prepublishOnly` runs the typecheck too.
+- The package ships its type declarations (`.d.ts`), so TypeScript projects get types for the module, the workflows and the admin helpers.
 - README links are absolute, so they work on npm and medusajs.com.
 
 ## 0.1.0 (2026-10-06)

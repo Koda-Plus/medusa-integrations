@@ -11,6 +11,7 @@
 - The admin page runs on the shared Koda Plus kit 1.0.1: the setup prompt pins this exact version, checks the package signatures (`npm audit signatures`) and shows the note before saving it; the prompt is copied only with its Copy button.
 - The setup prompt turns demo mode on only when `OLX_DEMO` is `"true"`, never because the OLX keys are missing (the plugin itself already needed `demo: true`).
 - `prepublishOnly` runs the typecheck too.
+- The package ships its type declarations (`.d.ts`), so TypeScript projects get types for the module, the workflows and the admin helpers.
 - README links are absolute, so they work on npm and medusajs.com.
 - README describes this plugin only: the section comparing it with other integrations is gone.
 - References: stores that start soon (`soon: true`, shown with a Soon badge and no link); the since date is no longer shown.
