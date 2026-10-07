@@ -107,7 +107,27 @@ function packAll(packages) {
   for (const p of packages) {
     const dir = path.join(srcRoot, "packages", p.dir)
     const admin = path.join(dir, "src", "api", "admin", p.ns)
-    routes[p.ns] = { contract: fs.existsSync(path.join(admin, "integration", "route.ts")), status: fs.existsSync(path.join(admin, "route.ts")) }
+    /* The tables its migrations create (some plugins name them in the singular: negotiation, negotiation_message). */
+    const tables = new Set()
+    const migrations = path.join(dir, "src", "modules", p.moduleDir, "migrations")
+    if (fs.existsSync(migrations)) {
+      /* In migration order: created, dropped, renamed. */
+      const sql = /(create table if not exists|drop table if exists|alter table)\s+\\?"([a-z0-9_]+)\\?"(?:\s+rename to\s+\\?"([a-z0-9_]+)\\?")?/gi
+      for (const f of fs.readdirSync(migrations).filter((x) => x.endsWith(".ts")).sort()) {
+        /* Only up(): down() drops what up() created. */
+        const up = fs.readFileSync(path.join(migrations, f), "utf8").split(/async\s+down\s*\(/)[0]
+        for (const m of up.matchAll(sql)) {
+          const verb = m[1].toLowerCase()
+          if (verb.startsWith("create")) tables.add(m[2])
+          else if (verb.startsWith("drop")) tables.delete(m[2])
+          else if (m[3]) {
+            tables.delete(m[2])
+            tables.add(m[3])
+          }
+        }
+      }
+    }
+    routes[p.ns] = { contract: fs.existsSync(path.join(admin, "integration", "route.ts")), status: fs.existsSync(path.join(admin, "route.ts")), tables: [...tables] }
     log(`build and pack ${p.dir}`)
     must("npm run build", { cwd: dir }, `${p.dir}: npm run build`)
     const out = must(`npm pack --json --ignore-scripts --pack-destination "${tarDir}"`, { cwd: dir }, `${p.dir}: npm pack`)
@@ -370,6 +390,13 @@ async function smokeVersion(version, packages, tarballs, routes = {}) {
     const tables = sh(`node -e "const {Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query(\\"select table_name from information_schema.tables where table_schema='public'\\")).then(r=>{console.log(JSON.stringify(r.rows.map(x=>x.table_name)));return c.end()})"`, { cwd: dir, env })
     const names = tables.ok ? JSON.parse(tables.out.trim().split("\n").pop()) : []
     for (const p of packages) {
+      const want = routes[p.ns]?.tables ?? []
+      if (want.length) {
+        const missing = want.filter((t) => !names.includes(t))
+        run.plugins[p.ns] = { tables: want.length - missing.length }
+        step(`${p.ns}: its tables exist`, missing.length === 0, `missing: ${missing.join(", ")}`)
+        continue
+      }
       const own = names.filter((t) => t.startsWith(`${p.moduleDir}_`) || t.startsWith(`${p.ns}_`) || (p.ns === "subiekt" && t.startsWith("subiekt")))
       run.plugins[p.ns] = { tables: own.length }
       if (p.ns !== "stripe") step(`${p.ns}: its tables exist`, own.length > 0, `tables: ${own.join(", ") || "none"}`)
