@@ -112,6 +112,12 @@ for (const p of packages) {
     if (p.json[field] === undefined) err(`${p.dir}/package.json: ${field} missing`)
   }
   if (Object.keys(p.json.dependencies ?? {}).length > 0) err(`${p.dir}: runtime dependencies (${Object.keys(p.json.dependencies).join(", ")}); everything is a peer`)
+  /* The admin libraries come with Medusa's dashboard at exact versions. A required peer makes npm install the
+     newest version next to the dashboard's: two React contexts, and the plugin pages fail (no QueryClient,
+     no Router, no translations). Optional peers are never installed by npm, so the plugin imports the dashboard's copy. */
+  for (const lib of ["@medusajs/ui", "@medusajs/icons", "@tanstack/react-query", "react", "react-dom", "react-i18next", "react-router-dom", "i18next"]) {
+    if (p.json.peerDependencies?.[lib] && !p.json.peerDependenciesMeta?.[lib]?.optional) err(`${p.dir}: peer ${lib} must be optional (peerDependenciesMeta), or npm installs a second copy next to Medusa's dashboard`)
+  }
   if (!/npm run typecheck/.test(p.json.scripts?.prepublishOnly ?? "")) warn(`${p.dir}: prepublishOnly does not run the typecheck`)
   for (const f of ["LICENSE", "CHANGELOG.md", "README.md"]) if (!fs.existsSync(path.join(p.path, f))) err(`${p.dir}/${f} missing`)
 

@@ -93,6 +93,26 @@
     "react-i18next": ">=13.0.0",
     "react-router-dom": "^6.0.0 || ^7.0.0"
   },
+  "peerDependenciesMeta": {
+    "@medusajs/ui": {
+      "optional": true
+    },
+    "@medusajs/icons": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-i18next": {
+      "optional": true
+    },
+    "react-router-dom": {
+      "optional": true
+    }
+  },
   "engines": {
     "node": ">=20"
   },
