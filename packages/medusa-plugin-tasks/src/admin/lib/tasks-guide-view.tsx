@@ -21,7 +21,9 @@ plugins: [
     options: {
       // agencyAccounts: ["@your-agency.com"], // their comments read as the agency's
       // sandboxAccounts: ["demo@your-store.com"], // a public demo account: the sandbox board only
+      // sandboxGuard: true, // the demo account: no invites, users or API keys, no writes outside Tasks
       // sandboxResetHours: 24, // sample tasks come back after this long (0: only on reset)
+      // agentKeyPrefix: "tasks:", // secret API keys titled "tasks: ..." reach only Tasks (the default)
       // references: [], // stores running the plugin, shown on this page
     },
   },
@@ -35,6 +37,7 @@ plugins: [
     resolve: "@koda-plus/medusa-plugin-tasks",
     options: {
       sandboxAccounts: (process.env.TASKS_SANDBOX_ACCOUNTS ?? "").split(",").filter(Boolean),
+      sandboxGuard: true, // sandbox accounts stay inside Tasks
       // agencyAccounts: ["@your-agency.com"],
     },
   },
@@ -49,7 +52,9 @@ const PEOPLE = `people: [
   { name: "Claude Code", kind: "agent", role: "AI agent in our repository" },
 ],`
 
-const AUTOMATION = `# A secret API key from Settings, Secret API Keys. Keep it on the server.
+const AUTOMATION = `# A secret API key from Settings, Secret API Keys, titled "tasks: Support agent":
+# the "tasks:" prefix keeps it inside Tasks (403 on every other admin route).
+# One key per agent, in the server's environment, never in a prompt.
 KEY=sk_...
 URL=https://api.your-store.com
 
@@ -81,6 +86,7 @@ export default async function tasksNotify({ event }: SubscriberArgs<TaskEvent>) 
 export const config: SubscriberConfig = { event: ["tasks.task.status_changed"] }`
 
 const SANDBOX = `sandboxAccounts: ["demo@your-store.com"], // sees and changes only the sandbox board
+sandboxGuard: true, // and stays away from invites, users, API keys and writes outside Tasks
 sandboxResetHours: 24, // the sample tasks come back after this long`
 
 /** What the store owner prepares, in the order of the guide. */
@@ -149,7 +155,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
       id: "automation",
       title: t("guide.steps.automation.title"),
       state: state(status.automation.api_key_activity > 0),
-      body: [p("guide.steps.automation.p1"), p("guide.steps.automation.p2")],
+      body: [p("guide.steps.automation.p1"), p("guide.steps.automation.p2"), p("guide.steps.automation.p3")],
       code: AUTOMATION,
       check: t("guide.steps.automation.check"),
     },
@@ -165,7 +171,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
       id: "sandbox",
       title: t("guide.steps.sandbox.title"),
       state: state(status.sandbox_board.enabled),
-      body: [p("guide.steps.sandbox.p1"), p("guide.steps.sandbox.p2")],
+      body: [p("guide.steps.sandbox.p1"), p("guide.steps.sandbox.p2"), p("guide.steps.sandbox.p3")],
       code: `${SANDBOX}\n\n# .env\n${ENV}`,
       check: t("guide.steps.sandbox.check"),
     },

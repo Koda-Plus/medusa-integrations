@@ -44,6 +44,11 @@ class TasksModuleService extends MedusaService({
     this.options_ = resolveOptions(options)
     if (this.options_.sandboxAccounts.length > 0) {
       this.logger_.info(`[tasks] Sandbox board for ${this.options_.sandboxAccounts.length} account(s): they never see the main board.`)
+      if (!this.options_.sandboxGuard.enabled) {
+        this.logger_.warn(
+          "[tasks] Sandbox accounts are still full admin users outside Tasks (invites, users, API keys, every write). For a public demo account set sandboxGuard: true in the plugin options, or guard those routes in the app.",
+        )
+      }
     }
   }
 

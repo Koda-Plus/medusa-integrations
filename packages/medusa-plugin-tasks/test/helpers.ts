@@ -16,7 +16,7 @@ import { resolveOptions, type TasksPluginOptions } from "../src/modules/tasks/li
 import { nextPosition, planMove, positionChanges } from "../src/modules/tasks/lib/positions.ts"
 import type { ActivityRow, CommentRow, LinkRow, SettingRow, TaskRow } from "../src/modules/tasks/lib/rows.ts"
 import type { BoardStore, SandboxStore, SettingStore, SqlRunner, TaskQuery } from "../src/modules/tasks/lib/store.ts"
-import { STORES_KEY, type Stores } from "../src/workflows/tasks/runtime.ts"
+import { STORES_KEY, forgetRates, type Stores } from "../src/workflows/tasks/runtime.ts"
 import { forgetProfiles } from "../src/workflows/tasks/context.ts"
 
 export type Row = Record<string, any>
@@ -28,6 +28,7 @@ const copy = <T extends Row>(r: T): T => {
   return out as T
 }
 const statusOrder = (s: string) => Math.max(0, (STATUSES as readonly string[]).indexOf(s))
+const closedStatus = (s: unknown) => typeof s === "string" && (CLOSED_STATUSES as readonly string[]).includes(s)
 const byColumn = (a: TaskRow, b: TaskRow) => a.position - b.position || time(a.created_at) - time(b.created_at) || (a.id < b.id ? -1 : 1)
 
 export interface Memory {
@@ -140,9 +141,9 @@ export function memoryStores(): Memory {
         if (!p) return { before, after: before }
         const statusChanged = typeof p.patch.status === "string" && p.patch.status !== before.status
         if (Object.keys(p.patch).length > 0) {
-          if (statusChanged) current.position = nextPosition(column(p.patch.status as string, id).map((r) => r.position))
+          if (statusChanged) current.position = closedStatus(p.patch.status) ? 0 : nextPosition(column(p.patch.status as string, id).map((r) => r.position))
           Object.assign(current, p.patch, { updated_at: now })
-          if (statusChanged) renumber(column(before.status, id))
+          if (statusChanged && !closedStatus(before.status)) renumber(column(before.status, id))
         }
         addActivity(p.activity)
         return { before, after: copy(current) }
@@ -152,16 +153,22 @@ export function memoryStores(): Memory {
         if (!current) return null
         const before = copy(current)
         const p = plan(copy(current))
-        const dest = column(target.status, id)
-        const order = planMove(
-          dest.map((r) => r.id),
-          id,
-          { afterId: target.afterId, beforeId: target.beforeId },
-        )
-        for (const c of positionChanges(dest, order)) if (c.id !== id) (tasks.get(c.id) as TaskRow).position = c.position
         const statusChanged = target.status !== before.status
-        Object.assign(current, p.patch, { status: target.status, position: order.indexOf(id) }, statusChanged ? { updated_at: now } : {})
-        if (statusChanged) renumber(column(before.status, id))
+        const toClosed = closedStatus(target.status)
+        if (toClosed && !statusChanged) return { before, after: before }
+        let position = 0
+        if (!toClosed) {
+          const dest = column(target.status, id)
+          const order = planMove(
+            dest.map((r) => r.id),
+            id,
+            { afterId: target.afterId, beforeId: target.beforeId },
+          )
+          for (const c of positionChanges(dest, order)) if (c.id !== id) (tasks.get(c.id) as TaskRow).position = c.position
+          position = order.indexOf(id)
+        }
+        Object.assign(current, p.patch, { status: target.status, position }, statusChanged ? { updated_at: now } : {})
+        if (statusChanged && !closedStatus(before.status)) renumber(column(before.status, id))
         addActivity(p.activity)
         return { before, after: copy(current) }
       },
@@ -170,9 +177,9 @@ export function memoryStores(): Memory {
         if (!current) return null
         current.deleted_at = now
         current.updated_at = now
-        for (const m of [comments, links, activity] as Array<Map<string, Row>>) for (const r of m.values()) if (r.task_id === id && r.board === board && !r.deleted_at) r.deleted_at = now
+        for (const m of [comments, links] as Array<Map<string, Row>>) for (const r of m.values()) if (r.task_id === id && r.board === board && !r.deleted_at) r.deleted_at = now
         addActivity(newActivity)
-        renumber(column(current.status, id))
+        if (!closedStatus(current.status)) renumber(column(current.status, id))
         return copy(current)
       },
       async listComments(taskId) {
@@ -189,7 +196,7 @@ export function memoryStores(): Memory {
         addActivity(newActivity)
         return copy(row)
       },
-      async updateComment(id, body, now) {
+      async updateComment(id, body, now, newActivity = []) {
         const c = comments.get(id)
         if (!onBoard(c)) return null
         const row = c as CommentRow
@@ -197,12 +204,14 @@ export function memoryStores(): Memory {
         row.edited_at = now
         row.updated_at = now
         if (row.metadata && typeof row.metadata === "object") delete (row.metadata as Row).sample
+        addActivity(newActivity)
         return copy(row)
       },
-      async deleteComment(id, now) {
+      async deleteComment(id, now, newActivity = []) {
         const c = comments.get(id)
         if (!onBoard(c)) return null
         ;(c as CommentRow).deleted_at = now
+        addActivity(newActivity)
         return copy(c as CommentRow)
       },
       async listActivity(taskId, limit) {
@@ -273,13 +282,15 @@ export function memoryStores(): Memory {
   }
 
   const sandbox: SandboxStore = {
-    async replace(seed, marker, now) {
+    async replace(seed, marker, now, onlyIf) {
+      if (onlyIf && !onlyIf(settings.get(marker.key)?.value ?? null)) return false
       for (const m of [links, activity, comments, tasks] as Array<Map<string, Row>>) for (const [id, r] of [...m.entries()]) if (r.board === SANDBOX_BOARD) m.delete(id)
       for (const t of seed.tasks) tasks.set(t.id, { ...t, board: SANDBOX_BOARD, position: t.position ?? 0, updated_at: t.updated_at ?? t.created_at, deleted_at: null } as unknown as TaskRow)
       for (const c of seed.comments) comments.set(c.id, { ...c, board: SANDBOX_BOARD, edited_at: null, updated_at: c.created_at, deleted_at: null } as CommentRow)
       for (const a of seed.activity) activity.set(a.id, { ...a, board: SANDBOX_BOARD, updated_at: a.created_at, deleted_at: null } as ActivityRow)
       for (const l of seed.links) links.set(l.id, { ...l, board: SANDBOX_BOARD, updated_at: l.created_at, deleted_at: null } as LinkRow)
       settings.set(marker.key, { id: marker.id, key: marker.key, value: JSON.parse(JSON.stringify(marker.value)), updated_by: null, created_at: now, updated_at: now, deleted_at: null })
+      return true
     },
     async countTasks() {
       return [...tasks.values()].filter((t) => t.board === SANDBOX_BOARD && !t.deleted_at).length
@@ -320,6 +331,7 @@ export const API_KEYS = [
   { id: "apk_demo", title: "Demo key", created_by: "user_demo" },
   { id: "apk_orphan", title: "Old key", created_by: "user_gone" },
   { id: "apk_server", title: "Seed key", created_by: null },
+  { id: "apk_agent", title: "Tasks: Claude Code", created_by: "user_team" },
 ]
 
 export const RECORDS: Record<string, Array<Record<string, unknown>>> = {
@@ -348,6 +360,7 @@ export const DEFAULT_OPTIONS: TasksPluginOptions = { sandboxAccounts: ["demo@sto
 /** `extra.sql`: the real SQL stores on that runner instead of the in-memory ones (`pg-scenario.ts` runs the flows on a database). */
 export function setup(options: TasksPluginOptions = DEFAULT_OPTIONS, extra: { sql?: SqlRunner } = {}): Setup {
   forgetProfiles()
+  forgetRates()
   const memory = memoryStores()
   const events: Event[] = []
   const failUsers = { on: false }

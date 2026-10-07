@@ -16,9 +16,9 @@
  */
 
 import { Modules } from "@medusajs/framework/utils"
-import { PROFILE_TTL_MS } from "../../modules/tasks/lib/constants"
-import { apiKeyContext, userContext, type ApiKeyProfile, type RequestContext, type UserProfile } from "../../modules/tasks/lib/actor"
-import { normalizeEmail } from "../../modules/tasks/lib/options"
+import { PEOPLE_MAX, PROFILE_TTL_MS } from "../../modules/tasks/lib/constants"
+import { apiKeyContext, keyName, reservedNames, userContext, type ApiKeyProfile, type RequestContext, type UserProfile } from "../../modules/tasks/lib/actor"
+import { isSandboxEmail, normalizeEmail } from "../../modules/tasks/lib/options"
 import { ActionError, envOf, resolveOptional, type Scope } from "./runtime"
 
 export type { RequestContext }
@@ -56,11 +56,13 @@ function toProfile(u: Record<string, unknown>): UserProfile | null {
 
 const CACHE_KEY = Symbol.for("koda.tasks.profiles")
 type Cached<T> = { at: number; value: T }
-type CacheHolder = typeof globalThis & { [CACHE_KEY]?: { users: Map<string, Cached<UserProfile | null>>; keys: Map<string, Cached<ApiKeyProfile | null>> } }
+type CacheHolder = typeof globalThis & {
+  [CACHE_KEY]?: { users: Map<string, Cached<UserProfile | null>>; keys: Map<string, Cached<ApiKeyProfile | null>>; team: Map<string, Cached<Set<string>>> }
+}
 
 function cache() {
   const holder = globalThis as CacheHolder
-  if (!holder[CACHE_KEY]) holder[CACHE_KEY] = { users: new Map(), keys: new Map() }
+  if (!holder[CACHE_KEY]?.team) holder[CACHE_KEY] = { users: new Map(), keys: new Map(), team: new Map() }
   return holder[CACHE_KEY] as NonNullable<CacheHolder[typeof CACHE_KEY]>
 }
 
@@ -78,6 +80,7 @@ export function forgetProfiles(): void {
   const c = cache()
   c.users.clear()
   c.keys.clear()
+  c.team.clear()
 }
 
 /* ------------------------------------------------------------------ */
@@ -150,6 +153,19 @@ export async function apiKeyProfile(scope: Scope, id: string): Promise<ApiKeyPro
   return value
 }
 
+/** The names a key may not sign with (`lib/actor.ts`), from the first admin users and `people`, cached for a minute. */
+export async function teamNames(scope: Scope): Promise<Set<string>> {
+  const c = cache()
+  const hit = c.team.get("names")
+  if (fresh(hit)) return hit.value
+  const users = resolveOptional<UserModuleLike>(scope, Modules.USER)
+  if (!users) throw new Error("The user module is not available")
+  const rows = await users.listUsers({}, { select: USER_FIELDS, take: PEOPLE_MAX, order: { email: "ASC" } })
+  const value = reservedNames(rows.map(toProfile).filter((p): p is UserProfile => p !== null), envOf(scope).options.people)
+  remember(c.team, "names", value)
+  return value
+}
+
 /* ------------------------------------------------------------------ */
 /* The context                                                         */
 /* ------------------------------------------------------------------ */
@@ -183,7 +199,25 @@ export async function contextOf(scope: Scope, auth: AuthLike | null | undefined,
     if (strict && key.created_by && !creator) {
       throw new ActionError(403, "key_owner_missing", "The admin user who created this API key no longer exists. Create a new key.")
     }
-    return apiKeyContext(key, creator, author, options)
+    const sandbox = isSandboxEmail(creator?.email, options)
+    let reserved: Set<string> = new Set()
+    try {
+      reserved = await teamNames(scope)
+    } catch {
+      /* Without the team's names a sent name cannot be checked: refused on the main board, dropped on the sandbox. */
+      if (author !== undefined && author !== null && author !== "" && !sandbox) {
+        throw new ActionError(503, "account_unavailable", "The name in author could not be checked. Try again in a moment.")
+      }
+      reserved = new Set(["*"])
+    }
+    const signed = reserved.has("*") ? { name: null, refused: false } : keyName(author, key.title, reserved, sandbox)
+    if (signed.refused) {
+      throw new ActionError(400, "author_reserved", "author is the name or e-mail of a person on the team. A key signs with its own name, like \"Claude Code\".", {
+        errors: [{ field: "author", code: "author_reserved", message: "A person on the team has this name or e-mail." }],
+      })
+    }
+    const ctx = apiKeyContext(key, creator, undefined, options)
+    return { ...ctx, actor: { ...ctx.actor, name: signed.name } }
   }
 
   if (actorType !== "user" && actorType !== undefined && actorType !== null) {

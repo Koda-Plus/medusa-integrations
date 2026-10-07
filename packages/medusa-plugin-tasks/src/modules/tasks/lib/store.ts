@@ -49,15 +49,37 @@ export function rowsOf<T>(result: unknown): T[] {
   return Array.isArray(rows) ? (rows as T[]) : []
 }
 
-/** Runs `fn` in a transaction when the runner has one (Knex), directly otherwise (tests). */
+/** Postgres gave up on a transaction that another one blocked (deadlock) or overlapped (serialization): safe to run again. */
+export const RETRY_CODES: ReadonlySet<string> = new Set(["40P01", "40001"])
+
+export function isRetryable(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code
+  return typeof code === "string" && RETRY_CODES.has(code)
+}
+
+/**
+ * Runs `fn` in a transaction when the runner has one (Knex), directly
+ * otherwise (tests). A transaction Postgres broke off for a deadlock or a
+ * serialization failure runs once more; a second failure goes to the caller
+ * (the routes answer 409 `conflict_retry`).
+ */
 export async function inTransaction<T>(sql: SqlRunner, fn: (tx: SqlRunner) => Promise<T>): Promise<T> {
-  return typeof sql.transaction === "function" ? sql.transaction(fn) : fn(sql)
+  if (typeof sql.transaction !== "function") return fn(sql)
+  try {
+    return await sql.transaction(fn)
+  } catch (err) {
+    if (!isRetryable(err)) throw err
+    return sql.transaction(fn)
+  }
 }
 
 const list = (n: number) => Array.from({ length: n }, () => "?").join(", ")
 const quoteList = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ")
 
 const OPEN_SQL = quoteList(OPEN_STATUSES)
+/** Rows per statement when a column is numbered again: two bindings each, far below Postgres' 65 535. */
+export const POSITION_BATCH = 1000
+const isClosed = (status: unknown) => typeof status === "string" && (CLOSED_STATUSES as readonly string[]).includes(status)
 const CLOSED_SQL = quoteList(CLOSED_STATUSES)
 const URGENT_SQL = quoteList(URGENT_PRIORITIES)
 /* The board's column order, for lists: unknown values of old rows sort first, with backlog. */
@@ -206,11 +228,18 @@ export interface BoardStore {
   insertTask(task: TaskInsert, links: readonly LinkInsert[], activity: readonly ActivityInsert[]): Promise<{ task: TaskRow; links: LinkRow[] }>
   /**
    * Locks the task, asks `plan` what to write, writes it. A status change
-   * appends the task to its new column. Null when the task is not on this
-   * board; `after` equals `before` when the plan changes nothing.
+   * appends the task to its new open column (closed columns are not
+   * numbered). Null when the task is not on this board; `after` equals
+   * `before` when the plan changes nothing. `lockBoard`: the request may
+   * change the status, so the board's lock is taken BEFORE the task's row,
+   * in the same order as a move (never the other way round: a deadlock).
    */
-  updateTask(id: string, plan: (before: TaskRow) => UpdatePlan | null, now: Date): Promise<{ before: TaskRow; after: TaskRow } | null>
-  /** Places the task in `status` next to its new neighbours and renumbers the columns it left and joined. */
+  updateTask(id: string, plan: (before: TaskRow) => UpdatePlan | null, now: Date, lockBoard?: boolean): Promise<{ before: TaskRow; after: TaskRow } | null>
+  /**
+   * Places the task in `status` next to its new neighbours and renumbers the
+   * open columns it left and joined. Closed columns (done, rejected) are
+   * ordered by when tasks closed, so a drop there changes the status only.
+   */
   moveTask(id: string, target: { status: string; beforeId: string | null; afterId: string | null }, plan: (before: TaskRow) => MovePlan, now: Date): Promise<{ before: TaskRow; after: TaskRow } | null>
   /** Soft deletes the task with its comments, links and activity, then logs `activity` (the deletion). */
   deleteTask(id: string, activity: readonly ActivityInsert[], now: Date): Promise<TaskRow | null>
@@ -219,8 +248,9 @@ export interface BoardStore {
   getComment(id: string): Promise<CommentRow | null>
   /** Only when the task is on this board and not deleted; null otherwise. */
   insertComment(comment: CommentInsert, activity: readonly ActivityInsert[]): Promise<CommentRow | null>
-  updateComment(id: string, body: string, now: Date): Promise<CommentRow | null>
-  deleteComment(id: string, now: Date): Promise<CommentRow | null>
+  /** Changes the text and logs `activity` (the earlier text) in the same transaction. */
+  updateComment(id: string, body: string, now: Date, activity?: readonly ActivityInsert[]): Promise<CommentRow | null>
+  deleteComment(id: string, now: Date, activity?: readonly ActivityInsert[]): Promise<CommentRow | null>
 
   listActivity(taskId: string, limit: number): Promise<ActivityRow[]>
   /** The latest entries of the board, with the task's title (deleted tasks show only their deletion). */
@@ -266,11 +296,20 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
     )
 
   const writePositions = async (tx: SqlRunner, changes: ReadonlyArray<{ id: string; position: number }>) => {
-    if (changes.length === 0) return
-    await tx.raw(
-      `update "${TASK_TABLE}" as t set "position" = v."position" from (values ${changes.map(() => "(?, ?::integer)").join(", ")}) as v("id", "position") where t."id" = v."id" and t."board" = ? and t."deleted_at" is null`,
-      [...changes.flatMap((c) => [c.id, c.position]), board],
-    )
+    for (let i = 0; i < changes.length; i += POSITION_BATCH) {
+      const part = changes.slice(i, i + POSITION_BATCH)
+      await tx.raw(
+        `update "${TASK_TABLE}" as t set "position" = v."position" from (values ${part.map(() => "(?, ?::integer)").join(", ")}) as v("id", "position") where t."id" = v."id" and t."board" = ? and t."deleted_at" is null`,
+        [...part.flatMap((c) => [c.id, c.position]), board],
+      )
+    }
+  }
+
+  /** The open column a task left, numbered again from 0 (closed columns are not numbered). */
+  const closeGap = async (tx: SqlRunner, status: string, id: string) => {
+    if (isClosed(status)) return
+    const left = await column(tx, status, id)
+    await writePositions(tx, positionChanges(left, left.map((r) => r.id)))
   }
 
   const endOfColumn = `(select coalesce(max("position"), -1) + 1 from "${TASK_TABLE}" where "board" = ? and "status" = ? and "deleted_at" is null and "id" <> ?)`
@@ -411,8 +450,9 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
       })
     },
 
-    async updateTask(id, plan, now) {
+    async updateTask(id, plan, now, lockFirst = false) {
       return inTransaction(sql, async (tx) => {
+        if (lockFirst) await lockBoard(tx)
         const before = await lockedTask(tx, id)
         if (!before) return null
         const p = plan(before)
@@ -422,14 +462,13 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
         if (!set.sql && p.activity.length === 0) return { before, after: before }
         let after = before
         if (set.sql) {
-          if (statusChanged) await lockBoard(tx)
-          const assignments = [set.sql, statusChanged ? `"position" = ${endOfColumn}` : "", `"updated_at" = ?`].filter(Boolean).join(", ")
-          const bindings = [...set.bindings, ...(statusChanged ? [board, p.patch.status, id] : []), now, id, board]
+          /* Only custom callers get here without the lock taken first. */
+          if (statusChanged && !lockFirst) await lockBoard(tx)
+          const toClosed = statusChanged && isClosed(p.patch.status)
+          const assignments = [set.sql, statusChanged ? `"position" = ${toClosed ? "0" : endOfColumn}` : "", `"updated_at" = ?`].filter(Boolean).join(", ")
+          const bindings = [...set.bindings, ...(statusChanged && !toClosed ? [board, p.patch.status, id] : []), now, id, board]
           ;[after] = rowsOf<TaskRow>(await tx.raw(`update "${TASK_TABLE}" set ${assignments} where "id" = ? and "board" = ? and "deleted_at" is null returning *`, bindings))
-          if (statusChanged) {
-            const left = await column(tx, before.status, id)
-            await writePositions(tx, positionChanges(left, left.map((r) => r.id)))
-          }
+          if (statusChanged) await closeGap(tx, before.status, id)
         }
         await insertActivity(tx, p.activity)
         return { before, after: after ?? before }
@@ -442,15 +481,22 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
         const before = await lockedTask(tx, id)
         if (!before) return null
         const p = plan(before)
-        const dest = await column(tx, target.status, id)
-        const order = planMove(
-          dest.map((r) => r.id),
-          id,
-          { afterId: target.afterId, beforeId: target.beforeId },
-        )
-        const others = positionChanges(dest, order).filter((c) => c.id !== id)
-        const position = order.indexOf(id)
         const statusChanged = target.status !== before.status
+        /* Closed columns are ordered by when tasks closed: no neighbours, nothing to number. */
+        const toClosed = isClosed(target.status)
+        if (toClosed && !statusChanged) return { before, after: before }
+        let others: Array<{ id: string; position: number }> = []
+        let position = 0
+        if (!toClosed) {
+          const dest = await column(tx, target.status, id)
+          const order = planMove(
+            dest.map((r) => r.id),
+            id,
+            { afterId: target.afterId, beforeId: target.beforeId },
+          )
+          others = positionChanges(dest, order).filter((c) => c.id !== id)
+          position = order.indexOf(id)
+        }
         const set = setClause({ ...(p.patch as Record<string, unknown>), status: target.status }, TASK_PATCHABLE)
         const [after] = rowsOf<TaskRow>(
           await tx.raw(`update "${TASK_TABLE}" set ${set.sql}, "position" = ?${statusChanged ? `, "updated_at" = ?` : ""} where "id" = ? and "board" = ? and "deleted_at" is null returning *`, [
@@ -462,10 +508,7 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
           ]),
         )
         await writePositions(tx, others)
-        if (statusChanged) {
-          const left = await column(tx, before.status, id)
-          await writePositions(tx, positionChanges(left, left.map((r) => r.id)))
-        }
+        if (statusChanged) await closeGap(tx, before.status, id)
         await insertActivity(tx, p.activity)
         return { before, after: after ?? before }
       })
@@ -473,16 +516,18 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
 
     async deleteTask(id, activity, now) {
       return inTransaction(sql, async (tx) => {
+        /* The board's lock first, as every change that renumbers a column takes it. */
+        await lockBoard(tx)
         const [row] = rowsOf<TaskRow>(
           await tx.raw(`update "${TASK_TABLE}" set "deleted_at" = ?, "updated_at" = ? where "id" = ? and "board" = ? and "deleted_at" is null returning *`, [now, now, id, board]),
         )
         if (!row) return null
-        for (const table of [COMMENT_TABLE, LINK_TABLE, ACTIVITY_TABLE]) {
+        /* Comments and links go with the task; its activity stays, the log only grows. */
+        for (const table of [COMMENT_TABLE, LINK_TABLE]) {
           await tx.raw(`update "${table}" set "deleted_at" = ? where "task_id" = ? and "board" = ? and "deleted_at" is null`, [now, id, board])
         }
         await insertActivity(tx, activity)
-        const left = await column(tx, row.status, id)
-        await writePositions(tx, positionChanges(left, left.map((r) => r.id)))
+        await closeGap(tx, row.status, id)
         return row
       })
     },
@@ -516,22 +561,30 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
       })
     },
 
-    async updateComment(id, body, now) {
-      const [row] = rowsOf<CommentRow>(
-        await sql.raw(
-          `update "${COMMENT_TABLE}" set "body" = ?, "edited_at" = ?, "updated_at" = ?, "metadata" = case when "metadata" is null then null else "metadata" - 'sample' end
-           where "id" = ? and "board" = ? and "deleted_at" is null returning *`,
-          [body, now, now, id, board],
-        ),
-      )
-      return row ?? null
+    async updateComment(id, body, now, activity = []) {
+      return inTransaction(sql, async (tx) => {
+        const [row] = rowsOf<CommentRow>(
+          await tx.raw(
+            `update "${COMMENT_TABLE}" set "body" = ?, "edited_at" = ?, "updated_at" = ?, "metadata" = case when "metadata" is null then null else "metadata" - 'sample' end
+             where "id" = ? and "board" = ? and "deleted_at" is null returning *`,
+            [body, now, now, id, board],
+          ),
+        )
+        if (!row) return null
+        await insertActivity(tx, activity)
+        return row
+      })
     },
 
-    async deleteComment(id, now) {
-      const [row] = rowsOf<CommentRow>(
-        await sql.raw(`update "${COMMENT_TABLE}" set "deleted_at" = ?, "updated_at" = ? where "id" = ? and "board" = ? and "deleted_at" is null returning *`, [now, now, id, board]),
-      )
-      return row ?? null
+    async deleteComment(id, now, activity = []) {
+      return inTransaction(sql, async (tx) => {
+        const [row] = rowsOf<CommentRow>(
+          await tx.raw(`update "${COMMENT_TABLE}" set "deleted_at" = ?, "updated_at" = ? where "id" = ? and "board" = ? and "deleted_at" is null returning *`, [now, now, id, board]),
+        )
+        if (!row) return null
+        await insertActivity(tx, activity)
+        return row
+      })
     },
 
     async listActivity(taskId, limit) {
@@ -676,8 +729,14 @@ export interface SandboxSeed {
 }
 
 export interface SandboxStore {
-  /** Replaces everything on the sandbox board with the seed and records the marker, in one transaction. */
-  replace(seed: SandboxSeed, marker: { key: string; id: string; value: unknown }, now: Date): Promise<void>
+  /**
+   * Replaces everything on the sandbox board with the seed and records the
+   * marker, in one transaction under the board's lock. With `onlyIf`, the
+   * marker is read again under the lock and nothing happens unless `onlyIf`
+   * says so (two instances, or the job and a page, seed once). True when it
+   * replaced the board.
+   */
+  replace(seed: SandboxSeed, marker: { key: string; id: string; value: unknown }, now: Date, onlyIf?: (current: unknown) => boolean): Promise<boolean>
   countTasks(): Promise<number>
 }
 
@@ -685,9 +744,13 @@ export interface SandboxStore {
 export function createSandboxStore(sql: SqlRunner): SandboxStore {
   const board = SANDBOX_BOARD
   return {
-    async replace(seed, marker, now) {
-      await inTransaction(sql, async (tx) => {
+    async replace(seed, marker, now, onlyIf) {
+      return inTransaction(sql, async (tx) => {
         await tx.raw(`select pg_advisory_xact_lock(hashtext(?))`, [boardLockKey(board)])
+        if (onlyIf) {
+          const [current] = rowsOf<SettingRow>(await tx.raw(`select * from "${SETTING_TABLE}" where "key" = ? and "deleted_at" is null`, [marker.key]))
+          if (!onlyIf(current?.value ?? null)) return false
+        }
         for (const table of [LINK_TABLE, ACTIVITY_TABLE, COMMENT_TABLE, TASK_TABLE]) {
           await tx.raw(`delete from "${table}" where "board" = ?`, [board])
         }
@@ -720,6 +783,7 @@ export function createSandboxStore(sql: SqlRunner): SandboxStore {
            on conflict ("key") do update set "value" = excluded."value", "updated_at" = excluded."updated_at", "deleted_at" = null`,
           [marker.id, marker.key, JSON.stringify(marker.value ?? null), now, now],
         )
+        return true
       })
     },
 

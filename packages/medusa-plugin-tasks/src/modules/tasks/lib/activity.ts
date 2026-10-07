@@ -43,6 +43,16 @@ export function commentedEntry(commentId: string): ActivityDraft {
   return { type: "commented", message: "Commented", metadata: { comment_id: commentId } }
 }
 
+/** The comment's text before the edit stays in the log. */
+export function commentEditedEntry(commentId: string, previousBody: string): ActivityDraft {
+  return { type: "comment_edited", message: "Edited a comment", metadata: { comment_id: commentId, previous_body: previousBody } }
+}
+
+/** The deleted comment's text stays in the log. */
+export function commentDeletedEntry(commentId: string, body: string): ActivityDraft {
+  return { type: "comment_deleted", message: "Deleted a comment", metadata: { comment_id: commentId, body } }
+}
+
 export function linkedEntry(type: LinkType, id: string): ActivityDraft {
   return { type: "linked", message: `Linked ${type} ${id}`, metadata: { link_type: type, entity_id: id } }
 }
@@ -64,7 +74,20 @@ export function deletedEntry(title: string): ActivityDraft {
 /* Reading                                                             */
 /* ------------------------------------------------------------------ */
 
-export type ActivityKind = "created" | "moved" | "status" | "assigned" | "unassigned" | "commented" | "linked" | "unlinked" | "updated" | "deleted" | "other"
+export type ActivityKind =
+  | "created"
+  | "moved"
+  | "status"
+  | "assigned"
+  | "unassigned"
+  | "commented"
+  | "commentEdited"
+  | "commentDeleted"
+  | "linked"
+  | "unlinked"
+  | "updated"
+  | "deleted"
+  | "other"
 
 export interface ActivityView {
   kind: ActivityKind
@@ -94,6 +117,10 @@ export function describeActivity(row: { type: string; message: string | null; me
       return { kind: "created" }
     case "commented":
       return { kind: "commented" }
+    case "comment_edited":
+      return { kind: "commentEdited" }
+    case "comment_deleted":
+      return { kind: "commentDeleted" }
     case "task_deleted":
       return { kind: "deleted" }
     case "status_changed": {

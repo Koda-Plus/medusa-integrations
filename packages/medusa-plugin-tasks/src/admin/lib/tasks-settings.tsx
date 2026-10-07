@@ -106,6 +106,7 @@ export function GeneralSection({ status }: { status: StatusResponse }) {
             )}
           </Fact>
           <Fact label={t("general.references")}>{fmtNumber(status.references.length, lang)}</Fact>
+          <Fact label={t("general.agentKeys")}>{o.agent_key_prefix ? t("general.agentKeysOn", { prefix: o.agent_key_prefix }) : t("general.agentKeysOff")}</Fact>
           <Fact label={t("general.automation")}>
             {status.automation.api_key_activity > 0
               ? t("general.automationSome", { count: status.automation.api_key_activity, time: fmtRelative(status.automation.last_api_key_at, lang) })
@@ -171,7 +172,15 @@ export function SandboxSection({ status }: { status: StatusResponse }) {
             <Fact label={t("sandboxTab.next")}>
               {s.next_reset_at ? t("sandboxTab.onOpen", { time: fmtDateTime(s.next_reset_at, lang) }) : t("general.onlyReset")}
             </Fact>
+            <Fact label={t("sandboxTab.guard")}>{status.options.sandbox_guard ? t("sandboxTab.guardOn") : t("sandboxTab.guardOff")}</Fact>
           </div>
+          {!status.options.sandbox_guard && !status.sandbox ? (
+            <div className="px-6 py-4">
+              <InlineTip variant="warning" label={t("sandboxTab.guard")}>
+                {t("sandboxTab.guardWarning")}
+              </InlineTip>
+            </div>
+          ) : null}
           <div className="px-6 py-3">
             <Text size="xsmall" className="text-ui-fg-muted">
               {t("sandboxTab.resetHint")}

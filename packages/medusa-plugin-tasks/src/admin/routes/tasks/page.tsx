@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
@@ -7,7 +7,7 @@ import { ArrowPath, ArrowUturnLeft, Plus } from "@medusajs/icons"
 import { Badge, Container, Heading, InlineTip, Table, Text } from "@medusajs/ui"
 import { isLinkType } from "../../../modules/tasks/lib/constants"
 import type { StatusResponse, TaskDto } from "../../../modules/tasks/lib/contract"
-import { errorMessage, localDay, tasksKeys, useBoard, useBoardActivity, useMoveTask, useTasksStatus } from "../../lib/tasks-api"
+import { errorMessage, localDay, tasksKeys, useBoard, useBoardActivity, useEnsureSandbox, useMoveTask, useTasksStatus } from "../../lib/tasks-api"
 import { BoardColumns, FilterBar, NO_FILTERS, RoadmapView, applyFilters, filtered, type BoardFilters, type QuickFilter } from "../../lib/tasks-board"
 import { TaskDrawer } from "../../lib/tasks-drawer"
 import { CreateTaskModal, useFailToast, type PickedRecord } from "../../lib/tasks-form"
@@ -90,6 +90,16 @@ const TasksPage = () => {
   const openId = params.get("task")
   const creating = params.get("new") === "1"
 
+  /* A sandbox account's page asks for the sample tasks once when the board is not seeded or is old: reads never seed. */
+  const ensure = useEnsureSandbox()
+  const asked = useRef(false)
+  const stale = Boolean(s?.sandbox && s.sandbox_board?.stale)
+  useEffect(() => {
+    if (!stale || asked.current) return
+    asked.current = true
+    ensure.mutate()
+  }, [stale, ensure])
+
   const setLayout = (v: Layout) => {
     setLayoutState(v)
     saveLayout(v)
@@ -160,11 +170,12 @@ const TasksPage = () => {
             </div>
             <div className="flex flex-col gap-y-3 px-6 py-4">
               <FilterBar value={filters} onChange={setFilters} tasks={tasks} index={index} />
-              {filtered(filters) || (board.data?.hidden_closed ?? 0) > 0 ? (
+              {filtered(filters) || (board.data?.hidden_closed ?? 0) > 0 || (board.data?.hidden_open ?? 0) > 0 ? (
                 <Text size="small" className="text-ui-fg-subtle">
                   {filters.quick !== "none" ? `${t(`board.quick.${filters.quick}`)}. ` : ""}
                   {filtered(filters) ? `${t("board.shown", { shown: visible.length, total: tasks.length })} ` : ""}
                   {(board.data?.hidden_closed ?? 0) > 0 ? t("board.hiddenClosed", { count: board.data?.hidden_closed ?? 0 }) : ""}
+                  {(board.data?.hidden_open ?? 0) > 0 ? ` ${t("board.hiddenOpen", { count: board.data?.hidden_open ?? 0 })}` : ""}
                 </Text>
               ) : null}
               {board.isError ? (
