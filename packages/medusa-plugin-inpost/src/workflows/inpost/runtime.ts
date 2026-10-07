@@ -164,8 +164,19 @@ export interface OrderRecord extends PlanOrder {
 }
 
 export async function loadOrder(scope: Scope, orderId: string): Promise<OrderRecord | null> {
-  const { data } = await queryOf(scope).graph({ entity: "order", fields: [...PLAN_ORDER_FIELDS], filters: { id: orderId } })
-  return (data[0] as OrderRecord | undefined) ?? null
+  try {
+    const { data } = await queryOf(scope).graph({ entity: "order", fields: [...PLAN_ORDER_FIELDS], filters: { id: orderId } })
+    return (data[0] as OrderRecord | undefined) ?? null
+  } catch (err) {
+    /* Medusa cannot compute the totals of an order whose shipping method has no version (some
+       orders imported by other plugins): read it without them. A plan without a total cannot
+       send cash on delivery and says so; every other parcel plans as usual. */
+    const fields = PLAN_ORDER_FIELDS.filter((f) => f !== "total")
+    const { data } = await queryOf(scope).graph({ entity: "order", fields: [...fields], filters: { id: orderId } }).catch(() => {
+      throw err
+    })
+    return (data[0] as OrderRecord | undefined) ?? null
+  }
 }
 
 /** Fulfillment providers of this plugin: `inpost_<id>` (the identifier is "inpost"). */
