@@ -94,9 +94,10 @@ for (const p of packages) {
   }
 
   /* 4. README: no tables, absolute links. */
-  const readme = fs.readFileSync(path.join(p.path, "README.md"), "utf8")
+  /* Code blocks are left out: an ASCII diagram is not a table, a path in a snippet is not a link. */
+  const readme = fs.readFileSync(path.join(p.path, "README.md"), "utf8").replace(/^```[\s\S]*?^```/gm, "")
   if (/^\s*\|.*\|\s*$/m.test(readme)) err(`${p.dir}/README.md: a table (medusajs.com flattens tables)`)
-  const relative = [...readme.matchAll(/\]\((\.\/|\.\.\/|docs\/|LICENSE|CHANGELOG)[^)]*\)/g)].map((m) => m[0])
+  const relative = [...readme.matchAll(/\]\((?!https?:\/\/|#|mailto:)[^)\s]+\)/g)].map((m) => m[0])
   if (relative.length) err(`${p.dir}/README.md: relative links ${relative.slice(0, 3).join(" ")} (use https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/${p.dir}/...)`)
 
   /* 5. package.json for the Medusa catalog. */

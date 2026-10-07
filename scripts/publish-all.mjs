@@ -112,8 +112,8 @@ function preflight(p) {
   if (!files.some((f) => f.endsWith(".d.ts"))) problems.push("the tarball has no type declarations (.d.ts)")
   const bad = files.filter((f) => FORBIDDEN_IN_TARBALL.some((re) => re.test(f)))
   if (bad.length) problems.push(`the tarball must not carry: ${bad.slice(0, 10).join(", ")}`)
-  const readme = fs.readFileSync(path.join(p.path, "README.md"), "utf8")
-  const relative = [...readme.matchAll(/\]\((\.\/|\.\.\/|docs\/)[^)]*\)/g)].map((m) => m[0])
+  const readme = fs.readFileSync(path.join(p.path, "README.md"), "utf8").replace(/^```[\s\S]*?^```/gm, "")
+  const relative = [...readme.matchAll(/\]\((?!https?:\/\/|#|mailto:)[^)\s]+\)/g)].map((m) => m[0])
   if (relative.length) problems.push(`README links must be absolute (npm and medusajs.com show it outside the repo): ${relative.slice(0, 3).join(" ")}`)
   return problems
 }
