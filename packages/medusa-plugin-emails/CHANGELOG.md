@@ -47,6 +47,7 @@ Run `npx medusa db:migrate`: the send log gets two columns (`Migration2026100811
 - The send log keeps the Medusa customer of a message and a one-way hash of its address (`customer_id`, `recipient_hash`).
 - The `bounced` filter of the log: messages refused for the recipient's address.
 - The Setup guide and the README name the daily limit of the free Resend plan (100 a day), and the README has Security and Uninstall sections.
+- The page warns when admin users would get no password reset e-mail (the address of the admin is unknown).
 
 ## 0.1.0 (2026-10-06)
 

@@ -311,6 +311,8 @@ const en = {
     severalText: "Several providers serve the email channel ({{list}}). Medusa uses one of them; keep only the provider of this plugin.",
     noFeedLabel: "Feed channel",
     noFeedText: "No provider serves Medusa's feed channel, so product import and export and the order export fail with \"Could not find a notification provider for channel: feed\". Keep @medusajs/medusa/notification-local with channels: [\"feed\"] next to the provider of this plugin (see the Setup guide).",
+    noAdminResetLabel: "Admin password resets",
+    noAdminResetText: "An admin user who forgets the password gets no e-mail: the address of the admin is unknown. Set adminUrl in the options, or admin.backendUrl in medusa-config.ts.",
     modeDiffersLabel: "Provider mode",
     modeDiffersText: "This page shows {{plugin}}, but the provider of this process is in {{provider}}, and the provider decides what happens to every e-mail. Pass the same options object to both registrations.",
   },

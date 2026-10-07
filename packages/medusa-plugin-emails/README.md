@@ -212,6 +212,7 @@ await sendEmailWorkflow(container).run({
 - `sensitive: ["field"]` marks data fields that carry a secret (a link with a token, as `reset_url` of the built-in password reset). Such a message never goes through Medusa's notification table (the plugin hands it to its provider directly, with the same send log and idempotency), and the simulated outbox keeps it with those fields hidden. A built-in template you replace under its key keeps its secret fields.
 - `registerEmailTemplate(key, definition)` registers at run time instead (from a file Medusa loads in every process). Lookup order: the `templates` option, then `registerEmailTemplate`, then the built-in set.
 - `renderEmailPreview({ template, data, locale, options })` renders outside Medusa, for your own tests.
+- A notification whose `provider_data.emails.kind` is `"test"` ignores the template switches: that is how the admin's test send checks a template that is off. Keep it for tests.
 - App code may call `createNotifications({ to, channel: "email", template, data })` directly; pass an `idempotency_key` to make it exactly once. Medusa keeps `data` in its notification table and returns it from `GET /admin/notifications`, so send a template with secret fields through `sendEmailWorkflow` instead.
 
 ## Setup in brief
