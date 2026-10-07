@@ -326,7 +326,7 @@ const { result } = await sendOrderToBaseLinkerWorkflow(container).run({
 // result.adopted === true when the order was already in BaseLinker and nothing was written
 ```
 
-Also exported: `processBaseLinkerOrdersWorkflow` (one pass of the outbox) and `checkBaseLinkerConnectionWorkflow`.
+Also exported: `processBaseLinkerOrdersWorkflow` (one pass of the outbox) and `checkBaseLinkerConnectionWorkflow`. `syncBaseLinkerStatusesWorkflow` reads the orders the plugin sent; the scheduled status job also follows the imported orders and the order journal, which `runStatusPass(container, "manual")` does in one call.
 
 Events on the Medusa event bus:
 

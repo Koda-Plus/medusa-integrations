@@ -18,7 +18,7 @@ import { describeError } from "../../modules/baselinker/lib/errors"
 import { planPricePush, priceGroupProblem, pricePayload, type PriceChange } from "../../modules/baselinker/lib/price-push"
 import { selectForApply } from "../../modules/baselinker/lib/quarantine"
 import { writerState } from "../../modules/baselinker/lib/writers"
-import { loadMedusaCatalog, pricesIncludeTax } from "./medusa-catalog"
+import { loadMedusaCatalog, readPricesIncludeTax } from "./medusa-catalog"
 import { noteFailures, noteSuccesses, quarantinedKeys, quarantineRows, replacePlan, rowStatus, type Outcome, type PlanItemData } from "./plans"
 import { baselinkerService, clientFor, emitEvent, exclusive, recordRun, type Scope } from "./runtime"
 import { loadWriters, updateDemoState } from "./settings"
@@ -61,11 +61,20 @@ export async function runPricePushPlan(scope: Scope, input: PricesRunInput): Pro
         counts: { skipped: "incomplete_read" },
       })
     }
-    const [{ writers }, catalog, taxInclusive] = await Promise.all([
-      loadWriters(svc),
-      loadMedusaCatalog(scope, { currency: o.priceCurrency, manufacturerAs: o.manufacturerAs }),
-      pricesIncludeTax(scope, o.priceCurrency),
-    ])
+    let taxInclusive: boolean
+    try {
+      taxInclusive = await readPricesIncludeTax(scope, o.priceCurrency)
+    } catch (err) {
+      /* A guess would send prices 23 percent too high to every marketplace: nothing is planned. */
+      return recordRun(svc, {
+        kind: "prices",
+        trigger: input.trigger,
+        status: "error",
+        startedAt,
+        message: `The price preference of ${o.priceCurrency.toUpperCase()} (whether Medusa prices include tax) could not be read, so no price was planned: ${svc.mask(describeError(err).message)}`,
+      })
+    }
+    const [{ writers }, catalog] = await Promise.all([loadWriters(svc), loadMedusaCatalog(scope, { currency: o.priceCurrency, manufacturerAs: o.manufacturerAs })])
 
     let rates: Map<string, number | null> | undefined
     if (!taxInclusive) {

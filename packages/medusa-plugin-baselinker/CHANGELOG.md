@@ -15,6 +15,7 @@
 - `order.placed` queues the order even when the plugin's tables cannot be read for a moment; the send checks the loop guard again before anything leaves Medusa.
 - Stored errors and logs mask e-mail addresses and international phone numbers a BaseLinker or Medusa error may echo.
 - `fakturownia.document.issued` is taken only with a Medusa order id, a short document id and kind, and a printable number of at most 100 characters.
+- A price preference that cannot be read stops the price plan with an error in the history instead of taking Medusa prices as net (they would have gone to the marketplaces 23 percent too high).
 
 ### Changed
 
