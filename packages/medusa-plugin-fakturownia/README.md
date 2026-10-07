@@ -387,14 +387,6 @@ What other code may import: `@koda-plus/medusa-plugin-fakturownia/workflows` (th
 - It does not sync products, clients or warehouse documents.
 - One Fakturownia account per store.
 
-## Alternatives
-
-Checked in October 2026: no other Fakturownia integration for Medusa v2 is published on npm or listed on medusajs.com/integrations. What exists:
-
-- **inFakt Invoicing** (medusajs.com/integrations): "inFakt invoices and KSeF filing", through inFakt, another Polish invoicing service. For stores that invoice in inFakt rather than in Fakturownia.
-- **Invoices** (medusajs.com/integrations): "Auto-generate PDF invoices and credit notes". Its description names no invoicing service and no KSeF.
-- **fakturownia-sdk** (npm): a generic Node.js client of the Fakturownia API. Which document to issue and when, exactly once, corrections, KSeF and the admin stay your code.
-
 ## Development
 
 ```bash

@@ -277,7 +277,7 @@ const { result } = await pushAllegroStockWorkflow(container).run({
 - **Write allowlist:** every request to the Allegro REST API goes through a check that lets GET and HEAD through and, for anything else, only the exact method and path of a writer that is armed right now: `PUT /sale/offer-quantity-change-commands/{uuid}` and `PUT /sale/offer-publication-commands/{uuid}` with `END` only (stock), `PUT /sale/offer-price-change-commands/{uuid}` (prices), `POST /order/checkout-forms/{uuid}/shipments` and `PUT /order/checkout-forms/{uuid}/fulfillment` (parcels), `POST /order/{uuid}/billing-documents/files` (invoices), `POST /sale/product-offers` with an `INACTIVE` publication only (drafts). The bodies are checked too: a quantity must be a positive whole number, an offer is never activated. The only other POSTs go to the OAuth server.
 - **Narrow scopes:** read scopes, plus the write scopes of the writers allowed in `writes`, plus disputes and messaging only when switched on.
 - **Encrypted tokens:** AES-256-GCM with a random IV per write; the key lives in your environment, not in the database.
-- **One refresh across processes:** a lease in the database serializes token refreshes between a server and a worker, because Allegro rotates the refresh token on every use and keeps the old one for only 60 seconds.
+- **One refresh across processes:** a lease in the database serializes token refreshes between a server and a worker, because each refresh hands out a new refresh token and the previous one stops working about a minute later.
 - **Leases and locks:** one stock, price or draft run at a time across processes; one importer per marketplace order through the shared lock.
 - **Masked logs:** secrets and token-like strings are masked in logs, stored errors and the admin.
 - **Rate limited**, with retries only for transient errors: network, 5xx and 429. A write that got no clear answer is never repeated blindly: it is looked up on Allegro first.
@@ -286,7 +286,7 @@ const { result } = await pushAllegroStockWorkflow(container).run({
 
 The plugin's own tables store ids, statuses, amounts, dates, reason codes and reasons, never a buyer's name, address, e-mail or phone, and never the text of a dispute or message. The order import needs the buyer's data to ship the order, so it puts it where any store order keeps it: in the Medusa order (the delivery and invoice addresses, the phone, Allegro's masked buyer e-mail, the buyer login and the NIP when an invoice was asked for). No customer account is created. In demo mode every buyer is fictional, at `@example.com`.
 
-## What this plugin does not do
+## Out of scope
 
 - It does not create offers from scratch with descriptions, photos and parameters: drafts by EAN reuse an Allegro catalog product, and you review and activate them on Allegro.
 - It does not edit offer content, renew offers or activate ended ones, and it does not manage promotions, Allegro price automation rules, fees or campaigns.
@@ -296,24 +296,6 @@ The plugin's own tables store ids, statuses, amounts, dates, reason codes and re
 - It does not issue invoices; the Fakturownia plugin or your own tool does.
 - One Allegro seller account per Medusa store, and one Allegro marketplace (allegro.pl) for the import.
 - The writers of this version have not yet run against a real Allegro account: they are unit tested against fakes, ran end to end in demo mode on Medusa 2.15.3, and every Allegro call follows the official documentation (`docs/allegro-api-notes.md`). Try them in the sandbox first.
-
-## Compared with @zanreal/medusa-allegro
-
-[@zanreal/medusa-allegro](https://www.npmjs.com/package/@zanreal/medusa-allegro) is the other Allegro integration for Medusa v2. Both arm every writer at run time and both import orders from the event journal. The differences, as its README describes it:
-
-- **Login:** it uses the authorization-code grant with a CSRF-protected callback route on your backend; this plugin uses the device flow, so nothing has to be reachable from the internet.
-- **Switches:** its options can force a writer off and its invoice attach ships armed; here every writer, invoices included, needs both an explicit `writes.<writer>: true` and a person arming it.
-- **Taxes on imported orders:** its known gaps list "No taxes on imported orders"; here every imported line and shipping method gets the region's tax lines.
-- **Token refresh:** its known gaps list refresh de-duplication per process; here a database lease serializes refreshes across processes.
-- **Invoice retries:** its retry sweep rides the order drain, so pausing the order import pauses it; here invoices have their own outbox and sweep.
-- **Admin placement:** it puts the connection, writers and tables under Settings, with a product widget and a product list banner; here Allegro has its own page in the sidebar, with a setup guide, and a product widget.
-- **Demo mode:** its README describes none; here the whole integration runs on a simulated account.
-- **Prices:** it drives Allegro's price automation rules with break-even and SRP bounds, promotion state, category rates and a fee preview; here prices are set directly with a floor and a ceiling from metadata, without promotions or fees.
-- **Stock:** it pushes changed SKUs within seconds after reservation events, with a 15 minute sweep; here the stock writer runs every 15 minutes, plan first.
-- **Beyond orders:** its README does not cover customer returns, disputes, messages or creating offers; here issues are read and counted, and offers are drafted by EAN.
-- **Dependencies:** it pulls `@zanreal/medusa-admin-kit`; this plugin has none beyond Medusa.
-
-Both are MIT licensed; read both before you choose.
 
 ## Development
 
@@ -336,7 +318,7 @@ Allegro and the Allegro logo are trademarks of their owner, used here only to id
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-allegro/LICENSE).
 
 ## Changelog
 

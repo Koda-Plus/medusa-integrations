@@ -319,16 +319,6 @@ The admin has the full guide (**InPost**, **Setup guide**, or `/app/inpost?view=
 - It uses two ShipX services, `inpost_locker_standard` and `inpost_courier_standard`: no express, weekend, Allegro or international services.
 - It does not notify the customer itself: Medusa's `shipment.created` and the plugin's events let your e-mail plugin do that.
 
-## Compared with other InPost plugins for Medusa
-
-Other InPost plugins for Medusa exist; do not install two of them together. Where this one differs:
-
-- Its ShipX logic is generalized from the order management system of a Polish cosmetics wholesaler, where it runs InPost shipping in production: plans, cash on delivery to the grosz, the guard against a second parcel, webhooks with a fallback status pass.
-- Cash on delivery variants of both the Paczkomat and the courier option.
-- Writes are off by default, and every shipment is created from a plan a person can read.
-- The webhook is a doorbell: statuses come from ShipX itself, with a fallback status pass.
-- Events with a documented contract, a setup guide in the admin, an order widget and a demo mode.
-
 ## Admin API
 
 Every route is behind Medusa's admin authentication. Writes answer 409 while the shipment writer is not allowed and armed.

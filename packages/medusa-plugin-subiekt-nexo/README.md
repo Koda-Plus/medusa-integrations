@@ -231,10 +231,6 @@ Subscribe to `subiekt.document_issued` (`{ order_id, kind, number, status, sourc
 - **Sync from the ERP via webhook**: the signed `POST /hooks/subiekt` plus the cursor-based event feed.
 - **Scheduled product sync job**: `subiekt-sync-stock` (stock, every 10 minutes) and `subiekt-sync-products` (prices and missing products, hourly, plan first).
 
-## Compared with the Base.com route
-
-Shops often connect Subiekt through Base.com (BaseLinker): Medusa to Base with one integration, Base to Subiekt with another. Base's own page says its ERP integrations, Subiekt nexo PRO included, "are provided by external companies", and lists what such integrators do: import orders from Base into Subiekt, create contractors, export products, prices and stock from Subiekt to Base, post sales documents as PDF ([base.com, Subiekt nexo PRO integration](https://base.com/en-US/integrations/subiekt_nexo_pro/)). That route fits shops that already run their marketplaces through Base. This plugin connects Medusa to Subiekt directly: no third system in between, the order state, documents and KSeF numbers in the Medusa admin, and every write behind a plan, a cap and a person's switch. Its cost is the bridge machine you host next to Subiekt.
-
 ## What this plugin does not do
 
 - **No payments on sales documents.** The FS or PA takes its payment method and term from Subiekt (the document defaults, or what it copies from the WZ or ZK); the online payment is not booked as a settlement in Subiekt. The ZK notes describe the payment in words.

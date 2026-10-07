@@ -27,6 +27,7 @@
 
 ### Changed
 
+- README describes this plugin only: the list of other invoicing plugins is gone.
 - Demo mode runs only with `demo: true`. Without a token the plugin is "not configured": nothing is issued, the admin shows it in red and the log says so (an error on production). Before, a lost token quietly switched a live store to the simulated account. Set `demo: process.env.FAKTUROWNIA_DEMO === "true"` where you want the demo.
 - GET routes never write: the sample data of the demo comes from the issue job or from `POST /admin/fakturownia/demo/seed`, which the page calls once on a first visit (`demoPrepared` in `GET /admin/fakturownia`); the simulated KSeF moves in the job, not when someone looks.
 - Writes to `/admin/fakturownia` need a JSON body or the `x-koda-request` header (the kit's `writeGuard`), so a form on another site cannot trigger them with the admin's cookie.
