@@ -13,8 +13,8 @@
  * `plugins: [...]` instead.
  *
  * WHAT GETS COPIED, by convention (namespace `ns` per plugin, see PLUGINS):
- *   directories  modules/<ns>, workflows/<ns>, api/admin/<ns>, api/store/<ns>,
- *                api/hooks/<ns>, api/<ns>, admin/routes/<ns>
+ *   directories  modules/<ns>, providers/<ns>, workflows/<ns>, api/admin/<ns>,
+ *                api/store/<ns>, api/hooks/<ns>, api/<ns>, admin/routes/<ns>
  *   files        jobs/<ns>-*, subscribers/<ns>-*, admin/widgets/<ns>-*,
  *                admin/lib/<ns>-*
  *   renamed      admin/i18n/en.ts -> admin/i18n/<ns>-en.ts (pl likewise),
@@ -39,6 +39,11 @@ const PLUGINS = [
   { name: "BaseLinker by Koda Plus", dir: "medusa-plugin-baselinker", ns: "baselinker" },
   { name: "Fakturownia by Koda Plus", dir: "medusa-plugin-fakturownia", ns: "fakturownia" },
   { name: "Subiekt nexo by Koda Plus", dir: "medusa-plugin-subiekt-nexo", ns: "subiekt" },
+  { name: "Negotiations by Koda Plus", dir: "medusa-plugin-negotiations", ns: "negotiations" },
+  { name: "E-mails by Koda Plus", dir: "medusa-plugin-emails", ns: "emails" },
+  { name: "InPost by Koda Plus", dir: "medusa-plugin-inpost", ns: "inpost" },
+  { name: "Stripe by Koda Plus", dir: "medusa-plugin-stripe", ns: "stripe" },
+  { name: "Tasks by Koda Plus", dir: "medusa-plugin-tasks", ns: "tasks" },
 ]
 
 const target = process.argv[2]
@@ -92,6 +97,7 @@ function planFor(p) {
   const pairs = []
   const dirs = [
     `modules/${p.ns}`,
+    `providers/${p.ns}`,
     `workflows/${p.ns}`,
     `api/admin/${p.ns}`,
     `api/store/${p.ns}`,

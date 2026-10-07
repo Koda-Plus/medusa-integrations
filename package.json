@@ -1,7 +1,7 @@
 {
   "name": "@koda-plus/medusa-integrations",
   "private": true,
-  "description": "Polish commerce integrations for Medusa v2 by Koda Plus: OLX, Allegro, BaseLinker and Subiekt nexo. Every package is published to npm on its own.",
+  "description": "Medusa v2 plugins for Polish stores by Koda Plus: OLX, Allegro, BaseLinker, Subiekt nexo, Fakturownia, InPost, Stripe, transactional e-mails, B2B negotiations and a task board. Every package is published to npm on its own.",
   "license": "MIT",
   "scripts": {
     "install:all": "node scripts/each.mjs npm ci",
