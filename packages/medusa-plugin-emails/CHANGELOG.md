@@ -21,6 +21,8 @@ Run `npx medusa db:migrate`: the send log gets two columns (`Migration2026100811
 - The demo outbox reads the newest orders one by one when Medusa refuses them together (Medusa 2.12 computes no totals of an order without its version), so one bad order never empties the demo; order reads ask for `version`.
 - Saving the branding merges with what the database holds, not with the cache of one process.
 - The version in the admin and in the User-Agent comes from `package.json`.
+- The limits of test sends are counted in the send log too, so a restart or a second instance does not reset them.
+- The demo outbox shows the store's products with the sample person: a copy of a live database never puts a customer's name, address or tracking number in it.
 - Admin pages work when the plugin is installed from npm: the admin libraries are optional peers, so the app keeps the copies of Medusa's dashboard instead of a second, newer copy.
 
 ### Changed

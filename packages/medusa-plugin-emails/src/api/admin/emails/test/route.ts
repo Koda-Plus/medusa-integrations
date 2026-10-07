@@ -7,6 +7,7 @@ import { sharedLimiter } from "../../../../modules/emails/lib/rate-limit"
 import { resolveTemplate } from "../../../../modules/emails/lib/registry"
 import { isEmail, maskEmail } from "../../../../modules/emails/lib/security"
 import { previewData } from "../../../../workflows/emails/preview"
+import { storeFor } from "../../../../workflows/emails/runtime"
 import { sendTemplate } from "../../../../workflows/emails/send-template"
 import { actorOf, emailsService } from "../helpers"
 
@@ -52,6 +53,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.setHeader("Retry-After", String(perStore.retryAfterSeconds))
     res.status(429).json({ message: `Too many test e-mails from this store: at most ${TEST_LIMIT_PER_HOUR} an hour. Try again in ${perStore.retryAfterSeconds} s.` })
     return
+  }
+  /* The same limits counted in the send log, so a restart or a second instance does not reset them. The memory is the first line. */
+  try {
+    const now = Date.now()
+    const logged = await storeFor(req.scope).testCounts(svc.isDemo(), actor, new Date(now - TEST_WINDOW_MS), new Date(now - 60 * 60 * 1000))
+    if (logged.mine >= TEST_LIMIT_PER_USER || logged.all >= TEST_LIMIT_PER_HOUR) {
+      res.setHeader("Retry-After", "60")
+      res.status(429).json({
+        message:
+          logged.mine >= TEST_LIMIT_PER_USER
+            ? `Too many test e-mails: at most ${TEST_LIMIT_PER_USER} in ${Math.round(TEST_WINDOW_MS / 60000)} minutes.`
+            : `Too many test e-mails from this store: at most ${TEST_LIMIT_PER_HOUR} an hour.`,
+      })
+      return
+    }
+  } catch {
+    /* no log yet: the limits in memory stand */
   }
   const locale = normalizeLocale(input.locale) ?? o.defaultLocale
   const source: PreviewSource = input.source === "latest" ? "latest" : "sample"

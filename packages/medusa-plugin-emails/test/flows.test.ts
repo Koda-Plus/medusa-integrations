@@ -520,6 +520,17 @@ test("demo mode: the outbox is seeded from the newest orders and customers, date
   assert.equal(await ensureDemoOutbox(setup().scope), 0, "never in live mode")
 })
 
+test("demo mode: the outbox shows the store's products with the sample person, never a customer's name or address", async () => {
+  const s = setup({ ...LIVE, demo: true })
+  s.data.order[0].shipping_address = { first_name: "Zbigniewa", last_name: "Brzęczyszczykiewicz", address_1: "ul. Tajna 99", city: "Gdańsk", country_code: "pl" }
+  s.data.customer[0].first_name = "Zbigniewa"
+  s.data.customer[2].first_name = "Bolesława"
+  await ensureDemoOutbox(s.scope, new Date())
+  const bodies = s.store.rows.map((r) => `${r.subject} ${r.body_html} ${r.body_text}`).join(" ")
+  assert.ok(bodies.includes("Lamp"), "the products are the store's")
+  for (const personal of ["Zbigniewa", "Brzęczyszczykiewicz", "Tajna 99", "Bolesława", "TN-1"]) assert.ok(!bodies.includes(personal), personal)
+})
+
 test("demo mode: a stale seed is rebuilt with fresh dates under the same keys; real events, tests and a retry in flight stay", async () => {
   const s = setup({ ...LIVE, demo: true })
   const t0 = new Date()

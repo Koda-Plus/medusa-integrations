@@ -12,6 +12,7 @@ import { GET as statusRoute } from "../src/api/admin/emails/route.ts"
 import { POST as seedRoute } from "../src/api/admin/emails/demo/seed/route.ts"
 import { GET as messagesRoute } from "../src/api/admin/emails/messages/route.ts"
 import { GET as messageRoute } from "../src/api/admin/emails/messages/[id]/route.ts"
+import { POST as testRoute } from "../src/api/admin/emails/test/route.ts"
 import { addressHash } from "../src/modules/emails/lib/keys.ts"
 import { resolveOptions, type EmailsPluginOptions } from "../src/modules/emails/lib/options.ts"
 import { forgetProvider, noteProvider } from "../src/modules/emails/lib/provider-status.ts"
@@ -269,4 +270,13 @@ test("a shopper may not set the keys that stop the e-mails of an order; the lang
     route.middlewares[0]({ method: "POST", scope: ctx.scope, headers: {}, body: { metadata: { locale: "pl" } } }, fakeResponse(), () => (passed = true))
     assert.equal(passed, true)
   }
+})
+
+test("the limits of test sends hold across restarts and instances: they are counted in the send log too", async () => {
+  const ctx = setup()
+  for (let i = 0; i < 5; i++) await ctx.store.record(row({ status: "sent", kind: "test", requested_by: "user_lim" }))
+  const res = fakeResponse()
+  await testRoute(req(ctx, { method: "POST", body: { template: "order.placed", to: "me@example.com" }, auth_context: { actor_id: "user_lim" } }), res)
+  assert.equal(res.statusCode, 429, "this process never saw them, the log did")
+  assert.match(res.body.message, /at most 5 in 10 minutes/)
 })

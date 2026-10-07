@@ -126,7 +126,7 @@ Run the migrations, then open **E-mails** in the admin sidebar:
 npx medusa db:migrate
 ```
 
-Medusa uses one provider per channel: if another provider serves `email` (SendGrid, or the local one set to `email`), remove it, and keep the local one on `feed`. The admin says when the provider is missing, got other options than the plugin, or runs in another mode.
+Medusa uses one provider per channel: if another provider serves `email` (SendGrid, or the local one set to `email`), remove it, and keep the local one on `feed`. The admin says when the provider is missing, got other options than the plugin, or runs in another mode. The `id` of the registration (`"emails"` above) is the name Medusa's provider table and this admin show; `koda-emails` is the identifier of the provider class, which you never type.
 
 ### Options
 
@@ -236,7 +236,8 @@ The admin has the full guide (**E-mails**, **Setup guide**), with the state of e
 - **Escaping by construction**: every value from customers, the catalog and the configuration is escaped in the HTML; links are used only when they are absolute http(s) addresses; colours and fonts from the options are validated before they reach CSS. The admin preview runs in a sandboxed frame without scripts.
 - **A stranger's words stay out of the welcome.** Anyone can register with any address, and Medusa does not confirm it: the welcome shows a name only when it reads like one (letters, spaces, apostrophes, hyphens), a company only when it is not a link, an address or a domain, and the subject carries no name at all.
 - **Previews and tests never carry a customer's details**: with your newest order they keep the products, amounts and the order number, and replace the name, company, address, the order and cart ids and the tracking numbers with sample ones (a real cart id opens the cart, with the shopper's address, through the Store API).
-- **Test sends are limited** (5 per person in 10 minutes, 30 an hour for the store) and logged with who sent them.
+- **Test sends are limited** (5 per person in 10 minutes, 30 an hour for the store), counted in the send log as well as in memory, so a restart or a second instance does not reset them, and logged with who sent them.
+- **The demo outbox shows the sample person**: the store's products, amounts and numbers with the name, address and tracking numbers of the samples, so a demo on a copy of a live database never keeps customers' details.
 - **Writes need the admin.** Writes to `/admin/emails/*` (settings, test sends, retries, the demo seed) take a JSON body or the `x-koda-request` header and answer 415 otherwise: Medusa's session cookie is `SameSite=None` in production, so a form on another site could otherwise post with it. The plugin's admin sends both.
 - **Shopper metadata is not state.** A shopper may not set the keys of `skipOrderMetadataKeys` on a cart or the account through the Store API (400 `reserved_metadata_key`): Medusa copies cart metadata to the order, and such an order gets no e-mail. The language keys (`locale`, `language`) stay the shopper's own.
 - **Reads do not write**: `GET` routes only read; the demo outbox is built by `POST /admin/emails/demo/seed` (the page asks for it) and by the hourly housekeeping job.
