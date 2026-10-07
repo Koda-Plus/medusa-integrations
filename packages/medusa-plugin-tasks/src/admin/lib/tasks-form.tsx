@@ -4,6 +4,7 @@ import { Button, FocusModal, Heading, Input, Label, Select, Text, Textarea, toas
 import { LINK_TYPES, PRIORITIES, STATUSES, TAGS_MAX, type LinkType, type TaskPriority, type TaskStatus } from "../../modules/tasks/lib/constants"
 import type { PersonDto, StatusResponse } from "../../modules/tasks/lib/contract"
 import { errorCode, errorMessage, fieldErrorCode, useCreateTask, useRecordSearch, type FoundRecord } from "./tasks-api"
+import { errorKeys } from "./tasks-rules"
 import { TasksIcon } from "./tasks-icon"
 import { personKey } from "../../modules/tasks/lib/people"
 import { LinkIcon, Person, roleLine, useDebounced, useLabels, usePeopleIndex, type Labels, type PeopleIndex } from "./tasks-ui"
@@ -23,14 +24,11 @@ export function useFailToast() {
 /** The message of a refusal in the admin's language: the field's own code first (other_board, too_long), then the refusal's. */
 export function errorText(err: unknown, labels: Labels): string {
   const message = errorMessage(err)
-  const fallback = labels.t("toast.error", { error: message })
-  const field = fieldErrorCode(err)
-  if (field) {
-    const text = labels.t(`errors.fields.${field}`, { defaultValue: "" })
-    if (text) return text
+  for (const key of errorKeys(errorCode(err), fieldErrorCode(err))) {
+    const text = labels.t(key, { defaultValue: "", message })
+    if (typeof text === "string" && text) return text
   }
-  const code = errorCode(err)
-  return code ? labels.t(`errors.${code}`, { defaultValue: fallback, message }) : fallback
+  return labels.t("toast.error", { error: message })
 }
 
 export function toastError(err: unknown, labels: Labels) {

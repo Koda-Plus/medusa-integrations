@@ -167,3 +167,15 @@ export function safeAvatarUrl(url: string | null | undefined): string | null {
   if (/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+$/i.test(u)) return u
   return null
 }
+
+/**
+ * The dictionary keys that say what went wrong, most precise first: the
+ * field's own code (`errors.fields.other_board`), then the refusal's
+ * (`errors.sandbox_busy`). The admin shows the first one it has.
+ */
+export function errorKeys(code: string | null, fieldCode: string | null): string[] {
+  const keys: string[] = []
+  if (fieldCode && /^[a-z_]{1,40}$/.test(fieldCode)) keys.push(`errors.fields.${fieldCode}`)
+  if (code && /^[a-z_]{1,40}$/.test(code)) keys.push(`errors.${code}`)
+  return keys
+}

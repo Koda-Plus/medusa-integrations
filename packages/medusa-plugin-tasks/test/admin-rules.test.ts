@@ -5,7 +5,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { NO_FILTERS, applyFilters, completeDay, filtered, filtersFromParams, filtersToParams, moveOnBoard, safeAvatarUrl, type BoardFilters } from "../src/admin/lib/tasks-rules.ts"
+import { NO_FILTERS, applyFilters, completeDay, errorKeys, filtered, filtersFromParams, filtersToParams, moveOnBoard, safeAvatarUrl, type BoardFilters } from "../src/admin/lib/tasks-rules.ts"
 import type { BoardResponse, TaskDto } from "../src/modules/tasks/lib/contract.ts"
 
 const task = (id: string, status: TaskDto["status"], position: number, completed_at: string | null = null): TaskDto =>
@@ -106,4 +106,14 @@ test("filters: quick filters, the record and the kind of record, me and mine", (
   assert.deepEqual(ids({ record: "order:order_2" }), ["done"])
   assert.deepEqual(ids({ assignee: "text:anna" }), ["review"])
   assert.deepEqual(applyFilters(tasks, { ...NO_FILTERS, quick: "mine" }, "2026-10-07", "en", null), [], "without a viewer nobody is me")
+})
+
+test("errors: the field's own code first (other_board, too_long), then the refusal's; both dictionaries have them", async () => {
+  assert.deepEqual(errorKeys("invalid_data", "other_board"), ["errors.fields.other_board", "errors.invalid_data"])
+  assert.deepEqual(errorKeys("sandbox_busy", null), ["errors.sandbox_busy"])
+  assert.deepEqual(errorKeys(null, "../x"), [])
+  const { default: en } = await import("../src/admin/i18n/en.ts")
+  const codes = ["author_reserved", "conflict_retry", "sandbox_full", "sandbox_busy", "sandbox_guard", "agent_key_scope", "json_required", "server_error", "other_board", "key_owner_missing"]
+  for (const c of codes) assert.equal(typeof (en.errors as Record<string, unknown>)[c], "string", c)
+  for (const f of ["required", "invalid", "too_long", "too_many", "empty", "not_found", "other_board", "author_reserved"]) assert.equal(typeof en.errors.fields[f as keyof typeof en.errors.fields], "string", f)
 })
