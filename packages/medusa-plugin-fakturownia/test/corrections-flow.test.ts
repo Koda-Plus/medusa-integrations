@@ -30,8 +30,14 @@ async function issued(options = LIVE, over: Row = {}): Promise<{ s: Setup; fake:
   await issueDue(s.container, "schedule")
   const original = s.documents.rows.find((r) => r.kind !== "correction")!
   assert.equal(original.status, "issued")
+  /* KSeF accepted the invoice (a correction names its KSeF number, so it waits for that). */
+  const remote = fake.docs.find((d) => String(d.id) === original.fakturownia_id)
+  if (remote) Object.assign(remote, { gov_status: "ok", gov_id: KSEF_NUMBER })
+  Object.assign(original, { gov_status: "ok", gov_id: KSEF_NUMBER })
   return { s, fake, original }
 }
+
+const KSEF_NUMBER = "1234563218-20261007-0123456789AB"
 
 function returnOne(s: Setup): void {
   const o = s.orders.get(ORDER_ID)!
@@ -262,12 +268,14 @@ test("the scan plans what the events missed, and repairs an approval without its
 })
 
 test("demo: the whole road on the simulated account, without a request", async () => {
-  const s = setup({}, [order()])
+  const s = setup({ demo: true }, [order()])
   globalThis.fetch = (async () => {
     throw new Error("demo mode must not call the network")
   }) as typeof fetch
   await enqueueDue(s.container, ORDER_ID, "payment_captured")
   await issueDue(s.container, "schedule")
+  /* The simulated KSeF accepts the invoice a few minutes after issue; a correction waits for that. */
+  s.documents.rows[0].gov_status = "ok"
   returnOne(s)
   await onReturnReceived(s.container, ORDER_ID, "return_1")
   await approvePlan(s.container, s.plans.rows[0].id, { revision: 1, actorId: "user_1" })

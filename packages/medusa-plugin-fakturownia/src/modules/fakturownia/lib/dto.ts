@@ -73,6 +73,12 @@ export interface DocumentRow {
   gov_errors?: unknown
   ksef_resend_at?: Date | string | null
   corrections_checked_at?: Date | string | null
+  /* 0.3.0 */
+  create_sent_at?: Date | string | null
+  email_claimed_at?: Date | string | null
+  reminder_at?: Date | string | null
+  finals_checked_at?: Date | string | null
+  converted_at?: Date | string | null
   created_at?: Date | string | null
   updated_at?: Date | string | null
 }
@@ -180,7 +186,7 @@ export function toDate(value: Date | string | null | undefined): Date | null {
 
 const KINDS: readonly string[] = ["vat", "proforma", "receipt", "correction"]
 const STATUSES: readonly string[] = ["pending", "issuing", "issued", "failed", "unknown", "canceled", "needs_correction"]
-const EMAIL: readonly string[] = ["pending", "sent", "failed"]
+const EMAIL: readonly string[] = ["pending", "sending", "sent", "failed"]
 
 function amount(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null
@@ -224,7 +230,7 @@ function buyerWarningOf(v: unknown): BuyerWarningDto | null {
   const raw = jsonOf(v)
   if (!raw || typeof raw !== "object") return null
   const w = raw as Record<string, unknown>
-  if (w.code !== "invalid_nip" && w.code !== "company_without_nip") return null
+  if (w.code !== "invalid_nip" && w.code !== "company_without_nip" && w.code !== "nip_on_receipt") return null
   const reason = w.reason === "checksum" || w.reason === "length" || w.reason === "shape" ? w.reason : null
   return { code: w.code, reason, source: typeof w.source === "string" ? w.source : null }
 }

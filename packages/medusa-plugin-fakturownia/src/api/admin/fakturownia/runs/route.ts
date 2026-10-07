@@ -3,9 +3,9 @@ import type { RunsResponse } from "../../../../modules/fakturownia/lib/contract"
 import { toRunDto, type RunRow } from "../../../../modules/fakturownia/lib/dto"
 import { fakturowniaService, intParam, strParam } from "../helpers"
 
-const KINDS = ["issue", "payments", "statuses"]
+const KINDS = ["issue", "payments", "statuses", "corrections"]
 
-/** GET /admin/fakturownia/runs?kind=issue|payments|statuses&limit= : background runs of the current mode, newest first. */
+/** GET /admin/fakturownia/runs?kind=issue|payments|statuses|corrections&limit= : background runs of the current mode, newest first. */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = fakturowniaService(req.scope)
   const kind = strParam(req.query.kind)

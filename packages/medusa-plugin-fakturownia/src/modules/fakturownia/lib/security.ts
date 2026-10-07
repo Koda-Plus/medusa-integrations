@@ -36,6 +36,23 @@ export function maskSecrets(text: string, secrets: readonly (string | null | und
     .replace(/[A-Za-z0-9+/=_-]{40,}/g, "***")
 }
 
+/**
+ * What may be STORED or LOGGED of a text from Fakturownia or KSeF: the
+ * secrets masked as above, and every e-mail address an answer may quote
+ * (a buyer's address in a refusal) as "a***@e***.pl". Every error text the
+ * plugin writes to its tables and logs passes here (`service.mask`). NIPs and
+ * phone-like numbers stay readable on purpose: KSeF numbers start with the
+ * seller's NIP, and document numbers are digits too.
+ */
+export function maskForStorage(text: string, secrets: readonly (string | null | undefined)[]): string {
+  return maskSecrets(text, secrets).replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, (m) => {
+    const at = m.lastIndexOf("@")
+    const domain = m.slice(at + 1)
+    const dot = domain.lastIndexOf(".")
+    return `${m[0]}***@${domain[0]}***${dot > 0 ? domain.slice(dot) : ""}`
+  })
+}
+
 /** The token as the admin may see it: whether it is set, never its value. */
 export function tokenState(token: string | null | undefined): "set" | "missing" {
   return (token ?? "").trim().length > 0 ? "set" : "missing"

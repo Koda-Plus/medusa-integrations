@@ -271,7 +271,7 @@ const ORIGINAL = {
   buyer_name: "Firma sp. z o.o.",
   buyer_company: "1",
   buyer_tax_no: "1234563218",
-  buyer_email: "biuro@firma.pl",
+  buyer_email: "biuro@example.com",
   buyer_city: "Kraków",
   description: "not copied",
   positions: [
@@ -297,7 +297,7 @@ test("the correction as documented: kind, reason, the corrected invoice, positio
   )
   assert.equal(invoice.oid_unique, undefined, "the corrected invoice carries the same order number")
   assert.equal(invoice.description, undefined)
-  assert.deepEqual([invoice.department_id, invoice.buyer_company, invoice.buyer_tax_no, invoice.buyer_email], [101, true, "1234563218", "biuro@firma.pl"])
+  assert.deepEqual([invoice.department_id, invoice.buyer_company, invoice.buyer_tax_no, invoice.buyer_email], [101, true, "1234563218", "biuro@example.com"])
   assert.match(String(invoice.internal_note), /\[medusa:fkdoc_7\]/)
   assert.deepEqual((invoice.positions as unknown[])[0], {
     name: "Krem nawilżający, 50 ml",

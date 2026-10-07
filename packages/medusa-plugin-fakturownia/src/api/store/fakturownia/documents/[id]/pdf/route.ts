@@ -30,5 +30,5 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     res.status(404).json({ message: "Document not found." })
     return
   }
-  await sendDocumentPdf(req.scope, res, row, String(req.query.download ?? "") === "1" ? "attachment" : "inline")
+  await sendDocumentPdf(req.scope, res, row, String(req.query.download ?? "") === "1" ? "attachment" : "inline", "store")
 }

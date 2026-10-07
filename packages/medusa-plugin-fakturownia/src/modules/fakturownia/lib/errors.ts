@@ -69,6 +69,21 @@ export class PayloadError extends Error {
 }
 
 /**
+ * The claim of a row is no longer the caller's: its lease ran out while the
+ * attempt waited (a slow Fakturownia, a long queue of the rate limit), and
+ * another process may have taken the row over. Thrown BEFORE the create
+ * request leaves, so nothing was sent; the caller stops without writing.
+ */
+export class ClaimLostError extends Error {
+  readonly code = "claim_lost"
+  readonly retryable = false
+  constructor(rowId: string) {
+    super(`The claim of document row ${rowId} ran out before the create request; nothing was sent, another attempt takes it over.`)
+    this.name = "ClaimLostError"
+  }
+}
+
+/**
  * Fakturownia holds a document with this order number and kind that does not
  * match this order (another amount, another shop). Never adopted, never
  * duplicated: a person decides.

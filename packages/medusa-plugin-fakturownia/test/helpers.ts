@@ -12,7 +12,7 @@
  *                   documents, answers the documented endpoints, can lose
  *                   answers on purpose, and records every call
  */
-import { maskSecrets } from "../src/modules/fakturownia/lib/security.ts"
+import { maskForStorage } from "../src/modules/fakturownia/lib/security.ts"
 import { resolveOptions, type FakturowniaPluginOptions } from "../src/modules/fakturownia/lib/options.ts"
 import { PATCHABLE_COLUMNS, type DocumentPatch, type DocumentStore, type NewDocument } from "../src/modules/fakturownia/lib/store.ts"
 import { PLAN_PATCHABLE, type NewPlan, type PlanPatch, type PlanStore } from "../src/modules/fakturownia/lib/plan-store.ts"
@@ -34,20 +34,33 @@ function time(v: unknown): number {
   return v instanceof Date ? v.getTime() : new Date(v as string).getTime()
 }
 
+/**
+ * A filter of the generated service, with SQL's rules for NULL: `$ne` and
+ * `$nin` with values never match a NULL column (`col <> 'x'` is NULL there),
+ * so a test cannot pass on a filter that would lose rows in Postgres.
+ */
 export function matches(row: Row, filter: Record<string, unknown>): boolean {
   for (const [key, cond] of Object.entries(filter)) {
     if (key === "$or") {
       if (!(cond as Array<Record<string, unknown>>).some((f) => matches(row, f))) return false
       continue
     }
+    if (key === "$and") {
+      if (!(cond as Array<Record<string, unknown>>).every((f) => matches(row, f))) return false
+      continue
+    }
     const v = row[key]
+    const isNull = v === null || v === undefined
     if (Array.isArray(cond)) {
       if (!cond.includes(v)) return false
     } else if (cond === null) {
-      if (v !== null && v !== undefined) return false
+      if (!isNull) return false
     } else if (cond && typeof cond === "object" && !(cond instanceof Date)) {
       const c = cond as Record<string, unknown>
-      if ("$ne" in c && (c.$ne === null ? v === null || v === undefined : v === c.$ne)) return false
+      if ("$ne" in c && (c.$ne === null ? isNull : isNull || v === c.$ne)) return false
+      if ("$in" in c && !(c.$in as unknown[]).includes(v)) return false
+      if ("$nin" in c && (isNull || (c.$nin as unknown[]).includes(v))) return false
+      if ("$lt" in c && !(!isNull && time(v) < time(c.$lt))) return false
       if ("$lte" in c && !(v !== null && v !== undefined && time(v) <= time(c.$lte))) return false
       if ("$gte" in c && !(v !== null && v !== undefined && time(v) >= time(c.$gte))) return false
       if ("$ilike" in c) {
@@ -142,6 +155,11 @@ const EMPTY_DOCUMENT: Row = {
   gov_errors: null,
   ksef_resend_at: null,
   corrections_checked_at: null,
+  create_sent_at: null,
+  email_claimed_at: null,
+  reminder_at: null,
+  finals_checked_at: null,
+  converted_at: null,
   deleted_at: null,
 }
 
@@ -197,8 +215,47 @@ export function memoryStore(table: Table): DocumentStore & { inserts: number; ig
       const row = table.rows.find((r) => r.id === id && !r.deleted_at)
       if (!row || row.status !== "pending") return null
       if (row.next_attempt_at && time(row.next_attempt_at) > args.now.getTime()) return null
-      Object.assign(row, { status: "issuing", claim_token: args.token, claimed_at: args.now, lease_until: args.leaseUntil, attempts: (row.attempts ?? 0) + 1, updated_at: new Date() })
+      Object.assign(row, {
+        status: "issuing",
+        claim_token: args.token,
+        claimed_at: args.now,
+        lease_until: args.leaseUntil,
+        create_sent_at: null,
+        attempts: (row.attempts ?? 0) + 1,
+        updated_at: new Date(),
+      })
       return { ...row } as never
+    },
+    async renew(id: string, token: string, args: { leaseUntil: Date; patch?: DocumentPatch; createSentAt?: Date }) {
+      const row = table.rows.find((r) => r.id === id && !r.deleted_at)
+      if (!row || row.status !== "issuing" || row.claim_token !== token) return false
+      applyPatch(row, { ...(args.patch ?? {}), ...(args.createSentAt ? { create_sent_at: args.createSentAt } : {}) })
+      row.lease_until = args.leaseUntil
+      return true
+    },
+    async claimEmail(id: string, now: Date) {
+      const row = table.rows.find((r) => r.id === id && !r.deleted_at)
+      if (!row || row.email_status !== "pending" || row.status !== "issued") return null
+      Object.assign(row, { email_status: "sending", email_claimed_at: now, updated_at: new Date() })
+      return { ...row } as never
+    },
+    async transitionEmail(id: string, from: readonly string[], patch: DocumentPatch) {
+      const row = table.rows.find((r) => r.id === id && !r.deleted_at)
+      if (!row || !from.includes(row.email_status)) return null
+      applyPatch(row, patch)
+      return { ...row } as never
+    },
+    async claimStamp(id: string, column: "ksef_resend_at" | "reminder_at", now: Date, minIntervalMs: number) {
+      const row = table.rows.find((r) => r.id === id && !r.deleted_at)
+      if (!row) return null
+      const last = row[column]
+      if (last && time(last) > now.getTime() - minIntervalMs) return null
+      Object.assign(row, { [column]: now, updated_at: new Date() })
+      return { ...row } as never
+    },
+    async releaseStamp(id: string, column: "ksef_resend_at" | "reminder_at", taken: Date) {
+      const row = table.rows.find((r) => r.id === id && !r.deleted_at)
+      if (row && row[column] && time(row[column]) === taken.getTime()) Object.assign(row, { [column]: null, updated_at: new Date() })
     },
     async finish(id: string, token: string, patch: DocumentPatch) {
       const row = table.rows.find((r) => r.id === id && !r.deleted_at)
@@ -350,7 +407,7 @@ export function setup(options: FakturowniaPluginOptions, orders: Row[] = []): Se
     isDemo: () => o.demo,
     isConfigured: () => (o.demo ? true : Boolean(o.apiToken) && /^[a-z0-9-]+$/.test(o.account)),
     missingOptions: () => [],
-    mask: (s: string) => maskSecrets(s, [o.apiToken]),
+    mask: (s: string) => maskForStorage(s, [o.apiToken]),
     listFakturowniaDocuments: async (f: Row, c: Row) => documents.list(f, c),
     listAndCountFakturowniaDocuments: async (f: Row, c: Row) => [documents.list(f, c), documents.list(f).length],
     updateFakturowniaDocuments: async (d: Row) => documents.update(d),

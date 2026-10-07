@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { ArrowUpRightOnBox } from "@medusajs/icons"
 import { Badge, Button, Checkbox, Copy, Drawer, Input, Label, StatusBadge, Text, toast } from "@medusajs/ui"
 import type { DocumentDetailResponse, DocumentDto, EmailDto, GovState, KsefEventDto, WriterDto } from "../../modules/fakturownia/lib/contract"
-import { errorMessage, ksefFileUrl, useFakturowniaDocument, useFakturowniaEmail, useFakturowniaKsefResend } from "./fakturownia-api"
+import { errorMessage, ksefFilePath, saveFile, useFakturowniaDocument, useFakturowniaEmail, useFakturowniaKsefResend } from "./fakturownia-api"
 import { PlanCard } from "./fakturownia-corrections"
 import {
   BuyerWarningText,
@@ -171,12 +171,20 @@ function KsefPanel({ doc, events, writer, lang }: { doc: DocumentDto; events: Ks
         ) : null}
         {doc.actions.ksefFiles ? (
           <>
-            <a href={ksefFileUrl(doc.id, "upo")} className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-              {t("ksef.upo")}
-            </a>
-            <a href={ksefFileUrl(doc.id, "xml")} className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-              {t("ksef.xml")}
-            </a>
+            {(["upo", "xml"] as const).map((file) => (
+              <button
+                key={file}
+                type="button"
+                className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover"
+                onClick={() =>
+                  void saveFile(ksefFilePath(doc.id, file), `${file === "upo" ? "UPO" : "KSeF"}-${doc.id}.xml`).catch((err: unknown) =>
+                    toast.error(t("toast.error", { error: errorMessage(err) })),
+                  )
+                }
+              >
+                {t(file === "upo" ? "ksef.upo" : "ksef.xml")}
+              </button>
+            ))}
           </>
         ) : null}
       </div>

@@ -32,7 +32,7 @@ test("demo seed: once, from the store's own documents, nothing leaves Medusa", a
   const orders = Array.from({ length: 6 }, (_, i) =>
     order({ id: `order_demo_${i}`, display_id: 300 + i, created_at: new Date(Date.UTC(2026, 9, 1 + i)).toISOString() }),
   )
-  const s = setup({}, orders)
+  const s = setup({ demo: true }, orders)
   globalThis.fetch = (async () => {
     throw new Error("demo mode must not call the network")
   }) as typeof fetch
@@ -67,6 +67,8 @@ test("demo seed: once, from the store's own documents, nothing leaves Medusa", a
 
   await s.planStore.setSetting(writerSettingKey("corrections", true), { on: true }, "user_1")
   await approvePlan(s.container, plan.id, { revision: plan.revision, actorId: "user_1" })
+  /* The simulated KSeF accepted the corrected invoice: a correction waits for that. */
+  s.documents.rows.find((r) => r.id === plan.document_id)!.gov_status = "ok"
   await issueDue(s.container, "schedule")
   const correction = s.documents.rows.find((r) => r.kind === "correction")!
   assert.equal(correction.status, "issued")
@@ -78,7 +80,7 @@ test("demo seed: once, from the store's own documents, nothing leaves Medusa", a
 })
 
 test("demo seed waits for documents: a store without enough of them is not marked seeded", async () => {
-  const s = setup({}, [order()])
+  const s = setup({ demo: true }, [order()])
   await ensureDemoDocuments(s.container)
   await ensureDemoExtras(s.container)
   assert.equal(s.settings.rows.length, 0)

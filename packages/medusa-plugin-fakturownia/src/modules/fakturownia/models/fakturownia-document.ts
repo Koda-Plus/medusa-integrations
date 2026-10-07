@@ -80,6 +80,12 @@ const FakturowniaDocument = model
     gov_errors: model.json().nullable(),
     ksef_resend_at: model.dateTime().nullable(),
     corrections_checked_at: model.dateTime().nullable(),
+    /* 0.3.0: the moment the create request left, the e-mail and reminder claims, the proforma checks and conversions */
+    create_sent_at: model.dateTime().nullable(),
+    email_claimed_at: model.dateTime().nullable(),
+    reminder_at: model.dateTime().nullable(),
+    finals_checked_at: model.dateTime().nullable(),
+    converted_at: model.dateTime().nullable(),
   })
   .indexes([
     { on: ["order_id", "kind", "demo"], unique: true, where: "kind <> 'correction' AND deleted_at IS NULL" },
@@ -89,6 +95,7 @@ const FakturowniaDocument = model
     { on: ["status", "next_attempt_at"], where: "deleted_at IS NULL" },
     { on: ["fakturownia_id"], where: "deleted_at IS NULL" },
     { on: ["issued_at"], where: "deleted_at IS NULL" },
+    { on: ["email_status"], where: "email_status IN ('pending', 'sending') AND deleted_at IS NULL" },
   ])
 
 export default FakturowniaDocument

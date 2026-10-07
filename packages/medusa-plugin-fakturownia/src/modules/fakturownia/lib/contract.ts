@@ -14,7 +14,8 @@ export type DocumentStatus = "pending" | "issuing" | "issued" | "failed" | "unkn
 /** Filters of the documents table. `attention`: failed, unknown or needing a correction. */
 export type DocumentFilter = "all" | "pending" | "issued" | "attention" | "unpaid" | "ksef" | "canceled" | "corrections"
 export type GovState = "none" | "processing" | "accepted" | "problem" | "not_applicable" | "offline"
-export type EmailStatus = "pending" | "sent" | "failed"
+/** `sending`: one process took the automatic e-mail and is sending it (since 0.3.0). */
+export type EmailStatus = "pending" | "sending" | "sent" | "failed"
 export type RunKind = "issue" | "payments" | "statuses" | "corrections"
 export type RunSource = "api" | "demo"
 export type RunTrigger = "schedule" | "manual" | "auto"
@@ -49,7 +50,8 @@ export interface DocumentPositionDto {
 
 /** Why a buyer that looks like a company got a consumer document. */
 export interface BuyerWarningDto {
-  code: "invalid_nip" | "company_without_nip"
+  /** `nip_on_receipt`: a valid NIP showed up after the row became a receipt (the receipt names a person). */
+  code: "invalid_nip" | "company_without_nip" | "nip_on_receipt"
   reason: "checksum" | "length" | "shape" | null
   source: string | null
 }
@@ -177,8 +179,10 @@ export interface ReferenceDto {
 
 export interface StatusResponse {
   mode: FakturowniaMode
-  /** Why demo mode is on: the option, or no token. */
+  /** Why demo mode is on: the `demo` option (since 0.3.0 the only way). `no_token` is kept for older servers. */
   demoReason: "option" | "no_token" | null
+  /** Demo mode: the sample documents are there. False on a first visit: the page asks for them (POST /admin/fakturownia/demo/seed). */
+  demoPrepared: boolean
   /** Live mode: the token and a valid account are set. Always true in demo mode. */
   configured: boolean
   missing: string[]
@@ -219,7 +223,11 @@ export interface StatusResponse {
     unknown: number
     needsCorrection: number
     canceled: number
+    /** Failed, unknown, needing a correction, and proformas of canceled orders whose rejection was refused. */
     attention: number
+    /** Correction documents (any state). */
+    corrections: number
+    /** `lib/unpaid.ts`: without corrections, converted proformas and documents of canceled orders. */
     unpaid: number
     ksefProblems: number
     ksefAccepted: number

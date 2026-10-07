@@ -2,7 +2,11 @@
  * PDF FILES OF DOCUMENTS. Zero imports apart from the demo numbering, so the
  * unit tests load it without a build.
  *
- *   pdfFileName   "FV 12/10/2026" becomes "FV-12-10-2026.pdf"
+ *   pdfFileName         "FV 12/10/2026" becomes "FV-12-10-2026.pdf", in ASCII
+ *                       ("Ł" is "L"), so a number with Polish letters never
+ *                       breaks the response header
+ *   contentDisposition  the header: the ASCII name, and the name as printed
+ *                       in `filename*` (RFC 6266)
  *   buildDemoPdf  a small, valid one page PDF for a simulated document (demo
  *                 mode has no Fakturownia to render one): the kind, the
  *                 number and a clear "simulation" note
@@ -17,10 +21,48 @@
 
 import { decodeDemoId } from "./demo"
 
-/** A document file name from its number: "FV 12/10/2026" becomes "FV-12-10-2026.pdf". */
+/** Letters with diacritics as plain ASCII: "Ł" is "L", "ó" is "o", "Ż" is "Z". */
+export function asciiText(text: string): string {
+  return text
+    .replace(/Ł/g, "L")
+    .replace(/ł/g, "l")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+}
+
+/**
+ * A document file name from its number, in ASCII: "FV 12/10/2026" becomes
+ * "FV-12-10-2026.pdf", "FV/ŁÓDŹ/1/2026" becomes "FV-LODZ-1-2026.pdf". Node
+ * refuses a header with characters outside Latin-1 (`ERR_INVALID_CHAR`), and
+ * Latin-1 ones arrive broken, so the plain name is ASCII only.
+ */
 export function pdfFileName(number: string | null | undefined, fallback: string): string {
+  return `${asciiBase(number, fallback)}.pdf`
+}
+
+function asciiBase(number: string | null | undefined, fallback: string): string {
+  return asciiText(number ?? "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || asciiText(fallback).replace(/[^A-Za-z0-9-]+/g, "-")
+}
+
+/** The name as the number is printed, Polish letters kept: for `filename*`. */
+export function unicodeFileName(number: string | null | undefined, fallback: string, extension = "pdf"): string {
   const base = (number ?? "").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "") || fallback
-  return `${base}.pdf`
+  return `${base}.${extension}`
+}
+
+/**
+ * `Content-Disposition` that every browser and Node accept: `filename` in
+ * ASCII, and the name with its Polish letters in `filename*=UTF-8''...`
+ * (RFC 6266 and RFC 8187), which browsers prefer when they read it.
+ */
+export function contentDisposition(disposition: "inline" | "attachment", asciiName: string, unicodeName?: string | null): string {
+  const plain = asciiText(asciiName)
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/["\\]/g, "")
+  const wanted = unicodeName && unicodeName !== plain ? unicodeName : null
+  if (!wanted) return `${disposition}; filename="${plain}"`
+  const encoded = encodeURIComponent(wanted).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `${disposition}; filename="${plain}"; filename*=UTF-8''${encoded}`
 }
 
 /** Polish letters outside WinAnsi, on the byte codes 128 to 143 of the font encoding. */

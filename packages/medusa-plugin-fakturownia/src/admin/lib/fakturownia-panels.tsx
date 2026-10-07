@@ -69,9 +69,15 @@ function WriterRow({ writer, lang, busy, onFlip }: { writer: WriterDto; lang: st
             {t(`writers.names.${writer.key}`)}
           </Text>
           <WriterBadge writer={writer} />
+          <Badge size="2xsmall" color="orange" title={t("writers.betaHint")}>
+            {t("writers.beta")}
+          </Badge>
         </span>
         <Text size="small" className="text-ui-fg-subtle">
           {t(`writers.descriptions.${writer.key}`)}
+        </Text>
+        <Text size="xsmall" className="text-ui-tag-orange-text">
+          {t("writers.betaHint")}
         </Text>
         <Text size="xsmall" className="text-ui-fg-muted">
           {!writer.allowed

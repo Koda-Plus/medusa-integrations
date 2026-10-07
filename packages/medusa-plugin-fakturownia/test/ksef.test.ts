@@ -123,7 +123,7 @@ test("the UPO and the KSeF XML of an accepted document, with readable names; not
 })
 
 test("demo: processing becomes accepted after a few minutes; a rejection waits for a send; the files are simulated", async () => {
-  const s = setup({}, [order()])
+  const s = setup({ demo: true }, [order()])
   globalThis.fetch = (async () => {
     throw new Error("demo mode must not call the network")
   }) as typeof fetch

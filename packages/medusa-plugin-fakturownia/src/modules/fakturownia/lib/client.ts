@@ -143,6 +143,12 @@ interface RequestSpec {
   body?: unknown
   retry: RetryPolicy
   binary?: boolean
+  /**
+   * Runs after the rate limit let the request through and right before it
+   * leaves. A throw stops the request: nothing is sent, and the error goes up
+   * as it is (never turned into an unknown result).
+   */
+  beforeSend?: () => Promise<void>
 }
 
 export interface PdfFile {
@@ -197,6 +203,8 @@ export class FakturowniaClient {
     let last: unknown = null
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       if (this.limiter) await this.limiter.pass()
+      /* Outside the try: a refusal of the hook is not a failure of the request, which never left. */
+      if (spec.beforeSend) await spec.beforeSend()
       try {
         return await this.once(spec)
       } catch (err) {
@@ -353,8 +361,8 @@ export class FakturowniaClient {
    * may still have created the document, so it is an unknown result too.
    * Call it through `createOnce()` (exactly-once.ts).
    */
-  async createInvoice(invoice: RemoteRecord): Promise<RemoteRecord> {
-    const data = await this.request({ operation: "create", method: "POST", path: "/invoices.json", body: { invoice }, retry: "once" })
+  async createInvoice(invoice: RemoteRecord, opts: { beforeSend?: () => Promise<void> } = {}): Promise<RemoteRecord> {
+    const data = await this.request({ operation: "create", method: "POST", path: "/invoices.json", body: { invoice }, retry: "once", beforeSend: opts.beforeSend })
     const doc = data && typeof data === "object" && !Array.isArray(data) ? (data as RemoteRecord) : null
     const id = doc ? String(doc.id ?? "").trim() : ""
     if (!doc || !/^\d+$/.test(id)) {
@@ -474,15 +482,48 @@ export class FakturowniaClient {
       interpretResponse({ operation, httpStatus: res.status >= 300 && res.status < 400 ? 502 : res.status, text, mask: (t) => this.mask(t) })
       throw new FakturowniaApiError({ code: `HTTP_${res.status}`, operation, message: "unexpected answer", transient: false, refused: true, status: res.status })
     }
-    const bytes = new Uint8Array(await res.arrayBuffer())
-    if (bytes.length > MAX_ATTACHMENT_BYTES) {
-      throw new FakturowniaApiError({ code: "TOO_LARGE", operation, message: "the file is larger than 5 MB.", transient: false, refused: true, status: 200 })
+    const tooLarge = () => new FakturowniaApiError({ code: "TOO_LARGE", operation, message: "the file is larger than 5 MB.", transient: false, refused: true, status: 200 })
+    const declared = Number(res.headers.get("content-length") ?? "")
+    if (Number.isFinite(declared) && declared > MAX_ATTACHMENT_BYTES) {
+      await res.body?.cancel().catch(() => undefined)
+      throw tooLarge()
     }
-    return { bytes, contentType: res.headers.get("content-type") ?? "application/xml" }
+    const bytes = await readLimited(res, MAX_ATTACHMENT_BYTES)
+    if (!bytes) throw tooLarge()
+    /* Always XML: the type of the answer (maybe from another host after the redirect) never reaches the browser. */
+    return { bytes, contentType: "application/xml" }
   }
 }
 
-const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+
+/** The body, read chunk by chunk and abandoned past `limit` bytes (`null` then). */
+export async function readLimited(res: Response, limit: number): Promise<Uint8Array | null> {
+  if (!res.body) {
+    const all = new Uint8Array(await res.arrayBuffer())
+    return all.length > limit ? null : all
+  }
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.length
+    if (size > limit) {
+      await reader.cancel().catch(() => undefined)
+      return null
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(size)
+  let at = 0
+  for (const c of chunks) {
+    out.set(c, at)
+    at += c.length
+  }
+  return out
+}
 
 /**
  * A redirect target that is safe to follow: an https address (relative ones

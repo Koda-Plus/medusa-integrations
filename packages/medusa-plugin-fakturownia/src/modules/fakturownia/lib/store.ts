@@ -62,6 +62,11 @@ export type DocumentPatch = Partial<
     | "gov_errors"
     | "ksef_resend_at"
     | "corrections_checked_at"
+    | "create_sent_at"
+    | "email_claimed_at"
+    | "reminder_at"
+    | "finals_checked_at"
+    | "converted_at"
   >
 >
 
@@ -89,6 +94,35 @@ export interface DocumentStore {
   transition(id: string, from: readonly string[], patch: DocumentPatch): Promise<DocumentRow | null>
   /** Issuing rows whose lease ran out become unknown (the process died mid-request). */
   expireLeases(now: Date, demo: boolean): Promise<number>
+  /**
+   * The claim's owner proves the claim is still its own and extends the
+   * lease, writing `patch` and `create_sent_at` in the same statement. False
+   * when another process took the row over (the lease ran out): the caller
+   * must stop without sending anything.
+   */
+  renew(id: string, token: string, args: { leaseUntil: Date; patch?: DocumentPatch; createSentAt?: Date }): Promise<boolean>
+  /** A pending automatic e-mail becomes `sending` for exactly one caller; `null` for everybody else. */
+  claimEmail(id: string, now: Date): Promise<DocumentRow | null>
+  /** Moves the e-mail state only from one of the given e-mail states. */
+  transitionEmail(id: string, from: readonly string[], patch: DocumentPatch): Promise<DocumentRow | null>
+  /**
+   * Takes a rate-limited action of a row (`ksef_resend_at`, `reminder_at`):
+   * the stamp is set to `now` only when it is empty or older than the
+   * interval, for exactly one caller. `null`: someone did it less than the
+   * interval ago (or just now, in another tab).
+   */
+  claimStamp(id: string, column: StampColumn, now: Date, minIntervalMs: number): Promise<DocumentRow | null>
+  /** Gives a stamp back after the action failed, only when it is still the caller's. */
+  releaseStamp(id: string, column: StampColumn, taken: Date): Promise<void>
+}
+
+/** Columns `claimStamp` may take. Only these names ever reach the SQL text. */
+export type StampColumn = "ksef_resend_at" | "reminder_at"
+export const STAMP_COLUMNS: readonly StampColumn[] = ["ksef_resend_at", "reminder_at"]
+
+function stampColumn(column: string): StampColumn {
+  if (!(STAMP_COLUMNS as readonly string[]).includes(column)) throw new Error(`not a stamp column: ${column}`)
+  return column as StampColumn
 }
 
 /** The smallest piece of Knex the store needs. */
@@ -137,6 +171,11 @@ export const PATCHABLE_COLUMNS: readonly string[] = [
   "gov_errors",
   "ksef_resend_at",
   "corrections_checked_at",
+  "create_sent_at",
+  "email_claimed_at",
+  "reminder_at",
+  "finals_checked_at",
+  "converted_at",
 ]
 
 const JSON_COLUMNS: ReadonlySet<string> = new Set(["positions", "buyer_warning", "gov_errors"])
@@ -194,7 +233,7 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: () => string }): D
     async claim(id, args) {
       const result = await sql.raw(
         `update "${TABLE}"
-         set "status" = 'issuing', "claim_token" = ?, "claimed_at" = ?, "lease_until" = ?, "attempts" = "attempts" + 1, "updated_at" = now()
+         set "status" = 'issuing', "claim_token" = ?, "claimed_at" = ?, "lease_until" = ?, "create_sent_at" = null, "attempts" = "attempts" + 1, "updated_at" = now()
          where "id" = ? and "status" = 'pending' and "deleted_at" is null
            and ("next_attempt_at" is null or "next_attempt_at" <= ?)
          returning *`,
@@ -235,13 +274,64 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: () => string }): D
          where "status" = 'issuing' and "lease_until" < ? and "demo" = ? and "deleted_at" is null
          returning "id"`,
         [
-          "The process stopped while the document was being issued. It is looked up in Fakturownia before anything is sent again.",
+          "The attempt did not finish within its claim (the process stopped, or Fakturownia answered too slowly). The document is looked up in Fakturownia before anything is sent again.",
           now,
           now,
           demo,
         ],
       )
       return rowsOf(result).length
+    },
+
+    async renew(id, token, args) {
+      const set = setClause({ ...(args.patch ?? {}), ...(args.createSentAt ? { create_sent_at: args.createSentAt } : {}) })
+      const result = await sql.raw(
+        `update "${TABLE}" set ${set.sql}, "lease_until" = ?
+         where "id" = ? and "status" = 'issuing' and "claim_token" = ? and "deleted_at" is null
+         returning "id"`,
+        [...set.bindings, args.leaseUntil, id, token],
+      )
+      return rowsOf(result).length > 0
+    },
+
+    async claimEmail(id, now) {
+      const result = await sql.raw(
+        `update "${TABLE}"
+         set "email_status" = 'sending', "email_claimed_at" = ?, "updated_at" = now()
+         where "id" = ? and "email_status" = 'pending' and "status" = 'issued' and "deleted_at" is null
+         returning *`,
+        [now, id],
+      )
+      return rowsOf(result)[0] ?? null
+    },
+
+    async transitionEmail(id, from, patch) {
+      if (from.length === 0) return null
+      const set = setClause(patch)
+      const placeholders = from.map(() => "?").join(", ")
+      const result = await sql.raw(
+        `update "${TABLE}" set ${set.sql}
+         where "id" = ? and "email_status" in (${placeholders}) and "deleted_at" is null
+         returning *`,
+        [...set.bindings, id, ...from],
+      )
+      return rowsOf(result)[0] ?? null
+    },
+
+    async claimStamp(id, column, now, minIntervalMs) {
+      const c = stampColumn(column)
+      const result = await sql.raw(
+        `update "${TABLE}" set "${c}" = ?, "updated_at" = now()
+         where "id" = ? and "deleted_at" is null and ("${c}" is null or "${c}" <= ?)
+         returning *`,
+        [now, id, new Date(now.getTime() - minIntervalMs)],
+      )
+      return rowsOf(result)[0] ?? null
+    },
+
+    async releaseStamp(id, column, taken) {
+      const c = stampColumn(column)
+      await sql.raw(`update "${TABLE}" set "${c}" = null, "updated_at" = now() where "id" = ? and "${c}" = ? and "deleted_at" is null`, [id, taken])
     },
   }
 }

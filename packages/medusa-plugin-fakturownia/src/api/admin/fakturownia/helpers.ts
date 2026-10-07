@@ -9,8 +9,9 @@ import { WRITERS } from "../../../modules/fakturownia/lib/writers"
 import { describeError, FakturowniaApiError } from "../../../modules/fakturownia/lib/errors"
 import { fetchDocumentPdf } from "../../../modules/fakturownia/lib/files"
 import { accountUrl } from "../../../modules/fakturownia/lib/options"
-import { pdfFileName } from "../../../modules/fakturownia/lib/pdf"
+import { contentDisposition, pdfFileName, unicodeFileName } from "../../../modules/fakturownia/lib/pdf"
 import { GOV_PROBLEMS } from "../../../modules/fakturownia/lib/status"
+import { REMINDER_KINDS, unpaidFilters } from "../../../modules/fakturownia/lib/unpaid"
 import { ActionError } from "../../../workflows/fakturownia/documents"
 import {
   actorNames,
@@ -50,9 +51,9 @@ async function countEmails(svc: FakturowniaModuleService, filters: Record<string
   return n
 }
 
-/** Unpaid proformas and VAT invoices issued at least `reminderAfterDays` days ago (Poland's calendar). */
+/** Unpaid proformas and VAT invoices (`lib/unpaid.ts`) issued at least `reminderAfterDays` days ago (Poland's calendar). */
 export function reminderFilters(demo: boolean, afterDays: number, now: Date = new Date()): Record<string, unknown> {
-  return { demo, status: "issued", paid: false, kind: ["proforma", "vat"], issue_date: { $lte: addDays(warsawDate(now), -afterDays) } }
+  return { ...unpaidFilters(demo), kind: [...REMINDER_KINDS], issue_date: { $lte: addDays(warsawDate(now), -afterDays) } }
 }
 
 /** The user id of an admin request (who approved, who flipped a switch). */
@@ -80,7 +81,20 @@ export async function planDtos(scope: Scope, plans: readonly PlanRow[]): Promise
   return plans.map((p) => toPlanDto(p, rows.find((r) => r.id === p.correction_document_id) ?? null, names))
 }
 
-/** The table filter as service filters, in the current mode. */
+/** Every filter of the documents table; anything else in `?filter=` reads as "all". */
+export const DOCUMENT_FILTERS: readonly DocumentFilter[] = ["all", "pending", "issued", "attention", "unpaid", "ksef", "canceled", "corrections"]
+
+/**
+ * The table filter as service filters, in the current mode. The same filters
+ * count the tiles of the page and the counters of the Koda Plus contract, so
+ * every number equals the length of its list. Alternatives go under `$and`
+ * (never a bare `$or`), so a search can be added without replacing them.
+ *
+ *   attention  failed, unknown or needing a correction, and a proforma of a
+ *              canceled order whose rejection Fakturownia refused
+ *   unpaid     `lib/unpaid.ts`
+ *   ksef       a VAT invoice or correction KSeF rejected (or could not take)
+ */
 export function documentFilters(filter: DocumentFilter, demo: boolean): Record<string, unknown> {
   const where: Record<string, unknown> = { demo }
   switch (filter) {
@@ -91,13 +105,12 @@ export function documentFilters(filter: DocumentFilter, demo: boolean): Record<s
       where.status = "issued"
       break
     case "attention":
-      where.status = ["failed", "unknown", "needs_correction"]
+      where.$and = [{ $or: [{ status: ["failed", "unknown", "needs_correction"] }, { status: "issued", kind: "proforma", error_code: "reject_failed" }] }]
       break
     case "unpaid":
-      where.status = "issued"
-      where.paid = false
-      break
+      return unpaidFilters(demo)
     case "ksef":
+      where.status = ["issued", "needs_correction"]
       where.kind = ["vat", "correction"]
       where.gov_status = [...GOV_PROBLEM_VALUES]
       break
@@ -109,6 +122,12 @@ export function documentFilters(filter: DocumentFilter, demo: boolean): Record<s
       break
   }
   return where
+}
+
+/** Adds alternatives (a search) to service filters without dropping the ones already there. */
+export function withAlternatives(where: Record<string, unknown>, or: Array<Record<string, unknown>>): Record<string, unknown> {
+  const and = Array.isArray(where.$and) ? (where.$and as Array<Record<string, unknown>>) : []
+  return { ...where, $and: [...and, { $or: or }] }
 }
 
 /**
@@ -123,7 +142,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000)
 
   const ksefKinds = ["vat", "correction"]
-  const [total, issued24h, pending, issued, failed, unknown, needsCorrection, canceled, unpaid, ksefProblems] = await Promise.all([
+  const [total, issued24h, pending, issued, failed, unknown, needsCorrection, canceled, unpaid, ksefProblems, attention, corrections] = await Promise.all([
     count(svc, { demo }),
     count(svc, { demo, status: "issued", issued_at: { $gte: dayAgo } }),
     count(svc, documentFilters("pending", demo)),
@@ -134,6 +153,8 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     count(svc, documentFilters("canceled", demo)),
     count(svc, documentFilters("unpaid", demo)),
     count(svc, documentFilters("ksef", demo)),
+    count(svc, documentFilters("attention", demo)),
+    count(svc, documentFilters("corrections", demo)),
   ])
   const [ksefAccepted, ksefProcessing, buyerWarnings, correctionsOpen, correctionsApproved, correctionsIssued, reminders, emails] = await Promise.all([
     count(svc, { demo, kind: ksefKinds, status: ["issued", "needs_correction"], gov_status: [...GOV_ACCEPTED_VALUES] }),
@@ -155,6 +176,8 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   return {
     mode: demo ? "demo" : "live",
     demoReason: o.demoReason,
+    /* Demo mode: the sample documents exist (the page asks for them once with POST /admin/fakturownia/demo/seed). */
+    demoPrepared: demo ? total > 0 : true,
     configured: svc.isConfigured(),
     missing: svc.missingOptions(),
     tokenSet: Boolean(o.apiToken),
@@ -193,7 +216,8 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
       unknown,
       needsCorrection,
       canceled,
-      attention: failed + unknown + needsCorrection,
+      attention,
+      corrections,
       unpaid,
       ksefProblems,
       ksefAccepted,
@@ -237,13 +261,24 @@ export function like(q: string): string {
 
 export { pdfFileName }
 
+/** Codes meaning "this store is not connected to Fakturownia now", not "this document is wrong". */
+const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set(["NO_TOKEN", "BAD_ACCOUNT", "DEMO_MODE"])
+
 /**
  * Streams the PDF of a document row to the response: generated in demo mode,
  * fetched by the backend in live mode. Maps the failures to readable answers:
  * 409 while Fakturownia has not rendered the PDF yet, 404 for a document
- * Fakturownia does not hold, 502 for anything else (masked).
+ * Fakturownia does not hold, 503 when the store is not connected (no token),
+ * 502 for anything else. The admin reads the masked reason; a shopper
+ * (`audience: "store"`) a plain sentence, the reason goes to the server log.
  */
-export async function sendDocumentPdf(scope: Scope, res: MedusaResponse, row: DocumentRow, disposition: "inline" | "attachment" = "inline"): Promise<void> {
+export async function sendDocumentPdf(
+  scope: Scope,
+  res: MedusaResponse,
+  row: DocumentRow,
+  disposition: "inline" | "attachment" = "inline",
+  audience: "admin" | "store" = "admin",
+): Promise<void> {
   const svc = fakturowniaService(scope)
   try {
     const file = await fetchDocumentPdf({
@@ -257,18 +292,27 @@ export async function sendDocumentPdf(scope: Scope, res: MedusaResponse, row: Do
       total: row.total_gross === null || row.total_gross === undefined ? null : `${Number(row.total_gross).toFixed(2)} ${row.currency ?? ""}`.trim(),
     })
     res.setHeader("Content-Type", file.contentType)
-    res.setHeader("Content-Disposition", `${disposition}; filename="${file.filename.replace(/"/g, "")}"`)
+    res.setHeader("Content-Disposition", contentDisposition(disposition, file.filename, unicodeFileName(row.number, `document-${row.fakturownia_id ?? row.id}`)))
+    res.setHeader("X-Content-Type-Options", "nosniff")
     res.setHeader("Cache-Control", "private, no-store")
     res.status(200).send(file.data)
   } catch (err) {
-    const notReady = err instanceof FakturowniaApiError && err.code === "PDF_NOT_READY"
+    const code = err instanceof FakturowniaApiError ? err.code : ""
+    const notReady = code === "PDF_NOT_READY"
     const missing = err instanceof FakturowniaApiError && err.status === 404
-    res.status(notReady ? 409 : missing ? 404 : 502).json({
+    const notConnected = NOT_CONNECTED_CODES.has(code)
+    const reason = svc.mask(describeError(err).message)
+    if (!notReady && !missing) svc.getLogger().warn(`[fakturownia] PDF of ${row.id} (${audience}): ${reason}`)
+    res.status(notReady ? 409 : missing ? 404 : notConnected ? 503 : 502).json({
       message: notReady
         ? "Fakturownia has not rendered this PDF yet (a new document, or a KSeF number still on its way). Try again in a minute."
         : missing
           ? "Fakturownia does not hold this document any more."
-          : svc.mask(describeError(err).message),
+          : audience === "store"
+            ? "The document cannot be downloaded right now. Try again later."
+            : notConnected
+              ? "The store is not connected to Fakturownia (no API token or account): the PDF cannot be fetched."
+              : reason,
     })
   }
 }

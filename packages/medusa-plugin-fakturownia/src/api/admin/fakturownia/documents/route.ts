@@ -1,28 +1,40 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { DocumentFilter, DocumentsResponse } from "../../../../modules/fakturownia/lib/contract"
 import type { DocumentRow } from "../../../../modules/fakturownia/lib/dto"
-import { refreshDemoStatuses } from "../../../../workflows/fakturownia/statuses"
-import { documentDto, documentFilters, fakturowniaService, intParam, like, strParam } from "../helpers"
+import { DOCUMENT_FILTERS, documentDto, documentFilters, fakturowniaService, intParam, like, strParam, withAlternatives } from "../helpers"
 
-const FILTERS: readonly DocumentFilter[] = ["all", "pending", "issued", "attention", "unpaid", "ksef", "canceled"]
+const ORDER_ID = /^order_[A-Za-z0-9]{1,60}$/
 
 /**
- * GET /admin/fakturownia/documents?filter=&q=&limit=&offset=
+ * GET /admin/fakturownia/documents?filter=&q=&order_id=&number=&limit=&offset=
  *
- * The documents of the current mode, newest first. `q` matches the document
- * number ("FV 12/10/2026", or a part of it), the order number (`1042` or
- * `#1042`), a Medusa order id or a Fakturownia document id.
+ * The documents of the current mode, newest first. Reads the database only.
+ *
+ *   filter    all (default), pending, issued, attention, unpaid, ksef,
+ *             canceled, corrections
+ *   q         the document number ("FV 12/10/2026", or a part of it), the
+ *             order number (`1042` or `#1042`), a Medusa order id or a
+ *             Fakturownia document id
+ *   order_id  exact: one or more Medusa order ids, comma separated (up to 50)
+ *   number    exact: the document number as Fakturownia printed it
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = fakturowniaService(req.scope)
-  await refreshDemoStatuses(req.scope)
   const limit = intParam(req.query.limit, 20, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 1_000_000)
   const raw = strParam(req.query.filter) as DocumentFilter
-  const filter: DocumentFilter = FILTERS.includes(raw) ? raw : "all"
+  const filter: DocumentFilter = DOCUMENT_FILTERS.includes(raw) ? raw : "all"
   const q = strParam(req.query.q).slice(0, 80)
+  const orderIds = strParam(req.query.order_id)
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => ORDER_ID.test(s))
+    .slice(0, 50)
+  const number = strParam(req.query.number).slice(0, 100)
 
-  const where = documentFilters(filter, svc.isDemo())
+  let where = documentFilters(filter, svc.isDemo())
+  if (orderIds.length > 0) where.order_id = orderIds
+  if (number) where.number = number
   if (q) {
     const bare = q.replace(/^#/, "")
     const or: Array<Record<string, unknown>> = [{ number: { $ilike: like(q) } }]
@@ -31,8 +43,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       if (Number.isSafeInteger(n) && n < 2_147_483_647) or.push({ display_id: n })
       or.push({ fakturownia_id: bare })
     }
-    if (/^order_[A-Za-z0-9]+$/.test(q)) or.push({ order_id: q })
-    where.$or = or
+    if (ORDER_ID.test(q)) or.push({ order_id: q })
+    where = withAlternatives(where, or)
   }
 
   const [rows, count] = (await svc.listAndCountFakturowniaDocuments(where as never, {

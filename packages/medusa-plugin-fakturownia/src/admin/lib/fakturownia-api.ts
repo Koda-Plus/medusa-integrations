@@ -21,47 +21,50 @@ import type {
   WritersDto,
 } from "../../modules/fakturownia/lib/contract"
 
-declare const __BACKEND_URL__: string | undefined
+import { backendUrl, kitRequestInit } from "./fakturownia-kit"
+import { POLL_DUE_MS, pollInterval } from "../../modules/fakturownia/lib/poll"
 
-/** Same origin by default; the admin build defines `__BACKEND_URL__` when the backend lives elsewhere. */
-export function backendUrl(): string {
-  try {
-    if (typeof __BACKEND_URL__ !== "undefined" && __BACKEND_URL__) return String(__BACKEND_URL__).replace(/\/+$/, "")
-  } catch {
-    /* not defined in this build */
-  }
-  return ""
-}
+/* The backend the dashboard talks to, with its auth (session or JWT): from the kit. */
+export { backendUrl }
 
 export class FakturowniaRequestError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly code: string | null
+  constructor(status: number, message: string, code: string | null = null) {
     super(message)
     this.name = "FakturowniaRequestError"
     this.status = status
+    this.code = code
   }
 }
 
-export async function fakturowniaFetch<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
-  const hasBody = init?.body !== undefined
-  const res = await fetch(`${backendUrl()}${path}`, {
-    method: init?.method ?? "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...(hasBody ? { "Content-Type": "application/json" } : {}) },
-    body: hasBody ? JSON.stringify(init?.body) : undefined,
-  })
-  const text = await res.text()
+async function failure(res: Response): Promise<FakturowniaRequestError> {
+  const text = await res.text().catch(() => "")
   let json: unknown = null
   try {
     json = text ? JSON.parse(text) : null
   } catch {
     json = null
   }
-  if (!res.ok) {
-    const message = json && typeof json === "object" && "message" in json ? String((json as { message: unknown }).message) : `HTTP ${res.status}`
-    throw new FakturowniaRequestError(res.status, message)
+  const body = (json && typeof json === "object" ? json : {}) as { message?: unknown; code?: unknown }
+  return new FakturowniaRequestError(res.status, typeof body.message === "string" ? body.message : `HTTP ${res.status}`, typeof body.code === "string" ? body.code : null)
+}
+
+/**
+ * Every call of the admin to the plugin's routes. The kit adds the
+ * dashboard's auth (the session cookie, or the bearer token of an admin
+ * built with JWT) and, on writes, the JSON body and the `x-koda-request`
+ * header the server's write guard asks for.
+ */
+export async function fakturowniaFetch<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: init?.method ?? "GET", body: init?.body }))
+  if (!res.ok) throw await failure(res)
+  const text = await res.text()
+  try {
+    return (text ? JSON.parse(text) : null) as T
+  } catch {
+    return null as T
   }
-  return json as T
 }
 
 export function errorMessage(err: unknown): string {
@@ -69,13 +72,78 @@ export function errorMessage(err: unknown): string {
 }
 
 /** The PDF route of a document: streamed by the backend, the token never reaches the browser. */
-export function pdfUrl(documentId: string): string {
-  return `${backendUrl()}/admin/fakturownia/documents/${encodeURIComponent(documentId)}/pdf`
+export function pdfPath(documentId: string): string {
+  return `/admin/fakturownia/documents/${encodeURIComponent(documentId)}/pdf`
 }
 
 /** The UPO or the KSeF XML of an accepted document, fetched by the backend. */
-export function ksefFileUrl(documentId: string, file: "upo" | "xml"): string {
-  return `${backendUrl()}/admin/fakturownia/documents/${encodeURIComponent(documentId)}/ksef-file?file=${file}`
+export function ksefFilePath(documentId: string, file: "upo" | "xml"): string {
+  return `/admin/fakturownia/documents/${encodeURIComponent(documentId)}/ksef-file?file=${file}`
+}
+
+/** The file name the server gave (`filename*` first, then `filename`). */
+export function fileNameOf(disposition: string | null): string | null {
+  if (!disposition) return null
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim())
+    } catch {
+      /* the plain name below */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(disposition)
+  return plain ? plain[1].trim() : null
+}
+
+/**
+ * A file the backend streams (the PDF, the UPO, the KSeF XML), fetched with
+ * the dashboard's auth as a blob. A plain link would carry only the session
+ * cookie, so an admin signed in with a token (JWT) would get 401.
+ */
+async function fetchFile(path: string): Promise<{ blob: Blob; name: string | null }> {
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: "GET", headers: { Accept: "application/pdf, application/xml, */*" } }))
+  if (!res.ok) throw await failure(res)
+  return { blob: await res.blob(), name: fileNameOf(res.headers.get("content-disposition")) }
+}
+
+/** Saves a file the backend streams under the name it gave. */
+export async function saveFile(path: string, fallbackName: string): Promise<void> {
+  const { blob, name } = await fetchFile(path)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = name ?? fallbackName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+/**
+ * Opens a PDF the backend streams in a new tab. The tab is opened at once
+ * (inside the click, so the browser allows it) and gets the file when it
+ * arrives; when the browser blocks it anyway, the file is saved instead.
+ */
+export async function openFile(path: string, fallbackName: string): Promise<void> {
+  const tab = window.open("about:blank", "_blank")
+  try {
+    const { blob, name } = await fetchFile(path)
+    const url = URL.createObjectURL(blob)
+    if (tab) tab.location.href = url
+    else {
+      const a = document.createElement("a")
+      a.href = url
+      a.download = name ?? fallbackName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000)
+  } catch (err) {
+    tab?.close()
+    throw err
+  }
 }
 
 export const fakturowniaKeys = {
@@ -99,7 +167,7 @@ export function useFakturowniaStatus(pollUntil: number) {
     refetchInterval: (query) => {
       const data = query.state.data
       if ((data?.running?.length ?? 0) > 0 || Date.now() < pollUntil) return 2_500
-      return 30_000
+      return 60_000
     },
   })
 }
@@ -115,10 +183,8 @@ export function useFakturowniaDocuments(filter: DocumentFilter, q: string, offse
     queryKey: fakturowniaKeys.documents(filter, q, offset, limit),
     queryFn: () => fakturowniaFetch<DocumentsResponse>(`/admin/fakturownia/documents?${params({ filter, q, offset, limit })}`),
     placeholderData: (previous) => previous,
-    refetchInterval: (query) => {
-      const busy = (query.state.data?.documents ?? []).some((d) => d.status === "pending" || d.status === "issuing" || d.govState === "processing")
-      return poll || busy ? 4_000 : 30_000
-    },
+    /* `lib/poll.ts`: fast only while something is being issued; a finished run refreshes the lists anyway. */
+    refetchInterval: (query) => (poll ? 4_000 : pollInterval(query.state.data?.documents ?? [])),
   })
 }
 
@@ -130,18 +196,13 @@ export function useFakturowniaRuns(poll: boolean) {
   })
 }
 
-/** The order widget. Polls while a document waits in the queue or its KSeF number is on its way. */
+/** The order card. Asks again only while something moves by itself (`lib/poll.ts`). */
 export function useFakturowniaOrder(orderId: string) {
   return useQuery<OrderDocumentsResponse>({
     queryKey: fakturowniaKeys.order(orderId),
     queryFn: () => fakturowniaFetch<OrderDocumentsResponse>(`/admin/fakturownia/orders/${encodeURIComponent(orderId)}`),
     enabled: Boolean(orderId),
-    refetchInterval: (query) => {
-      const docs = query.state.data?.documents ?? []
-      if (docs.some((d) => d.status === "pending" || d.status === "issuing")) return 3_000
-      if (docs.some((d) => d.govState === "processing")) return 20_000
-      return false
-    },
+    refetchInterval: (query) => pollInterval(query.state.data?.documents ?? []),
   })
 }
 
@@ -150,6 +211,18 @@ export function useFakturowniaSync() {
   return useMutation<SyncResponse, Error, SyncResponse["what"]>({
     mutationFn: (what) => fakturowniaFetch<SyncResponse>("/admin/fakturownia/sync", { method: "POST", body: { what } }),
     onSuccess: () => client.invalidateQueries({ queryKey: fakturowniaKeys.status }),
+  })
+}
+
+/** Demo mode, first visit: the sample documents (`POST /admin/fakturownia/demo/seed`, idempotent). */
+export function useFakturowniaDemoSeed() {
+  const client = useQueryClient()
+  return useMutation<StatusResponse, Error, void>({
+    mutationFn: () => fakturowniaFetch<StatusResponse>("/admin/fakturownia/demo/seed", { method: "POST", body: {} }),
+    onSuccess: (data) => {
+      client.setQueryData(fakturowniaKeys.status, data)
+      void client.invalidateQueries({ queryKey: fakturowniaKeys.all, predicate: (q) => q.queryKey[1] !== "status" })
+    },
   })
 }
 
@@ -202,7 +275,10 @@ export function useFakturowniaDocument(id: string | null) {
     queryKey: fakturowniaKeys.document(id ?? ""),
     queryFn: () => fakturowniaFetch<DocumentDetailResponse>(`/admin/fakturownia/documents/${encodeURIComponent(id ?? "")}`),
     enabled: Boolean(id),
-    refetchInterval: (query) => (query.state.data?.document.govState === "processing" ? 10_000 : false),
+    refetchInterval: (query) => {
+      const data = query.state.data
+      return data ? pollInterval([data.document, ...data.corrections]) : false
+    },
   })
 }
 
@@ -211,9 +287,10 @@ export function useFakturowniaCorrections(filter: PlanFilter, q: string, offset:
     queryKey: fakturowniaKeys.corrections(filter, q, offset),
     queryFn: () => fakturowniaFetch<CorrectionsResponse>(`/admin/fakturownia/corrections?${params({ filter, q, offset, limit })}`),
     placeholderData: (previous) => previous,
+    /* An approved plan moves only while its correction is being issued; one waiting for the writer waits for a person. */
     refetchInterval: (query) => {
-      const busy = (query.state.data?.plans ?? []).some((p) => p.status === "approved")
-      return poll || busy ? 5_000 : 30_000
+      const busy = (query.state.data?.plans ?? []).some((p) => p.status === "approved" && (p.correction?.status === "issuing" || (p.correction?.status === "pending" && p.correction.errorCode !== "waiting_for_writer")))
+      return poll ? 5_000 : busy ? POLL_DUE_MS : false
     },
   })
 }

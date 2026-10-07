@@ -26,10 +26,10 @@ import { demoGovId, demoKsefMinutes } from "../../modules/fakturownia/lib/demo"
 import { toDate, type DocumentRow, type KsefEventRow } from "../../modules/fakturownia/lib/dto"
 import { describeError, FakturowniaApiError } from "../../modules/fakturownia/lib/errors"
 import { toRemoteDocument, type RemoteDocument } from "../../modules/fakturownia/lib/exactly-once"
-import { pdfFileName } from "../../modules/fakturownia/lib/pdf"
+import { pdfFileName, unicodeFileName } from "../../modules/fakturownia/lib/pdf"
 import { baseGovStatus, canResendKsef, goesToKsef, govState } from "../../modules/fakturownia/lib/status"
 import type { DocumentPatch } from "../../modules/fakturownia/lib/store"
-import { ActionError, clientFor, fakturowniaService, getDocument, isArmed, patchDocument, type Scope } from "./runtime"
+import { ActionError, clientFor, fakturowniaService, getDocument, isArmed, patchDocument, storeFor, type Scope } from "./runtime"
 
 export type KsefEventSource = "issue" | "refresh" | "resend" | "demo"
 
@@ -120,8 +120,10 @@ export async function resendToKsef(scope: Scope, documentId: string, actorId: st
     )
   }
   const now = new Date()
-  const last = toDate(row.ksef_resend_at)
-  if (last && now.getTime() - last.getTime() < KSEF_RESEND_MIN_INTERVAL_MS) throw new ActionError(409, "This document was sent to KSeF again less than five minutes ago. Wait for the answer.")
+  /* Taken atomically (one conditional UPDATE of `ksef_resend_at`): two clicks from two tabs send once. */
+  if (!(await storeFor(scope).claimStamp(row.id, "ksef_resend_at", now, KSEF_RESEND_MIN_INTERVAL_MS))) {
+    throw new ActionError(409, "This document was sent to KSeF again less than five minutes ago. Wait for the answer.")
+  }
 
   if (row.demo) {
     const updated = await patchDocument(svc, row.id, { gov_status: "processing", gov_error: null, gov_errors: null, ksef_resend_at: now, gov_send_date: now, gov_checked_at: now })
@@ -147,7 +149,11 @@ export async function resendToKsef(scope: Scope, documentId: string, actorId: st
 /* ------------------------------------------------------------------ */
 
 export interface KsefFile {
+  /** ASCII: safe in the response header. */
   filename: string
+  /** The name with the Polish letters of the number, for `filename*`. */
+  unicodeName: string
+  /** Always `application/xml`: the type the file host answered never reaches the browser. */
   contentType: string
   data: Buffer
 }
@@ -187,12 +193,14 @@ export async function ksefFile(scope: Scope, row: DocumentRow, file: "upo" | "xm
   if (!row.fakturownia_id || !goesToKsef(row.kind) || govState(row.gov_status) !== "accepted") {
     throw new ActionError(409, "KSeF has not accepted this document (yet), so there is no KSeF XML or UPO.")
   }
+  const prefix = file === "upo" ? "UPO" : "KSeF"
   const base = pdfFileName(row.number, `document-${row.fakturownia_id}`).replace(/\.pdf$/, "")
-  const filename = `${file === "upo" ? "UPO" : "KSeF"}-${base}.xml`
-  if (row.demo) return { filename, contentType: "application/xml; charset=utf-8", data: Buffer.from(demoKsefXml(row, file), "utf8") }
+  const filename = `${prefix}-${base}.xml`
+  const unicodeName = `${prefix}-${unicodeFileName(row.number, `document-${row.fakturownia_id}`, "xml")}`
+  if (row.demo) return { filename, unicodeName, contentType: "application/xml; charset=utf-8", data: Buffer.from(demoKsefXml(row, file), "utf8") }
   try {
     const got = await clientFor(svc).getAttachment(row.fakturownia_id, file === "upo" ? "gov_upo" : "gov")
-    return { filename, contentType: got.contentType || "application/xml", data: Buffer.from(got.bytes) }
+    return { filename, unicodeName, contentType: "application/xml", data: Buffer.from(got.bytes) }
   } catch (err) {
     if (err instanceof FakturowniaApiError && err.status === 404) {
       throw new ActionError(404, "Fakturownia has no such file for this document yet: after a batch sending it can take up to an hour.")

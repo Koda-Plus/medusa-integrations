@@ -19,12 +19,13 @@
 
 import { FINALS_PER_PASS, FINALS_WINDOW_DAYS, STATUS_WINDOW_DAYS, STATUSES_PER_PASS } from "../../modules/fakturownia/lib/constants"
 import type { RunTrigger } from "../../modules/fakturownia/lib/contract"
-import { toDate, type DocumentRow } from "../../modules/fakturownia/lib/dto"
+import type { DocumentRow } from "../../modules/fakturownia/lib/dto"
 import { describeError, FakturowniaApiError } from "../../modules/fakturownia/lib/errors"
 import { toRemoteDocument } from "../../modules/fakturownia/lib/exactly-once"
 import { canIssue } from "../../modules/fakturownia/lib/options"
 import { goesToKsef, isGovFinal } from "../../modules/fakturownia/lib/status"
 import { enqueueDue, kickIssue } from "./documents"
+import { expireEmailClaims } from "./emails"
 import { rejectProforma, sendEmailFor } from "./followups"
 import { demoKsefNext, govPatch, ksefChanged, recordKsefEvent } from "./ksef"
 import { clientFor, exclusive, fakturowniaService, listDocuments, patchDocument, queryOf, recordRun, type Scope } from "./runtime"
@@ -46,10 +47,6 @@ export interface StatusesStats {
 
 function emptyStats(): StatusesStats {
   return { candidates: 0, read: 0, changed: 0, accepted: 0, problems: 0, missing: 0, emailsSent: 0, emailsWaiting: 0, emailsFailed: 0, rejected: 0, finalsQueued: 0, errors: [] }
-}
-
-function ms(v: Date | string | null | undefined): number {
-  return toDate(v)?.getTime() ?? 0
 }
 
 /** What the status read asks for (KSeF.md, "Sprawdzanie statusu wysyłki"), and the payment on the way. */
@@ -118,18 +115,61 @@ async function refreshOne(scope: Scope, row: DocumentRow, stats: StatusesStats, 
   }
 }
 
-/** Proforma flow: fulfilled orders whose final document was never queued (the event did not arrive). */
+/** The final values of `gov_status`: after these the status does not change by itself. */
+const GOV_FINAL_VALUES: readonly string[] = ["ok", "demo_ok", "not_applicable", "demo_not_applicable"]
+
+/**
+ * The documents whose KSeF status is read in this pass, chosen IN THE
+ * DATABASE (never a window read and filtered in memory, which lost documents
+ * in stores with more than 500 of them): VAT invoices and corrections issued
+ * in the last 14 days, or sent to KSeF again in that time, whose status is
+ * not final and which are still in Fakturownia. Never checked first, then the
+ * least recently checked.
+ */
+export async function ksefCandidates(scope: Scope, now: Date, limit: number = STATUSES_PER_PASS): Promise<DocumentRow[]> {
+  const svc = fakturowniaService(scope)
+  const since = new Date(now.getTime() - STATUS_WINDOW_DAYS * 24 * 3600 * 1000)
+  const where = {
+    demo: svc.isDemo(),
+    status: ["issued", "needs_correction"],
+    kind: ["vat", "correction"],
+    fakturownia_id: { $ne: null },
+    $and: [
+      { $or: [{ gov_status: null }, { gov_status: { $nin: [...GOV_FINAL_VALUES] } }] },
+      { $or: [{ error_code: null }, { error_code: { $ne: "remote_missing" } }] },
+      { $or: [{ issued_at: { $gte: since } }, { ksef_resend_at: { $gte: since } }] },
+    ],
+  }
+  const never = await listDocuments(svc, { ...where, gov_checked_at: null }, { take: limit, order: { issued_at: "ASC" } })
+  if (never.length >= limit) return never
+  const seen = await listDocuments(svc, { ...where, gov_checked_at: { $ne: null } }, { take: limit - never.length, order: { gov_checked_at: "ASC" } })
+  return [...never, ...seen]
+}
+
+/**
+ * Proforma flow: fulfilled orders whose final document was never queued (the
+ * event did not arrive). The proformas are chosen in the database, not yet
+ * turned into a final document (`converted_at`), never checked first, then
+ * the least recently checked, and stamped (`finals_checked_at`).
+ */
 async function queueMissedFinals(scope: Scope, stats: StatusesStats, now: Date): Promise<void> {
   const svc = fakturowniaService(scope)
   const o = svc.getOptions()
   if (o.documentFlow !== "proforma_then_vat") return
   const since = new Date(now.getTime() - FINALS_WINDOW_DAYS * 24 * 3600 * 1000)
-  const proformas = await listDocuments(svc, { demo: o.demo, kind: "proforma", status: "issued", issued_at: { $gte: since } }, { take: 500, select: ["order_id"] })
+  const where = { demo: o.demo, kind: "proforma", status: "issued", converted_at: null, issued_at: { $gte: since } }
+  const fields = ["id", "order_id", "finals_checked_at"]
+  const never = await listDocuments(svc, { ...where, finals_checked_at: null }, { take: FINALS_PER_PASS, order: { issued_at: "ASC" }, select: fields })
+  const proformas =
+    never.length >= FINALS_PER_PASS
+      ? never
+      : [...never, ...(await listDocuments(svc, { ...where, finals_checked_at: { $ne: null } }, { take: FINALS_PER_PASS - never.length, order: { finals_checked_at: "ASC" }, select: fields }))]
+  if (proformas.length === 0) return
+  for (const p of proformas) await patchDocument(svc, p.id, { finals_checked_at: now })
   const orderIds = [...new Set(proformas.map((p) => p.order_id))]
-  if (orderIds.length === 0) return
   const finals = await listDocuments(svc, { demo: o.demo, order_id: orderIds, kind: ["vat", "receipt"] }, { take: null, select: ["order_id"] })
   const withFinal = new Set(finals.map((f) => f.order_id))
-  const open = orderIds.filter((id) => !withFinal.has(id)).slice(0, FINALS_PER_PASS)
+  const open = orderIds.filter((id) => !withFinal.has(id))
   if (open.length === 0) return
   const { data } = await queryOf(scope).graph({ entity: "order", fields: ["id", "status", "fulfillments.id", "fulfillments.canceled_at"], filters: { id: open } })
   for (const order of data as Array<{ id: string; status?: string | null; fulfillments?: Array<{ canceled_at?: unknown }> | null }>) {
@@ -151,12 +191,7 @@ export async function refreshStatuses(scope: Scope, trigger: RunTrigger): Promis
     const now = new Date()
 
     /* KSeF */
-    const since = new Date(now.getTime() - STATUS_WINDOW_DAYS * 24 * 3600 * 1000)
-    const recent = await listDocuments(svc, { demo: o.demo, status: ["issued", "needs_correction"], kind: ["vat", "correction"], issued_at: { $gte: since } }, { take: 500 })
-    const candidates = recent
-      .filter((r) => goesToKsef(r.kind) && !isGovFinal(r.gov_status))
-      .sort((a, b) => ms(a.gov_checked_at) - ms(b.gov_checked_at))
-      .slice(0, STATUSES_PER_PASS)
+    const candidates = (await ksefCandidates(scope, now)).filter((r) => goesToKsef(r.kind) && !isGovFinal(r.gov_status))
     stats.candidates = candidates.length
     for (const row of candidates) {
       try {
@@ -167,6 +202,9 @@ export async function refreshStatuses(scope: Scope, trigger: RunTrigger): Promis
         if (code === "ERROR_NETWORK" || code === "ERROR_TIMEOUT" || code.startsWith("HTTP_5")) break
       }
     }
+
+    /* E-mails a stopped process left half sent: failed, never sent again */
+    stats.emailsFailed += await expireEmailClaims(scope, now)
 
     /* E-mails waiting for a KSeF number (or for Fakturownia to be back) */
     const emails = await listDocuments(svc, { demo: o.demo, status: "issued", email_status: "pending" }, { take: 20, order: { issued_at: "ASC" } })

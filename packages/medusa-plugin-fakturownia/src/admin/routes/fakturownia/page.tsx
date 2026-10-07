@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
@@ -9,6 +10,7 @@ import {
   errorMessage,
   fakturowniaKeys,
   useFakturowniaCheck,
+  useFakturowniaDemoSeed,
   useFakturowniaDocuments,
   useFakturowniaRuns,
   useFakturowniaStatus,
@@ -57,6 +59,10 @@ import {
  *
  * The demo note and the stores running the integration sit in header badges.
  * The document drawer opens from every list.
+ *
+ * Deep links (hosts, boards, the order card): `?filter=attention` (any filter
+ * of the documents table), `?q=1042` (a search: order number, document
+ * number, order id), `?doc=fkdoc_...` (opens the document drawer).
  */
 const PAGE_SIZE = 15
 
@@ -72,8 +78,25 @@ const FakturowniaPage = () => {
   const status = useFakturowniaStatus(pollUntil)
   const s = status.data
   const polling = (s?.running.length ?? 0) > 0 || Date.now() < pollUntil
-  const [filter, setFilter] = useState<DocumentFilter>("all")
-  const [openDocument, setOpenDocument] = useState<string | null>(null)
+  const [params] = useSearchParams()
+  const [filter, setFilter] = useState<DocumentFilter>(() => {
+    const asked = params.get("filter")
+    return asked && (FILTERS as readonly string[]).includes(asked) ? (asked as DocumentFilter) : "all"
+  })
+  const initialQuery = (params.get("q") ?? "").slice(0, 80)
+  const [openDocument, setOpenDocument] = useState<string | null>(() => {
+    const doc = params.get("doc") ?? ""
+    return /^fkdoc_[A-Za-z0-9]{1,60}$/.test(doc) ? doc : null
+  })
+
+  /* Demo mode, first visit: the sample documents, asked for once (GET routes never write). */
+  const seed = useFakturowniaDemoSeed()
+  const seedAsked = useRef(false)
+  useEffect(() => {
+    if (!s || s.mode !== "demo" || s.demoPrepared || seedAsked.current) return
+    seedAsked.current = true
+    seed.mutate()
+  }, [s, seed])
 
   /* A finished run refreshes the tables below. */
   const runKey = JSON.stringify(Object.values(s?.lastRuns ?? {}).map((r) => r?.id ?? ""))
@@ -99,6 +122,13 @@ const FakturowniaPage = () => {
           </div>
         ) : null}
         {s ? <Warnings status={s} /> : null}
+        {seed.isPending ? (
+          <div className="px-6 py-4">
+            <Text size="small" className="text-ui-fg-subtle">
+              {t("demo.preparing")}
+            </Text>
+          </div>
+        ) : null}
         {s && nav.view === "panel" ? (
           <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
             <StatTile label={t("stats.issued24h")} value={fmtNumber(s.counts.issued24h, lang)} tone="green" active={filter === "issued"} onClick={() => setFilter("issued")} />
@@ -141,7 +171,7 @@ const FakturowniaPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          <DocumentsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} onAction={poll} onOpen={setOpenDocument} />
+          <DocumentsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} onAction={poll} onOpen={setOpenDocument} initialQuery={initialQuery} />
           <CorrectionsSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
           <UnpaidSection status={s} lang={lang} onOpenDocument={setOpenDocument} />
           <SummarySection lang={lang} />
@@ -268,13 +298,13 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
   )
 }
 
-/** Only what needs a person now: missing options in live mode. The demo note lives in the mode badge. */
+/** Only what needs a person now: missing options in live mode (in red: nothing is issued). The demo note lives in the mode badge. */
 function Warnings({ status }: { status: StatusResponse }) {
   const { t } = useTranslation("fakturownia")
   if (status.mode === "demo" || status.missing.length === 0) return null
   return (
     <div className="px-6 py-4">
-      <InlineTip variant="warning" label={t("missing.label")}>
+      <InlineTip variant="error" label={t("missing.label")}>
         {t("missing.text", { missing: status.missing.join(", ") })}
       </InlineTip>
     </div>
@@ -506,7 +536,7 @@ function filterCount(status: StatusResponse, f: DocumentFilter): number | undefi
     case "canceled":
       return c.canceled
     case "corrections":
-      return undefined
+      return c.corrections
   }
 }
 
@@ -518,6 +548,7 @@ function DocumentsSection({
   poll,
   onAction,
   onOpen,
+  initialQuery = "",
 }: {
   status: StatusResponse
   lang: string
@@ -526,9 +557,10 @@ function DocumentsSection({
   poll: boolean
   onAction: () => void
   onOpen: (id: string) => void
+  initialQuery?: string
 }) {
   const { t } = useTranslation("fakturownia")
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])

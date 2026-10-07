@@ -26,6 +26,8 @@ test("the refresh stops at accepted and not applicable; only VAT invoices go to 
 test("an e-mail refused for a missing KSeF number waits; other refusals do not", () => {
   assert.equal(isWaitingForKsef("Fakturownia send_by_email: API_ERROR Faktura nie może zostać wysłana - brak numeru KSeF"), true)
   assert.equal(isWaitingForKsef("HTTP_404 not found"), false)
+  assert.equal(isWaitingForKsef("Brak uprawnień do KSeF dla tego konta"), false, "another refusal that names KSeF is not a wait")
+  assert.equal(isWaitingForKsef("KSeF is not enabled on this account"), false)
 })
 
 function row(over: Partial<DocumentRow> = {}): DocumentRow {

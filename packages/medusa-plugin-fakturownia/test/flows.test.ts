@@ -115,7 +115,12 @@ test("live: a lost answer with nothing committed: unknown, no new create until t
   await issueDue(s.container, "schedule")
   assert.equal(fake.creating(), 1, "a pass inside the grace period sends nothing")
 
+  /* The grace counts from the create request (create_sent_at), not from the claim. */
   row.claimed_at = ago(10)
+  row.next_attempt_at = ago(1)
+  await issueDue(s.container, "schedule")
+  assert.equal(fake.creating(), 1, "a claim long ago does not shorten the grace of a request sent just now")
+  row.create_sent_at = ago(10)
   row.next_attempt_at = ago(1)
   const before = fake.calls.length
   await issueDue(s.container, "schedule")
@@ -422,7 +427,7 @@ test("demo: nothing leaves Medusa; the backfill issues the newest orders, one re
   const orders = Array.from({ length: 5 }, (_, i) =>
     order({ id: `order_demo_${i}`, display_id: 100 + i, created_at: new Date(Date.UTC(2026, 9, 1 + i)).toISOString(), total: 143 }),
   )
-  const s = setup({}, orders)
+  const s = setup({ demo: true }, orders)
   globalThis.fetch = (async () => {
     throw new Error("demo mode must not call the network")
   }) as typeof fetch
@@ -449,7 +454,7 @@ test("demo: nothing leaves Medusa; the backfill issues the newest orders, one re
 
 test("demo, proforma flow: fulfilled orders show the proforma and the VAT invoice made from it", async () => {
   const orders = [0, 1, 2].map((i) => order({ id: `order_p_${i}`, display_id: 200 + i, created_at: new Date(Date.UTC(2026, 9, 1 + i)).toISOString(), fulfillments: i === 0 ? [{ id: "f" }] : [] }))
-  const s = setup({ documentFlow: "proforma_then_vat" }, orders)
+  const s = setup({ demo: true, documentFlow: "proforma_then_vat" }, orders)
   const { ensureDemoDocuments } = await import("../src/workflows/fakturownia/documents.ts")
   await ensureDemoDocuments(s.container)
   const byOrder = s.documents.rows.filter((r) => r.order_id === "order_p_0")

@@ -104,9 +104,46 @@ export function isValidNip(nip: string | null | undefined): boolean {
   return sum % 11 === Number(nip[9])
 }
 
-/** An EU VAT number of another country: two letters, then 2 to 12 letters, digits, "+" or "*", with a digit among them. */
+/**
+ * The VAT numbers of the other EU countries (and Northern Ireland, XI), by
+ * prefix: the shape of the part after it, as the VIES service describes it.
+ * Greece uses EL, not GR. A prefix outside the list (US, AB) is not an EU
+ * VAT number: such a buyer gets a consumer document with a warning.
+ */
+export const EU_VAT_SHAPES: Readonly<Record<string, RegExp>> = {
+  AT: /^U\d{8}$/,
+  BE: /^[01]\d{9}$/,
+  BG: /^\d{9,10}$/,
+  CY: /^\d{8}[A-Z]$/,
+  CZ: /^\d{8,10}$/,
+  DE: /^\d{9}$/,
+  DK: /^\d{8}$/,
+  EE: /^\d{9}$/,
+  EL: /^\d{9}$/,
+  ES: /^[A-Z0-9]\d{7}[A-Z0-9]$/,
+  FI: /^\d{8}$/,
+  FR: /^[A-HJ-NP-Z0-9]{2}\d{9}$/,
+  HR: /^\d{11}$/,
+  HU: /^\d{8}$/,
+  IE: /^(\d[A-Z0-9+*]\d{5}[A-Z]|\d{7}[A-Z]{1,2})$/,
+  IT: /^\d{11}$/,
+  LT: /^(\d{9}|\d{12})$/,
+  LU: /^\d{8}$/,
+  LV: /^\d{11}$/,
+  MT: /^\d{8}$/,
+  NL: /^\d{9}B\d{2}$/,
+  PT: /^\d{9}$/,
+  RO: /^\d{2,10}$/,
+  SE: /^\d{12}$/,
+  SI: /^\d{8}$/,
+  SK: /^\d{10}$/,
+  XI: /^(\d{9}|\d{12}|GD\d{3}|HA\d{3})$/,
+}
+
+/** An EU VAT number of another country: a known prefix and the shape of that country's numbers. */
 export function isEuVatShape(value: string): boolean {
-  return /^[A-Z]{2}[0-9A-Z+*]{2,12}$/.test(value) && !value.startsWith("PL") && /\d/.test(value)
+  const shape = EU_VAT_SHAPES[value.slice(0, 2)]
+  return Boolean(shape) && shape.test(value.slice(2))
 }
 
 export type TaxIdVerdict =

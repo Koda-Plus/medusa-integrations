@@ -260,7 +260,7 @@ export interface RunRecord {
   message?: string | null
 }
 
-/** Stores one run and keeps the last 50 of its kind. */
+/** Stores one run and keeps the last 50 of its kind in the current mode. */
 export async function recordRun(svc: FakturowniaModuleService, r: RunRecord): Promise<RunDto> {
   const finishedAt = new Date()
   const row = (await svc.createFakturowniaSyncRuns({
@@ -276,7 +276,8 @@ export async function recordRun(svc: FakturowniaModuleService, r: RunRecord): Pr
     finished_at: finishedAt,
   } as never)) as unknown as RunRow
 
-  const old = (await svc.listFakturowniaSyncRuns({ kind: r.kind } as never, {
+  /* Kept per mode: runs of the demo never push the history of the real account out, nor the other way round. */
+  const old = (await svc.listFakturowniaSyncRuns({ kind: r.kind, source: svc.isDemo() ? "demo" : "api" } as never, {
     order: { started_at: "DESC" },
     skip: RUNS_TO_KEEP,
     take: 500,

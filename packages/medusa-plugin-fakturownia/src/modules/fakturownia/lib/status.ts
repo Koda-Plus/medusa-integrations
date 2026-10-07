@@ -10,7 +10,8 @@
  * `blocked_403_error`, `not_connected`. The KSeF test environment reports the
  * same values with a `demo_` prefix. The admin shows "Accepted" for `ok`.
  *
- * Only VAT invoices go to KSeF among the kinds this plugin issues.
+ * VAT invoices and their corrections go to KSeF among the kinds this plugin
+ * issues (`goesToKsef`); proformas and receipts do not.
  */
 
 export type GovState = "none" | "processing" | "accepted" | "problem" | "not_applicable" | "offline"
@@ -76,5 +77,6 @@ export function goesToKsef(kind: string): boolean {
  * numeru KSeF"`). Such an e-mail waits for the number.
  */
 export function isWaitingForKsef(message: string | null | undefined): boolean {
-  return /ksef/i.test(String(message ?? ""))
+  /* The documented sentence only: another refusal that names KSeF (no permission, KSeF off) is shown at once, not retried for days. */
+  return /brak\s+numeru\s+ksef/i.test(String(message ?? ""))
 }

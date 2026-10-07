@@ -75,7 +75,7 @@ test("SQL: the claim is one conditional UPDATE: only a pending, due row, with a 
   const { seen, store } = recorder()
   await store.claim("fkdoc_1", { now, leaseUntil: new Date(now.getTime() + 600_000), token: "tok-1" })
   const s = seen[0].sql
-  assert.match(s, /^update "fakturownia_document" set "status" = 'issuing', "claim_token" = \?, "claimed_at" = \?, "lease_until" = \?, "attempts" = "attempts" \+ 1/)
+  assert.match(s, /^update "fakturownia_document" set "status" = 'issuing', "claim_token" = \?, "claimed_at" = \?, "lease_until" = \?, "create_sent_at" = null, "attempts" = "attempts" \+ 1/)
   assert.match(s, /where "id" = \? and "status" = 'pending' and "deleted_at" is null and \("next_attempt_at" is null or "next_attempt_at" <= \?\) returning \*$/)
   assert.deepEqual(seen[0].bindings, ["tok-1", now, new Date(now.getTime() + 600_000), "fkdoc_1", now])
 })
