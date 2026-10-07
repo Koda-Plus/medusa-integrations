@@ -397,6 +397,28 @@ export interface AllegroImportDto {
   attempts: number
   demo: boolean
   updatedAt: string | null
+  /** From the import row (never from order metadata): the buyer's Allegro login, the delivery method and the pickup point. */
+  buyerLogin: string | null
+  deliveryMethod: string | null
+  pickupPoint: string | null
+  /** When a person marked the attention or the total difference as handled. */
+  handledAt: string | null
+}
+
+/**
+ * GET /admin/allegro/medusa-orders/:id: what Allegro knows about one Medusa
+ * order, for the order card. `import` is null for an order this plugin did
+ * not import (ownership: the import row that names the order).
+ */
+export interface AllegroOrderCardResponse {
+  mode: AllegroMode
+  import: AllegroImportDto | null
+  /** Parcels, the seller status and invoices sent (or waiting) for this order. */
+  outbox: AllegroOutboxDto[]
+  /** Returns, disputes and claims of its checkout form. */
+  issues: AllegroIssueDto[]
+  /** Whether the shipping and invoice writers may send right now. */
+  writers: { shipping: boolean; invoices: boolean }
 }
 
 export interface AllegroImportsResponse {

@@ -1,5 +1,6 @@
 import type en from "./en"
 import { typeset } from "../lib/allegro-guide"
+import { integrationPl } from "../../modules/allegro/lib/integration-texts"
 import { communityPl } from "../lib/allegro-kit-community"
 
 const pl: typeof en = {
@@ -419,8 +420,8 @@ const pl: typeof en = {
     mismatch: "Medusa: {{total}}",
     empty: "Brak importów w tym widoku.",
     window: {
-      title: "Okno importu",
-      text: "Dodaj do kolejki zamówienia z Allegro kupione między dwiema datami, najwyżej 62 dni naraz. Dla historii sprzed uzbrojenia importu i dla przerw dłuższych niż 60 dni, przez które Allegro przechowuje zdarzenia zamówień.",
+      title: "Import zaległych zamówień",
+      text: "Dodaj do kolejki zamówienia z Allegro kupione między dwiema datami, najwyżej 62 dni naraz: sprzed uzbrojenia importu albo z przerwy dłuższej niż 60 dni, przez które Allegro przechowuje zdarzenia zamówień.",
       from: "Od",
       to: "Do",
     },
@@ -709,6 +710,33 @@ const pl: typeof en = {
     hint: "Wpisz SKU wariantu w sygnaturze oferty (external.id), na przykład {{sku}}.",
     more: "Wszystkie oferty",
     demo: "Dane przykładowe",
+    loading: "Wczytuję oferty Allegro",
+    failed: "Nie udało się wczytać ofert Allegro",
+  },
+  orderWidget: {
+    title: "Allegro",
+    more: "Otwórz w Allegro",
+    loading: "Wczytuję dane Allegro tego zamówienia",
+    failed: "Nie udało się wczytać danych Allegro tego zamówienia",
+    notAllegro: "To zamówienie nie przyszło z Allegro.",
+    status: "Import",
+    form: "Formularz zakupu",
+    payment: "Płatność",
+    cod: "Za pobraniem",
+    paid: "Opłacone na Allegro",
+    unpaid: "Płatność na Allegro w toku",
+    buyer: "Kupujący",
+    delivery: "Dostawa",
+    point: "Punkt odbioru {{point}}",
+    total: "Kwota",
+    totalsDiffer: "{{allegro}} na Allegro, {{medusa}} w Medusie",
+    attention: "Czeka na człowieka",
+    handled: "Oznacz jako załatwione",
+    handledToast: "Oznaczone jako załatwione",
+    sent: "Wysłane do Allegro",
+    noneSent: "Nic jeszcze nie poszło do Allegro.",
+    issues: "Zwroty i spory",
+    panel: "Panel sprzedawcy",
   },
   guide: {
     introTitle: "Allegro by Koda Plus: przewodnik wdrożenia",
@@ -830,7 +858,7 @@ const pl: typeof en = {
         title: "Najpierw uzbrój import zamówień",
         body: [
           "Ustal, dokąd trafiają zamówienia z Allegro: orderImport.salesChannelId (kanał sprzedaży o nazwie Allegro zostanie wybrany sam) i orderImport.regionId (inaczej pierwszy region w PLN). Połącz ten kanał z lokalizacją magazynową, z której wysyłasz zamówienia z Allegro. orderImport.shippingOptionId dodaje opcję dostawy do każdego zaimportowanego zamówienia, więc można je zrealizować bez wybierania jej ręcznie.",
-          "W Ustawieniach otwórz Zaimportowane zamówienia i kliknij Próba na sucho: każdy czekający formularz mówi, czy zostałby utworzony, wstrzymany czy pominięty, i dlaczego. Potem uzbrój Import zamówień. Nowa instalacja zaczyna od najnowszego zdarzenia na Allegro; starsze zamówienia dodasz oknem importu.",
+          "W Ustawieniach otwórz Zaimportowane zamówienia i kliknij Próba na sucho: każdy czekający formularz mówi, czy zostałby utworzony, wstrzymany czy pominięty, i dlaczego. Potem uzbrój Import zamówień. Nowa instalacja zaczyna od najnowszego zdarzenia na Allegro; starsze zamówienia dodasz importem zaległych zamówień.",
           "Każde zaimportowane zamówienie ma metadata.marketplace_order_ref = allegro:<identyfikator formularza>, ceny z Allegro jako pozycje z podatkiem w cenie i liniami podatkowymi z regionu, płatność (pobraną, gdy pieniądze są u Allegro, nieopłaconą przy płatności za pobraniem) i zarezerwowany stan. Powstaje jako szkic i zostaje złożone tak jak szkic zamówienia w panelu, więc wychodzi zdarzenie order.placed: fakturowanie (Fakturownia) i ERP (Subiekt nexo) widzą je jak każde inne zamówienie. Nie powstaje konto klienta, a no_notification jest ustawione. Niech własne maile sklepu o zamówieniach pomijają zamówienia z marketplace_order_ref: Allegro samo pisze do kupującego.",
         ],
         check: "Zaimportowane zamówienia w Ustawieniach pokazują zamówienia z linkami do Medusy, a Medusa pokazuje je w kanale sprzedaży Allegro.",
@@ -1011,12 +1039,13 @@ const pl: typeof en = {
       {
         q: "Brakuje zamówień starszych niż 60 dni",
         a: [
-          "Allegro przechowuje zdarzenia zamówień przez 60 dni. Gdy import był wstrzymany dłużej, zaczyna od najnowszego zdarzenia; lukę dodasz oknem importu.",
+          "Allegro przechowuje zdarzenia zamówień przez 60 dni. Gdy import był wstrzymany dłużej, zaczyna od najnowszego zdarzenia; lukę uzupełnisz importem zaległych zamówień.",
         ],
       },
     ],
   },
   error: "Nie udało się wczytać danych Allegro: {{message}}",
+  integration: integrationPl,
 }
 
 /* Polish typography: no one-letter word left at the end of a line (nb in the page kit). */

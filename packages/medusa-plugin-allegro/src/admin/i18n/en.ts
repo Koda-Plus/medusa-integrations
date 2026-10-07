@@ -1,3 +1,4 @@
+import { integrationEn } from "../../modules/allegro/lib/integration-texts"
 import { communityEn } from "../lib/allegro-kit-community"
 
 const en = {
@@ -417,8 +418,8 @@ const en = {
     mismatch: "Medusa: {{total}}",
     empty: "No imports in this view.",
     window: {
-      title: "Import window",
-      text: "Queue Allegro orders bought between two dates, at most 62 days at once. For history from before the import was armed, and for gaps longer than the 60 days Allegro keeps order events.",
+      title: "Catch-up import",
+      text: "Queue Allegro orders bought between two dates, at most 62 days at once: orders from before the import was armed, or from a pause longer than the 60 days Allegro keeps order events.",
       from: "From",
       to: "To",
     },
@@ -707,6 +708,33 @@ const en = {
     hint: "Put the variant SKU in the offer signature (external.id), for example {{sku}}.",
     more: "All offers",
     demo: "Sample data",
+    loading: "Loading the Allegro offers",
+    failed: "Could not load the Allegro offers",
+  },
+  orderWidget: {
+    title: "Allegro",
+    more: "Open in Allegro",
+    loading: "Loading the Allegro data of this order",
+    failed: "Could not load the Allegro data of this order",
+    notAllegro: "This order did not come from Allegro.",
+    status: "Import",
+    form: "Checkout form",
+    payment: "Payment",
+    cod: "Cash on delivery",
+    paid: "Paid on Allegro",
+    unpaid: "Payment pending on Allegro",
+    buyer: "Buyer",
+    delivery: "Delivery",
+    point: "Pickup point {{point}}",
+    total: "Total",
+    totalsDiffer: "{{allegro}} on Allegro, {{medusa}} in Medusa",
+    attention: "Needs a person",
+    handled: "Mark as handled",
+    handledToast: "Marked as handled",
+    sent: "Sent to Allegro",
+    noneSent: "Nothing sent to Allegro yet.",
+    issues: "Returns and disputes",
+    panel: "Seller panel",
   },
   guide: {
     introTitle: "Allegro by Koda Plus: setup guide",
@@ -828,7 +856,7 @@ const en = {
         title: "Arm the order import first",
         body: [
           "Decide where Allegro orders land: orderImport.salesChannelId (a sales channel named Allegro is picked by itself) and orderImport.regionId (otherwise the first PLN region). Link that channel to the stock location that ships Allegro orders. orderImport.shippingOptionId puts a shipping option on every imported order, so it can be fulfilled without picking one.",
-          "In Settings, open Imported orders and click Dry run: every waiting form says whether it would be created, held or skipped, and why. Then arm Order import. A fresh install starts at the newest Allegro event; bring older orders in with the import window.",
+          "In Settings, open Imported orders and click Dry run: every waiting form says whether it would be created, held or skipped, and why. Then arm Order import. A fresh install starts at the newest Allegro event; bring older orders in with the catch-up import.",
           "Every imported order carries metadata.marketplace_order_ref = allegro:<checkout form id>, Allegro prices as tax inclusive lines with tax lines from the region, the payment (captured when Allegro holds the money, not paid for cash on delivery) and reserved stock. It is created as a draft and placed like a draft order in the admin, so order.placed is emitted: invoicing (Fakturownia) and the ERP (Subiekt nexo) see it like any other order. No customer account is created and no_notification is set. Make your store's own order e-mails skip orders with marketplace_order_ref: Allegro writes to its buyer itself.",
         ],
         check: "Imported orders in Settings lists orders with links to Medusa, and Medusa shows them in the Allegro sales channel.",
@@ -1009,12 +1037,14 @@ const en = {
       {
         q: "Orders older than 60 days are missing",
         a: [
-          "Allegro keeps order events for 60 days. When the import was paused longer, it restarts at the newest event; queue the gap with the import window.",
+          "Allegro keeps order events for 60 days. When the import was paused longer, it restarts at the newest event; bring the gap in with the catch-up import.",
         ],
       },
     ],
   },
   error: "Could not load Allegro data: {{message}}",
+  /* The koda.integration/1 texts (summaries, facts, counters), the same keys a host translates. */
+  integration: integrationEn,
 }
 
 export default en

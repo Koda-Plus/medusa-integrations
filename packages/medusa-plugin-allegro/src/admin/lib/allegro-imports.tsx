@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Container, InlineTip, Input, Label, StatusBadge, Table, Text, toast } from "@medusajs/ui"
 import type { AllegroImportFilter, AllegroImportRunResponse, AllegroStatusResponse } from "../../modules/allegro/lib/contract"
-import { errorMessage, useAllegroImportRetry, useAllegroImportRun, useAllegroImportWindow, useAllegroImports } from "./allegro-api"
+import { errorMessage, useAllegroImportHandled, useAllegroImportRetry, useAllegroImportRun, useAllegroImportWindow, useAllegroImports } from "./allegro-api"
 import { EmptyRow, IMPORT_TONE, ImportWhy, OrderLink, Pager, Pills, SectionHeader, StoreColumn, fmtDateTime, fmtMoney, shortId, useDebounced } from "./allegro-ui"
 
 const PAGE = 10
@@ -23,6 +23,7 @@ export function ImportsSection({
   filter,
   onFilter,
   onOpenWriters,
+  initialQuery,
 }: {
   status: AllegroStatusResponse
   lang: string
@@ -30,15 +31,18 @@ export function ImportsSection({
   onFilter: (f: AllegroImportFilter) => void
   /** Opens the writers in Settings, where the order import is armed. */
   onOpenWriters?: () => void
+  /** The search a deep link (?q=) opens the list with. */
+  initialQuery?: string
 }) {
   const { t, i18n } = useTranslation("allegro")
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery ?? "")
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])
   const imports = useAllegroImports(filter, q, page * PAGE, PAGE)
   const run = useAllegroImportRun()
   const retry = useAllegroImportRetry()
+  const handled = useAllegroImportHandled()
   const win = useAllegroImportWindow()
   const [preview, setPreview] = useState<AllegroImportRunResponse["preview"] | null>(null)
   const [previewNote, setPreviewNote] = useState<string | null>(null)
@@ -74,6 +78,15 @@ export function ImportsSection({
     try {
       await run.mutateAsync("apply")
       toast.success(t("toast.importStarted"))
+    } catch (err) {
+      toast.error(errorMessage(err))
+    }
+  }
+
+  const onHandled = async (id: string) => {
+    try {
+      await handled.mutateAsync(id)
+      toast.success(t("orderWidget.handledToast"))
     } catch (err) {
       toast.error(errorMessage(err))
     }
@@ -258,6 +271,11 @@ export function ImportsSection({
                       {r.status === "held" || r.status === "skipped" ? (
                         <Button size="small" variant="transparent" onClick={() => void onRetry(r.id)} isLoading={retry.isPending && retry.variables === r.id}>
                           {t("actions.retry")}
+                        </Button>
+                      ) : null}
+                      {r.attention || r.totalMismatch ? (
+                        <Button size="small" variant="transparent" onClick={() => void onHandled(r.id)} isLoading={handled.isPending && handled.variables === r.id}>
+                          {t("orderWidget.handled")}
                         </Button>
                       ) : null}
                     </div>

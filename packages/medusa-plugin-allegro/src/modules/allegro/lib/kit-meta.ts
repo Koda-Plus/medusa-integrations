@@ -3,7 +3,7 @@
 export const KIT_META = {
   ns: "allegro",
   pkg: "@koda-plus/medusa-plugin-allegro",
-  version: "0.2.1",
+  version: "0.3.0",
   kit: "1.0.1",
   name: "Allegro",
 } as const

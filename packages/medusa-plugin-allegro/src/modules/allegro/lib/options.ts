@@ -245,7 +245,7 @@ export function userAgentFor(o: { appName?: unknown; docsUrl?: unknown; userAgen
   if (custom) return custom
   const name = str(o.appName).replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "")
   const docs = /^https:\/\/\S+$/i.test(str(o.docsUrl)) ? str(o.docsUrl) : "https://koda.plus"
-  return `${name || "KodaPlus-Medusa-Allegro"}/${PLUGIN_VERSION} (+${docs})`
+  return `${name || "KodaPlus-Allegro-Medusa"}/${PLUGIN_VERSION} (+${docs})`
 }
 
 const PROVINCES = new Set([

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
@@ -31,6 +32,7 @@ import {
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/allegro-guide"
 import { GuideView, referencesFor, usePromptSpec } from "../../lib/allegro-guide-view"
 import { AllegroIcon } from "../../lib/allegro-icon"
+import { deepLinkOf } from "../../lib/allegro-links"
 import { ImportsSection } from "../../lib/allegro-imports"
 import { IssuesSection } from "../../lib/allegro-issues"
 import { OutboxSection } from "../../lib/allegro-outbox"
@@ -95,11 +97,75 @@ const AllegroPage = () => {
     seenRuns.current = runKey
   }, [runKey, client])
 
-  const [filter, setFilter] = useState<AllegroOfferFilter>("all")
-  const [orderFilter, setOrderFilter] = useState<AllegroOrderFilter>("all")
-  const [importFilter, setImportFilter] = useState<AllegroImportFilter>("all")
-  const [issueFilter, setIssueFilter] = useState<AllegroIssueFilter>("open")
+  const [filter, setFilterState] = useState<AllegroOfferFilter>("all")
+  const [orderFilter, setOrderFilterState] = useState<AllegroOrderFilter>("all")
+  const [importFilter, setImportFilterState] = useState<AllegroImportFilter>("all")
+  const [issueFilter, setIssueFilterState] = useState<AllegroIssueFilter>("open")
   const poll = () => setPollUntil(Date.now() + 30_000)
+
+  /* Deep links (?filter=, ?q=, ?list=) from counters, summaries and cards: the list, its filter and its search. */
+  const [params, setParams] = useSearchParams()
+  const link = deepLinkOf(params)
+  const linkKey = link ? `${link.list}|${link.filter}|${link.q}` : ""
+  const [queries, setQueries] = useState<{ offers: string; orders: string; imports: string }>({ offers: "", orders: "", imports: "" })
+  const [scrollTo, setScrollTo] = useState<string | null>(null)
+  useEffect(() => {
+    if (!link) return
+    if (link.list === "imports") {
+      setImportFilterState(link.filter)
+      setQueries((q) => ({ ...q, imports: link.q }))
+      if (nav.view !== "settings" || nav.tab !== "imports") nav.go("settings", "imports")
+      setScrollTo("allegro-imports")
+      return
+    }
+    if (nav.view !== "panel") nav.go("panel")
+    if (link.list === "offers") {
+      setFilterState(link.filter)
+      setQueries((q) => ({ ...q, offers: link.q }))
+      setScrollTo("allegro-offers")
+    } else if (link.list === "orders") {
+      setOrderFilterState(link.filter)
+      setQueries((q) => ({ ...q, orders: link.q }))
+      setScrollTo("allegro-orders")
+    } else {
+      setIssueFilterState(link.filter)
+      setScrollTo("allegro-issues")
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkKey])
+  useEffect(() => {
+    if (!scrollTo || !s) return
+    const id = scrollTo
+    setScrollTo(null)
+    /* After the list rendered with its filter. */
+    window.setTimeout(() => scrollToSection(id), 100)
+  }, [scrollTo, s])
+
+  /* A filter picked by hand drops the deep link, so the address never says something else than the page. */
+  const dropLink = () => {
+    if (!params.has("filter") && !params.has("q") && !params.has("list")) return
+    const p = new URLSearchParams(params)
+    p.delete("filter")
+    p.delete("q")
+    p.delete("list")
+    setParams(p, { replace: true })
+  }
+  const setFilter = (f: AllegroOfferFilter) => {
+    dropLink()
+    setFilterState(f)
+  }
+  const setOrderFilter = (f: AllegroOrderFilter) => {
+    dropLink()
+    setOrderFilterState(f)
+  }
+  const setImportFilter = (f: AllegroImportFilter) => {
+    dropLink()
+    setImportFilterState(f)
+  }
+  const setIssueFilter = (f: AllegroIssueFilter) => {
+    dropLink()
+    setIssueFilterState(f)
+  }
 
   /* A jump from the panel into Settings also brings the tabs into view, wherever the panel was scrolled. */
   const openSettings = (tab: SettingsTabId) => {
@@ -199,8 +265,10 @@ const AllegroPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          <OffersSection status={s} lang={lang} filter={filter} onFilter={setFilter} />
-          {s.ordersEnabled ? <OrdersSection status={s} lang={lang} filter={orderFilter} onFilter={setOrderFilter} /> : null}
+          <OffersSection key={`offers:${queries.offers}`} initialQuery={queries.offers} status={s} lang={lang} filter={filter} onFilter={setFilter} />
+          {s.ordersEnabled ? (
+            <OrdersSection key={`orders:${queries.orders}`} initialQuery={queries.orders} status={s} lang={lang} filter={orderFilter} onFilter={setOrderFilter} />
+          ) : null}
           <IssuesSection status={s} lang={lang} filter={issueFilter} onFilter={setIssueFilter} />
         </>
       ) : null}
@@ -223,7 +291,15 @@ const AllegroPage = () => {
           {nav.tab === "account" ? <ConnectionSection status={s} lang={lang} /> : null}
           {nav.tab === "writers" ? <WritersSection status={s} lang={lang} /> : null}
           {nav.tab === "imports" ? (
-            <ImportsSection status={s} lang={lang} filter={importFilter} onFilter={setImportFilter} onOpenWriters={() => openSettings("writers")} />
+            <ImportsSection
+              key={`imports:${queries.imports}`}
+              initialQuery={queries.imports}
+              status={s}
+              lang={lang}
+              filter={importFilter}
+              onFilter={setImportFilter}
+              onOpenWriters={() => openSettings("writers")}
+            />
           ) : null}
           {nav.tab === "plans" ? (
             <>
@@ -579,14 +655,17 @@ function OffersSection({
   lang,
   filter,
   onFilter,
+  initialQuery,
 }: {
   status: AllegroStatusResponse
   lang: string
   filter: AllegroOfferFilter
   onFilter: (f: AllegroOfferFilter) => void
+  /** The search a deep link (?q=) opens the list with. */
+  initialQuery?: string
 }) {
   const { t } = useTranslation("allegro")
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery ?? "")
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])
@@ -708,14 +787,17 @@ function OrdersSection({
   lang,
   filter,
   onFilter,
+  initialQuery,
 }: {
   status: AllegroStatusResponse
   lang: string
   filter: AllegroOrderFilter
   onFilter: (f: AllegroOrderFilter) => void
+  /** The search a deep link (?q=) opens the list with. */
+  initialQuery?: string
 }) {
   const { t } = useTranslation("allegro")
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery ?? "")
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q])

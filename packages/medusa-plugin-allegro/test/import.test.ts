@@ -26,7 +26,7 @@ function rawForm(over: Record<string, unknown> = {}): Record<string, unknown> {
     status: "READY_FOR_PROCESSING",
     revision: "819b5836",
     updatedAt: "2026-10-06T09:00:00.000Z",
-    buyer: { id: "1", email: "ymu1woaqq+54111a037@allegrogroup.pl", login: "kupujacy", firstName: "Jan", lastName: "Kowalski", guest: false, phoneNumber: "+48 600 000 000" },
+    buyer: { id: "1", email: "ymu1woaqq+54111a037@example.com", login: "kupujacy", firstName: "Jan", lastName: "Kowalski", guest: false, phoneNumber: "+48 600 000 000" },
     payment: { id: "p1", type: "ONLINE", finishedAt: "2026-10-06T08:59:00.000Z", paidAmount: { amount: "164.98", currency: "PLN" } },
     fulfillment: { status: "NEW" },
     delivery: {
@@ -42,7 +42,7 @@ function rawForm(over: Record<string, unknown> = {}): Record<string, unknown> {
         city: "Kraków",
         zipCode: "30-002",
         countryCode: "PL",
-        company: { name: "Firma Sp. z o.o.", ids: [{ type: "PL_NIP", value: "123-456-32-18" }], vatPayerStatus: "ACTIVE", taxId: "9999999999" },
+        company: { name: "Firma Sp. z o.o.", ids: [{ type: "PL_NIP", value: "123-456-32-18" }], vatPayerStatus: "ACTIVE", taxId: "1234567890" },
         naturalPerson: null,
       },
     },
@@ -126,7 +126,7 @@ test("import plan: lines by the offer link, then by signature; Allegro prices, t
   assert.equal(d.order.shipping_methods[0].shipping_option_id, "so_inpost")
   assert.equal(d.order.currency_code, "pln")
   assert.equal(d.order.no_notification, true)
-  assert.equal(d.email, "ymu1woaqq+54111a037@allegrogroup.pl")
+  assert.equal(d.email, "ymu1woaqq+54111a037@example.com")
   assert.equal(d.paid, true)
 })
 
@@ -486,7 +486,7 @@ test("exactly once: a draft is created, placed and paid once; a repeat adopts it
   assert.equal(w.created, 1)
   assert.equal(w.placed, 1, "placed: reservations and order.placed, once")
   assert.equal(w.paidMarks, 1)
-  assert.equal(w.orders[0].email, "ymu1woaqq+54111a037@allegrogroup.pl", "the e-mail goes on the draft before it is placed")
+  assert.equal(w.orders[0].email, "ymu1woaqq+54111a037@example.com", "the e-mail goes on the draft before it is placed")
   assert.equal(w.row.status, "imported")
   assert.equal(w.row.order_id, "order_1")
   assert.equal(w.row.total_mismatch, false)

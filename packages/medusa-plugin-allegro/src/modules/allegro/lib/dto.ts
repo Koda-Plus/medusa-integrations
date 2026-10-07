@@ -378,15 +378,24 @@ export function importStatus(s: string): AllegroImportStatus {
   return IMPORT_STATUSES.includes(s as AllegroImportStatus) ? (s as AllegroImportStatus) : "pending"
 }
 
+function detailText(d: Record<string, unknown>, key: string): string | null {
+  const v = d[key]
+  return typeof v === "string" && v.trim() ? v.trim() : null
+}
+
 export function toImportDto(r: ImportRow): AllegroImportDto {
+  const d = r.details && typeof r.details === "object" ? r.details : {}
+  /* A duplicate keeps the other integration's order in details (order_id names only our own orders): still linked in the list. */
+  const dupId = detailText(d, "duplicate_order_id")
+  const dupDisplay = Number(d.duplicate_display_id)
   return {
     id: r.id,
     checkoutFormId: r.checkout_form_id,
     status: importStatus(r.status),
     reasonCode: r.reason_code,
     reason: r.reason,
-    orderId: r.order_id,
-    displayId: r.display_id ?? null,
+    orderId: r.order_id ?? dupId,
+    displayId: r.display_id ?? (dupId && Number.isFinite(dupDisplay) ? dupDisplay : null),
     allegroStatus: r.allegro_status,
     fulfillmentStatus: r.fulfillment_status,
     paymentType: r.payment_type,
@@ -402,6 +411,10 @@ export function toImportDto(r: ImportRow): AllegroImportDto {
     attempts: r.attempts ?? 0,
     demo: Boolean(r.demo),
     updatedAt: iso(r.updated_at),
+    buyerLogin: detailText(d, "buyer_login"),
+    deliveryMethod: detailText(d, "delivery_method"),
+    pickupPoint: detailText(d, "pickup_point_name") ?? detailText(d, "pickup_point_id"),
+    handledAt: detailText(d, "handled_at"),
   }
 }
 
