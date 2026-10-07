@@ -51,6 +51,7 @@ Mostek Subiekta (.NET 8, Sfera) to OSOBNE, komercyjne repo `Koda-Plus/subiekt-ne
 
 - `npm run check`: testy + typy we wszystkich paczkach. `npm run build`: `medusa plugin:build` w każdej. `npm run release`: publikacja na npm (patrz Publikacja).
 - `npm run vendor`: kopia wszystkich wtyczek do `../koda-plus-demo/medusa-backend` (medusa.koda.plus). Potem w koda-plus-demo: commit + push na `main` = wdrożenie na Railway. Zmiana `package.json` backendu psuje cache Dockera, więc wtyczki NIE są tam zależnościami npm, tylko kodem aplikacji.
+- Widżety wtyczek trafiają tam, gdzie każe aplikacja: `koda-vendor.json` obok jej `package.json` (`{ "widgetsDir": "admin/extensions" }`). medusa.koda.plus trzyma je w `src/admin/extensions`, więc Medusa nie montuje ich pojedynczo; własne widżety aplikacji (`koda-*`) pokazują je jako zakładki jednej karty „Integracje” na stronie zamówienia, produktu i klienta, a liczniki wtyczek w tablicach nad listami. Nowy widżet wtyczki trzeba więc dopisać do `src/admin/lib/koda-integrations.tsx` w koda-plus-demo, inaczej nigdzie się nie pokaże.
 - Każda paczka: `npm install` (nie `npm ci`: skopiowany lockfile OLX bywał rozjechany), `npm test`, `npm run typecheck`, `npm run build`.
 
 ## Publikacja
