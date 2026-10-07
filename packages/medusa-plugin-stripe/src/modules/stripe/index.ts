@@ -11,7 +11,22 @@ import { STRIPE_MODULE } from "./lib/constants"
  */
 export { STRIPE_MODULE }
 export type { StripePluginOptions } from "./lib/options"
-export type { CheckResultDto, OrderPaymentDto, PaymentRowDto, StripeChecksResponse, StripeOrderResponse, StripeOverviewResponse } from "./lib/contract"
+/* Money in every DTO is an integer in the currency's minor unit (`MoneyDto.amount`), never major units. */
+export type {
+  CheckResultDto,
+  DisputeRowDto,
+  MoneyDto,
+  OrderPaymentDto,
+  PaymentFilter,
+  PaymentRowDto,
+  RefundRowDto,
+  SessionKind,
+  StripeChecksResponse,
+  StripeOrderResponse,
+  StripeOverviewResponse,
+  StripePaymentsResponse,
+  StripeStatusResponse,
+} from "./lib/contract"
 
 export default Module(STRIPE_MODULE, {
   service: KodaStripeModuleService,

@@ -255,6 +255,12 @@ export async function loadSnapshot(scope: Scope, args: { force?: boolean; origin
   return { snapshot: hit.value, fresh: hit.fresh, at: hit.at }
 }
 
+/** When the last good read of Stripe happened, without reading: for the manifest's lastSyncAt. */
+export function lastReadAt(scope: Scope, origin: string | null | undefined): string | null {
+  const good = cacheFor(stripeService(scope)).good<Snapshot>(snapshotKey(scope, origin))
+  return good ? good.value.fetchedAt : null
+}
+
 /**
  * The snapshot for an answer that must not come back empty-handed while
  * Stripe is down: the newest read, or, when that one failed, the last good

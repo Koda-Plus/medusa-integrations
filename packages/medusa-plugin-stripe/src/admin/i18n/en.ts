@@ -1,3 +1,4 @@
+import { integrationEn } from "../../modules/stripe/lib/integration-texts"
 import { communityEn } from "../lib/stripe-kit-community"
 
 const en = {
@@ -602,6 +603,8 @@ const en = {
     review: "Read the review",
   },
   community: communityEn,
+  /* koda.integration/1: the lines a host shows for an order or a customer, and the board counters. */
+  integration: integrationEn,
   pagination: {
     of: "of",
     results: "results",
@@ -624,6 +627,7 @@ const en = {
     fee: "Stripe fee",
     net: "Net",
     exchangeRate: "Exchange rate",
+    exchangeRateValue: "{{from}}/{{to}} {{rate}}",
     availableOn: "Available",
     risk: "Radar risk",
     outcome: "Outcome",

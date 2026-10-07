@@ -36,11 +36,11 @@ function backendOf(o: { backendUrl: string | null }, origin: string | null): { h
   return { hosts: parsed ? [parsed.host] : [], base }
 }
 
-export async function computeChecks(scope: Scope, args: { force?: boolean; origin: string | null; now: Date }): Promise<StripeChecksResponse> {
+export async function computeChecks(scope: Scope, args: { force?: boolean; origin: string | null; now: Date; maxAgeMs?: number }): Promise<StripeChecksResponse> {
   const svc = stripeService(scope)
   const o = svc.getOptions()
   const on = (k: CheckKey) => o.checks[k] !== false
-  const { snapshot } = await loadSnapshot(scope, { force: args.force, origin: args.origin, now: () => args.now })
+  const { snapshot } = await loadSnapshot(scope, { force: args.force, origin: args.origin, now: () => args.now, maxAgeMs: args.maxAgeMs })
   const backend = backendOf(o, args.origin)
   const webhookUrl = expectedWebhookUrl(backend.base, o.providerId)
   const store = storefrontDomains(scope, o.storefrontDomains)
@@ -130,14 +130,14 @@ export async function computeChecks(scope: Scope, args: { force?: boolean; origi
   }
 }
 
-/** The checks of the current mode and address, from the cache while fresh. */
-export async function loadChecks(scope: Scope, args: { force?: boolean; origin: string | null; now?: () => Date }): Promise<StripeChecksResponse> {
+/** The checks of the current mode and address, from the cache while fresh (`maxAgeMs` lets a board counter reuse an older run). */
+export async function loadChecks(scope: Scope, args: { force?: boolean; origin: string | null; now?: () => Date; maxAgeMs?: number }): Promise<StripeChecksResponse> {
   const svc = stripeService(scope)
   const o = svc.getOptions()
   const now = args.now ?? (() => new Date())
   const key = `checks:${svc.isDemo() ? "demo" : (svc.keyInfo().mode ?? "none")}:${o.backendUrl ?? args.origin ?? ""}`
-  const hit = await cacheFor(svc).get<StripeChecksResponse>(key, () => computeChecks(scope, { force: args.force, origin: args.origin, now: now() }), {
-    ttlMs: o.cacheSeconds * 1000,
+  const hit = await cacheFor(svc).get<StripeChecksResponse>(key, () => computeChecks(scope, { force: args.force, origin: args.origin, now: now(), maxAgeMs: args.maxAgeMs }), {
+    ttlMs: Math.max(o.cacheSeconds * 1000, args.maxAgeMs ?? 0),
     force: args.force,
     forceMinMs: FORCE_REFRESH_MIN_MS,
     errorTtlMs: ERROR_CACHE_MS,

@@ -406,6 +406,26 @@ export async function readDemoOrdersById(scope: Scope, ids: readonly string[], r
   return new Map(orders.map((o) => [o.id, o]))
 }
 
+/** The orders of some customers that Stripe would have paid, newest first, per customer. */
+export async function readDemoOrdersOfCustomers(scope: Scope, customerIds: readonly string[], rule: DemoOrderRule = "stripe", perCustomer = 50): Promise<Map<string, DemoOrder[]>> {
+  const out = new Map<string, DemoOrder[]>()
+  if (customerIds.length === 0) return out
+  const { data } = await queryOf(scope).graph({
+    entity: "order",
+    fields: [...DEMO_ORDER_FIELDS, "customer_id"],
+    filters: { customer_id: [...customerIds] },
+    pagination: { take: Math.min(2_000, customerIds.length * perCustomer), order: { created_at: "DESC" } },
+  })
+  const records = data as Array<DemoOrderRecord & { customer_id?: string | null }>
+  const customerOf = new Map(records.map((r) => [String(r.id), typeof r.customer_id === "string" ? r.customer_id : null]))
+  for (const order of await demoOrdersOf(scope, records, rule, records.length)) {
+    const customer = customerOf.get(order.id)
+    if (!customer) continue
+    out.set(customer, [...(out.get(customer) ?? []), order])
+  }
+  return out
+}
+
 /** One order for the demo widget, or null when it is unknown or Stripe would not have paid it. */
 export async function readDemoOrder(scope: Scope, orderId: string, rule: DemoOrderRule = "stripe"): Promise<DemoOrder | null> {
   return (await readDemoOrdersById(scope, [orderId], rule)).get(orderId) ?? null
