@@ -6,6 +6,7 @@
  *   node scripts/smoke.mjs --medusa 2.21.2 --medusa 2.12.6  given versions
  *   node scripts/smoke.mjs --only inpost,stripe             some packages
  *   node scripts/smoke.mjs --from-tree                      pack the working tree instead of HEAD
+ *   node scripts/smoke.mjs --ref origin/main                pack that commit instead of HEAD
  *   node scripts/smoke.mjs --no-browser                     skip the admin pages
  *   node scripts/smoke.mjs --keep                           keep the work folder
  *
@@ -37,6 +38,12 @@ const flag = (name) => argv.includes(name)
 const onlyArg = values("--only")[0]
 const only = onlyArg ? new Set(onlyArg.split(",").map((s) => s.trim()).filter(Boolean)) : null
 const fromTree = flag("--from-tree")
+/* A commit to pack instead of HEAD (the release candidate on main while work goes on in the branch). */
+const ref = values("--ref")[0] ?? "HEAD"
+if (!/^(HEAD|[0-9a-f]{7,40}|[A-Za-z0-9._/-]+)$/.test(ref) || ref.startsWith("-")) {
+  console.error(`--ref: not a commit or branch name: ${ref}`)
+  process.exit(1)
+}
 const browser = !flag("--no-browser")
 const keep = flag("--keep")
 const isWin = process.platform === "win32"
@@ -85,7 +92,7 @@ function packAll(packages) {
   let worktree = null
   if (!fromTree) {
     worktree = path.join(work, "head")
-    must(`git worktree add --detach "${worktree}" HEAD`, { cwd: root }, "git worktree add")
+    must(`git worktree add --detach "${worktree}" ${ref}`, { cwd: root }, "git worktree add")
     srcRoot = worktree
     /* node_modules of the main checkout, linked (never copied, never deleted through the link). */
     for (const p of packages) {
@@ -95,15 +102,19 @@ function packAll(packages) {
     }
   }
   const tarballs = {}
+  /* What each packed package offers, read from the same tree it was packed from. */
+  const routes = {}
   for (const p of packages) {
     const dir = path.join(srcRoot, "packages", p.dir)
+    const admin = path.join(dir, "src", "api", "admin", p.ns)
+    routes[p.ns] = { contract: fs.existsSync(path.join(admin, "integration", "route.ts")), status: fs.existsSync(path.join(admin, "route.ts")) }
     log(`build and pack ${p.dir}`)
     must("npm run build", { cwd: dir }, `${p.dir}: npm run build`)
     const out = must(`npm pack --json --ignore-scripts --pack-destination "${tarDir}"`, { cwd: dir }, `${p.dir}: npm pack`)
     const file = JSON.parse(out.slice(out.indexOf("[")))[0].filename
     tarballs[p.name] = path.join(tarDir, path.basename(file))
   }
-  return { tarballs, worktree }
+  return { tarballs, worktree, routes }
 }
 
 function removeWorktree(worktree, packages) {
@@ -334,7 +345,7 @@ async function loadPlaywright() {
   }
 }
 
-async function smokeVersion(version, packages, tarballs) {
+async function smokeVersion(version, packages, tarballs, routes = {}) {
   const run = { medusa: version, steps: [], plugins: {}, ok: false }
   report.runs.push(run)
   const step = (name, ok, detail) => {
@@ -379,6 +390,15 @@ async function smokeVersion(version, packages, tarballs) {
     const token = (await login.json().catch(() => ({}))).token
     step("admin sign in", Boolean(token), `HTTP ${login.status}`)
     for (const p of packages) {
+      /* A plugin not on koda.integration/1 yet: its own status route answers, nothing more is asked of it. */
+      if (routes[p.ns] && !routes[p.ns].contract) {
+        run.plugins[p.ns].contract = false
+        if (routes[p.ns].status) {
+          const st = await api(base, token, `/admin/${p.ns}`)
+          step(`${p.ns}: GET /admin/${p.ns} (not on the contract yet)`, st.status === 200, `HTTP ${st.status} ${JSON.stringify(st.body).slice(0, 300)}`)
+        }
+        continue
+      }
       const m = await api(base, token, `/admin/${p.ns}/integration`)
       const ok = m.status === 200 && m.body?.contract === "koda.integration/1" && m.body?.ns === p.ns
       run.plugins[p.ns].manifest = { status: m.status, mode: m.body?.mode ?? null, version: m.body?.version ?? null }
@@ -439,10 +459,10 @@ let worktree = null
 let failed = false
 try {
   const versions = resolveVersions()
-  log(`work folder ${work}; Medusa ${versions.join(", ")}; ${packages.length} packages${fromTree ? " (working tree)" : " (HEAD)"}`)
+  log(`work folder ${work}; Medusa ${versions.join(", ")}; ${packages.length} packages${fromTree ? " (working tree)" : ` (${ref})`}`)
   const packed = packAll(packages)
   worktree = packed.worktree
-  for (const v of versions) if (!(await smokeVersion(v, packages, packed.tarballs))) failed = true
+  for (const v of versions) if (!(await smokeVersion(v, packages, packed.tarballs, packed.routes))) failed = true
 } catch (e) {
   failed = true
   report.error = String(e?.message ?? e).slice(0, 4000)
