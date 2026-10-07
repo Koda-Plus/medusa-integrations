@@ -227,6 +227,10 @@ function Warnings({ status }: { status: StatusResponse }) {
     })
   } else if (status.provider.sameOptions === false) tips.push({ key: "differs", variant: "warning", label: t("provider.differsLabel"), text: t("provider.differsText", { list: status.provider.differences.join(", ") }) })
   if (status.provider.feedProviders && status.provider.feedProviders.length === 0) tips.push({ key: "feed", variant: "error", label: t("provider.noFeedLabel"), text: t("provider.noFeedText") })
+  const resetOn = status.templates.some((x) => x.key === "password.reset" && x.enabled)
+  if (resetOn && status.mode !== "demo" && !status.links.adminPasswordReset) {
+    tips.push({ key: "adminReset", variant: "warning", label: t("provider.noAdminResetLabel"), text: t("provider.noAdminResetText") })
+  }
   if (status.provider.emailProviders && status.provider.emailProviders.length > 1) {
     tips.push({ key: "several", variant: "warning", label: t("provider.severalLabel"), text: t("provider.severalText", { list: status.provider.emailProviders.join(", ") }) })
   }

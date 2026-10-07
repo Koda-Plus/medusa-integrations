@@ -312,6 +312,8 @@ const pl: typeof en = {
     severalText: "Kanał email obsługuje kilku dostawców ({{list}}). Medusa użyje jednego z nich; zostaw tylko dostawcę tej wtyczki.",
     noFeedLabel: "Kanał feed",
     noFeedText: "Kanału feed Medusy nie obsługuje żaden dostawca, więc import i eksport produktów oraz eksport zamówień kończą się błędem \"Could not find a notification provider for channel: feed\". Zostaw @medusajs/medusa/notification-local z channels: [\"feed\"] obok dostawcy tej wtyczki (zobacz Przewodnik).",
+    noAdminResetLabel: "Reset hasła w panelu",
+    noAdminResetText: "Użytkownik panelu, który zapomni hasła, nie dostanie e-maila: adres panelu jest nieznany. Ustaw adminUrl w opcjach albo admin.backendUrl w medusa-config.ts.",
     modeDiffersLabel: "Tryb dostawcy",
     modeDiffersText: "Ta strona pokazuje: {{plugin}}, ale dostawca w tym procesie działa w trybie: {{provider}}, a to dostawca decyduje, co dzieje się z każdym e-mailem. Przekaż ten sam obiekt opcji obu rejestracjom.",
   },
