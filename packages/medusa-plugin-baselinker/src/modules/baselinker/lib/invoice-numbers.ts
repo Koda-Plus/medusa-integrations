@@ -31,7 +31,11 @@ export function parseDocumentIssued(raw: unknown): DocumentIssued | null {
   const orderId = typeof d.order_id === "string" ? d.order_id.trim() : ""
   const kind = typeof d.kind === "string" ? d.kind.trim().toLowerCase() : ""
   if (!id || !orderId || !kind) return null
+  /* Any code on the event bus can emit this event: only a Medusa order id, a short id and kind, and a
+     printable number of at most 100 characters are taken; anything else is not an invoice event. */
+  if (id.length > 100 || !/^order_[A-Za-z0-9]{1,60}$/.test(orderId) || !/^[a-z_]{1,30}$/.test(kind)) return null
   const number = typeof d.number === "string" && d.number.trim() ? d.number.trim() : null
+  if (number !== null && (number.length > 100 || /[\u0000-\u001f\u007f]/.test(number))) return null
   const external = typeof d.external_id === "string" || typeof d.external_id === "number" ? String(d.external_id) : null
   return { id, order_id: orderId, kind, number, external_id: external, demo: d.demo === true }
 }

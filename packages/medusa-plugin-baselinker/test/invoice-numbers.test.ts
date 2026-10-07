@@ -13,6 +13,11 @@ test("the event: cleaned, kinds filtered, a simulated document never reaches a r
   assert.deepEqual(acceptDocument({ ...doc!, kind: "proforma" }, { kinds: ["vat"], demo: false }), { accept: false, reason: "kind" })
   assert.deepEqual(acceptDocument({ ...doc!, number: null }, { kinds: ["vat"], demo: false }), { accept: false, reason: "no_number" })
   assert.deepEqual(acceptDocument({ ...doc!, demo: true }, { kinds: ["vat"], demo: false }), { accept: false, reason: "demo_event_live" })
+  /* Anything on the event bus can emit the event: odd ids and numbers are not invoices. */
+  assert.equal(parseDocumentIssued({ id: "d", order_id: "ord_1", kind: "vat", number: "FV 1" }), null)
+  assert.equal(parseDocumentIssued({ id: "d", order_id: "order_1; drop", kind: "vat", number: "FV 1" }), null)
+  assert.equal(parseDocumentIssued({ id: "d", order_id: "order_1", kind: "vat", number: "FV\u0000 1" }), null)
+  assert.equal(parseDocumentIssued({ id: "d", order_id: "order_1", kind: "vat", number: "X".repeat(101) }), null)
 })
 
 test("the field: read before writing; empty writes, the same number adopts, another value is a conflict", () => {

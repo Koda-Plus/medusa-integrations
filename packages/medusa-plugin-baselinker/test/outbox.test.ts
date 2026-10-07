@@ -8,6 +8,7 @@ import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
 import type { BaseLinkerPluginOptions } from "../src/modules/baselinker/lib/options.ts"
 import { sendDueOrders, sendOrderNow } from "../src/workflows/baselinker/orders.ts"
+import orderPlaced from "../src/subscribers/baselinker-order-placed.ts"
 import { fakeService } from "./fakes.ts"
 
 type Row = Record<string, any>
@@ -331,4 +332,30 @@ test("a marketplace reference counts only on an order backend code created: from
   assert.equal(out.status, "skipped")
   assert.equal(out.code, "marketplace_order")
   assert.equal(fromBackend.orders.rows[0].last_error_code, "marketplace_order")
+})
+
+test("order.placed queues the order even when the import table cannot be read right now; the send decides again", async () => {
+  const s = setup({ demo: true }, order)
+  const svc = s.container.resolve("baselinker") as Record<string, unknown>
+  svc.listBaseLinkerImports = async () => {
+    throw new Error("connection terminated")
+  }
+  await orderPlaced({ event: { data: { id: order.id } }, container: s.container } as never)
+  assert.equal(s.orders.rows.length, 1, "the row is there")
+  assert.equal(s.orders.rows[0].order_id, order.id)
+  /* The background send runs into the same failure and waits for a retry instead of sending blindly. */
+  await new Promise((r) => setTimeout(r, 50))
+  assert.notEqual(s.orders.rows[0].status, "sent")
+})
+
+test("order.placed: an order this plugin imported gets no row; a test order gets a skipped row with its code", async () => {
+  const imported = setup({ demo: true }, order)
+  imported.imports.rows.push({ id: "blimp_1", bl_order_id: "8001", order_id: order.id, demo: true, status: "imported" })
+  await orderPlaced({ event: { data: { id: order.id } }, container: imported.container } as never)
+  assert.equal(imported.orders.rows.length, 0)
+
+  const test1 = setup({ demo: true }, { ...order, metadata: { baselinker_skip: true } })
+  await orderPlaced({ event: { data: { id: order.id } }, container: test1.container } as never)
+  assert.equal(test1.orders.rows[0].status, "skipped")
+  assert.equal(test1.orders.rows[0].last_error_code, "skip_key")
 })
