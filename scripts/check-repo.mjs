@@ -74,7 +74,7 @@ for (const p of packages) {
   const files = walk(p.path).filter((f) => !rel(f).includes("/node_modules/"))
 
   /* 2. Namespace prefixes outside the namespace folders. */
-  for (const d of ["jobs", "subscribers", "admin/widgets", "admin/lib"]) {
+  for (const d of ["jobs", "subscribers", "policies", "admin/widgets", "admin/lib"]) {
     const dir = path.join(p.path, "src", d)
     if (!fs.existsSync(dir)) continue
     for (const f of fs.readdirSync(dir)) if (!f.startsWith(`${p.ns}-`)) err(`${p.dir}/src/${d}/${f}: files here start with "${p.ns}-" (the vendor script copies by prefix)`)
