@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/community.ts (kit 1.0.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/community.ts (kit 1.0.1) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 /**
  * The `community` block of every plugin dictionary: "Add your store", the
  * setup prompt and help on Discord. The same words in every Koda Plus

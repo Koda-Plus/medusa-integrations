@@ -1,4 +1,4 @@
-// GENERATED from kit/server/routes.ts (kit 1.0.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/server/routes.ts (kit 1.0.1) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { createHash } from "node:crypto"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import {
@@ -62,6 +62,8 @@ export interface LinkDraft {
 export interface FactDraft {
   slot: FactSlot
   priority: number
+  /** See Fact.code: "cod" for cash on delivery, the marketplace for a channel. */
+  code?: string
   value: MessageDraft
   sub?: MessageDraft
   tone?: Tone
@@ -156,7 +158,7 @@ export interface IntegrationRoutes {
 }
 
 /** Set by scripts/kit.mjs when the file is generated into a package. */
-export const KIT_VERSION = "1.0.0"
+export const KIT_VERSION = "1.0.1"
 
 export class ContractError extends Error {
   readonly status: number
@@ -247,6 +249,7 @@ function link(def: IntegrationDefinition, lang: Lang, draft: LinkDraft | undefin
 function fact(def: IntegrationDefinition, lang: Lang, draft: FactDraft): Fact | null {
   if (!(FACT_SLOTS as readonly string[]).includes(draft.slot)) return null
   const out: Fact = { slot: draft.slot, priority: Math.max(0, Math.min(100, Math.round(draft.priority))), value: message(def, lang, draft.value) }
+  if (typeof draft.code === "string" && /^[a-z0-9_]{1,40}$/.test(draft.code)) out.code = draft.code
   if (draft.sub) out.sub = message(def, lang, draft.sub)
   if (draft.tone) out.tone = draft.tone
   const l = link(def, lang, draft.link)

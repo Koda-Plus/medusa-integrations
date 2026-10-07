@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/kit.tsx (kit 1.0.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/kit.tsx (kit 1.0.1) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useSyncExternalStore, type ComponentType, type ReactNode } from "react"
 import { Container, clx } from "@medusajs/ui"
 import type { HostZone } from "../../modules/stripe/lib/kit-contract"

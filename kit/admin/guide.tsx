@@ -742,8 +742,12 @@ export type SetupPromptSpec = {
   needs: string[]
   /** The setup from the guide: .env and medusa-config.ts. */
   config: string
-  /** The demo switch as the demo store has it: sample data until the keys are set. */
+  /** The demo switch as the demo store has it, e.g. `demo: process.env.X_DEMO === "true",`. */
   demo: string
+  /** The integration only reads from the service: nothing to arm (no step about writers). */
+  readOnly?: boolean
+  /** The plugin keeps tables of its own (a step runs the migrations). Default true. */
+  migrations?: boolean
 }
 
 /** Environment variables a setup names: process.env.X in the code and X= lines of a .env. */
@@ -794,10 +798,14 @@ export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
       "",
       ...config,
       "",
-      `4. Dodaj do opcji przełącznik trybu demo, tak jak w sklepie demo: ${code(spec.demo)}. Dopóki kluczy nie ma w .env, moduł pracuje na przykładowych danych i nie łączy się z ${service}.`,
+      `4. Dodaj do opcji przełącznik trybu demo, tak jak w sklepie demo: ${code(spec.demo)}. Tryb demo działa tylko po jawnym włączeniu: wtedy moduł pracuje na przykładowych danych i nie łączy się z ${service}; bez niego i bez kluczy mówi „nieskonfigurowane” i nic nie robi.`,
       `5. Wpisz zmienne do .env i do środowiska hostingu, nigdy do kodu ani do gita: ${env}. Jeśli nie podałem Ci wartości, zostaw ją pustą i wypisz mi ją na końcu.`,
-      `6. Uruchom migracje bazy (${code("npx medusa db:migrate")}), potem sklep, i otwórz ${spec.route} w panelu admina. Sprawdź, czy Panel, Przewodnik wdrożenia i Ustawienia otwierają się bez błędów w konsoli przeglądarki i w logu serwera.`,
-      `7. Nie włączaj żadnego zapisu, czyli niczego, co zmienia dane w ${service} albo w sklepie. Każdy zapis uzbraja człowiek w Ustawieniach, po próbie na sucho; opcje tylko na to pozwalają.`,
+      spec.migrations === false
+        ? `6. Uruchom sklep i otwórz ${spec.route} w panelu admina (ta wtyczka nie ma własnych tabel, migracje nie są potrzebne). Sprawdź, czy Panel, Przewodnik wdrożenia i Ustawienia otwierają się bez błędów w konsoli przeglądarki i w logu serwera.`
+        : `6. Uruchom migracje bazy (${code("npx medusa db:migrate")}), potem sklep, i otwórz ${spec.route} w panelu admina. Sprawdź, czy Panel, Przewodnik wdrożenia i Ustawienia otwierają się bez błędów w konsoli przeglądarki i w logu serwera.`,
+      spec.readOnly
+        ? `7. Ta integracja tylko czyta z ${service}: nie ma zapisów do uzbrajania. Użyj klucza tylko do odczytu, jeśli ${service} go oferuje.`
+        : `7. Nie włączaj żadnego zapisu, czyli niczego, co zmienia dane w ${service} albo w sklepie. Każdy zapis uzbraja człowiek w Ustawieniach, po próbie na sucho; opcje tylko na to pozwalają.`,
       `8. Zaproponuj sekcję o tej integracji do notatek projektu dla agentów AI (CLAUDE.md albo AGENTS.md, zależnie od tego, czego używa projekt; jeśli nie ma żadnego, zaproponuj CLAUDE.md) i pokaż mi jej treść, zanim ją zapiszesz: pakiet i jego wersja, gdzie są jego opcje w medusa-config.ts, zmienne środowiskowe, przełącznik demo, to, że zapisy uzbraja człowiek w Ustawieniach, że wdrożenie krok po kroku jest w panelu w Przewodniku wdrożenia, że pomoc jest na Discordzie (${KODA_DISCORD}) i że wtyczka zmienia się aktualizacją pakietu, nigdy edycją node_modules.`,
       "",
       "Na koniec napisz mi, co zmieniłeś i co zostało po mojej stronie: konta i klucze, pierwsze połączenie w Ustawieniach i uzbrojenie zapisów.",
@@ -822,10 +830,14 @@ export function buildSetupPrompt(spec: SetupPromptSpec, lang: string): string {
     "",
     ...config,
     "",
-    `4. Add the demo switch to the options, as the demo store has it: ${code(spec.demo)}. Until the keys are in .env, the module works on sample data and never calls ${service}.`,
+    `4. Add the demo switch to the options, as the demo store has it: ${code(spec.demo)}. Demo mode runs only when switched on: then the module works on sample data and never calls ${service}; without it and without keys it says "Not configured" and does nothing.`,
     `5. Put the variables in .env and in the hosting's environment, never in code or in git: ${env}. If I did not give you a value, leave it empty and list it for me at the end.`,
-    `6. Run the database migrations (${code("npx medusa db:migrate")}), then the store, and open ${spec.route} in the admin. Check that the Panel, the Setup guide and Settings open with no errors in the browser console or the server log.`,
-    `7. Do not turn on any writer, that is anything that changes data in ${service} or in the store. A person arms each writer in Settings, after a dry run; the options only allow it.`,
+    spec.migrations === false
+      ? `6. Start the store and open ${spec.route} in the admin (this plugin has no tables of its own, no migrations needed). Check that the Panel, the Setup guide and Settings open with no errors in the browser console or the server log.`
+      : `6. Run the database migrations (${code("npx medusa db:migrate")}), then the store, and open ${spec.route} in the admin. Check that the Panel, the Setup guide and Settings open with no errors in the browser console or the server log.`,
+    spec.readOnly
+      ? `7. This integration only reads from ${service}: there are no writers to arm. Use a read-only key if ${service} offers one.`
+      : `7. Do not turn on any writer, that is anything that changes data in ${service} or in the store. A person arms each writer in Settings, after a dry run; the options only allow it.`,
     `8. Propose a section about this integration for the project's notes for AI agents (CLAUDE.md or AGENTS.md, whichever the project uses; if neither exists, propose CLAUDE.md) and show me its text before you save it: the package and its version, where its options sit in medusa-config.ts, the environment variables, the demo switch, that a person arms writers in Settings, that the step by step setup is in the admin under Setup guide, that help is on Discord (${KODA_DISCORD}), and that the plugin changes through package updates, never through edits in node_modules.`,
     "",
     "When you are done, tell me what you changed and what is left for me: accounts and keys, the first connection in Settings and arming the writers.",
