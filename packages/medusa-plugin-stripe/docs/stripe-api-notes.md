@@ -19,7 +19,7 @@ Every call is a GET to `https://api.stripe.com/v1`:
 
 Sources: docs.stripe.com/api (payment_intents, charges, refunds, disputes, balance, payouts, accounts, payment_method_configurations, webhook_endpoints, events, payment_method_domains).
 
-## The official provider (`@medusajs/payment-stripe` 2.17)
+## The official provider (`@medusajs/payment-stripe`, read in 2.15.3, the version the tests install; the release smoke test runs 2.12.6 and 2.21.2)
 
 - One `resolve` registers eight providers, `pp_<identifier>_<id>`: `stripe`, `stripe-blik`, `stripe-przelewy24`, `stripe-bancontact`, `stripe-giropay`, `stripe-ideal`, `stripe-promptpay`, `stripe-oxxo`.
 - The payment session data is the PaymentIntent: `data.id` is its id, and the intent is created with `metadata.session_id`, the Medusa payment session.
