@@ -25,6 +25,14 @@
  * Every copied file gets a banner. Edit the plugin, not the copy: before
  * copying, the files this script vendored earlier for a plugin are removed,
  * so a renamed or deleted plugin file never lingers in the app.
+ *
+ * WHERE THE WIDGETS GO is the app's call. By default they land in
+ * admin/widgets, where Medusa mounts each one in its zone. An app that hosts
+ * them itself (medusa.koda.plus shows them as tabs of one "Integrations" card
+ * per page) says so in `koda-vendor.json` next to its package.json:
+ *   { "widgetsDir": "admin/extensions" }
+ * The folder sits next to admin/widgets, so the widgets' relative imports
+ * (../lib, ../../modules) resolve unchanged, and Medusa does not mount them.
  */
 import fs from "node:fs"
 import path from "node:path"
@@ -55,6 +63,15 @@ if (!target) {
 const appSrc = path.resolve(process.cwd(), target, "src")
 if (!fs.existsSync(appSrc)) {
   console.error(`no src/ in ${target}`)
+  process.exit(1)
+}
+
+/* The app's own settings (see "WHERE THE WIDGETS GO" above). */
+const appSettingsFile = path.resolve(process.cwd(), target, "koda-vendor.json")
+const appSettings = fs.existsSync(appSettingsFile) ? JSON.parse(fs.readFileSync(appSettingsFile, "utf8")) : {}
+const widgetsDir = String(appSettings.widgetsDir ?? "admin/widgets").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")
+if (!/^admin\/[a-z0-9-]+$/.test(widgetsDir)) {
+  console.error(`koda-vendor.json: widgetsDir must be a folder right under admin/, got "${widgetsDir}"`)
   process.exit(1)
 }
 
@@ -114,7 +131,8 @@ function planFor(p) {
   for (const d of ["jobs", "subscribers", "admin/widgets", "admin/lib"]) {
     const dir = path.join(src, d)
     if (!fs.existsSync(dir)) continue
-    for (const f of fs.readdirSync(dir)) if (f.startsWith(`${p.ns}-`)) pairs.push([`${d}/${f}`, `${d}/${f}`])
+    const into = d === "admin/widgets" ? widgetsDir : d
+    for (const f of fs.readdirSync(dir)) if (f.startsWith(`${p.ns}-`)) pairs.push([`${d}/${f}`, `${into}/${f}`])
   }
   for (const lang of ["en", "pl"]) {
     if (fs.existsSync(path.join(src, `admin/i18n/${lang}.ts`))) {
