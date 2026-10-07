@@ -1,4 +1,5 @@
 import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
+import type { ExportVerdict } from "../modules/baselinker/lib/order-import"
 import { isSkipped } from "../modules/baselinker/lib/order-payload"
 import { canExportOrders } from "../modules/baselinker/lib/options"
 import { exportVerdictOf } from "../workflows/baselinker/order-facts"
@@ -33,7 +34,14 @@ export default async function baselinkerOrderPlaced({ event: { data }, container
   try {
     const order = await loadOrderHead(container, data.id)
     if (!order || order.status === "canceled") return
-    const verdict = await exportVerdictOf(container, order)
+    /* The row comes first: when the facts cannot be read right now, the order is queued and
+       the attempt decides again before anything leaves Medusa. */
+    let verdict: ExportVerdict = { send: true }
+    try {
+      verdict = await exportVerdictOf(container, order)
+    } catch (err) {
+      svc.getLogger().warn(`[baselinker] order.placed ${data.id}: the loop guard is checked again at send time (${svc.mask((err as Error)?.message ?? String(err))})`)
+    }
     if (!verdict.send && verdict.reason === "imported") return
     const skip = isSkipped(order.metadata, o.skipOrderMetadataKey)
     await enqueueOrder(container, {

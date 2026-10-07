@@ -12,6 +12,9 @@
 - Orders whose totals Medusa cannot compute (a shipping method without a version) still reach BaseLinker: they are read without the totals, which are computed from the lines (`admin_comments` says so, `paid` only when the capture covers that sum and the payment collection). When even that read fails, the row waits with `totals_unavailable`.
 - Order metadata a shopper can set decides nothing: an order counts as imported only by the plugin's import table; a marketplace reference counts only on an order created without a cart; a crash recovery adopts an order by its BaseLinker number only when it carries the row's id (`metadata.baselinker_import_id`) or has no cart.
 - The status reads choose their 60 orders in the database (never checked first, then the oldest check, closed statuses left out) instead of reading every followed order.
+- `order.placed` queues the order even when the plugin's tables cannot be read for a moment; the send checks the loop guard again before anything leaves Medusa.
+- Stored errors and logs mask e-mail addresses and international phone numbers a BaseLinker or Medusa error may echo.
+- `fakturownia.document.issued` is taken only with a Medusa order id, a short document id and kind, and a printable number of at most 100 characters.
 
 ### Changed
 

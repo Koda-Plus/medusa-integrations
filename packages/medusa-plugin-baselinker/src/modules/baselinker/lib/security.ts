@@ -115,5 +115,10 @@ export function maskSecrets(text: string, secrets: readonly (string | null | und
     const secret = (s ?? "").trim()
     if (secret.length >= 8) out = out.split(secret).join("***")
   }
-  return out.replace(/[A-Za-z0-9+/=_-]{40,}/g, "***")
+  /* Errors BaseLinker or Medusa send back may echo the buyer's e-mail or an international phone number:
+     stored errors and logs never keep them. */
+  return out
+    .replace(/[A-Za-z0-9+/=_-]{40,}/g, "***")
+    .replace(/[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}/g, "***@***")
+    .replace(/\+\d[\d ()-]{7,}\d/g, "+***")
 }

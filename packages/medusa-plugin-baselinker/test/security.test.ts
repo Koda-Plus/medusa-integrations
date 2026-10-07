@@ -64,3 +64,9 @@ test("masking: the token literally, long base64-like runs, readable ids survive"
 test("masking: short configured values are not used as needles", () => {
   assert.equal(maskSecrets("price 100 PLN", ["100"]), "price 100 PLN")
 })
+
+test("stored errors keep no buyer e-mail or international phone number; order numbers stay readable", () => {
+  const out = maskSecrets("addOrder: ERROR_BAD_PARAMETERS email anna.nowak@example.com, phone +48 600 123 456, order 21468320", [])
+  assert.doesNotMatch(out, /anna\.nowak|600 123 456/)
+  assert.match(out, /order 21468320/)
+})
