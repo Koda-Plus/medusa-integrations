@@ -4,7 +4,7 @@ import { Badge, Button, Container, Heading, InlineTip, Input, Label, Switch, Tex
 import type { BrandDto, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { errorMessage, useEmailsPreview, useEmailsSettings } from "./emails-api"
 import { CodeBlock } from "./emails-guide"
-import { EmailFrame, Fact, OnOff, fmtDateTime, fmtNumber, templateDescription, templateLabel } from "./emails-ui"
+import { EmailFrame, Fact, OnOff, fmtDateTime, fmtNumber, modeState, templateDescription, templateLabel } from "./emails-ui"
 
 /* ------------------------------------------------------------------ */
 /* Branding                                                            */
@@ -291,6 +291,12 @@ modules: [
           id: "emails",
           options: { channels: ["email"], ...emails }, // the same object as the plugin options
         },
+        {
+          // keep Medusa's own provider on the feed channel: product import and export need it
+          resolve: "@medusajs/medusa/notification-local",
+          id: "local",
+          options: { name: "Local Notification Provider", channels: ["feed"] },
+        },
       ],
     },
   },
@@ -309,16 +315,22 @@ export function ProviderSection({ status, lang }: { status: StatusResponse; lang
           {t("provider.subtitle")}
         </Text>
       </div>
-      {!p.loaded ? (
+      {!p.loaded || (p.feedProviders && p.feedProviders.length === 0) ? (
         <div className="flex flex-col gap-y-3 px-6 py-4">
-          <InlineTip variant="error" label={t("provider.notLoaded.label")}>
-            {t("provider.notLoaded.text")}
-          </InlineTip>
+          {!p.loaded ? (
+            <InlineTip variant="error" label={t("provider.notLoaded.label")}>
+              {t("provider.notLoaded.text")}
+            </InlineTip>
+          ) : (
+            <InlineTip variant="error" label={t("provider.noFeedLabel")}>
+              {t("provider.noFeedText")}
+            </InlineTip>
+          )}
           <CodeBlock code={PROVIDER_SNIPPET} copyLabel={t("guide.copy")} copiedLabel={t("guide.copied")} />
         </div>
       ) : null}
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-3">
-        <Fact label={t("provider.mode")}>{t(`mode.${status.mode === "live" && !status.configured ? "notConfigured" : status.mode}`)}</Fact>
+        <Fact label={t("provider.mode")}>{t(`mode.${modeState(status).key}`)}</Fact>
         <Fact label={t("provider.apiKey")}>{status.sender.apiKeySet ? t("provider.set") : <span className="text-ui-tag-red-text">{t("provider.missing")}</span>}</Fact>
         <Fact label={t("provider.from")} mono>
           {status.sender.from ?? <span className="font-sans text-ui-tag-red-text">{t("provider.missing")}</span>}
@@ -338,6 +350,15 @@ export function ProviderSection({ status, lang }: { status: StatusResponse; lang
         </Fact>
         <Fact label={t("provider.emailProviders")} mono>
           {p.emailProviders === null ? <span className="font-sans">{t("provider.unknown")}</span> : p.emailProviders.length > 0 ? p.emailProviders.join(", ") : t("provider.none")}
+        </Fact>
+        <Fact label={t("provider.feedProviders")} mono>
+          {p.feedProviders === null ? (
+            <span className="font-sans">{t("provider.unknown")}</span>
+          ) : p.feedProviders.length > 0 ? (
+            p.feedProviders.join(", ")
+          ) : (
+            <span className="font-sans text-ui-tag-red-text">{t("provider.none")}</span>
+          )}
         </Fact>
         <Fact label={t("provider.sameOptions")}>
           {p.sameOptions === null ? "-" : p.sameOptions ? yes : <span className="text-ui-tag-orange-text">{t("provider.differs", { list: p.differences.join(", ") })}</span>}

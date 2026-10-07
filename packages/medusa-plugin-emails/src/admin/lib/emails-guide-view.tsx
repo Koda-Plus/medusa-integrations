@@ -40,6 +40,13 @@ module.exports = defineConfig({
             id: "emails",
             options: { channels: ["email"], ...emails },
           },
+          {
+            // Medusa's own provider stays on the feed channel:
+            // product import and export and the order export need it
+            resolve: "@medusajs/medusa/notification-local",
+            id: "local",
+            options: { name: "Local Notification Provider", channels: ["feed"] },
+          },
         ],
       },
     },
@@ -80,7 +87,7 @@ export function usePromptSpec(): SetupPromptSpec {
       summary: t("subtitle"),
       needs: NEEDS.map((k) => t(`guide.intro.needs.${k}`)),
       config: `# .env\n${ENV}\n\n${CONFIG}`,
-      demo: 'demo: process.env.EMAILS_DEMO === "true" || !process.env.RESEND_API_KEY,',
+      demo: 'demo: process.env.EMAILS_DEMO === "true",',
     }),
     [t],
   )
@@ -149,7 +156,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
     {
       id: "test",
       title: t("guide.steps.test.title"),
-      state: state(live && c.tests30d > 0),
+      state: state(live && c.testsSent30d > 0),
       body: [p("guide.steps.test.p1"), p("guide.steps.test.p2")],
       check: t("guide.steps.test.check"),
     },
@@ -178,7 +185,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
     { label: t("guide.checklist.replyTo"), done: status.sender.replyTo.length > 0 || Boolean(status.brand.supportEmail) },
     { label: t("guide.checklist.storefront"), done: Boolean(status.storefrontUrl) },
     { label: t("guide.checklist.timeZone"), done: status.timeZone !== "UTC" },
-    { label: t("guide.checklist.test"), done: live && c.tests30d > 0 },
+    { label: t("guide.checklist.test"), done: live && c.testsSent30d > 0 },
     { label: t("guide.checklist.attention"), done: c.attention30d === 0, hint: c.attention30d > 0 ? t("guide.checklist.attentionHint", { count: c.attention30d }) : undefined },
   ]
 

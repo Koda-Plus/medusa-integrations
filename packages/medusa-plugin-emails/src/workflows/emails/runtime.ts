@@ -10,7 +10,7 @@ import { ContainerRegistrationKeys, Modules, generateEntityId } from "@medusajs/
 import type EmailsModuleService from "../../modules/emails/service"
 import { EMAILS_MODULE } from "../../modules/emails/lib/constants"
 import { listTemplates, resolveTemplate } from "../../modules/emails/lib/registry"
-import { cachedSettings, templateState, type EffectiveSettings, type TemplateState } from "../../modules/emails/lib/settings"
+import { cachedSettings, EMPTY_SETTINGS, templateState, type EffectiveSettings, type TemplateState } from "../../modules/emails/lib/settings"
 import { createSqlStore, type MessageStore, type SqlRunner } from "../../modules/emails/lib/store"
 
 export type Scope = MedusaContainer | { resolve<T = unknown>(key: string, options?: { allowUnregistered?: boolean }): T }
@@ -86,10 +86,23 @@ export function storeFor(scope: Scope): MessageStore {
   return createSqlStore({ sql, newId: (prefix) => generateEntityId(undefined, prefix) })
 }
 
-/** The admin's settings of the current mode, cached for 10 seconds per process. */
+/**
+ * The admin's settings of the current mode, cached for 10 seconds per
+ * process. Throws `SettingsUnavailableError` when they cannot be read and
+ * none were read before (a flow then sends nothing).
+ */
 export async function settingsFor(scope: Scope): Promise<EffectiveSettings> {
   const svc = emailsService(scope)
-  return cachedSettings(svc.isDemo(), () => storeFor(scope).settings())
+  return cachedSettings(svc.isDemo(), () => storeFor(scope).settings(), Date.now(), svc.getLogger())
+}
+
+/** For the admin pages: the settings, or the defaults when they cannot be read (the page says the log is not ready). */
+export async function settingsForDisplay(scope: Scope): Promise<EffectiveSettings> {
+  try {
+    return await settingsFor(scope)
+  } catch {
+    return EMPTY_SETTINGS
+  }
 }
 
 /** The state of one template: allowed by the options, switched on, sending. Null for an unknown key. */

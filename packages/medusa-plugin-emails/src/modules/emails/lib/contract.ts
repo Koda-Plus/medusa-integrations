@@ -1,7 +1,8 @@
 /**
- * What the admin routes answer and accept. Types only: the admin page imports
- * them, the routes build them (`dto.ts`). Never a secret: the API key is
- * "set" or "missing", addresses are masked.
+ * What the admin routes answer and accept. Types and two lists of values,
+ * zero imports at run time: the admin page imports them, the routes build
+ * them (`dto.ts`). Never a secret: the API key is "set" or "missing",
+ * addresses are masked.
  */
 
 import type { EmailLocale } from "./constants"
@@ -68,8 +69,16 @@ export interface ProviderDto {
   loaded: boolean
   loadedAt: string | null
   channels: string[]
+  /** The mode of the provider itself (what really happens to a message); null when it is not loaded. */
+  mode: EmailsModeDto | null
   /** Enabled providers of the email channel in Medusa's database; null when it could not be read. */
   emailProviders: string[] | null
+  /**
+   * Enabled providers of the `feed` channel in Medusa's database; null when
+   * it could not be read. Empty: product import and export and order export
+   * fail, because their notifications have nowhere to go.
+   */
+  feedProviders: string[] | null
   /** The provider got the same options as the plugin; null when it is not loaded. */
   sameOptions: boolean | null
   differences: string[]
@@ -97,9 +106,11 @@ export interface StatusResponse {
   links: Record<string, string | null>
   provider: ProviderDto
   templates: TemplateDto[]
-  counts: { sent24h: number; sent30d: number; attention30d: number; tests30d: number; skipped30d: number }
+  counts: { sent24h: number; sent30d: number; attention30d: number; tests30d: number; testsSent30d: number; skipped30d: number; refused30d: number }
+  /** Demo mode: when the outbox was seeded, and whether the page should ask for a new seed. Null outside demo mode. */
+  demo: { seededAt: string | null; stale: boolean } | null
   abandonedCart: { afterHours: number; maxAgeHours: number; maxPerRun: number }
-  limits: { testsPerUser: number; testWindowMinutes: number; testsPerHour: number }
+  limits: { testsPerUser: number; testWindowMinutes: number; testsPerHour: number; passwordResetsPerHour: number }
   retentionDays: number
   references: ReferenceDto[]
   /** The send log could be read (the migrations ran). */
@@ -111,6 +122,8 @@ export type MessageStatusDto = "sending" | "sent" | "failed" | "unknown" | "skip
 export interface MessageDto {
   id: string
   template: string
+  /** The name of the template in both languages, so a card needs no status read. */
+  label: LocalizedTextDto | null
   locale: string | null
   demo: boolean
   kind: string
@@ -122,6 +135,7 @@ export interface MessageDto {
   resourceType: string | null
   resourceId: string | null
   orderId: string | null
+  customerId: string | null
   externalId: string | null
   attempts: number
   rotation: number
@@ -136,7 +150,15 @@ export interface MessageDto {
   hasBody: boolean
 }
 
-export type MessageFilter = "all" | "sent" | "attention" | "skipped" | "test"
+/** `bounced`: refused for the recipient's address (`INVALID_RECIPIENT`); the plugin reads no bounce webhooks. */
+export type MessageFilter = "all" | "sent" | "attention" | "skipped" | "test" | "bounced"
+
+export const MESSAGE_FILTERS: readonly MessageFilter[] = ["all", "sent", "attention", "skipped", "test", "bounced"]
+
+/** The time windows of the list (`since`): the board counters count the last 7 days. */
+export type MessageWindow = "24h" | "7d" | "30d"
+
+export const MESSAGE_WINDOWS: readonly MessageWindow[] = ["24h", "7d", "30d"]
 
 export interface MessagesResponse {
   messages: MessageDto[]
@@ -147,9 +169,15 @@ export interface MessagesResponse {
 
 export interface MessageDetailResponse {
   message: MessageDto
-  /** The simulated message (demo mode only). */
+  /** The simulated message (demo mode only), with secret fields hidden. */
   html: string | null
   text: string | null
+}
+
+export interface SeedResponse {
+  /** Rows of the demo outbox written or refreshed; 0 when the seed was fresh. */
+  written: number
+  status: StatusResponse
 }
 
 export type PreviewSource = "sample" | "latest"

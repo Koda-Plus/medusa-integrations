@@ -10,13 +10,22 @@ import { resolveOptions, type EmailsPluginOptions } from "../src/modules/emails/
 import { createResendClient } from "../src/modules/emails/lib/resend.ts"
 import { deliver, type IncomingNotification } from "../src/modules/emails/lib/send.ts"
 import { EMPTY_SETTINGS, forgetSettings, templateKey } from "../src/modules/emails/lib/settings.ts"
+import { forgetProvider, noteProvider } from "../src/modules/emails/lib/provider-status.ts"
+import { resetPace } from "../src/modules/emails/lib/resend.ts"
 import { runAbandonedCarts } from "../src/workflows/emails/abandoned-carts.ts"
 import { ensureDemoOutbox } from "../src/workflows/emails/demo.ts"
 import { onCustomerCreated, onNegotiation, onOrderCanceled, onOrderPlaced, onPasswordReset, onShipmentCreated, retryMessage } from "../src/workflows/emails/events.ts"
 import { runHousekeeping } from "../src/workflows/emails/housekeeping.ts"
+import { previewData } from "../src/workflows/emails/preview.ts"
+import { resolveTemplate } from "../src/modules/emails/lib/registry.ts"
+import { canRetry } from "../src/modules/emails/lib/dto.ts"
 import { FakeResend, LIVE, logger, memoryStore, type MemoryStore } from "./helpers.ts"
 
-beforeEach(() => forgetSettings())
+beforeEach(() => {
+  forgetSettings()
+  forgetProvider()
+  resetPace()
+})
 
 type Row = Record<string, any>
 
@@ -85,13 +94,21 @@ function matches(row: Row, filters: Row): boolean {
 
 interface Setup {
   scope: { resolve(key: string, o?: { allowUnregistered?: boolean }): any }
+  data: Record<string, Row[]>
   store: MemoryStore
   sent: Row[]
   graphs: Row[]
   log: ReturnType<typeof logger>
+  /** Resend behind the client the direct path uses (messages with a secret link). */
+  resend: FakeResend
 }
 
-function setup(options: EmailsPluginOptions = LIVE, opts: { failSend?: boolean } = {}): Setup {
+/**
+ * A fake Medusa container. `provider: true` registers the plugin's provider
+ * in this process (its note and options), as Medusa does at boot: messages
+ * with a secret link (the password reset) go to it directly.
+ */
+function setup(options: EmailsPluginOptions = LIVE, opts: { failSend?: boolean; provider?: boolean } = {}): Setup {
   const resolved = resolveOptions(options)
   const data = fixtures()
   const store = memoryStore()
@@ -108,7 +125,8 @@ function setup(options: EmailsPluginOptions = LIVE, opts: { failSend?: boolean }
     graph: async (args: Row) => {
       graphs.push(args)
       const rows = (data[args.entity] ?? []).filter((r) => matches(r, args.filters))
-      return { data: args.pagination?.take ? rows.slice(0, args.pagination.take) : rows }
+      const skip = args.pagination?.skip ?? 0
+      return { data: args.pagination?.take ? rows.slice(skip, skip + args.pagination.take) : rows.slice(skip) }
     },
   }
   const notifications = {
@@ -118,11 +136,14 @@ function setup(options: EmailsPluginOptions = LIVE, opts: { failSend?: boolean }
       return { ...input, status: "success", external_id: `re_${sent.length}` }
     },
   }
+  const resend = new FakeResend()
+  if (opts.provider) noteProvider({ ...options, channels: ["email"] })
   const registry: Record<string, unknown> = {
     emails: svc,
     query,
     notification: notifications,
     emailsMessageStore: store,
+    emailsResendClient: createResendClient({ apiKey: resolved.apiKey, timeoutMs: 2000, maxRetries: 0, requestsPerSecond: 1000, fetch: resend.fetch, sleep: async () => {}, random: () => 0.5 }),
     configModule: { admin: { backendUrl: "https://api.example.com", path: "/app" } },
   }
   return {
@@ -133,10 +154,12 @@ function setup(options: EmailsPluginOptions = LIVE, opts: { failSend?: boolean }
         throw new Error(`not registered: ${key}`)
       },
     },
+    data,
     store,
     sent,
     graphs,
     log,
+    resend,
   }
 }
 
@@ -153,7 +176,7 @@ test("order.placed: the template, the address, the data and one key per order", 
   assert.equal(n.trigger_type, "order.placed")
   assert.equal(n.resource_type, "order")
   assert.equal(n.receiver_id, "cus_1")
-  assert.deepEqual(n.provider_data.emails, { key: "emails:order.placed:order_1", kind: "event", orderId: "order_1", requestedBy: null, retry: false })
+  assert.deepEqual(n.provider_data.emails, { key: "emails:order.placed:order_1", kind: "event", orderId: "order_1", customerId: "cus_1", requestedBy: null, retry: false })
   assert.equal(n.data.order_number, "1042")
   assert.equal(n.data.items[0].title, "Lamp")
   assert.ok(s.graphs[0].fields.includes("locale"), "newer columns are asked for first")
@@ -198,16 +221,62 @@ test("customer.created: guests get nothing, registered customers a welcome in th
   assert.equal(s.sent[0].idempotency_key, "emails:customer.welcome:cus_1")
 })
 
-test("auth.password_reset: a link with the token for customers and admins, the token never in the key", async () => {
-  const s = setup()
+test("auth.password_reset: the link with the token reaches only Resend, never Medusa's notification table, a log line or a key", async () => {
+  const s = setup(LIVE, { provider: true })
   assert.equal((await onPasswordReset(s.scope, { entity_id: "anna@example.com", actor_type: "customer", token: "tok-123" })).status, "sent")
-  assert.equal(s.sent[0].data.reset_url, "https://shop.example.com/reset-password?token=tok-123&email=anna%40example.com")
-  assert.ok(!s.sent[0].idempotency_key.includes("tok-123"))
+  assert.equal(s.sent.length, 0, "no notification: GET /admin/notifications would hand the token to every admin user")
+  const toAnna = s.resend.calls[0]
+  assert.match(toAnna.body.html, /https:\/\/shop\.example\.com\/reset-password\?token=tok-123&amp;email=anna%40example\.com/)
+  assert.ok(!toAnna.headers["idempotency-key"].includes("tok-123"))
   assert.equal((await onPasswordReset(s.scope, { entity_id: "admin@example.com", actor_type: "user", token: "tok-9" })).status, "sent")
-  assert.equal(s.sent[1].data.reset_url, "https://api.example.com/app/reset-password?token=tok-9&email=admin%40example.com")
-  assert.equal(s.sent[1].data.actor, "user")
+  assert.ok(String(s.resend.calls[1].body.text).includes("https://api.example.com/app/reset-password?token=tok-9&email=admin%40example.com"))
   assert.equal((await onPasswordReset(s.scope, { entity_id: "x@example.com", actor_type: "vendor", token: "t" })).status, "skipped")
-  assert.ok(s.log.lines.every((l) => !l.includes("tok-123")))
+  assert.ok(s.log.lines.every((l) => !l.includes("tok-123") && !l.includes("tok-9")))
+  const rows = s.store.rows.filter((r) => r.template === "password.reset")
+  assert.equal(rows.length, 2)
+  assert.ok(rows.every((r) => r.status === "sent" && !JSON.stringify(r).includes("tok-")), "the log keeps no token")
+  assert.equal(rows[0].customer_id, "cus_1", "the customer's reset is on the customer's page")
+})
+
+test("auth.password_reset without the provider registered in this process: not sent at all, never through Medusa's notifications", async () => {
+  const s = setup()
+  const r = await onPasswordReset(s.scope, { entity_id: "anna@example.com", actor_type: "customer", token: "tok-123" })
+  assert.equal(r.status, "no_provider")
+  assert.equal(s.sent.length, 0)
+  assert.equal(s.resend.calls.length, 0)
+  const row = s.store.rows.find((x) => x.template === "password.reset")
+  assert.equal(row?.status, "failed")
+  assert.equal(row?.error_code, "NO_PROVIDER")
+  assert.ok(!JSON.stringify(s.store.rows).includes("tok-123"))
+})
+
+test("auth.password_reset: at most passwordResetsPerHour e-mails to one address in an hour; the rest are logged as skipped", async () => {
+  const s = setup({ ...LIVE, passwordResetsPerHour: 2 }, { provider: true })
+  const ask = (email: string, token: string) => onPasswordReset(s.scope, { entity_id: email, actor_type: "customer", token })
+  assert.equal((await ask("anna@example.com", "t-1")).status, "sent")
+  assert.equal((await ask("Anna@Example.com ", "t-2")).status, "sent", "the same address, typed otherwise")
+  const third = await ask("anna@example.com", "t-3")
+  assert.deepEqual(third, { status: "skipped", reason: "THROTTLED" })
+  assert.equal((await ask("piotr@example.com", "t-4")).status, "sent", "another address has its own limit")
+  assert.equal(s.resend.calls.length, 3)
+  const throttled = s.store.rows.filter((r) => r.error_code === "THROTTLED")
+  assert.equal(throttled.length, 1)
+  assert.equal(throttled[0].status, "skipped")
+  assert.ok(s.log.lines.some((l) => l.startsWith("warn") && l.includes("At most 2 password.reset e-mails")))
+})
+
+test("demo mode handles no password reset of an admin user, and keeps a customer's reset with the link hidden", async () => {
+  const s = setup({ ...LIVE, demo: true }, { provider: true })
+  const admin = await onPasswordReset(s.scope, { entity_id: "admin@example.com", actor_type: "user", token: "eyJhbGciOiJIUzI1NiJ9.eyJlbnRpdHlfaWQiOiJhZG1pbiJ9.c2lnbmF0dXJlMTIz" })
+  assert.equal(admin.status, "skipped")
+  const skipped = s.store.rows.find((r) => r.error_code === "DEMO_ADMIN_RESET")
+  assert.equal(skipped?.status, "skipped")
+  assert.equal((await onPasswordReset(s.scope, { entity_id: "anna@example.com", actor_type: "customer", token: "eyJhbGciOiJIUzI1NiJ9.eyJjdXN0b21lciI6ImFubmEifQ.c2lnbmF0dXJlNDU2" })).status, "sent")
+  assert.equal(s.resend.calls.length, 0, "demo mode never calls Resend")
+  const kept = s.store.rows.find((r) => r.template === "password.reset" && r.status === "sent")
+  assert.ok(kept?.body_html && kept.body_text, "the outbox shows the message")
+  assert.ok(!String(kept?.body_html).includes("eyJ") && !String(kept?.body_text).includes("eyJ"), "but never the token")
+  assert.ok(String(kept?.body_html).includes("https://link.hidden.invalid/"))
 })
 
 test("negotiations: off by default; on, the price in major units; a demo negotiation never mails in live mode", async () => {
@@ -251,11 +320,53 @@ test("negotiations: off by default; on, the price in major units; a demo negotia
   assert.equal((await onNegotiation(on.scope, "negotiation.unknown", event)).status, "skipped")
 })
 
-test("a failing notification module is reported, never thrown", async () => {
+test("a failing notification module is reported, never thrown, and the e-mail gets a failed row a person can retry", async () => {
   const s = setup(LIVE, { failSend: true })
   const r = await onOrderPlaced(s.scope, "order_1")
   assert.equal(r.status, "failed")
   assert.ok(s.log.lines.some((l) => l.startsWith("warn") && l.includes("notification provider")))
+  const row = s.store.rows[0]
+  assert.equal(row.key, "emails:order.placed:order_1")
+  assert.equal(row.status, "failed")
+  assert.equal(row.error_code, "PRE_SEND")
+  assert.equal(row.order_id, "order_1")
+  assert.equal(row.customer_id, "cus_1")
+  assert.equal(row.recipient, "a***@e***.com")
+  assert.ok(canRetry(row), "the page offers Retry")
+})
+
+test("an e-mail that fails before the provider (Query down) gets a failed row under the event's key; a duplicate delivery of the event writes nothing", async () => {
+  const s = setup()
+  const query = s.scope.resolve("query")
+  const original = query.graph
+  query.graph = async () => {
+    throw new Error("Knex: Timeout acquiring a connection. The pool is probably full.")
+  }
+  assert.equal((await onOrderPlaced(s.scope, "order_1")).status, "failed")
+  assert.equal(s.store.rows[0].key, "emails:order.placed:order_1")
+  assert.equal(s.store.rows[0].error_code, "PRE_SEND")
+  assert.equal(s.store.rows[0].resource_id, "order_1")
+  query.graph = original
+  /* A person's retry takes that row over. */
+  assert.equal((await retryMessage(s.scope, s.store.rows[0], "user_1")).status, "sent")
+  assert.equal(s.sent[0].provider_data.emails.retry, true)
+
+  const dup = setup()
+  dup.scope.resolve("notification").createNotifications = async () => {
+    throw Object.assign(new Error("Notification with idempotency_key: emails:order.placed:order_1, already exists."), { type: "invalid_data" })
+  }
+  assert.deepEqual(await onOrderPlaced(dup.scope, "order_1"), { status: "skipped", reason: "duplicate" })
+  assert.equal(dup.store.rows.length, 0, "the other delivery owns the key: a failed row here would stop it")
+})
+
+test("settings that cannot be read before any were read: the subscriber sends nothing and logs SETTINGS_UNAVAILABLE", async () => {
+  const s = setup()
+  s.store.settings = async () => {
+    throw new Error("Connection terminated unexpectedly")
+  }
+  assert.equal((await onOrderPlaced(s.scope, "order_1")).status, "failed")
+  assert.equal(s.sent.length, 0)
+  assert.equal(s.store.rows[0].error_code, "SETTINGS_UNAVAILABLE")
 })
 
 test("abandoned carts: off by default; on, one reminder per usable cart, never twice", async () => {
@@ -333,6 +444,41 @@ test("abandoned carts hour after hour for four days: one e-mail per cart, none f
   )
 })
 
+test("abandoned carts: only carts with an address are read, page after page, so reminded carts never hide a new one", async () => {
+  const s = setup({ ...LIVE, templates: { "cart.abandoned": true }, abandonedCart: { maxPerRun: 1 } })
+  const now = Date.now()
+  const items = [{ title: "Lamp", quantity: 1, unit_price: 45 }]
+  s.data.cart = [
+    { id: "cart_a", email: "a@example.com", updated_at: new Date(now - 30 * HOUR).toISOString(), items },
+    { id: "cart_b", email: "b@example.com", updated_at: new Date(now - 31 * HOUR).toISOString(), items },
+    { id: "cart_c", email: "c@example.com", updated_at: new Date(now - 32 * HOUR).toISOString(), items },
+    { id: "cart_new", email: "d@example.com", updated_at: new Date(now - 33 * HOUR).toISOString(), items },
+  ]
+  for (const id of ["cart_a", "cart_b", "cart_c"]) {
+    await s.store.record({ key: `emails:cart.abandoned:${id}`, template: "cart.abandoned", locale: null, demo: false, kind: "job", recipient: null, subject: null, trigger: null, resource_type: "cart", resource_id: id, order_id: null, notification_id: null, requested_by: null, status: "sent" })
+  }
+  const run = await runAbandonedCarts(s.scope)
+  assert.equal(run?.sent, 1)
+  assert.deepEqual(s.sent.map((n) => n.idempotency_key), ["emails:cart.abandoned:cart_new"], "found on the second page")
+  const reads = s.graphs.filter((g) => g.entity === "cart")
+  assert.ok(reads.length >= 2)
+  assert.deepEqual(reads[0].filters.email, { $ne: null })
+  assert.equal(reads[1].pagination.skip, 3)
+})
+
+test("previews and test sends from the newest cart or parcel carry sample ids and tracking, never the real ones", async () => {
+  const s = setup({ ...LIVE, templates: { "cart.abandoned": true } })
+  const o = resolveOptions({ ...LIVE, templates: { "cart.abandoned": true } })
+  const cart = await previewData(s.scope, resolveTemplate("cart.abandoned", o)!, "pl", "latest")
+  assert.equal(cart.source, "latest")
+  assert.equal(cart.data.cart_id, "cart_sample")
+  assert.equal(cart.sourceRef, "cart_old", "the page still says which cart it came from")
+  const parcel = await previewData(s.scope, resolveTemplate("order.shipped", o)!, "en", "latest")
+  assert.equal(parcel.data.order_id, "order_sample")
+  assert.ok(!JSON.stringify(parcel.data).includes("TN-1") && !JSON.stringify(parcel.data).includes("track.example.com"), "no real tracking number")
+  assert.ok(!JSON.stringify(parcel.data).includes("Anna"))
+})
+
 test("a person's retry reads the order again and asks the provider to take the row over, under a new Medusa key", async () => {
   const s = setup()
   const row = await s.store.record({ key: "emails:order.placed:order_1", template: "order.placed", locale: "pl", demo: false, kind: "event", recipient: "a***@e***.com", subject: "S", trigger: "order.placed", resource_type: "order", resource_id: "order_1", order_id: "order_1", notification_id: null, requested_by: null, status: "failed", error_code: "validation_error" })
@@ -368,7 +514,7 @@ test("demo mode: the outbox is seeded from the newest orders and customers, date
   assert.ok(at(row(s, "emails:order.shipped:ful_1")) > at(row(s, "emails:order.placed:order_1")), "the parcel leaves after its order is confirmed")
   assert.ok(Math.abs(hoursAgo("emails:customer.welcome:cus_2") - 10.5) < 0.05)
   assert.ok(s.store.rows.every((r) => at(r) <= now.getTime()))
-  assert.deepEqual(await s.store.counts(true, now), { sent24h: 3, sent30d: 3, attention30d: 1, tests30d: 0, skipped30d: 0 })
+  assert.deepEqual(await s.store.counts(true, now), { sent24h: 3, sent30d: 3, attention30d: 1, tests30d: 0, testsSent30d: 0, skipped30d: 0, refused30d: 0 })
 
   assert.equal(await ensureDemoOutbox(s.scope, new Date(now.getTime() + 11 * HOUR)), 0, "a fresh seed stays")
   assert.equal(await ensureDemoOutbox(setup().scope), 0, "never in live mode")

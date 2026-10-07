@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-emails",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "E-mails by Koda Plus: transactional e-mails for Medusa sent through Resend, with ready Polish and English templates (order confirmation, shipment with tracking, cancellation, welcome, password reset, abandoned cart), dark mode, live previews and test sends in the admin, a send log with exactly-once delivery, your own templates in the same look, and a demo mode.",
   "author": {
     "name": "Koda Plus",
@@ -39,7 +39,14 @@
   ],
   "exports": {
     "./package.json": "./package.json",
-    "./workflows": "./.medusa/server/src/workflows/index.js",
+    "./workflows": {
+      "types": "./.medusa/server/src/workflows/index.d.ts",
+      "default": "./.medusa/server/src/workflows/index.js"
+    },
+    "./templates": {
+      "types": "./.medusa/server/src/templates.d.ts",
+      "default": "./.medusa/server/src/templates.js"
+    },
     "./.medusa/server/src/modules/*": "./.medusa/server/src/modules/*/index.js",
     "./modules/*": "./.medusa/server/src/modules/*/index.js",
     "./providers/*": "./.medusa/server/src/providers/*/index.js",
@@ -55,7 +62,7 @@
     "dev": "medusa plugin:develop",
     "test": "node --experimental-strip-types --no-warnings --import ./test/ts-resolve.mjs --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json",
-    "prepublishOnly": "npm test && medusa plugin:build"
+    "prepublishOnly": "npm test && npm run typecheck && medusa plugin:build"
   },
   "devDependencies": {
     "@medusajs/admin-sdk": "2.15.3",

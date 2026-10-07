@@ -11,7 +11,7 @@
  */
 import { resolveOptions, type EmailsPluginOptions } from "../src/modules/emails/lib/options.ts"
 import type { SettingRow } from "../src/modules/emails/lib/settings.ts"
-import type { Counts, MessagePatch, MessageRow, MessageStore, NewMessage, StatRow } from "../src/modules/emails/lib/store.ts"
+import type { BoardCounts, Counts, MessagePatch, MessageRow, MessageStore, NewMessage, StatRow, SummaryRow } from "../src/modules/emails/lib/store.ts"
 
 export const API_KEY = "re_TEST_0123456789abcdefghij"
 export const LIVE: EmailsPluginOptions = {
@@ -34,6 +34,8 @@ export interface MemoryStore extends MessageStore {
   rows: MessageRow[]
   settingRows: SettingRow[]
   failWith?: Error
+  /** Every call that changes data, in order (`claimNew`, `record`, `setSetting`...). */
+  writes: string[]
 }
 
 export function memoryStore(): MemoryStore {
@@ -70,6 +72,8 @@ export function memoryStore(): MemoryStore {
       lease_until: null,
       sent_at: null,
       requested_by: m.requested_by,
+      customer_id: m.customer_id ?? null,
+      recipient_hash: m.recipient_hash ?? null,
       body_html: null,
       body_text: null,
       created_at: m.created_at ?? now,
@@ -77,17 +81,50 @@ export function memoryStore(): MemoryStore {
       ...extra,
     }
   }
+  const summary = (r: MessageRow): SummaryRow => ({
+    id: r.id,
+    key: r.key,
+    template: r.template,
+    kind: r.kind,
+    status: r.status,
+    error_code: r.error_code,
+    order_id: r.order_id,
+    customer_id: r.customer_id ?? null,
+    recipient_hash: r.recipient_hash ?? null,
+    sent_at: r.sent_at,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  })
+  const newestFirst = (a: MessageRow, b: MessageRow) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  const writes: string[] = []
   const store: MemoryStore = {
     rows,
     settingRows,
+    writes,
     async claimNew(m, args) {
+      writes.push("claimNew")
       if (store.failWith) throw store.failWith
       if (byKey(m.key, m.demo)) return null
       const row = make(m, { status: "sending", resend_key: args.resendKey, attempts: 1, claim_token: args.token, lease_until: args.leaseUntil })
       rows.push(row)
       return { ...row }
     },
+    async claimLimited(m, args, limit) {
+      writes.push("claimLimited")
+      if (store.failWith) throw store.failWith
+      if (m.recipient_hash) {
+        const n = rows.filter(
+          (r) => r.template === m.template && r.recipient_hash === m.recipient_hash && r.demo === m.demo && r.status !== "skipped" && new Date(r.created_at).getTime() >= limit.since.getTime(),
+        ).length
+        if (n >= limit.max) return { row: null, throttled: true }
+      }
+      if (byKey(m.key, m.demo)) return { row: null, throttled: false }
+      const row = make(m, { status: "sending", resend_key: args.resendKey, attempts: 1, claim_token: args.token, lease_until: args.leaseUntil })
+      rows.push(row)
+      return { row: { ...row }, throttled: false }
+    },
     async claimRetry(key, demo, args) {
+      writes.push("claimRetry")
       const row = byKey(key, demo)
       if (!row) return null
       const stale = row.status === "sending" && row.lease_until !== null && new Date(row.lease_until).getTime() < Date.now()
@@ -106,12 +143,14 @@ export function memoryStore(): MemoryStore {
       return { ...row }
     },
     async finish(id, token, patch: MessagePatch) {
+      writes.push("finish")
       const row = rows.find((r) => r.id === id)
       if (!row || row.claim_token !== token || row.status !== "sending") return false
       Object.assign(row, patch, { claim_token: null, lease_until: null, updated_at: new Date() })
       return true
     },
     async record(m) {
+      writes.push("record")
       if (store.failWith) throw store.failWith
       if (byKey(m.key, m.demo)) return null
       const row = make(m, {
@@ -129,6 +168,7 @@ export function memoryStore(): MemoryStore {
       return { ...row }
     },
     async replaceSeed(input) {
+      writes.push("replaceSeed")
       if (store.failWith) throw store.failWith
       const keys = new Set<string>()
       let written = 0
@@ -169,6 +209,7 @@ export function memoryStore(): MemoryStore {
       return new Set(rows.filter((r) => r.demo === demo && keys.includes(r.key)).map((r) => r.key))
     },
     async expireLeases(now) {
+      writes.push("expireLeases")
       let n = 0
       for (const r of rows) {
         if (r.status === "sending" && r.lease_until && new Date(r.lease_until).getTime() < now.getTime()) {
@@ -183,6 +224,7 @@ export function memoryStore(): MemoryStore {
       return n
     },
     async prune(before, demo) {
+      writes.push("prune")
       const keep = rows.filter((r) => !(r.demo === demo && new Date(r.created_at).getTime() < before.getTime() && r.status !== "sending"))
       const removed = rows.length - keep.length
       rows.splice(0, rows.length, ...keep)
@@ -209,13 +251,36 @@ export function memoryStore(): MemoryStore {
         sent30d: mine.filter((r) => r.status === "sent").length,
         attention30d: mine.filter((r) => r.status === "failed" || r.status === "unknown").length,
         tests30d: mine.filter((r) => r.kind === "test").length,
+        testsSent30d: mine.filter((r) => r.kind === "test" && r.status === "sent").length,
         skipped30d: mine.filter((r) => r.status === "skipped").length,
+        refused30d: mine.filter((r) => r.status === "failed" && r.error_code === "INVALID_RECIPIENT").length,
       }
+    },
+    async forOrders(orderIds, demo) {
+      return rows
+        .filter((r) => r.demo === demo && r.kind !== "test" && r.order_id !== null && orderIds.includes(r.order_id))
+        .sort(newestFirst)
+        .map(summary)
+    },
+    async forCustomers(customerIds, hashes, demo) {
+      return rows
+        .filter((r) => r.demo === demo && r.kind !== "test" && ((r.customer_id && customerIds.includes(r.customer_id)) || (r.recipient_hash && hashes.includes(r.recipient_hash))))
+        .sort(newestFirst)
+        .map(summary)
+    },
+    async boardCounts(demo, since): Promise<BoardCounts> {
+      const mine = rows.filter((r) => r.demo === demo && r.kind !== "test" && new Date(r.created_at).getTime() >= since.getTime())
+      const refused = new Set(mine.filter((r) => r.status === "failed" && r.error_code === "INVALID_RECIPIENT").map((r) => r.recipient_hash ?? r.id))
+      return { orderFailed: mine.filter((r) => (r.status === "failed" || r.status === "unknown") && r.order_id).length, refusedAddresses: refused.size }
+    },
+    async schemaReady() {
+      return !store.failWith
     },
     async settings() {
       return settingRows.map((r) => ({ ...r }))
     },
     async setSetting(key, value, by) {
+      writes.push("setSetting")
       const row = settingRows.find((r) => r.key === key)
       if (row) Object.assign(row, { value, updated_by: by, updated_at: new Date() })
       else settingRows.push({ key, value, updated_by: by, updated_at: new Date() })
@@ -277,5 +342,5 @@ export function logger() {
   }
 }
 
-/** Every character that may never appear in copy: en dash, em dash, middle dot. */
-export const FORBIDDEN = /[–—·]/
+/** Every character that may never appear in copy: en dash, em dash, middle dot (built from their codes, so this file has none). */
+export const FORBIDDEN = new RegExp(`[${String.fromCharCode(0x2013, 0x2014, 0xb7)}]`)

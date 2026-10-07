@@ -48,6 +48,21 @@ export function resetKey(token: string): string {
   return eventKey("password.reset", sha256(String(token ?? "")).slice(0, 32))
 }
 
+/**
+ * A one-way hash of an address (trimmed, lower case), kept next to the
+ * masked address in the send log: it finds the e-mails of one address (a
+ * customer's guest orders, a search by the full address) and counts the
+ * password resets per address, without the log holding the address itself.
+ */
+export function addressHash(email: string): string {
+  return sha256(`koda-emails:address:${String(email ?? "").trim().toLowerCase()}`).slice(0, 40)
+}
+
+/** A Medusa customer id (`cus_...`), or null: `receiver_id` of a notification may name anything. */
+export function customerIdOf(value: unknown): string | null {
+  return typeof value === "string" && /^cus_[A-Za-z0-9]{1,60}$/.test(value) ? value : null
+}
+
 /** A test send from the admin: always new. */
 export function testKey(): string {
   return `emails:test:${randomUUID()}`

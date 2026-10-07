@@ -9,6 +9,8 @@ import assert from "node:assert/strict"
 import { GMAIL_CLIP_BYTES, LOCALES } from "../src/modules/emails/lib/constants.ts"
 import { renderEmailPreview } from "../src/modules/emails/lib/preview.ts"
 import { BUILT_IN_KEYS } from "../src/modules/emails/lib/templates/index.ts"
+import { resolveOptions } from "../src/modules/emails/lib/options.ts"
+import { resolveTemplate, sensitiveFields } from "../src/modules/emails/lib/registry.ts"
 import { FORBIDDEN, LIVE } from "./helpers.ts"
 
 const BAD = /undefined|NaN|\[object Object\]|>null</
@@ -153,4 +155,23 @@ test("the brand of the options shapes the message: logo parts, colours, footer, 
   assert.match(r.html, /Firma sp\.(&nbsp;| )z(&nbsp;| )o\.o\., Warszawa/)
   assert.match(r.html, /mailto:pomoc@example\.com/)
   assert.match(r.text, /Firma sp\. z o\.o\., Warszawa/)
+})
+
+test("the welcome never puts what a stranger typed at registration in the subject, nor a link anywhere", () => {
+  for (const locale of LOCALES) {
+    const named = renderEmailPreview({ template: "customer.welcome", locale, options: LIVE, data: { customer_name: "Anna", customer_since: "2026-10-01T10:00:00Z" } })
+    assert.doesNotMatch(named.subject, /Anna/, `${locale}: no name in the subject`)
+    assert.match(named.html, /Anna/, `${locale}: the name in the message`)
+    const spam = renderEmailPreview({ template: "customer.welcome", locale, options: LIVE, data: { customer_name: "Claim your prize at evil.example", company_name: "https://evil.example/win", customer_since: "2026-10-01T10:00:00Z" } })
+    assert.doesNotMatch(`${spam.subject} ${spam.html} ${spam.text}`, /evil\.example/, `${locale}: the stranger's line is dropped`)
+    checkRendered(spam, `welcome ${locale} without a usable name`)
+  }
+})
+
+test("the password reset template marks its link as a secret", () => {
+  assert.deepEqual(sensitiveFields(resolveTemplate("password.reset", resolveOptions(LIVE))!), ["reset_url"])
+  /* A replaced password reset (an app's own template under the key) still carries the token. */
+  const replaced = resolveOptions({ ...LIVE, templates: { "password.reset": { render: () => ({ subject: "Reset", html: "<p>x</p>" }) } } })
+  assert.deepEqual(sensitiveFields(resolveTemplate("password.reset", replaced)!), ["reset_url"])
+  assert.deepEqual(sensitiveFields(resolveTemplate("order.placed", resolveOptions(LIVE))!), [])
 })

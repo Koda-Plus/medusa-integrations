@@ -242,7 +242,7 @@ function TemplateCard({ template, lang, active, onClick }: { template: TemplateD
 /* What was sent                                                       */
 /* ------------------------------------------------------------------ */
 
-const FILTERS: MessageFilter[] = ["all", "sent", "attention", "skipped", "test"]
+const FILTERS: MessageFilter[] = ["all", "sent", "attention", "skipped", "test", "bounced"]
 
 function filterCount(status: StatusResponse, f: MessageFilter): number | undefined {
   const c = status.counts
@@ -250,6 +250,7 @@ function filterCount(status: StatusResponse, f: MessageFilter): number | undefin
   if (f === "attention") return c.attention30d
   if (f === "skipped") return c.skipped30d
   if (f === "test") return c.tests30d
+  if (f === "bounced") return c.refused30d
   return undefined
 }
 

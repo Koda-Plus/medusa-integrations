@@ -42,14 +42,14 @@ Optional, off until you turn them on:
 - **Under Gmail's clipping size** and a plain-text part in every message; long orders show 30 lines and a sum-up line.
 - **Retry from the admin** for failed messages of the order, shipping, cancellation, welcome and cart templates: the data is read again, the provider takes the failed row over, Resend gets a fresh key.
 - **Order widget** on every order page: the e-mails of that order with their status.
-- **Demo mode**: a simulated outbox, seeded from your newest orders and customers and dated over the last days, rebuilt with fresh dates twice a day so a public demo never looks abandoned; test sends and new events land there and stay; nothing leaves the server.
+- **Demo mode** (only with `demo: true`): a simulated outbox, seeded from your newest orders and customers and dated over the last days, rebuilt with fresh dates twice a day so a public demo never looks abandoned; test sends and new events land there and stay; nothing leaves the server, and password reset links are kept hidden.
 - **Your own templates** in the same look, with the same kit, through the `templates` option or `registerEmailTemplate`.
 - **Admin in English and Polish** through the Medusa admin translations.
 
 ## Requirements
 
 - Medusa 2.12 or newer (tested on 2.15.3) and Node.js 20+.
-- A Resend account with a verified sending domain, and an API key with sending access. Without a key the plugin logs every message instead of sending it; in demo mode it needs nothing.
+- A Resend account with a verified sending domain, and an API key with sending access. Without a key the plugin logs every message instead of sending it (the admin says "Log only"); in demo mode it needs nothing. The free plan of Resend sends 100 e-mails a day and 3 000 a month: choose a plan for your volume before you go live.
 
 ## Installation
 
@@ -68,18 +68,18 @@ import { defineConfig } from "@medusajs/framework/utils"
 
 const emails = {
   apiKey: process.env.RESEND_API_KEY,
-  from: process.env.EMAILS_FROM, // "Your Store <orders@mail.your-store.com>"
-  replyTo: "support@your-store.com",
+  from: process.env.EMAILS_FROM, // "Your Store <orders@mail.example.com>"
+  replyTo: "support@example.com",
   defaultLocale: "en", // or "pl"
   timeZone: "Europe/Warsaw",
-  storefrontUrl: "https://your-store.com",
+  storefrontUrl: "https://shop.example.com",
   brand: {
     name: "Your Store",
     accentColor: "#26D07C",
     footer: { en: "Your Store Ltd, 1 Market Street, London", pl: "Your Store sp. z o.o., ul. Rynek 1, Warszawa" },
-    supportEmail: "support@your-store.com",
+    supportEmail: "support@example.com",
   },
-  // demo: true, // a simulated outbox, nothing leaves the server
+  demo: process.env.EMAILS_DEMO === "true", // a simulated outbox, nothing leaves the server
 }
 
 module.exports = defineConfig({
@@ -95,6 +95,13 @@ module.exports = defineConfig({
             id: "emails",
             options: { channels: ["email"], ...emails },
           },
+          {
+            // Keep Medusa's own provider on the feed channel: product import and export
+            // and the order export send their notifications there, and fail without it.
+            resolve: "@medusajs/medusa/notification-local",
+            id: "local",
+            options: { name: "Local Notification Provider", channels: ["feed"] },
+          },
         ],
       },
     },
@@ -102,11 +109,14 @@ module.exports = defineConfig({
 })
 ```
 
+Listing `providers` replaces Medusa's default list, which held the local provider of the `feed` channel; that is why the example adds it back. Without it, product import and export and the order export end with "Could not find a notification provider for channel: feed". The admin warns when no provider serves `feed`.
+
 Set the variables in `.env`:
 
 ```bash
 RESEND_API_KEY=re_...
-EMAILS_FROM="Your Store <orders@mail.your-store.com>"
+EMAILS_FROM="Your Store <orders@mail.example.com>"
+# EMAILS_DEMO=true   # only on a demo: a simulated outbox instead of Resend
 ```
 
 Run the migrations, then open **E-mails** in the admin sidebar:
@@ -115,7 +125,7 @@ Run the migrations, then open **E-mails** in the admin sidebar:
 npx medusa db:migrate
 ```
 
-Medusa uses one provider per channel: if another provider serves `email` (SendGrid, the local one), remove it. The admin says when the provider is missing, or got other options than the plugin.
+Medusa uses one provider per channel: if another provider serves `email` (SendGrid, or the local one set to `email`), remove it, and keep the local one on `feed`. The admin says when the provider is missing, got other options than the plugin, or runs in another mode.
 
 ### Options
 
@@ -124,7 +134,7 @@ Sending:
 - `apiKey`: the Resend API key. Without it nothing is sent: every message is rendered, logged and recorded as not sent.
 - `from`: `Name <address>` or the bare address, on a domain verified in Resend. Required in live mode.
 - `replyTo`: one address or a list. With it, the "Questions?" box tells customers to reply.
-- `demo` (default `false`): the simulated outbox. Nothing leaves the server, every message is kept to look at.
+- `demo` (default `false`): the simulated outbox. Nothing leaves the server, every message is kept to look at. Only `demo: true` turns it on: a missing API key never does, it means "Log only" (nothing is sent, the admin says what is missing). Set it from a variable of your own, `demo: process.env.EMAILS_DEMO === "true"`.
 - `requestsPerSecond` (default `5`), `timeoutMs` (default `15000`), `maxRetries` (default `2`): requests to Resend from one process, the timeout of one request, the extra tries after a temporary error.
 
 Language and links:
@@ -135,6 +145,7 @@ Language and links:
 - `links`: `{ store, account, order, cart, passwordReset, adminPasswordReset, negotiation }`, each an absolute address or a path joined to `storefrontUrl`, with the placeholders `{order_id}`, `{display_id}`, `{cart_id}`, `{country}`, `{locale}`, `{token}`, `{email}`, `{id}`, `{ref}` (URI-encoded; an empty one leaves no double slash). For example `order: "/{country}/account/orders/details/{order_id}"`.
 - `adminUrl` (default: `admin.backendUrl` and `admin.path` of medusa-config.ts): the admin, for the password reset of admin users.
 - `passwordResetMinutes` (default `15`): how long the reset link works, for the text of the message (Medusa's own default).
+- `passwordResetsPerHour` (default `3`, from 1 to 50): password reset e-mails to one address in any hour. Asking for a reset needs no account, so this keeps a stranger from flooding an inbox from your domain and using up your Resend plan; further requests are logged as skipped (`THROTTLED`).
 - `trackingUrls`: tracking links per fulfillment provider id (or its first part) when a label has none, e.g. `{ inpost: "https://inpost.pl/sledzenie-przesylek?number={number}" }`.
 
 Brand (`brand`), each field also editable in the admin:
@@ -149,8 +160,8 @@ Brand (`brand`), each field also editable in the admin:
 Templates:
 
 - `templates`: `false` turns a template off for good (the admin cannot turn it on), `true` turns an optional one on, a definition adds a template or replaces a built-in one under its key.
-- `abandonedCart`: `{ afterHours: 24, maxAgeHours: 72, maxPerRun: 50 }`.
-- `skipOrderMetadataKeys` (default `["marketplace_order_ref"]`): orders with one of these metadata keys get no e-mail. Orders with Medusa's `no_notification` never do.
+- `abandonedCart`: `{ afterHours: 24, maxAgeHours: 72, maxPerRun: 50 }`. The links of `links.cart` lead to the cart: with `{cart_id}` in it, the link opens that cart (and the address typed in it) for anyone who holds the e-mail, so prefer a page that asks the shopper to sign in.
+- `skipOrderMetadataKeys` (default `["marketplace_order_ref"]`): orders with one of these metadata keys get no e-mail. Orders with Medusa's `no_notification` never do. A shopper cannot set these keys through the Store API (see Security).
 - `negotiationAmounts` (default `"major"`): only for negotiation events that send `price` as a number without `price_amount`, in major units (469 for 469.00) or minor (46900). The Koda Plus negotiations plugin sends `price` as a decimal string and `price_amount` in minor units, so it needs nothing here.
 
 Presentation and data:
@@ -197,33 +208,42 @@ await sendEmailWorkflow(container).run({
 - The kit: inline text (`accent`, `strong`, `nowrap`, `mono`, `muted`, `link`, `br`) and blocks: `paragraph`, `section`, `facts`, `items`, `totals`, `steps`, `checks`, `note`, `actions`, `linkFallback`, `tracking`, `priceList`, `divider`, and on the band `tracker`, `card`, `slip`, `tiles`. Strings are escaped; only `trusted(html, text)` passes markup through.
 - `render` may also return finished `{ subject, html, text? }`; the text part is then made from the HTML.
 - Keep `render` pure: the same data, the same message. A retry must send the same payload.
+- `sensitive: ["field"]` marks data fields that carry a secret (a link with a token, as `reset_url` of the built-in password reset). Such a message never goes through Medusa's notification table (the plugin hands it to its provider directly, with the same send log and idempotency), and the simulated outbox keeps it with those fields hidden. A built-in template you replace under its key keeps its secret fields.
 - `registerEmailTemplate(key, definition)` registers at run time instead (from a file Medusa loads in every process). Lookup order: the `templates` option, then `registerEmailTemplate`, then the built-in set.
 - `renderEmailPreview({ template, data, locale, options })` renders outside Medusa, for your own tests.
-- App code may call `createNotifications({ to, channel: "email", template, data })` directly; pass an `idempotency_key` to make it exactly once.
+- App code may call `createNotifications({ to, channel: "email", template, data })` directly; pass an `idempotency_key` to make it exactly once. Medusa keeps `data` in its notification table and returns it from `GET /admin/notifications`, so send a template with secret fields through `sendEmailWorkflow` instead.
 
 ## Setup in brief
 
 The admin has the full guide (**E-mails**, **Setup guide**), with the state of every step taken from your store.
 
-1. Create a Resend account. Until a domain is verified, Resend delivers only to your own address from `onboarding@resend.dev`.
-2. Add your sending domain in Resend (a subdomain such as `mail.your-store.com` keeps your main domain's reputation apart) and add the records it shows at your DNS provider: MX and TXT (SPF) on `send`, TXT (DKIM) on `resend._domainkey`. Add DMARC on the main domain.
+1. Create a Resend account. Until a domain is verified, Resend sends only from its own test address and only to the address of your account. The free plan sends 100 e-mails a day and 3 000 a month.
+2. Add your sending domain in Resend (a subdomain such as `mail.example.com` keeps your main domain's reputation apart) and add the records it shows at your DNS provider: MX and TXT (SPF) on `send`, TXT (DKIM) on `resend._domainkey`. Add DMARC on the main domain.
 3. Create an API key with sending access, limited to that domain, and put it in the environment.
-4. Install the plugin, register it as a plugin and as the email provider with the same options, run the migrations.
+4. Install the plugin, register it as a plugin and as the email provider with the same options (with Medusa's local provider kept on `feed`), run the migrations.
 5. Set the branding and point the links at your storefront, the password reset page included.
 6. Send a test of the order confirmation to yourself; look at it on a phone and in dark mode.
 7. Choose the templates: turn off what another system sends, turn on the optional ones you want.
-8. Place and ship a real order; watch the Failed counter for the first days.
+8. Place and ship a real order; watch the Failed counter for the first days. Choose a Resend plan that covers your busiest day before it comes.
 
 ## Security and data
 
 - **The API key** travels only in the `Authorization` header to `api.resend.com`. It is never sent to the admin (which sees "set" or "missing"), and it is masked, with every `re_...` key, `Bearer` value and long token, in logs, stored errors and admin screens.
-- **Addresses are masked** in logs and in the send log (`a***@e***.com`). The send log keeps the template, the subject, the status, the Resend id and ids of the order or customer; never the message body (except in demo mode, for the simulated outbox), never a password reset token.
+- **Password reset links never sit in a table.** The reset e-mail does not go through Medusa's notification module, whose table keeps the data of every notification and returns it from `GET /admin/notifications` to every admin user and secret API key; the plugin hands it straight to its provider (the same send log, switch and idempotency key). The send log keeps a hash of the token in the key, never the token; the simulated outbox of demo mode keeps the message with the link hidden, and demo mode handles no reset of an admin user. Without the provider registered in the process, a reset is not sent at all.
+- **At most `passwordResetsPerHour` (3) reset e-mails per address in an hour**, counted in the send log under a lock per address, so several processes never pass the limit together.
+- **Addresses are masked** in logs and in the send log (`a***@e***.com`). Next to the masked address the log keeps a one-way hash of the address (to find the e-mails of one address and to count resets) and the Medusa customer id. It keeps the template, the subject, the status, the Resend id and ids of the order or customer; never the message body (except in demo mode, for the simulated outbox, with secret fields hidden).
 - **Escaping by construction**: every value from customers, the catalog and the configuration is escaped in the HTML; links are used only when they are absolute http(s) addresses; colours and fonts from the options are validated before they reach CSS. The admin preview runs in a sandboxed frame without scripts.
-- **Previews and tests never carry a customer's details**: with your newest order they keep the products and amounts and replace the name, company and address with sample ones.
+- **A stranger's words stay out of the welcome.** Anyone can register with any address, and Medusa does not confirm it: the welcome shows a name only when it reads like one (letters, spaces, apostrophes, hyphens), a company only when it is not a link, an address or a domain, and the subject carries no name at all.
+- **Previews and tests never carry a customer's details**: with your newest order they keep the products, amounts and the order number, and replace the name, company, address, the order and cart ids and the tracking numbers with sample ones (a real cart id opens the cart, with the shopper's address, through the Store API).
 - **Test sends are limited** (5 per person in 10 minutes, 30 an hour for the store) and logged with who sent them.
+- **Writes need the admin.** Writes to `/admin/emails/*` (settings, test sends, retries, the demo seed) take a JSON body or the `x-koda-request` header and answer 415 otherwise: Medusa's session cookie is `SameSite=None` in production, so a form on another site could otherwise post with it. The plugin's admin sends both.
+- **Shopper metadata is not state.** A shopper may not set the keys of `skipOrderMetadataKeys` on a cart or the account through the Store API (400 `reserved_metadata_key`): Medusa copies cart metadata to the order, and such an order gets no e-mail. The language keys (`locale`, `language`) stay the shopper's own.
+- **Reads do not write**: `GET` routes only read; the demo outbox is built by `POST /admin/emails/demo/seed` (the page asks for it) and by the hourly housekeeping job.
+- **Errors**: unexpected server errors answer a plain sentence; the details stay in the server log, masked.
 - **No retry storms**: only temporary answers are tried again, at most twice, with the same idempotency key; a breaker stops retrying during an outage; quotas, auth and validation errors are final. A message whose fate is unknown is never resent by itself.
-- **Password reset tokens** never reach a log or a key: the key carries a hash of the token. The link itself lives in Medusa's own notification row, as in Medusa's documented example.
+- **When the settings cannot be read**, the last settings this process read stay in force; with none, nothing is sent and the message is logged as failed (`SETTINGS_UNAVAILABLE`) for a person to retry. A template switched off in the admin never comes back on by itself.
 - **Demo negotiations** (`demo: true` in the event) never e-mail anyone outside demo mode.
+- **What Medusa itself keeps**: the notification table of Medusa keeps the address and the data of every notification (names, order lines, links) with no end date; the retention of this plugin covers only its own send log. Messages the plugin skips (a template switched off, no API key, a duplicate) are `success` there, without an external id: the send log of this page tells what really happened.
 - The send log deletes its own rows after `logRetentionDays`; nothing in Medusa is changed by this plugin (no cart or order metadata is written).
 
 ## What this plugin does not do
@@ -235,6 +255,12 @@ The admin has the full guide (**E-mails**, **Setup guide**), with the state of e
 - It does not send SMS or push messages, only the email channel.
 - It does not translate your custom templates: they render what you write, in the languages you write.
 
+## Uninstall
+
+1. Remove both registrations from `medusa-config.ts`: the plugin in `plugins`, and its provider in the notification module. Put back a provider for the `email` channel if the store still sends e-mails, and keep the local provider on `feed` (or remove the whole `@medusajs/medusa/notification` entry to go back to Medusa's defaults).
+2. Remove the package from `package.json`.
+3. The tables `emails_message` and `emails_setting` stay with their data. Drop them by hand when you no longer need the log, or run `npx medusa db:rollback emails` before removing the package. Medusa keeps its own notification rows and the record of the migrations; the `emails` row of its provider table is disabled by Medusa once the provider is gone.
+
 ## Development
 
 ```bash
@@ -244,7 +270,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers every built-in template in both languages (with full and with almost no data, escaping, the clipping size, dark mode, the text part), the delivery path of the provider (dev mode, demo mode, the exact Resend request, idempotency, switches, finished content, failures, a person's retry, a missing table), the Resend client (error mapping, retries with the same key, retry-after, the breaker, pacing), options, links, locales and formats, masking, keys, the registry and app templates, settings, the SQL of the send log, the mappers from Medusa records, and the flows with a fake Medusa container. What the plugin relies on from the Resend and Medusa documentation is in [docs/resend-api-notes.md](./docs/resend-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-emails` in the app.
+`npm test` covers every built-in template in both languages (with full and with almost no data, escaping, the clipping size, dark mode, the text part), the delivery path of the provider (dev mode, demo mode, the exact Resend request, idempotency, switches, finished content, failures, a person's retry, a missing table), the Resend client (error mapping, retries with the same key, retry-after, the breaker, pacing), options, links, locales and formats, masking, keys, the registry and app templates, settings, the SQL of the send log, the mappers from Medusa records, and the flows with a fake Medusa container. Tests need Node.js 22.6 or newer (they run the TypeScript sources directly). What the plugin relies on from the Resend and Medusa documentation is in [docs/resend-api-notes.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-emails/docs/resend-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-emails` in the app.
 
 ## Commercial support
 
@@ -256,7 +282,7 @@ Resend is a trademark of its owner, used here only to identify the e-mail servic
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-emails/LICENSE).
 
 ## Changelog
 

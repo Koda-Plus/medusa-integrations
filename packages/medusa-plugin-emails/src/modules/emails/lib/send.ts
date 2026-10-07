@@ -19,19 +19,22 @@
  *      rotated.
  *
  * Addresses are masked and secrets removed from everything that is logged
- * or stored.
+ * or stored. The fields a template marks `sensitive` (the password reset
+ * link) reach only the message itself: the simulated outbox keeps them
+ * hidden, and the plugin's own flows hand such messages to `deliver`
+ * directly instead of through Medusa's notification table.
  */
 
 import { randomUUID } from "node:crypto"
-import { LEASE_MS, MAX_STORED_BODY_CHARS, type EmailLocale } from "./constants"
+import { LEASE_MS, MAX_RETRY_WAIT_MS, MAX_STORED_BODY_CHARS, type EmailLocale } from "./constants"
 import { cleanText } from "./html"
-import { cleanKey, entityRef, notificationKey, resendKey, sha256 } from "./keys"
+import { addressHash, cleanKey, customerIdOf, entityRef, notificationKey, resendKey, sha256 } from "./keys"
 import type { ResolvedEmailsOptions } from "./options"
-import { resolveTemplate } from "./registry"
+import { resolveTemplate, sensitiveFields } from "./registry"
 import { messageLocale, renderContent, renderTemplate, type RenderedEmail } from "./render"
 import type { ResendClient, ResendPayload, ResendResult } from "./resend"
-import { addressList, isEmail, maskAll, maskEmail, parseSender } from "./security"
-import { applyBrandOverrides, templateState, type EffectiveSettings } from "./settings"
+import { addressList, isEmail, maskAll, maskEmail, parseSender, redactData } from "./security"
+import { applyBrandOverrides, SettingsUnavailableError, templateState, type EffectiveSettings } from "./settings"
 import { isMissingTable, type MessageKind, type MessagePatch, type MessageRow, type MessageStore, type NewMessage } from "./store"
 import { COPY } from "./templates/copy"
 
@@ -56,6 +59,8 @@ export interface IncomingNotification {
   trigger_type?: string | null
   resource_type?: string | null
   resource_id?: string | null
+  /** Who the message is for in Medusa; a customer id (`cus_...`) is kept with the row. */
+  receiver_id?: string | null
 }
 
 /** What this plugin's own callers put in `provider_data.emails`. */
@@ -66,6 +71,10 @@ export interface EmailsMeta {
   /** A person's retry from the admin: take over the failed row, rotate the Resend key. */
   retry?: boolean
   orderId?: string | null
+  /** The Medusa customer (`cus_...`) the message is about, for the customer's page. */
+  customerId?: string | null
+  /** At most this many messages of the template to one address in an hour (password resets). */
+  limitPerHour?: number
 }
 
 export interface DeliverDeps {
@@ -92,6 +101,8 @@ export interface DeliveryResult {
   /** What happened, for the callers of this plugin (the admin test send). */
   outcome: "sent" | "simulated" | "logged" | "skipped" | "duplicate"
   key: string
+  /** Why it was skipped: `TEMPLATE_OFF`, `THROTTLED`. */
+  code?: string
 }
 
 const MISSING_TABLE_WARNED = Symbol.for("koda.emails.missingTableWarned")
@@ -107,6 +118,8 @@ export function readMeta(providerData: unknown): EmailsMeta {
     requestedBy: typeof m.requestedBy === "string" ? m.requestedBy : null,
     retry: m.retry === true,
     orderId: typeof m.orderId === "string" ? m.orderId : null,
+    customerId: customerIdOf(m.customerId),
+    limitPerHour: typeof m.limitPerHour === "number" && Number.isInteger(m.limitPerHour) && m.limitPerHour > 0 ? Math.min(m.limitPerHour, 1000) : undefined,
   }
 }
 
@@ -166,6 +179,23 @@ function warnMissingTable(logger: LoggerLike): void {
   logger.warn("[emails] The send log table is missing (run npx medusa db:migrate). Messages are still sent, protected by Resend's idempotency key, but not logged.")
 }
 
+/**
+ * How long a claim holds its row: every try the options allow (the timeout
+ * of each request and the longest wait between two), plus a minute, and
+ * never less than `LEASE_MS`. Housekeeping turns a row past its lease into
+ * `unknown`; a lease shorter than a slow send would do that mid-send.
+ */
+export function leaseMs(o: Pick<ResolvedEmailsOptions, "timeoutMs" | "maxRetries">): number {
+  return Math.max(LEASE_MS, (o.maxRetries + 1) * (o.timeoutMs + MAX_RETRY_WAIT_MS) + 60_000)
+}
+
+/** Errors of Resend that refuse the recipient's address: logged as `INVALID_RECIPIENT`, counted as refused addresses. */
+function refusesAddress(f: { code: string; status: number | null; message: string }): boolean {
+  if (f.status !== 400 && f.status !== 422) return false
+  if (!["validation_error", "invalid_parameter", "invalid_to_address"].includes(f.code)) return false
+  return /`to`|"to"|\bto field\b|invalid_to/i.test(f.message)
+}
+
 export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promise<DeliveryResult> {
   const o = deps.options
   const now = deps.now ?? (() => new Date())
@@ -177,6 +207,8 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
   const kind: MessageKind = meta.kind ?? (typeof n.idempotency_key === "string" && n.idempotency_key.startsWith("emails:") ? "event" : "app")
   const data = (n.data && typeof n.data === "object" ? n.data : {}) as Record<string, unknown>
   const templateKey = cleanText(n.template, 64) || "content"
+  /* The store of the log; the one given, even after a failed claim, to write the outcome afterwards. */
+  const givenStore = deps.store
   let store = deps.store
 
   const base: NewMessage = {
@@ -193,36 +225,53 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
     order_id: meta.orderId ?? (n.resource_type === "order" ? cleanText(n.resource_id, 80) || null : null),
     notification_id: cleanText(n.id, 80) || null,
     requested_by: meta.requestedBy ?? null,
+    customer_id: meta.customerId ?? customerIdOf(n.receiver_id),
+    recipient_hash: isEmail(to) ? addressHash(to) : null,
   }
 
   /** Writes a finished row; a missing table never stops the caller. */
-  const record = async (status: "sent" | "failed" | "unknown" | "skipped", patch: MessagePatch): Promise<MessageRow | null> => {
-    if (!store) return null
+  const record = async (status: "sent" | "failed" | "unknown" | "skipped", patch: MessagePatch, into: MessageStore | null = store): Promise<MessageRow | null> => {
+    if (!into) return null
     try {
-      return await store.record({ ...base, ...patch, status })
+      return await into.record({ ...base, ...patch, status })
     } catch (err) {
       if (isMissingTable(err)) {
         warnMissingTable(deps.logger)
-        store = null
+        if (into === store) store = null
         return null
       }
       deps.logger.warn(`[emails] Could not write the send log for ${key}: ${mask((err as Error)?.message ?? err)}`)
       return null
     }
   }
-  const fail = async (code: string, message: string, status: "failed" | "skipped" = "failed"): Promise<never> => {
+  const fail = async (code: string, message: string, opts: { status?: "failed" | "skipped"; retryable?: boolean } = {}): Promise<never> => {
     const masked = mask(message).slice(0, 1000)
-    if (!meta.retry) await record(status, { error_code: code, error: masked, retryable: false })
+    if (!meta.retry) await record(opts.status ?? "failed", { error_code: code, error: masked, retryable: opts.retryable ?? false })
     deps.logger.warn(`[emails] ${templateKey} to ${base.recipient ?? "***"} not sent: ${code}: ${masked}`)
     throw new DeliveryError(code, masked)
   }
 
   if (!isEmail(to)) return fail("INVALID_RECIPIENT", "The recipient is not an e-mail address.")
 
+  /* The switches: when they cannot be read, nothing goes out (a template a person switched off must stay off). */
+  let settings: EffectiveSettings
+  try {
+    settings = await deps.loadSettings()
+  } catch (err) {
+    if (err instanceof SettingsUnavailableError) return fail(err.code, err.message, { retryable: true })
+    throw err
+  }
+
   /* The template, or finished content */
-  const settings = await deps.loadSettings()
   const locale: EmailLocale = messageLocale(null, data, o.defaultLocale)
   const resolved = n.template ? resolveTemplate(templateKey, o) : null
+  const secrets = resolved ? sensitiveFields(resolved) : []
+  const renderInput = {
+    locale,
+    options: o,
+    brand: applyBrandOverrides(o.brand, settings.brand),
+    subjectPrefix: kind === "test" ? COPY[locale].testPrefix : "",
+  }
   let rendered: RenderedEmail
   if (resolved) {
     if (kind !== "test") {
@@ -231,16 +280,11 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
         if (meta.retry) throw new DeliveryError("TEMPLATE_OFF", `The template ${resolved.key} is turned off.`)
         await record("skipped", { error_code: "TEMPLATE_OFF", error: `The template ${resolved.key} is turned off.`, retryable: false })
         deps.logger.info(`[emails] ${resolved.key} to ${base.recipient}: skipped, the template is turned off.`)
-        return { outcome: "skipped", key }
+        return { outcome: "skipped", key, code: "TEMPLATE_OFF" }
       }
     }
     try {
-      rendered = renderTemplate(resolved, data, {
-        locale,
-        options: o,
-        brand: applyBrandOverrides(o.brand, settings.brand),
-        subjectPrefix: kind === "test" ? COPY[locale].testPrefix : "",
-      })
+      rendered = renderTemplate(resolved, data, renderInput)
     } catch (err) {
       return fail("RENDER_ERROR", (err as Error)?.message ?? String(err))
     }
@@ -260,23 +304,35 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
   }
   if (o.mode === "live" && !o.sender) return fail("MISSING_FROM", "The from option is missing or not an e-mail address.")
 
-  /* Claim the key */
+  /* Claim the key (within the limit per address, when the caller set one) */
   const token = newToken()
-  const leaseUntil = new Date(now().getTime() + LEASE_MS)
+  const leaseUntil = new Date(now().getTime() + leaseMs(o))
   let row: MessageRow | null = null
+  let claimFailed = false
   if (store) {
     try {
-      row = meta.retry
-        ? await store.claimRetry(key, o.demo, { token, leaseUntil, notificationId: base.notification_id, requestedBy: base.requested_by })
-        : await store.claimNew(base, { token, leaseUntil, resendKey: resendKey(key, 0) })
+      if (meta.retry) {
+        row = await store.claimRetry(key, o.demo, { token, leaseUntil, notificationId: base.notification_id, requestedBy: base.requested_by })
+      } else if (meta.limitPerHour) {
+        const claimed = await store.claimLimited(base, { token, leaseUntil, resendKey: resendKey(key, 0) }, { max: meta.limitPerHour, since: new Date(now().getTime() - 3600 * 1000) })
+        if (claimed.throttled) {
+          const why = `At most ${meta.limitPerHour} ${templateKey} e-mails to one address in an hour; this one was not sent.`
+          await record("skipped", { error_code: "THROTTLED", error: why, retryable: false })
+          deps.logger.warn(`[emails] ${templateKey} to ${base.recipient}: skipped, ${why}`)
+          return { outcome: "skipped", key, code: "THROTTLED" }
+        }
+        row = claimed.row
+      } else {
+        row = await store.claimNew(base, { token, leaseUntil, resendKey: resendKey(key, 0) })
+      }
     } catch (err) {
       if (isMissingTable(err)) {
         warnMissingTable(deps.logger)
-        store = null
       } else {
-        deps.logger.warn(`[emails] Could not claim ${key} in the send log, sending under Resend's idempotency key only: ${mask((err as Error)?.message ?? err)}`)
-        store = null
+        claimFailed = true
+        deps.logger.error(`[emails] Could not claim ${key} in the send log, sending under Resend's idempotency key only: ${mask((err as Error)?.message ?? err)}`)
       }
+      store = null
     }
     if (store && !row) {
       const existing = await store.find(key, o.demo).catch(() => null)
@@ -297,17 +353,32 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
     }
   }
 
-  const finish = async (patch: MessagePatch): Promise<void> => {
+  /** The outcome on the claimed row; after a failed claim, a new row with it (the log still tells what went out). */
+  const finish = async (patch: MessagePatch & { status: "sent" | "failed" | "unknown" }): Promise<void> => {
+    if (claimFailed && !meta.retry) {
+      const written = await record(patch.status, patch, givenStore)
+      if (!written) deps.logger.error(`[emails] The outcome of ${key} (${patch.status}) could not be written to the send log.`)
+      return
+    }
     if (!store || !row) return
     try {
-      await store.finish(row.id, token, patch)
+      const done = await store.finish(row.id, token, patch)
+      if (!done) deps.logger.error(`[emails] The outcome of ${key} (${patch.status}) was not written: its claim was taken over (the lease ran out). See the E-mails page.`)
     } catch (err) {
-      deps.logger.warn(`[emails] Could not record the result of ${key}: ${mask((err as Error)?.message ?? err)}`)
+      deps.logger.error(`[emails] Could not record the result of ${key}: ${mask((err as Error)?.message ?? err)}`)
     }
   }
 
-  /* demo: the simulated outbox */
+  /* demo: the simulated outbox, with secret fields hidden */
   if (o.demo) {
+    let kept = rendered
+    if (resolved && secrets.length > 0) {
+      try {
+        kept = renderTemplate(resolved, redactData(data, secrets), renderInput)
+      } catch {
+        kept = { ...rendered, html: "", text: "" }
+      }
+    }
     const id = `demo_${sha256(`${key}#${row?.rotation ?? 0}`).slice(0, 20)}`
     await finish({
       status: "sent",
@@ -317,8 +388,8 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
       locale: base.locale,
       error_code: null,
       error: null,
-      body_html: rendered.html.length <= MAX_STORED_BODY_CHARS ? rendered.html : null,
-      body_text: rendered.text.length <= MAX_STORED_BODY_CHARS ? rendered.text : null,
+      body_html: kept.html && kept.html.length <= MAX_STORED_BODY_CHARS ? kept.html : null,
+      body_text: kept.text && kept.text.length <= MAX_STORED_BODY_CHARS ? kept.text : null,
     })
     deps.logger.info(`[emails] demo mode, simulated: ${rendered.template} to ${base.recipient}`)
     return { id, outcome: "simulated", key }
@@ -345,7 +416,8 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
   const f = result.error
   const message = mask(f.message).slice(0, 1000)
   const status = f.maybeSent ? "unknown" : "failed"
-  await finish({ status, error_code: f.code, error: message, retryable: f.temporary })
+  const code = !f.maybeSent && refusesAddress(f) ? "INVALID_RECIPIENT" : f.code
+  await finish({ status, error_code: code, error: code === f.code ? message : `${f.code}: ${message}`, retryable: f.temporary })
   deps.logger.warn(`[emails] ${rendered.template} to ${base.recipient}: ${status} after ${result.attempts} ${result.attempts === 1 ? "try" : "tries"}: ${f.code}: ${message}`)
-  throw new DeliveryError(f.code, `${f.code}: ${message}`)
+  throw new DeliveryError(code, `${f.code}: ${message}`)
 }

@@ -3,26 +3,19 @@ import type {
   MessageDetailResponse,
   MessageFilter,
   MessagesResponse,
+  MessageWindow,
   PreviewResponse,
   PreviewSource,
   RetryResponse,
+  SeedResponse,
   SettingsRequest,
   StatusResponse,
   TestRequest,
   TestResponse,
 } from "../../modules/emails/lib/contract"
+import { backendUrl, kitRequestInit } from "./emails-kit"
 
-declare const __BACKEND_URL__: string | undefined
-
-/** Same origin by default; the admin build defines `__BACKEND_URL__` when the backend lives elsewhere. */
-export function backendUrl(): string {
-  try {
-    if (typeof __BACKEND_URL__ !== "undefined" && __BACKEND_URL__) return String(__BACKEND_URL__).replace(/\/+$/, "")
-  } catch {
-    /* not defined in this build */
-  }
-  return ""
-}
+export { backendUrl }
 
 export class EmailsRequestError extends Error {
   readonly status: number
@@ -33,14 +26,13 @@ export class EmailsRequestError extends Error {
   }
 }
 
+/**
+ * Every request of the page and the order card: the backend URL, the
+ * session cookie or the JWT of Medusa's admin, and on writes the JSON body
+ * and the header the plugin's write guard asks for (all from the kit).
+ */
 export async function emailsFetch<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
-  const hasBody = init?.body !== undefined
-  const res = await fetch(`${backendUrl()}${path}`, {
-    method: init?.method ?? "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...(hasBody ? { "Content-Type": "application/json" } : {}) },
-    body: hasBody ? JSON.stringify(init?.body) : undefined,
-  })
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: init?.method ?? "GET", body: init?.body }))
   const text = await res.text()
   let json: unknown = null
   try {
@@ -68,27 +60,58 @@ function params(values: Record<string, string | number | null | undefined>): str
 export const emailsKeys = {
   all: ["koda-emails"] as const,
   status: ["koda-emails", "status"] as const,
-  messages: (filter: MessageFilter, q: string, template: string, orderId: string, offset: number, limit: number) => ["koda-emails", "messages", filter, q, template, orderId, offset, limit] as const,
+  messages: (filter: MessageFilter, q: string, template: string, orderId: string, customerId: string, since: string, offset: number, limit: number) =>
+    ["koda-emails", "messages", filter, q, template, orderId, customerId, since, offset, limit] as const,
   message: (id: string) => ["koda-emails", "message", id] as const,
   preview: (template: string, locale: string, theme: string, source: PreviewSource) => ["koda-emails", "preview", template, locale, theme, source] as const,
 }
 
+/** The status of the page: read once a minute, and on "Refresh". Never polled from an order card. */
 export function useEmailsStatus() {
   return useQuery<StatusResponse>({
     queryKey: emailsKeys.status,
     queryFn: () => emailsFetch<StatusResponse>("/admin/emails"),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   })
 }
 
-export function useEmailsMessages(input: { filter: MessageFilter; q?: string; template?: string; orderId?: string; offset?: number; limit?: number; enabled?: boolean }) {
-  const { filter, q = "", template = "", orderId = "", offset = 0, limit = 15, enabled = true } = input
+/**
+ * A page of the log. Every 5 seconds while one of its messages is being
+ * sent, otherwise once a minute; a hidden tab is never polled.
+ */
+export function useEmailsMessages(input: {
+  filter: MessageFilter
+  q?: string
+  template?: string
+  orderId?: string
+  customerId?: string
+  since?: MessageWindow | ""
+  offset?: number
+  limit?: number
+  enabled?: boolean
+}) {
+  const { filter, q = "", template = "", orderId = "", customerId = "", since = "", offset = 0, limit = 15, enabled = true } = input
   return useQuery<MessagesResponse>({
-    queryKey: emailsKeys.messages(filter, q, template, orderId, offset, limit),
-    queryFn: () => emailsFetch<MessagesResponse>(`/admin/emails/messages?${params({ filter, q, template, order_id: orderId, offset, limit })}`),
+    queryKey: emailsKeys.messages(filter, q, template, orderId, customerId, since, offset, limit),
+    queryFn: () => emailsFetch<MessagesResponse>(`/admin/emails/messages?${params({ filter, q, template, order_id: orderId, customer_id: customerId, since, offset, limit })}`),
     placeholderData: keepPreviousData,
-    refetchInterval: 15_000,
+    refetchInterval: (query) => ((query.state.data as MessagesResponse | undefined)?.messages.some((m) => m.status === "sending") ? 5_000 : 60_000),
+    refetchIntervalInBackground: false,
+    staleTime: 15_000,
     enabled,
+  })
+}
+
+/** Demo mode: build the simulated outbox (the status says when it is stale). */
+export function useEmailsSeed() {
+  const client = useQueryClient()
+  return useMutation<SeedResponse, Error, void>({
+    mutationFn: () => emailsFetch<SeedResponse>("/admin/emails/demo/seed", { method: "POST", body: {} }),
+    onSuccess: (data) => {
+      client.setQueryData(emailsKeys.status, data.status)
+      void client.invalidateQueries({ queryKey: emailsKeys.all, predicate: (q) => q.queryKey[1] === "messages" })
+    },
   })
 }
 

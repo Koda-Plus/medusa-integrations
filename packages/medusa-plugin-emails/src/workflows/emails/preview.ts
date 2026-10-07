@@ -14,7 +14,7 @@ import { sampleData, type ResolvedTemplate } from "../../modules/emails/lib/regi
 import type { PreviewSource } from "../../modules/emails/lib/contract"
 import { CART_FIELDS, CART_OPTIONAL_FIELDS } from "./abandoned-carts"
 import { CUSTOMER_FIELDS, FULFILLMENT_FIELDS, ORDER_FIELDS, ORDER_OPTIONAL_FIELDS } from "./events"
-import { emailsService, graphList, settingsFor, type Scope } from "./runtime"
+import { emailsService, graphList, settingsForDisplay, type Scope } from "./runtime"
 
 /** Templates whose preview can use the store's newest data. */
 export const LATEST_TEMPLATES: readonly string[] = [TEMPLATES.orderPlaced, TEMPLATES.orderCanceled, TEMPLATES.orderShipped, TEMPLATES.cartAbandoned, TEMPLATES.customerWelcome]
@@ -86,7 +86,7 @@ export async function previewData(scope: Scope, template: ResolvedTemplate, loca
 export async function renderPreview(scope: Scope, template: ResolvedTemplate, input: { locale: EmailLocale; theme: PreviewTheme | null; source: PreviewSource }): Promise<RenderedEmail & PreviewData> {
   const svc = emailsService(scope)
   const o = svc.getOptions()
-  const settings = await settingsFor(scope)
+  const settings = await settingsForDisplay(scope)
   const prepared = await previewData(scope, template, input.locale, input.source)
   const rendered = renderTemplate(template, prepared.data, { locale: input.locale, options: o, brand: applyBrandOverrides(o.brand, settings.brand), theme: input.theme })
   return { ...rendered, ...prepared }

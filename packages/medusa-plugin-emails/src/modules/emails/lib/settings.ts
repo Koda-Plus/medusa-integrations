@@ -20,7 +20,8 @@
 import { DEMO_RESET_MS, SETTINGS_CACHE_MS } from "./constants"
 import type { ResolvedBrand, ResolvedEmailsOptions } from "./options"
 import { normalizeHex } from "./theme"
-import { isEmail } from "./security"
+import { isEmail, maskAll } from "./security"
+import { isMissingTable } from "./store"
 
 export interface BrandOverrides {
   name?: string | null
@@ -220,11 +221,35 @@ function cache(): Map<string, CacheEntry> {
   return holder[CACHE_KEY] as Map<string, CacheEntry>
 }
 
+/** The switches cannot be read: nothing is sent, the message is logged as failed and a person can retry it. */
+export class SettingsUnavailableError extends Error {
+  readonly code = "SETTINGS_UNAVAILABLE"
+  constructor(message: string) {
+    super(message)
+    this.name = "SettingsUnavailableError"
+  }
+}
+
+const WARNED_KEY = Symbol.for("koda.emails.settingsWarnedAt")
+type WarnHolder = typeof globalThis & { [WARNED_KEY]?: number }
+
 /**
- * Settings of a mode, read at most every 10 seconds per process. A failing
- * read (no table yet) gives the defaults and is tried again next time.
+ * Settings of a mode, read at most every 10 seconds per process.
+ *
+ * A failing read never turns a template that a person switched off back on:
+ *   - no table yet (the migrations did not run): the defaults, nobody could
+ *     have switched anything;
+ *   - any other error (a busy pool, a short outage): the last settings this
+ *     process read, even old ones, with a warning at most once a minute;
+ *   - an error before anything was read: `SettingsUnavailableError`, and the
+ *     caller sends nothing.
  */
-export async function cachedSettings(demo: boolean, load: () => Promise<readonly SettingRow[]>, now: number = Date.now()): Promise<EffectiveSettings> {
+export async function cachedSettings(
+  demo: boolean,
+  load: () => Promise<readonly SettingRow[]>,
+  now: number = Date.now(),
+  log?: { warn(message: string): void } | null,
+): Promise<EffectiveSettings> {
   const key = demo ? "demo" : "live"
   const hit = cache().get(key)
   if (hit && now - hit.at < SETTINGS_CACHE_MS) return hit.value
@@ -232,12 +257,29 @@ export async function cachedSettings(demo: boolean, load: () => Promise<readonly
     const value = readSettings(await load(), demo, new Date(now))
     cache().set(key, { at: now, value })
     return value
-  } catch {
-    return EMPTY_SETTINGS
+  } catch (err) {
+    if (isMissingTable(err)) return EMPTY_SETTINGS
+    const reason = maskAll((err as Error)?.message ?? String(err)).slice(0, 300)
+    if (hit) {
+      const holder = globalThis as WarnHolder
+      if (!holder[WARNED_KEY] || now - holder[WARNED_KEY] >= 60_000) {
+        holder[WARNED_KEY] = now
+        log?.warn(`[emails] The settings could not be read (${reason}); the last ones read are used.`)
+      }
+      return hit.value
+    }
+    throw new SettingsUnavailableError(`The settings of the e-mails could not be read, so whether the template is switched on is unknown: ${reason}`)
   }
 }
 
-/** After a change in the admin: the next read goes to the database. */
-export function forgetSettings(): void {
-  cache().clear()
+/**
+ * After a change in the admin: the next read goes to the database. With
+ * `keepFallback` the settings in memory stay as the fallback of a failing read.
+ */
+export function forgetSettings(opts: { keepFallback?: boolean } = {}): void {
+  if (!opts.keepFallback) {
+    cache().clear()
+    return
+  }
+  for (const entry of cache().values()) entry.at = 0
 }
