@@ -17,8 +17,8 @@
  * `koda` block of each package.json):
  *   directories  modules/<mod>, providers/<ns>, workflows/<ns>, api/admin/<ns>,
  *                api/store/<ns>, api/hooks/<ns>, api/<ns>, admin/routes/<ns>
- *   files        jobs/<ns>-*, subscribers/<ns>-*, admin/widgets/<ns>-*,
- *                admin/lib/<ns>-*
+ *   files        jobs/<ns>-*, subscribers/<ns>-*, policies/<ns>-*,
+ *                admin/widgets/<ns>-*, admin/lib/<ns>-*
  *   renamed      admin/i18n/en.ts -> admin/i18n/<ns>-en.ts (pl likewise),
  *                api/middlewares.ts -> api/<ns>-middlewares.ts
  * and `admin/i18n/index.ts` of the app is GENERATED from every vendored
@@ -116,7 +116,7 @@ function planFor(p) {
       pairs.push([rel, rel])
     }
   }
-  for (const d of ["jobs", "subscribers", "admin/widgets", "admin/lib"]) {
+  for (const d of ["jobs", "subscribers", "policies", "admin/widgets", "admin/lib"]) {
     const dir = path.join(src, d)
     if (!fs.existsSync(dir)) continue
     const into = d === "admin/widgets" ? widgetsDir : d
