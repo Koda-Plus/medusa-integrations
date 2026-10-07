@@ -253,15 +253,40 @@ function toDemoOrder(o: DemoOrderRecord): DemoOrder | null {
   return { id: o.id, displayId: typeof o.display_id === "number" ? o.display_id : null, createdAt: o.created_at ?? null, total: o.total, currency: String(o.currency_code ?? "pln").toLowerCase() }
 }
 
-/** The newest orders, for the demo payments. */
+/**
+ * The newest orders, for the demo payments. Totals are read one order at a time: Medusa refuses
+ * to compute the totals of an order whose shipping method has no version (some orders imported by
+ * other plugins carry such methods), and in one query a single such order emptied the whole demo.
+ * An order without a total still gets a plausible sample amount.
+ */
 export async function readDemoOrders(scope: Scope, limit: number): Promise<DemoOrder[]> {
-  const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS, pagination: { take: limit, order: { created_at: "DESC" } } })
-  return (data as DemoOrderRecord[]).map(toDemoOrder).filter((o): o is DemoOrder => o !== null)
+  const listFields = DEMO_ORDER_FIELDS.filter((f) => f !== "total")
+  const { data } = await queryOf(scope).graph({ entity: "order", fields: listFields, pagination: { take: limit, order: { created_at: "DESC" } } })
+  const orders: DemoOrderRecord[] = []
+  for (const o of data as DemoOrderRecord[]) {
+    let total: unknown = null
+    if (typeof o?.id === "string") {
+      try {
+        const { data: one } = await queryOf(scope).graph({ entity: "order", fields: ["id", "total"], filters: { id: o.id } })
+        total = (one as DemoOrderRecord[])[0]?.total ?? null
+      } catch {
+        total = null
+      }
+    }
+    orders.push({ ...o, total })
+  }
+  return orders.map(toDemoOrder).filter((o): o is DemoOrder => o !== null)
 }
 
 export async function readDemoOrder(scope: Scope, orderId: string): Promise<DemoOrder | null> {
-  const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS, filters: { id: orderId } })
-  return toDemoOrder((data as DemoOrderRecord[])[0] ?? {})
+  try {
+    const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS, filters: { id: orderId } })
+    return toDemoOrder((data as DemoOrderRecord[])[0] ?? {})
+  } catch {
+    /* No totals for this order (see readDemoOrders): a sample amount stands in. */
+    const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS.filter((f) => f !== "total"), filters: { id: orderId } })
+    return toDemoOrder((data as DemoOrderRecord[])[0] ?? {})
+  }
 }
 
 /* ------------------------------------------------------------------ */
