@@ -11,6 +11,7 @@ import {
   type AttentionScope,
   type EntityKind,
   type EntitySummary,
+  type EntitySummaryBatch,
   type Fact,
   type FactSlot,
   type HostZone,
@@ -96,6 +97,49 @@ export function useSummaries(entity: EntityKind, id: string | null | undefined, 
   }))
 }
 
+/**
+ * The summaries of many records (rows of a list or a board) from the plugins
+ * that answer about this entity: one request per plugin and 50 ids, cached
+ * per plugin and id list. Returns, per record id, the summaries that know it.
+ */
+export function useSummaryBatch(entity: EntityKind, ids: string[], namespaces: string[]): { loading: boolean; byId: Map<string, Array<{ ns: string; summary: EntitySummary }>> } {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50))
+  const pairs = namespaces.flatMap((ns) => chunks.map((chunk) => ({ ns, chunk })))
+  const results = useQueries({
+    queries: pairs.map(({ ns, chunk }) => ({
+      queryKey: [ns, "koda-integration", "summary", entity, "batch", chunk.join(",")] as const,
+      queryFn: () =>
+        kitFetch<EntitySummaryBatch>(`/admin/${encodeURIComponent(ns)}/integration/summary?entity=${entity}&ids=${chunk.map(encodeURIComponent).join(",")}`).catch((err) =>
+          notFound(err) ? null : Promise.reject(err),
+        ),
+      enabled: chunk.length > 0,
+      staleTime: 30_000,
+      retry: 1,
+    })),
+  })
+  const byId = new Map<string, Array<{ ns: string; summary: EntitySummary }>>()
+  pairs.forEach(({ ns }, i) => {
+    const data = results[i]?.data as EntitySummaryBatch | null | undefined
+    for (const s of data?.items ?? []) {
+      if (stateOf(s.state) === "none" && (s.facts ?? []).length === 0) continue
+      const list = byId.get(s.id) ?? []
+      list.push({ ns, summary: s })
+      byId.set(s.id, list)
+    }
+  })
+  return { loading: results.some((r) => r.isLoading), byId }
+}
+
+/** The fact of a slot with the highest priority among the summaries of one record. */
+export function topFact(list: Array<{ ns: string; summary: EntitySummary }> | undefined, slot: FactSlot): { ns: string; fact: Fact } | null {
+  let best: { ns: string; fact: Fact } | null = null
+  for (const { ns, summary } of list ?? []) {
+    for (const f of summary.facts ?? []) if (f.slot === slot && (!best || f.priority > best.fact.priority)) best = { ns, fact: f }
+  }
+  return best
+}
+
 /** A message in the reader's language: the plugin dictionary when the app has it, the server's sentence otherwise. */
 export function useMessageText(): (ns: string, message: Message | null | undefined) => string {
   const { t } = useTranslation()
@@ -176,19 +220,22 @@ export interface HostedFact {
 
 /**
  * Per slot, the fact with the highest priority among the plugins that know
- * the record (ties go to the plugin listed first). Links are checked again
- * here: admin paths only, or https on the hosts the app allows.
+ * the record (ties go to the plugin listed first). Every plugin on the page
+ * is asked, cards or not (Allegro tells the channel of an imported order
+ * without an order card); one that does not answer about this entity says
+ * so with a 400, read as nothing. Links are checked again here: admin paths
+ * only, or https on the hosts the app allows.
  */
-export function useFacts(entity: EntityKind, record: { id: string } | null | undefined, zone: HostZone, externalHosts: readonly string[] = []): Partial<Record<FactSlot, HostedFact>> {
-  const widgets = useZoneWidgets(zone)
-  const namespaces = useMemo(() => [...new Set(widgets.map((w) => w.ns))], [widgets])
+export function useFacts(entity: EntityKind, record: { id: string } | null | undefined, _zone: HostZone, externalHosts: readonly string[] = []): Partial<Record<FactSlot, HostedFact>> {
+  const entries = useIntegrationEntries()
+  const namespaces = useMemo(() => entries.map((e) => e.ns), [entries])
   const reads = useSummaries(entity, record?.id, namespaces)
   const text = useMessageText()
   const out: Partial<Record<FactSlot, HostedFact>> = {}
   for (const r of reads) {
     const s = r.summary
     if (!s) continue
-    const name = widgets.find((w) => w.ns === r.ns)?.name ?? r.ns
+    const name = entries.find((e) => e.ns === r.ns)?.name ?? r.ns
     for (const f of s.facts ?? []) {
       const current = out[f.slot]
       if (current && current.fact.priority >= f.priority) continue
