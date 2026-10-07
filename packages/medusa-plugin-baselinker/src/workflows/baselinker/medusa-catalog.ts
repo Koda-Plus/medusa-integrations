@@ -193,12 +193,21 @@ export async function loadCategoryIndex(scope: Scope): Promise<Map<string, strin
   return out
 }
 
-/** Whether Medusa prices of a currency include tax (Settings, price preferences). Medusa's default is no. */
+/**
+ * Whether Medusa prices of a currency include tax (Settings, price
+ * preferences); Medusa's default is no. Throws when the Pricing module does
+ * not answer: a guess would turn gross prices into net ones.
+ */
+export async function readPricesIncludeTax(scope: Scope, currency: string): Promise<boolean> {
+  const pricing = (scope as { resolve<T>(k: string): T }).resolve<IPricingModuleService>(Modules.PRICING)
+  const prefs = await pricing.listPricePreferences({ attribute: "currency_code", value: [currency.toLowerCase()] }, { take: 1 })
+  return prefs[0]?.is_tax_inclusive === true
+}
+
+/** The same, with "no" when the preference cannot be read (for plans where "no" writes nothing wrong). */
 export async function pricesIncludeTax(scope: Scope, currency: string): Promise<boolean> {
   try {
-    const pricing = (scope as { resolve<T>(k: string): T }).resolve<IPricingModuleService>(Modules.PRICING)
-    const prefs = await pricing.listPricePreferences({ attribute: "currency_code", value: [currency.toLowerCase()] }, { take: 1 })
-    return prefs[0]?.is_tax_inclusive === true
+    return await readPricesIncludeTax(scope, currency)
   } catch {
     return false
   }

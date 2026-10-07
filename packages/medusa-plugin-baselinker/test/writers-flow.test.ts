@@ -228,6 +228,20 @@ test("prices: the base price goes to the price group; net Medusa prices are gros
     assert.match(String(run?.message), /nothing was written/)
     assert.ok(t.s.table("PlanItems").rows.some((r) => r.kind === "prices"), "the plan stays for reading")
   }
+
+  /* A price preference that cannot be read is never guessed as net: nothing is planned or written. */
+  group = { price_group_id: 7, name: "Detal", currency: "PLN", source_price_group_id: 0 }
+  sent.length = 0
+  const unknown = setup({ ...base, priceGroupId: 7, stockSync: "off" })
+  ;(unknown.container.resolve("pricing") as Row).listPricePreferences = async () => {
+    throw new Error("pricing module unavailable")
+  }
+  await setArm(unknown.s.svc, "prices", true, actor)
+  await runCatalogSync(unknown.container, { trigger: "manual" })
+  assert.equal(sent.length, 0)
+  const run = unknown.s.table("SyncRuns").rows.find((r) => r.kind === "prices")
+  assert.equal(run?.status, "error")
+  assert.match(String(run?.message), /price preference/)
 })
 
 test("a hard switch in the options wins: the writer cannot be armed and nothing is written", async () => {
