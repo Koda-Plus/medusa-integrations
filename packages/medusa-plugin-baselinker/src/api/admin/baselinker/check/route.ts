@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { CheckResponse } from "../../../../modules/baselinker/lib/contract"
 import { checkConnection } from "../../../../workflows/baselinker/check"
-import { baselinkerService, buildStatus } from "../helpers"
+import { baselinkerService, buildStatus, guarded } from "../helpers"
 
 /**
  * POST /admin/baselinker/check
@@ -11,7 +11,7 @@ import { baselinkerService, buildStatus } from "../helpers"
  * clicked and wants to see the result: the token, the catalog and whether
  * the warehouse belongs to it.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   if (!svc.isDemo() && !svc.getOptions().apiToken) {
     res.status(409).json({ message: "Set apiToken in the plugin options first." })
@@ -24,4 +24,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   }
   const body: CheckResponse = { result, status: await buildStatus(svc) }
   res.json(body)
-}
+})

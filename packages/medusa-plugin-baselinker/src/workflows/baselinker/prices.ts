@@ -45,7 +45,7 @@ async function cardRates(
 }
 
 export async function runPricePushPlan(scope: Scope, input: PricesRunInput): Promise<RunDto | null> {
-  return exclusive("prices", async () => {
+  return exclusive(scope, "prices", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const startedAt = new Date()

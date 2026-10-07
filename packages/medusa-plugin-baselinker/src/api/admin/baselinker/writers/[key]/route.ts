@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { ArmResponse } from "../../../../../modules/baselinker/lib/contract"
 import { canArm, isWriterKey, writerState } from "../../../../../modules/baselinker/lib/writers"
 import { loadWriters, setArm } from "../../../../../workflows/baselinker/settings"
-import { actorOf, baselinkerService, buildStatus, toWriterDto } from "../../helpers"
+import { actorOf, baselinkerService, buildStatus, guarded, toWriterDto } from "../../helpers"
 
 /**
  * POST /admin/baselinker/writers/:key  { "armed": true | false }
@@ -13,7 +13,7 @@ import { actorOf, baselinkerService, buildStatus, toWriterDto } from "../../help
  * Disarming is always allowed. In demo mode the arms belong to the
  * simulation and never carry over to a real account.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const key = req.params.key
   if (!isWriterKey(key)) {
@@ -41,4 +41,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   const { writers } = await loadWriters(svc)
   const body: ArmResponse = { writer: toWriterDto(writerState(writers, key)), status: await buildStatus(svc) }
   res.json(body)
-}
+})

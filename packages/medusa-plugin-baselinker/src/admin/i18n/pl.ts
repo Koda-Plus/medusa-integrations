@@ -46,7 +46,13 @@ const pl: typeof en = {
   },
   demo: {
     label: "Tryb demo",
-    text: "Symulowane konto BaseLinkera powstaje z Twojego katalogu: karty dla większości wariantów, produkty z wariantami, zdublowane SKU, EAN na dwóch kartach, zestaw, produkty tylko w BaseLinkerze oraz symulowane Allegro i Amazon z kilkoma zamówieniami dziennie. Zamówienia sklepu dostają numer BaseLinkera w kilka sekund, a po kilku minutach przechodzą na „Wysłane” z numerem przesyłki InPost. Uzbrój zapis, żeby zobaczyć, jak działa: katalog, stany, ceny i numery faktur zmieniają tylko symulację, a zamówienia z marketplace'ów stają się prawdziwymi zamówieniami tego sklepu demo. Nic nie wychodzi poza Medusę. Aby podłączyć prawdziwe konto, ustaw w opcjach wtyczki apiToken, inventoryId, warehouseId i orderStatusId.",
+    text: "Symulowane konto BaseLinkera powstaje z Twojego katalogu: karty dla większości wariantów, produkty z wariantami, zdublowane SKU, EAN na dwóch kartach, zestaw, produkty tylko w BaseLinkerze oraz symulowane Allegro i Amazon z kilkoma zamówieniami dziennie. Zamówienia sklepu dostają numer BaseLinkera w kilka sekund, a po kilku minutach przechodzą na „Wysłane” z numerem przesyłki InPost, ale tylko we własnych wierszach wtyczki: same zamówienia nigdy nie dostają symulowanego numeru, statusu ani przesyłki. Uzbrój zapis, żeby zobaczyć, jak działa: katalog, stany, ceny i numery faktur zmieniają tylko symulację, a zamówienia z marketplace'ów stają się zamówieniami tego sklepu tylko z opcją demoCreatesOrders. Nic nie wychodzi poza Medusę. Tryb demo działa tylko z demo: true. Aby podłączyć prawdziwe konto, ustaw w opcjach wtyczki apiToken, inventoryId, warehouseId i orderStatusId.",
+    preparing: {
+      label: "Dane demo",
+      text: "Symulowane konto jeszcze nie powstało. Zadanie demo zbuduje je w ciągu minuty; przygotuj je teraz, żeby od razu zobaczyć dane.",
+      action: "Przygotuj teraz",
+      done: "Dane demo gotowe.",
+    },
   },
   missing: {
     label: "Konfiguracja",
@@ -296,6 +302,13 @@ const pl: typeof en = {
     marketplaceNote: "Zamówienie pobrane prosto z marketplace'u: BaseLinker dostaje je przez własną integrację.",
     payment: "Płatność",
     importedAt: "Zaimportowano",
+    loading: "Wczytuję dane z BaseLinkera",
+    failed: "Nie udało się odczytać danych BaseLinkera dla tego zamówienia.",
+    skip: {
+      canceled: "Zamówienie jest anulowane, więc nie trafia do BaseLinkera.",
+      skip_key: "Oznaczone jako zamówienie testowe (klucz pominięcia w metadanych zamówienia), więc zostaje poza BaseLinkerem.",
+      marketplace_order: "Zamówienie pobrane prosto z marketplace'u: BaseLinker dostaje je przez własną integrację.",
+    },
   },
   productWidget: {
     title: "BaseLinker",
@@ -306,6 +319,12 @@ const pl: typeof en = {
     more: "Wszystkie karty",
     container: "Karta główna z wariantami",
     containerNote: "Trzyma karty wariantów, sama nie jest łączona z wariantem.",
+    loading: "Wczytuję karty BaseLinkera",
+    failed: "Nie udało się odczytać kart BaseLinkera dla tego produktu.",
+    moreCards_one: "i jeszcze {{count}} karta",
+    moreCards_few: "i jeszcze {{count}} karty",
+    moreCards_many: "i jeszcze {{count}} kart",
+    moreCards_other: "i jeszcze {{count}} karty",
   },
   toast: {
     started: "Uruchomione. Wynik pojawi się tu za chwilę.",

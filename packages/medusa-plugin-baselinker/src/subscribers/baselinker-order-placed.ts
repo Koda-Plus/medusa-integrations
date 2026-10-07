@@ -1,8 +1,8 @@
 import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { isSkipped } from "../modules/baselinker/lib/order-payload"
-import { exportVerdict } from "../modules/baselinker/lib/order-import"
 import { canExportOrders } from "../modules/baselinker/lib/options"
-import { enqueueOrder, exportSkipReason, kickOrders, loadOrderHead } from "../workflows/baselinker/orders"
+import { exportVerdictOf } from "../workflows/baselinker/order-facts"
+import { enqueueOrder, exportSkipCode, exportSkipReason, kickOrders, loadOrderHead } from "../workflows/baselinker/orders"
 import { baselinkerService } from "../workflows/baselinker/runtime"
 
 /**
@@ -21,8 +21,10 @@ import { baselinkerService } from "../workflows/baselinker/runtime"
  *
  * THE LOOP GUARD (0.2): an order this plugin imported from BaseLinker gets no
  * row at all (it lives in the imported orders); an order another plugin took
- * straight from a marketplace (`metadata.marketplace_order_ref`) gets a
- * `skipped` row unless `exportMarketplaceOrders` is on.
+ * straight from a marketplace (`metadata.marketplace_order_ref` on an order
+ * backend code created) gets a `skipped` row unless `exportMarketplaceOrders`
+ * is on. "Imported" is the plugin's import table, never order metadata: a
+ * shopper sets cart metadata, and Medusa copies it to the order.
  */
 export default async function baselinkerOrderPlaced({ event: { data }, container }: SubscriberArgs<{ id: string }>): Promise<void> {
   const svc = baselinkerService(container)
@@ -31,7 +33,7 @@ export default async function baselinkerOrderPlaced({ event: { data }, container
   try {
     const order = await loadOrderHead(container, data.id)
     if (!order || order.status === "canceled") return
-    const verdict = exportVerdict(order.metadata, o.exportMarketplaceOrders)
+    const verdict = await exportVerdictOf(container, order)
     if (!verdict.send && verdict.reason === "imported") return
     const skip = isSkipped(order.metadata, o.skipOrderMetadataKey)
     await enqueueOrder(container, {
@@ -42,6 +44,7 @@ export default async function baselinkerOrderPlaced({ event: { data }, container
         : skip
           ? `order.metadata.${o.skipOrderMetadataKey} is true, so the order stays out of BaseLinker.`
           : null,
+      skipCode: !verdict.send ? exportSkipCode(verdict) : skip ? "skip_key" : null,
     })
     if (verdict.send && !skip) kickOrders(container, "auto")
   } catch (err) {

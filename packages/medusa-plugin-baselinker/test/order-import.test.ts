@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {
   cancelDecision,
   exportVerdict,
+  metadataRef,
   importVerdict,
   mapOrder,
   marketplaceRef,
@@ -36,7 +37,7 @@ const allegro: BlOrder = {
   currency: "PLN",
   payment_method_cod: "0",
   payment_done: 129.98,
-  email: "abc+1@allegromail.pl",
+  email: "abc+1@allegromail.example.com",
   phone: "+48 600 100 200",
   user_comments: "Proszę zadzwonić",
   admin_comments: "",
@@ -97,7 +98,7 @@ test("mapping: lines by the card link, unlinked lines kept as custom lines, gros
   assert.equal(input.is_draft_order, true)
   assert.equal(input.no_notification, true)
   assert.equal(input.email, undefined, "no guest customer from the e-mail")
-  assert.equal(mapped.email, "abc+1@allegromail.pl")
+  assert.equal(mapped.email, "abc+1@allegromail.example.com")
   assert.equal(input.currency_code, "pln")
   assert.deepEqual(input.items[0], {
     variant_id: "var_a",
@@ -158,10 +159,14 @@ test("age, cancellation and the export side of the loop guard", () => {
   assert.equal(cancelDecision({ statusId: 9, cancelIds: [9], fulfilledQuantity: 1, alreadyCanceled: false }), "flag")
   assert.equal(cancelDecision({ statusId: 8, cancelIds: [9], fulfilledQuantity: 0, alreadyCanceled: false }), "none")
   assert.equal(cancelDecision({ statusId: 9, cancelIds: [9], fulfilledQuantity: 0, alreadyCanceled: true }), "none")
-  assert.deepEqual(exportVerdict({ baselinker_imported: true }, true), { send: false, reason: "imported", ref: null })
-  assert.deepEqual(exportVerdict({ marketplace_order_ref: "allegro:x" }, false), { send: false, reason: "marketplace", ref: "allegro:x" })
-  assert.deepEqual(exportVerdict({ marketplace_order_ref: "allegro:x" }, true), { send: true })
-  assert.deepEqual(exportVerdict(null, false), { send: true })
+  /* The verdict takes facts (the import table, a reference on an order backend code created), never raw metadata. */
+  assert.deepEqual(exportVerdict({ imported: true, marketplaceRef: null }, true), { send: false, reason: "imported", ref: null })
+  assert.deepEqual(exportVerdict({ imported: false, marketplaceRef: "allegro:x" }, false), { send: false, reason: "marketplace", ref: "allegro:x" })
+  assert.deepEqual(exportVerdict({ imported: false, marketplaceRef: "allegro:x" }, true), { send: true })
+  assert.deepEqual(exportVerdict({ imported: false, marketplaceRef: null }, false), { send: true })
+  assert.equal(metadataRef({ marketplace_order_ref: "  allegro:x " }), "allegro:x")
+  assert.equal(metadataRef({ marketplace_order_ref: 42 }), null)
+  assert.equal(metadataRef(null), null)
 })
 
 const cards = [

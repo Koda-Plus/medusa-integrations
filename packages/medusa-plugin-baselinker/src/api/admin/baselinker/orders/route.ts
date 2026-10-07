@@ -1,8 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { OrderFilter, OrdersResponse } from "../../../../modules/baselinker/lib/contract"
 import { toOrderDto, type OrderRow } from "../../../../modules/baselinker/lib/dto"
-import { refreshDemoStatuses } from "../../../../workflows/baselinker/statuses"
-import { baselinkerService, intParam, strParam } from "../helpers"
+import { baselinkerService, guarded, intParam, strParam } from "../helpers"
 
 const FILTERS: readonly OrderFilter[] = ["all", "pending", "sent", "failed", "skipped"]
 
@@ -11,10 +10,10 @@ const FILTERS: readonly OrderFilter[] = ["all", "pending", "sent", "failed", "sk
  *
  * The order outbox and the way back, newest first. `q` matches the order
  * number (`1042` or `#1042`), a Medusa order id or a BaseLinker order id.
+ * Reads only.
  */
-export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
-  await refreshDemoStatuses(req.scope)
   const limit = intParam(req.query.limit, 20, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 1_000_000)
   const raw = strParam(req.query.filter) as OrderFilter
@@ -35,4 +34,4 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   } as never)) as unknown as [OrderRow[], number]
   const body: OrdersResponse = { orders: rows.map(toOrderDto), count, limit, offset }
   res.json(body)
-}
+})

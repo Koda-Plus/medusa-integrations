@@ -55,10 +55,11 @@ import { createOrderOnce, findOrderByMarker, type CreateOnceResult } from "./exa
 import { normalizeSku } from "./matching"
 import type { AddOrderPayload } from "./order-payload"
 import { BaseLinkerWriteBlockedError, isCallAllowed, isCreatingMethod, isReadMethod, maskSecrets } from "./security"
+import { KIT_META } from "./kit-meta"
 
 export const BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
 
-const USER_AGENT = "KodaPlus-Medusa-BaseLinker/0.2 (+https://koda.plus)"
+const USER_AGENT = `KodaPlus-BaseLinker-Plugin/${KIT_META.version} (+https://koda.plus)`
 
 /** Warnings of a bulk update: product id to message. Only failed products are listed. */
 export interface BulkResult {

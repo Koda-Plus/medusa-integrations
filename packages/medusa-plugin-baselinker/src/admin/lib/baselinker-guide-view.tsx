@@ -59,7 +59,7 @@ export function usePromptSpec(): SetupPromptSpec {
       summary: t("subtitle"),
       needs: Array.isArray(needs) ? (needs as string[]) : [],
       config: `${TOKEN}\n\n${CONFIG}`,
-      demo: 'demo: process.env.BASELINKER_DEMO === "true" || !process.env.BASELINKER_API_TOKEN,',
+      demo: 'demo: process.env.BASELINKER_DEMO === "true",',
     }
   }, [t])
 }

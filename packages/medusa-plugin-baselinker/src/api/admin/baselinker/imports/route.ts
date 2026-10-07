@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { ImportFilter, ImportsResponse } from "../../../../modules/baselinker/lib/contract"
 import { toImportDto, type ImportRow } from "../../../../modules/baselinker/lib/dto"
-import { baselinkerService, intParam, like, strParam } from "../helpers"
+import { baselinkerService, guarded, intParam, like, strParam } from "../helpers"
 
 const FILTERS: readonly ImportFilter[] = ["all", "pending", "imported", "skipped", "failed", "flagged"]
 
@@ -13,7 +13,7 @@ const FILTERS: readonly ImportFilter[] = ["all", "pending", "imported", "skipped
  * reason) or failed. `q` matches a BaseLinker id, a Medusa order number or a
  * marketplace reference. No buyer data: it lives on the Medusa order only.
  */
-export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const limit = intParam(req.query.limit, 20, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 1_000_000)
@@ -35,4 +35,4 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   } as never)) as unknown as [ImportRow[], number]
   const body: ImportsResponse = { imports: rows.map(toImportDto), count, limit, offset }
   res.json(body)
-}
+})

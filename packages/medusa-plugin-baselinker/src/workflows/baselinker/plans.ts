@@ -53,10 +53,16 @@ function chunks<T>(list: readonly T[], size: number): T[][] {
   return out
 }
 
-/** Replaces the stored plan of one kind in the current mode. */
+/**
+ * Replaces the stored plan of one kind. A live plan also clears the demo
+ * plan of that kind (a real account starts clean); a demo plan never
+ * touches the live one.
+ */
 export async function replacePlan(svc: BaseLinkerModuleService, kind: PlanKind, runId: string | null, items: readonly PlanItemData[]): Promise<void> {
   const demo = svc.isDemo()
-  const old = (await svc.listBaseLinkerPlanItems({ kind } as never, { take: null, select: ["id"] } as never)) as unknown as Array<{ id: string }>
+  const old = (await svc.listBaseLinkerPlanItems((demo ? { kind, demo: true } : { kind }) as never, { take: null, select: ["id"] } as never)) as unknown as Array<{
+    id: string
+  }>
   for (const part of chunks(old.map((r) => r.id), 500)) await svc.deleteBaseLinkerPlanItems(part)
   const rows = items.map((i) => ({
     kind,

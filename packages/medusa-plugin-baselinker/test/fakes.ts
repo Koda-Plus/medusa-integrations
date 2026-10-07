@@ -18,10 +18,28 @@ function cmp(a: unknown, b: unknown): number {
   return (x as number) < (y as number) ? -1 : 1
 }
 
+function likeRegex(pattern: string): RegExp {
+  let out = ""
+  for (let i = 0; i < pattern.length; i += 1) {
+    const c = pattern[i]
+    if (c === "\\" && i + 1 < pattern.length) {
+      out += pattern[i + 1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      i += 1
+    } else if (c === "%") out += ".*"
+    else if (c === "_") out += "."
+    else out += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  }
+  return new RegExp(`^${out}$`, "is")
+}
+
 export function matches(row: Row, filter: Record<string, unknown>): boolean {
   for (const [key, cond] of Object.entries(filter ?? {})) {
     if (key === "$or") {
       if (!(cond as Array<Record<string, unknown>>).some((f) => matches(row, f))) return false
+      continue
+    }
+    if (key === "$and") {
+      if (!(cond as Array<Record<string, unknown>>).every((f) => matches(row, f))) return false
       continue
     }
     const v = row[key]
@@ -33,6 +51,8 @@ export function matches(row: Row, filter: Record<string, unknown>): boolean {
       const c = cond as Record<string, unknown>
       if ("$ne" in c && (c.$ne === null ? v === null || v === undefined : v === c.$ne)) return false
       if ("$in" in c && !(c.$in as unknown[]).includes(v)) return false
+      if ("$nin" in c && (c.$nin as unknown[]).includes(v)) return false
+      if ("$ilike" in c && !(typeof v === "string" && likeRegex(String(c.$ilike)).test(v))) return false
       if ("$lte" in c && !(v !== null && v !== undefined && cmp(v, c.$lte) <= 0)) return false
       if ("$lt" in c && !(v !== null && v !== undefined && cmp(v, c.$lt) < 0)) return false
       if ("$gte" in c && !(v !== null && v !== undefined && cmp(v, c.$gte) >= 0)) return false

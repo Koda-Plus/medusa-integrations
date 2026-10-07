@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { ReleaseResponse } from "../../../../../../modules/baselinker/lib/contract"
 import { releaseQuarantine } from "../../../../../../workflows/baselinker/plans"
-import { actorOf, baselinkerService } from "../../../helpers"
+import { actorOf, baselinkerService, guarded } from "../../../helpers"
 
 /**
  * POST /admin/baselinker/quarantine/:id/release
@@ -11,7 +11,7 @@ import { actorOf, baselinkerService } from "../../../helpers"
  * tries it again. A POST, not a DELETE: the quarantine row stays, with who
  * released it and when.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const actor = await actorOf(req)
   const released = await releaseQuarantine(svc, req.params.id, actor.label ?? actor.id)
@@ -21,4 +21,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   }
   const body: ReleaseResponse = { released }
   res.json(body)
-}
+})

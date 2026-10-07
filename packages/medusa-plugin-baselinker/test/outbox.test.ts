@@ -6,95 +6,29 @@
  */
 import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
-import { resolveOptions, type BaseLinkerPluginOptions } from "../src/modules/baselinker/lib/options.ts"
-import { maskSecrets } from "../src/modules/baselinker/lib/security.ts"
-import { sendOrderNow } from "../src/workflows/baselinker/orders.ts"
+import type { BaseLinkerPluginOptions } from "../src/modules/baselinker/lib/options.ts"
+import { sendDueOrders, sendOrderNow } from "../src/workflows/baselinker/orders.ts"
+import { fakeService } from "./fakes.ts"
 
 type Row = Record<string, any>
 
-function matches(row: Row, filter: Record<string, unknown>): boolean {
-  for (const [key, cond] of Object.entries(filter)) {
-    const v = row[key]
-    if (Array.isArray(cond)) {
-      if (!cond.includes(v)) return false
-    } else if (cond === null) {
-      if (v !== null && v !== undefined) return false
-    } else if (cond && typeof cond === "object" && !(cond instanceof Date)) {
-      const c = cond as Record<string, unknown>
-      if ("$ne" in c && (c.$ne === null ? v === null || v === undefined : v === c.$ne)) return false
-      if ("$lte" in c && !(v && new Date(v).getTime() <= new Date(c.$lte as Date).getTime())) return false
-      if ("$gte" in c && !(v && new Date(v).getTime() >= new Date(c.$gte as Date).getTime())) return false
-    } else if (v !== cond) return false
-  }
-  return true
-}
-
-class Table {
-  rows: Row[] = []
-  private seq = 0
-  private readonly prefix: string
-  constructor(prefix: string) {
-    this.prefix = prefix
-  }
-  list(filter: Record<string, unknown> = {}, config: { skip?: number; take?: number | null } = {}): Row[] {
-    const found = this.rows.filter((r) => matches(r, filter))
-    const skip = config.skip ?? 0
-    const take = config.take === null || config.take === undefined ? found.length : config.take
-    return found.slice(skip, skip + take).map((r) => ({ ...r }))
-  }
-  create(data: Row | Row[]): Row | Row[] {
-    const one = (d: Row) => {
-      const row = { id: `${this.prefix}_${++this.seq}`, created_at: new Date(), updated_at: new Date(), ...d }
-      if (this.prefix === "blord" && this.rows.some((r) => r.order_id === row.order_id && r.demo === row.demo)) throw new Error("unique violation")
-      this.rows.push(row)
-      return { ...row }
-    }
-    return Array.isArray(data) ? data.map(one) : one(data)
-  }
-  update(data: Row | Row[]): Row | Row[] {
-    const one = (d: Row) => {
-      const row = this.rows.find((r) => r.id === d.id)
-      if (!row) throw new Error(`no row ${d.id}`)
-      Object.assign(row, d, { updated_at: new Date() })
-      return { ...row }
-    }
-    return Array.isArray(data) ? data.map(one) : one(data)
-  }
-  delete(ids: string[]): void {
-    this.rows = this.rows.filter((r) => !ids.includes(r.id))
-  }
-}
-
 const TOKEN = "5012345-5067890-QWERTYUIOPASDFGHJKLZXCVBNM1234567890ABCDEFGHIJKLMNOP"
 
-function setup(options: BaseLinkerPluginOptions, order: Row, extra: Record<string, unknown> = {}) {
-  const o = resolveOptions(options)
-  const orders = new Table("blord")
-  const products = new Table("blprod")
-  const runs = new Table("blrun")
-  const svc = {
-    getOptions: () => o,
-    getLogger: () => ({ info: () => undefined, warn: () => undefined, error: () => undefined }),
-    isDemo: () => o.demo,
-    isConfigured: () => true,
-    missingOptions: () => [],
-    mask: (s: string) => maskSecrets(s, [o.apiToken]),
-    listBaseLinkerOrders: async (f: Row, c: Row) => orders.list(f, c),
-    createBaseLinkerOrders: async (d: Row) => orders.create(d),
-    updateBaseLinkerOrders: async (d: Row) => orders.update(d),
-    listBaseLinkerProducts: async (f: Row, c: Row) => products.list(f, c),
-    createBaseLinkerSyncRuns: async (d: Row) => runs.create(d),
-    listBaseLinkerSyncRuns: async (f: Row, c: Row) => runs.list(f, c),
-    deleteBaseLinkerSyncRuns: async (ids: string[]) => runs.delete(ids),
-  }
+function setup(options: BaseLinkerPluginOptions, order: Row, extra: Record<string, unknown> = {}, graph?: (args: Row) => Row[]) {
+  const f = fakeService(options)
+  const orders = f.table("Orders")
+  const products = f.table("Products")
+  const settings = f.table("Settings")
+  const imports = f.table("Imports")
   const events: Array<{ name: string; data: Row }> = []
   const metadata: Row = { ...(order.metadata ?? {}) }
   const registry: Record<string, unknown> = {
-    baselinker: svc,
+    baselinker: f.svc,
     query: {
-      graph: async ({ entity, filters }: Row) => ({
-        data: entity === "order" && filters?.id === order.id ? [{ ...order, metadata: { ...metadata } }] : [],
-      }),
+      graph: async (args: Row) => {
+        if (graph) return { data: graph(args) }
+        return { data: args.entity === "order" && args.filters?.id === order.id ? [{ ...order, metadata: { ...metadata } }] : [] }
+      },
     },
     order: {
       retrieveOrder: async (id: string) => ({ id, metadata: { ...metadata } }),
@@ -111,7 +45,7 @@ function setup(options: BaseLinkerPluginOptions, order: Row, extra: Record<strin
       return registry[key]
     },
   }
-  return { container, orders, products, events, metadata }
+  return { container, orders, products, settings, imports, events, metadata, logs: f.logs }
 }
 
 /** A scripted connector.php that remembers the orders it holds. */
@@ -161,14 +95,15 @@ const order: Row = {
 
 const live: BaseLinkerPluginOptions = { apiToken: TOKEN, inventoryId: 23397, warehouseId: "bl_1", orderStatusId: 122665 }
 
-test("demo: the order gets a simulated BaseLinker id, the metadata and the event", async () => {
+test("demo: the order gets a simulated BaseLinker id in the plugin's row only, never in its metadata, and no event", async () => {
   const s = setup({ demo: true }, order)
   const out = await sendOrderNow(s.container, order.id)
   assert.equal(out.status, "sent")
   assert.equal(out.blOrderId, "9100001")
   assert.equal(s.orders.rows[0].status, "sent")
-  assert.equal(s.metadata.baselinker_order_id, "9100001")
-  assert.equal(s.events[0].name, "baselinker.order_sent")
+  assert.equal(s.orders.rows[0].demo, true)
+  assert.equal(s.metadata.baselinker_order_id, undefined, "a real order never gets a simulated number")
+  assert.equal(s.events.length, 0, "no event for a simulation")
   assert.equal((await sendOrderNow(s.container, order.id)).blOrderId, "9100001", "never twice")
 })
 
@@ -253,16 +188,147 @@ test("test orders and canceled orders stay out, unless an earlier attempt alread
   assert.equal(bl.methods().includes("addOrder"), false)
 })
 
-test("a second sender of the same order is turned away while the first holds the lock", async () => {
-  const s = setup({ demo: true }, order, {
-    locking: {
-      acquire: async () => {
-        throw new Error('Failed to acquire lock for key "baselinker:order"')
-      },
-      release: async () => true,
-    },
-  })
+test("a second sender of the same order is turned away while another process holds its lease", async () => {
+  const s = setup({ demo: true }, order)
+  /* Another process (the worker, while this is the server) holds the order. */
+  s.settings.rows.push({ id: "blset_other", key: `lease:lock:baselinker:order:${order.id}`, demo: true, value: { owner: "other", until: new Date(Date.now() + 60_000).toISOString() } })
   const out = await sendOrderNow(s.container, order.id)
   assert.equal(out.status, "busy")
   assert.equal(s.orders.rows.length, 0)
+  assert.equal(s.settings.rows.length, 1, "the other holder's lease stays")
+})
+
+test("a lease whose process died is taken over, and the lease is gone after the send", async () => {
+  const s = setup({ demo: true }, order)
+  s.settings.rows.push({ id: "blset_dead", key: `lease:lock:baselinker:order:${order.id}`, demo: true, value: { owner: "dead", until: new Date(Date.now() - 1000).toISOString() } })
+  const out = await sendOrderNow(s.container, order.id)
+  assert.equal(out.status, "sent")
+  assert.equal(s.settings.rows.length, 0)
+})
+
+test("a lock store that does not answer is an error, never a quiet busy", async () => {
+  const s = setup({ demo: true }, order)
+  const svc = s.container.resolve("baselinker") as Record<string, unknown>
+  const original = svc.listBaseLinkerSettings
+  ;(svc as Record<string, unknown>).listBaseLinkerSettings = async () => {
+    throw new Error("connection refused")
+  }
+  await assert.rejects(() => sendOrderNow(s.container, order.id), (err: Error & { code?: string }) => err.code === "lock_unavailable")
+  ;(svc as Record<string, unknown>).listBaseLinkerSettings = original
+})
+
+test("the queue reads the row again under the lease: a row another process sent a moment ago gets no extra attempt", async () => {
+  const bl = fakeBaseLinker("ok")
+  globalThis.fetch = bl.fetchImpl
+  const s = setup(live, order)
+  s.orders.rows.push({ id: "blord_1", order_id: order.id, demo: false, status: "pending", attempts: 0, next_attempt_at: new Date(Date.now() - 1000), bl_order_id: null, display_id: 1042, created_at: new Date() })
+  const svc = s.container.resolve("baselinker") as Record<string, (...a: unknown[]) => Promise<unknown>>
+  const list = svc.listBaseLinkerOrders
+  let first = true
+  svc.listBaseLinkerOrders = async (...args: unknown[]) => {
+    const rows = (await list(...args)) as Row[]
+    if (first) {
+      first = false
+      /* Between the list of due rows and the lock, another process sent the order. */
+      Object.assign(s.orders.rows[0], { status: "sent", bl_order_id: "7001", next_attempt_at: null })
+    }
+    return rows
+  }
+  const stats = await sendDueOrders(s.container, "schedule")
+  assert.equal(stats?.sent, 0)
+  assert.equal(stats?.busy, 1)
+  assert.equal(bl.calls.length, 0, "nothing went to BaseLinker")
+  assert.equal(s.orders.rows[0].attempts, 0)
+})
+
+test("one run of the queue across processes: a live job lease elsewhere makes this pass step aside", async () => {
+  const s = setup(live, order)
+  s.settings.rows.push({ id: "blset_job", key: "lease:job:orders", demo: false, value: { owner: "worker", until: new Date(Date.now() + 60_000).toISOString() } })
+  assert.equal(await sendDueOrders(s.container, "manual"), null)
+})
+
+test("totals Medusa cannot compute: the order is read without them and sent with totals from its lines", async () => {
+  const bl = fakeBaseLinker("ok")
+  globalThis.fetch = bl.fetchImpl
+  const lines: Row = {
+    ...order,
+    total: undefined,
+    shipping_total: undefined,
+    items: [{ id: "ordli_1", title: "Opona", variant_id: "variant_1", variant_sku: "OP-1", detail: { quantity: 2 }, unit_price: 50, is_tax_inclusive: true, adjustments: [{ amount: 10 }], tax_lines: [{ rate: 23 }] }],
+    shipping_methods: [{ name: "Kurier", amount: 16.26, is_tax_inclusive: false, tax_lines: [{ rate: 23 }] }],
+    payment_collections: [{ status: "authorized", amount: 110, payments: [{ provider_id: "pp_stripe_stripe", amount: 110, captured_at: "2026-10-05T09:16:00.000Z" }] }],
+  }
+  const asked: string[][] = []
+  const s = setup(live, order, {}, (args) => {
+    asked.push(args.fields ?? [])
+    if (args.entity !== "order") return []
+    if ((args.fields ?? []).includes("total")) throw new Error("Shipping method with id osm_1 has no version")
+    return [lines]
+  })
+  const out = await sendOrderNow(s.container, order.id)
+  assert.equal(out.status, "sent")
+  const payload = bl.calls.find((c) => c.method === "addOrder")?.params as Row
+  assert.equal(payload.products[0].price_brutto, 45, "(2 x 50 - 10) / 2")
+  assert.equal(payload.delivery_price, 20, "16.26 net plus 23 percent")
+  assert.match(String(payload.admin_comments), /totals computed from the lines/)
+  assert.equal(payload.paid, 1, "captured 110 covers the computed 110 and the collection")
+  assert.ok(asked.some((f) => !f.includes("total") && f.includes("items.adjustments.*")))
+})
+
+test("totals from lines never mark an order paid when the capture covers less than the collection", async () => {
+  const bl = fakeBaseLinker("ok")
+  globalThis.fetch = bl.fetchImpl
+  const lines: Row = {
+    ...order,
+    items: [{ id: "ordli_1", title: "Opona", detail: { quantity: 1 }, unit_price: 100, is_tax_inclusive: true }],
+    shipping_methods: [],
+    payment_collections: [{ status: "authorized", amount: 150, payments: [{ provider_id: "pp_stripe_stripe", amount: 100, captured_at: "2026-10-05T09:16:00.000Z" }] }],
+  }
+  const s = setup(live, order, {}, (args) => {
+    if ((args.fields ?? []).includes("total")) throw new Error("no version")
+    return args.entity === "order" ? [lines] : []
+  })
+  assert.equal((await sendOrderNow(s.container, order.id)).status, "sent")
+  assert.equal((bl.calls.find((c) => c.method === "addOrder")?.params as Row).paid, 0)
+})
+
+test("when the order cannot be read with or without totals, the row waits with totals_unavailable", async () => {
+  const bl = fakeBaseLinker("ok")
+  globalThis.fetch = bl.fetchImpl
+  const s = setup(live, order, {}, () => {
+    throw new Error("database is down")
+  })
+  s.orders.rows.push({ id: "blord_1", order_id: order.id, demo: false, status: "pending", attempts: 0, next_attempt_at: new Date(), bl_order_id: null, display_id: 1042 })
+  const out = await sendOrderNow(s.container, order.id)
+  assert.equal(out.status, "retry")
+  assert.equal(out.code, "totals_unavailable")
+  assert.equal(bl.calls.length, 0)
+})
+
+test("metadata a shopper can set decides nothing: baselinker_imported without an import row still goes, with one it stays out", async () => {
+  const bl = fakeBaseLinker("ok")
+  globalThis.fetch = bl.fetchImpl
+  const forged = { ...order, metadata: { baselinker_imported: true, baselinker_order_id: "9999" } }
+  const a = setup(live, forged)
+  assert.equal((await sendOrderNow(a.container, order.id)).status, "sent")
+
+  const b = setup(live, order)
+  b.imports.rows.push({ id: "blimp_1", bl_order_id: "8001", order_id: order.id, demo: false, status: "imported" })
+  const out = await sendOrderNow(b.container, order.id)
+  assert.equal(out.status, "skipped")
+  assert.equal(out.code, "imported")
+})
+
+test("a marketplace reference counts only on an order backend code created: from a cart it is the shopper's word", async () => {
+  const bl = fakeBaseLinker("ok")
+  globalThis.fetch = bl.fetchImpl
+  const ref = { ...order, metadata: { marketplace_order_ref: "allegro:abc" } }
+  const fromCart = setup(live, ref, {}, (args) => (args.entity === "order" ? [{ ...ref, cart: { id: "cart_1" } }] : []))
+  assert.equal((await sendOrderNow(fromCart.container, order.id)).status, "sent")
+
+  const fromBackend = setup(live, ref)
+  const out = await sendOrderNow(fromBackend.container, order.id)
+  assert.equal(out.status, "skipped")
+  assert.equal(out.code, "marketplace_order")
+  assert.equal(fromBackend.orders.rows[0].last_error_code, "marketplace_order")
 })

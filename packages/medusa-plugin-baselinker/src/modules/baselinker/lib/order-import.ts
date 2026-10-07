@@ -11,7 +11,9 @@
  * LOOP GUARD, both ways:
  *   - an order this plugin SENT to BaseLinker carries `[medusa:<id>]` in
  *     `admin_comments` (and our own custom source): never imported back;
- *   - an order this plugin IMPORTED carries `metadata.baselinker_imported`:
+ *   - an order this plugin IMPORTED has a row in `baselinker_import` (the
+ *     order also carries `metadata.baselinker_imported`, for people, but
+ *     the table decides):
  *     the export never sends it to BaseLinker again (see `exportVerdict`);
  *   - `metadata.marketplace_order_ref` (`"allegro:<checkout form id>"`) is
  *     shared with the other Koda Plus marketplace plugins: when any Medusa
@@ -184,6 +186,10 @@ export interface ImportContext {
   shippingOptionId: string | null
   /** BaseLinker card id (product or variant) to Medusa variant id. */
   links: ReadonlyMap<string, string>
+  /** The id of the import row: stored on the order, so a recovery adopts only the order this row created. */
+  importId?: string | null
+  /** Demo mode: the order is sample data (`metadata.baselinker_demo`). */
+  demo?: boolean
 }
 
 export interface MappedLine {
@@ -299,6 +305,8 @@ export function mapOrder(o: BlOrder, ctx: ImportContext): MappedOrder {
     [ORDER_METADATA.source]: source,
     [ORDER_METADATA.externalOrderId]: text(o.external_order_id),
     ...(ref ? { [ORDER_METADATA.marketplaceRef]: ref } : {}),
+    ...(ctx.importId ? { [ORDER_METADATA.importId]: ctx.importId } : {}),
+    ...(ctx.demo ? { [ORDER_METADATA.demo]: true } : {}),
     ...(text(o.user_comments) ? { customer_note: text(o.user_comments) } : {}),
     ...(wantsInvoice ? { invoice: true } : {}),
     ...(wantsInvoice && text(o.invoice_nip) ? { invoice_nip: text(o.invoice_nip) } : {}),
@@ -412,16 +420,31 @@ export function cancelDecision(args: { statusId: number | null; cancelIds: reado
 export type ExportVerdict = { send: true } | { send: false; reason: "imported" | "marketplace"; ref: string | null }
 
 /**
+ * What the plugin knows for certain about an order, for the loop guard.
+ * Never order metadata alone: a shopper sets cart metadata through the Store
+ * API and Medusa copies it to the order.
+ */
+export interface ExportFacts {
+  /** This plugin created the order from a BaseLinker order: its import table says so. */
+  imported: boolean
+  /** The shared marketplace reference, only when backend code created the order (it has no cart). */
+  marketplaceRef: string | null
+}
+
+/**
  * Whether a Medusa order may go to BaseLinker. Never one this plugin
  * imported; not one another plugin took straight from a marketplace, unless
  * `exportMarketplaceOrders` is on (BaseLinker would otherwise hold it twice,
  * once from its own marketplace integration).
  */
-export function exportVerdict(metadata: Record<string, unknown> | null | undefined, exportMarketplaceOrders: boolean): ExportVerdict {
-  const m = metadata ?? {}
-  const imported = m[ORDER_METADATA.imported]
-  if (imported === true || imported === "true") return { send: false, reason: "imported", ref: typeof m[ORDER_METADATA.marketplaceRef] === "string" ? (m[ORDER_METADATA.marketplaceRef] as string) : null }
-  const ref = typeof m[ORDER_METADATA.marketplaceRef] === "string" && (m[ORDER_METADATA.marketplaceRef] as string).trim() ? (m[ORDER_METADATA.marketplaceRef] as string) : null
-  if (ref && !exportMarketplaceOrders) return { send: false, reason: "marketplace", ref }
+export function exportVerdict(facts: ExportFacts, exportMarketplaceOrders: boolean): ExportVerdict {
+  if (facts.imported) return { send: false, reason: "imported", ref: facts.marketplaceRef }
+  if (facts.marketplaceRef && !exportMarketplaceOrders) return { send: false, reason: "marketplace", ref: facts.marketplaceRef }
   return { send: true }
+}
+
+/** The marketplace reference written in order metadata, trimmed, or null. Trusted only with the facts above. */
+export function metadataRef(metadata: Record<string, unknown> | null | undefined): string | null {
+  const raw = metadata?.[ORDER_METADATA.marketplaceRef]
+  return typeof raw === "string" && raw.trim() ? raw.trim().slice(0, 200) : null
 }

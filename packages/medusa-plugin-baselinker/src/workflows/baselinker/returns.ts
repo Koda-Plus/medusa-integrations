@@ -75,7 +75,7 @@ async function readLive(svc: BaseLinkerModuleService, stats: ReturnsStats): Prom
 
 /** Reads the returns of the window and refreshes the snapshot. One read per process at a time. */
 export async function syncReturns(scope: Scope, trigger: RunTrigger): Promise<ReturnsStats | null> {
-  return exclusive("returns", async () => {
+  return exclusive(scope, "returns", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const stats: ReturnsStats = { pages: 0, read: 0, created: 0, updated: 0, linked: 0, complete: true }

@@ -49,7 +49,7 @@ async function optional<T>(read: () => Promise<T>, fallback: T): Promise<T> {
 }
 
 export async function checkConnection(scope: Scope): Promise<CheckResult | null> {
-  return exclusive("check", async () => {
+  return exclusive(scope, "check", async () => {
     const svc = baselinkerService(scope)
     const o = svc.getOptions()
     const mode = o.demo ? "demo" : "live"
@@ -105,7 +105,7 @@ export async function checkConnection(scope: Scope): Promise<CheckResult | null>
         warehouses: [],
       }
     }
-    rememberCheck(result)
+    await rememberCheck(svc, result)
     return result
   })
 }

@@ -6,7 +6,7 @@ Every write that changes data ships switched off. It waits behind a plan your te
 
 ![BaseLinker page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-baselinker/docs/admin-baselinker.png)
 
-**Live demo:** Medusa admin [medusa.koda.plus/app/baselinker](https://medusa.koda.plus/app/baselinker?demo=en), signed in to a public demo account by the link itself, and the storefront [demo.koda.plus](https://demo.koda.plus). The demo runs the plugin in demo mode, so every screen has data: place an order in the storefront and watch it reach "Wysłane" with a tracking number a few minutes later, read the plans, arm a writer, and watch simulated Allegro and Amazon orders become Medusa orders. The **Setup guide** view (`?view=guide`) walks through a real setup step by step.
+**Live demo:** Medusa admin [medusa.koda.plus/app/baselinker](https://medusa.koda.plus/app/baselinker?demo=en), signed in to a public demo account by the link itself, and the storefront [demo.koda.plus](https://demo.koda.plus). The demo runs the plugin in demo mode (`demo: true` with `demoCreatesOrders: true`), so every screen has data: place an order in the storefront and watch its BaseLinker row reach "Wysłane" with a tracking number a few minutes later, read the plans, arm a writer, and watch simulated Allegro and Amazon orders become Medusa orders. The **Setup guide** view (`?view=guide`) walks through a real setup step by step.
 
 ## What it syncs
 
@@ -28,7 +28,7 @@ Every write that changes data ships switched off. It waits behind a plan your te
 - **Off until a person arms it.** Seven writers: `catalogImport`, `cards`, `stockToMedusa`, `stockToBaseLinker`, `prices`, `orderImport` and `invoiceNumbers`. Each has two switches. The option `writers: { <name>: false }` is a hard switch: it wins and cannot be overridden from the admin. The arm switch in the admin is stored in the database with who flipped it and when. Both stock writers also need `stockSync: "write"`.
 - **Write barrier by method name.** Every `get*` method passes. `addOrder` passes only while `exportOrders` is on. `addInventoryProduct`, `updateInventoryProductsStock`, `updateInventoryProductsPrices` and `setOrderFields` pass only with the permit of the writer that owns them, which a run gets only while that writer is armed. Every other method (`delete*`, `setOrderStatus`, `setOrderPayment`, `addInvoice` and the rest) is blocked by name before a request leaves the process.
 - **Plan first.** Catalog, card, stock and price changes are computed as a plan (what changes, from what to what), shown in the admin, and applied only by an armed writer, up to a cap per run. An item that fails `quarantineAfter` runs in a row (3 by default) is quarantined until a person releases it. An incomplete read plans nothing, and an item missing from a read is never zeroed or deleted.
-- **Exactly once.** Store orders, marketplace orders and invoice numbers each get a unique row before anything goes to the network and a lease, so a crashed process never leaves a row stuck. Every create is preceded by a lookup: the `[medusa:<order id>]` marker in BaseLinker for store orders, `metadata.baselinker_order_id` and `metadata.marketplace_order_ref` in Medusa for marketplace orders, the SKU in BaseLinker for new cards, the current value of the order field for invoice numbers. An unclear answer is settled by another lookup, never by a blind retry.
+- **Exactly once.** Store orders, marketplace orders and invoice numbers each get a unique row before anything goes to the network and a lease, so a crashed process never leaves a row stuck. One run of each job and one worker per order, marketplace order and invoice document hold across every process of the store (a server and a worker, or several instances), as "Running more than one process" below explains. Every create is preceded by a lookup: the `[medusa:<order id>]` marker in BaseLinker for store orders, `metadata.baselinker_order_id` and `metadata.marketplace_order_ref` in Medusa for marketplace orders, the SKU in BaseLinker for new cards, the current value of the order field for invoice numbers. An unclear answer is settled by another lookup, never by a blind retry.
 - **Retries only for transient errors** (network, timeouts, 5xx responses, the rate limit), with backoff. A refusal about the item itself counts towards its quarantine; an outage does not.
 
 ## Features
@@ -76,7 +76,7 @@ module.exports = defineConfig({
         // stockSync: "plan", // "off" | "plan" | "write"
         // orderImportSources: ["allegro", "amazon:7245"],
         // writers: { prices: false }, // a hard switch: false wins over the admin
-        // demo: true, // simulated BaseLinker built from your catalog, no account needed
+        // demo: process.env.BASELINKER_DEMO === "true", // sample data, only when switched on
       },
     },
   ],
@@ -107,7 +107,9 @@ The **Setup guide** view of the admin page has the same steps, each with its liv
 
 ## Options
 
-Every option is optional. Numbers may come as strings (environment variables), lists as comma separated strings. Missing options never break the boot: the module registers, the admin lists what is missing and each job waits for the options it needs. Demo mode never switches itself on in a real store: set `demo: true`, or `demo: !process.env.BASELINKER_API_TOKEN` as the live demo does.
+Every option is optional. Numbers may come as strings (environment variables), lists as comma separated strings. Missing options never break the boot: the module registers, the admin lists what is missing and each job waits for the options it needs. Demo mode never switches itself on: it runs only with an explicit `demo: true` (the live demo sets `demo: process.env.BASELINKER_DEMO === "true"`). Without a token and without demo mode the plugin says "Not configured" and sends nothing.
+
+Order export starts the moment `exportOrders` is on (the default) and `orderStatusId` is set, before any writer is armed: every new order goes to BaseLinker from then on, test orders of the setup included. Keep `exportOrders: false` until the store goes live, or mark test orders with the skip key.
 
 ### Connection
 
@@ -117,7 +119,8 @@ Every option is optional. Numbers may come as strings (environment variables), l
 - `orderStatusId`: the BaseLinker status new store orders get.
 - `customSourceId` (optional): a custom order source created in BaseLinker, so Medusa orders are labeled there. It also lets the status read fetch 100 orders per request, and keeps the marketplace import from taking our own orders back.
 - `stockLocationId` (optional when the store has one location): the Medusa stock location stock is read from and written to.
-- `demo` (default `false`): the simulated BaseLinker account.
+- `demo` (default `false`): the simulated BaseLinker account. Only an explicit `true` (or `"true"`) switches it on.
+- `demoCreatesOrders` (default `false`): demo mode only. Simulated marketplace orders become Medusa orders of the store (flagged `metadata.baselinker_demo`) once the order import writer is armed. Off, they stay rows of the import list. Meant for a demo store like medusa.koda.plus, never for a store that sells.
 - `requestsPerMinute` (default `80`, at most `100`): self-imposed rate limit shared by every job.
 - `timeoutMs` (default `20000`): one BaseLinker request.
 
@@ -228,11 +231,13 @@ BaseLinker has no idempotency key, and a mapping row written after `addOrder` ca
 2. Every attempt scans `getOrders` (from the order date minus one hour, unconfirmed orders included, paging by `id_from`) for the marker `[medusa:<order id>]`. Found: that BaseLinker order is adopted and nothing is written.
 3. Otherwise one `addOrder`. It is never retried blindly; only a rate limit refusal repeats, because then BaseLinker took nothing.
 4. A timeout, a 502 or broken JSON after `addOrder` means "no answer", not "no order": the plugin waits and scans again. Still not found, the row is retried later, and that attempt scans first.
-5. Success writes `sent`, the BaseLinker order id and `metadata.baselinker_order_id`, and emits `baselinker.order_sent`. After the backoff runs out (about two and a half days) the row is `failed`, `baselinker.order_failed` is emitted, and a person can **Send again**, which is always safe.
+5. Success writes `sent`, the BaseLinker order id and `metadata.baselinker_order_id`, and emits `baselinker.order_sent` (live mode; the demo writes its own row only). After the backoff runs out (about two and a half days) the row is `failed`, `baselinker.order_failed` is emitted, and a person can **Send again**, which is always safe.
 
 Lines whose variant is linked go to their card (`storage: "db"`, the catalog id, the card id), so stock moves on the right card in BaseLinker. Other lines go as free lines with name, SKU and EAN; the order still arrives. The unit price is the line total after discounts divided by the quantity, the tax rate is the highest rate of the line. `paid` is 1 only when the payment is captured in full; `payment_method_cod` marks cash on delivery by payment provider. Invoice fields go only when the buyer asked for one (`metadata.invoice` or a tax id such as `metadata.invoice_nip`), and InPost lockers from the shipping method data become the delivery point.
 
-Orders that came from a marketplace never go back: an order this plugin imported is skipped, and so is an order with `metadata.marketplace_order_ref` from another plugin unless `exportMarketplaceOrders` is on.
+Orders that came from a marketplace never go back: an order this plugin imported (its import table says so, never the order metadata) gets no row, and an order another plugin created with `metadata.marketplace_order_ref` is skipped unless `exportMarketplaceOrders` is on. Every skip is a visible `skipped` row with a code: `canceled`, `skip_key`, `marketplace_order` or `imported`.
+
+If Medusa cannot compute an order's totals (a shipping method without a version, as some orders created by other plugins have), the order is read again without them and its totals are computed from the lines: unit price times quantity minus adjustments, with the tax of the tax lines on net prices. `admin_comments` says so, and `paid` is 1 only when the captured money covers both that sum and the payment collection. When even that read fails, the row waits with `totals_unavailable` and tries again.
 
 ## Marketplace orders into Medusa (exactly once)
 
@@ -243,7 +248,7 @@ Orders that came from a marketplace never go back: an order this plugin imported
 1. The row's next attempt moves ten minutes ahead first, so a crashed process leaves a row that comes back by itself.
 2. An order older than `orderImportMaxAgeHours` waits for a person (**Import now** imports it anyway).
 3. The order is read again from BaseLinker. The buyer's data goes onto the Medusa order and nowhere else.
-4. **Lookups before create:** a Medusa order with this BaseLinker id is adopted. A Medusa order with the same `metadata.marketplace_order_ref` (taken by another plugin or by hand) makes this one `skipped`. The reference is looked up again inside a lock named `marketplace-order-ref:<ref>`, the key the other marketplace plugins of Koda Plus take for the same order, so the one that comes second sees the first one's order.
+4. **Lookups before create:** a Medusa order this row created earlier (it carries the row's id in `metadata.baselinker_import_id`, or it has no cart behind it) is adopted. A Medusa order created by backend code with the same `metadata.marketplace_order_ref` (taken by another plugin or by hand) makes this one `skipped`. An order placed from a storefront cart counts for neither: its metadata is the shopper's word. The reference is looked up again inside a lock named `marketplace-order-ref:<ref>`, the key the other marketplace plugins of Koda Plus take for the same order, so the one that comes second sees the first one's order.
 5. The order is created as a draft with Medusa's own `createOrderWorkflow` and its id is stored at once, then placed with `convertDraftOrderWorkflow`, which reserves the inventory and emits `order.placed`, just as the admin does with draft orders. Lines of linked cards get their variant, other lines stay custom lines; prices come from the order (gross, `is_tax_inclusive`), taxes from the region, delivery becomes a shipping method with its price, a pickup point goes to the shipping method data, and the e-mail is set on the order itself, never through a guest customer.
 6. A payment collection for the total, marked paid through Medusa's `markPaymentCollectionAsPaid` when BaseLinker has the order paid in full. Cash on delivery and unpaid orders stay unpaid until BaseLinker reports the payment.
 
@@ -253,7 +258,7 @@ Imported orders carry `metadata.baselinker_imported`, `baselinker_order_id`, `ba
 
 ## Statuses and the order journal
 
-Every 15 minutes the plugin reads the status, parcel number and carrier of the orders it sent and of the orders it imported, writes them into order metadata and creates fulfillments or cancellations as described above. With `journal: "auto"` it first asks `getJournalList` for order events since the last one it processed; only the orders with events are read. The journal keeps three days and has to be enabled for the account (Account & other, My account, API, or Base support), so the plugin also reads everything the full way every 2 hours, after a gap of more than 2 days, and for as long as the journal has never returned an event.
+Every 15 minutes the plugin reads the status, parcel number and carrier of the orders it sent and of the orders it imported, writes them into its rows and into order metadata and creates fulfillments or cancellations as described above. The 60 orders read in one pass are chosen by the database: never checked first, then the oldest check, closed statuses left out. `baselinker.order_status_changed` is emitted for sent and for imported orders (`imported: true`). With `journal: "auto"` it first asks `getJournalList` for order events since the last one it processed; only the orders with events are read. The journal keeps three days and has to be enabled for the account (Account & other, My account, API, or Base support), so the plugin also reads everything the full way every 2 hours, after a gap of more than 2 days, and for as long as the journal has never returned an event.
 
 ## Returns (read only)
 
@@ -267,17 +272,21 @@ When the Fakturownia plugin of Koda Plus emits `fakturownia.document.issued` for
 
 Without an account, `demo: true` runs every feature against a simulated BaseLinker account built from the store's own catalog, through the same parsers, planners and workflows as live mode. Rows are flagged `demo`, and the admin says it is a simulation on every view.
 
+**The demo writes only its own rows.** The store's orders never get a simulated BaseLinker number, status or parcel in their metadata, and no event goes out for them; a demo plan or snapshot never replaces what a real account read. The snapshot is built by the `baselinker-demo` job (every minute, demo mode only) or by **Prepare now** on the page (`POST /admin/baselinker/demo/prepare`), never by opening a page. A warning goes to the log when demo mode runs in a production build.
+
 - **Catalog**: one card per variant, grouped under a main card for products with several variants, plus cards only BaseLinker has (one of them a bundle, one a main card with two variants), a card duplicated under the same SKU, an EAN on two cards, a renamed card and a few changed prices, so every plan has something to show.
 - **Account**: two price groups (one derived), a `bl_` warehouse and a shop warehouse that cannot take stock, Allegro and Amazon order sources, a custom order field.
 - **Directions**: a visitor may switch the catalog and stock directions in the admin to try each plan; writers "succeed" against the simulation and the next simulated read reflects what they wrote.
-- **Orders**: store orders get BaseLinker ids in seconds and are "shipped" with an InPost number a few minutes later. Deterministic Allegro and Amazon orders appear over the day (at most 5 a day, buyers at `@example.com` only); once a visitor arms the order import writer they become real Medusa orders of the demo store, and their statuses move on, one of them cancelled.
+- **Orders**: store orders get BaseLinker ids in seconds and are "shipped" with an InPost number a few minutes later, in the plugin's rows. Deterministic Allegro and Amazon orders appear over the day (at most 5 a day, buyers at `@example.com` only); with `demoCreatesOrders: true`, once a visitor arms the order import writer they become Medusa orders of the demo store (`metadata.baselinker_demo: true`), and their statuses move on, one of them cancelled.
 - **Returns** and **invoice numbers** are simulated too. Nothing leaves Medusa.
 
 ## Admin API
 
-- `GET /admin/baselinker`: configuration summary (never the token), counters, directions, writers with who armed them and when, references, journal state and the last run of each kind. Reads the database only.
+- `GET /admin/baselinker`: configuration summary (never the token), counters, directions, writers with who armed them and when, references, journal state, the last run of each kind and, in demo mode, whether the snapshot exists. Reads the database only. Every `GET` route only reads, in demo mode too.
+- `GET /admin/baselinker/running`: what runs right now in any process (the job leases); the page polls it while a run is under way.
+- `POST /admin/baselinker/demo/prepare`: demo mode only, builds the simulated snapshot now (idempotent).
 - `POST /admin/baselinker/check`: what the account offers, read now.
-- `POST /admin/baselinker/sync` with `{ "what": "catalog" | "statuses" | "orders" | "imports" | "returns" | "invoices" }`: run a job now (202, background).
+- `POST /admin/baselinker/sync` with `{ "what": "catalog" | "statuses" | "orders" | "imports" | "returns" | "invoices" }`: run a job now (202, background), under the same lease as the scheduled job.
 - `POST /admin/baselinker/writers/:key` with `{ "armed": true | false }`: arm or disarm a writer. Refused while the options switch it off.
 - `POST /admin/baselinker/directions` with `{ "catalog"?, "stock"? }`: demo mode only, to try the other directions.
 - `GET /admin/baselinker/plans?kind=catalog_import|cards|stock_push|prices&filter=&q=`: the plan of one direction.
@@ -295,7 +304,7 @@ Without an account, `demo: true` runs every feature against a simulated BaseLink
 - `POST /admin/baselinker/invoices/:id/retry`: write one invoice number again.
 - `GET /admin/baselinker/runs?kind=`: the history.
 
-No route deletes anything.
+No route deletes anything. Every write route takes a JSON body or the `x-koda-request` header (415 otherwise), and an unexpected error answers a plain sentence while the details stay in the server log.
 
 ## Use it from your code
 
@@ -321,7 +330,7 @@ Events on the Medusa event bus:
 
 - `baselinker.order_sent`: `{ order_id, display_id, baselinker_order_id, adopted, linked_lines, free_lines, demo }`
 - `baselinker.order_failed`: `{ order_id, display_id, code, message, attempts, demo }`
-- `baselinker.order_status_changed`: `{ order_id, baselinker_order_id, status_id, status_name, previous_status_id, tracking_number, tracking_url, carrier, demo }`
+- `baselinker.order_status_changed`: `{ order_id, display_id, baselinker_order_id, status_id, status_name, previous_status_id, tracking_number, tracking_url, carrier, imported, demo }`, for sent orders (`imported: false`) and for imported ones (`imported: true`)
 - `baselinker.order_imported`: `{ order_id, display_id, baselinker_order_id, source, marketplace_order_ref, payment_state, adopted, demo }`
 - `baselinker.order_import_failed`: `{ baselinker_order_id, code, message, attempts, demo }`
 - `baselinker.plan_applied`: `{ kind, applied, failed, demo }`, kind `catalog_import`, `cards`, `stock_push` or `prices`
@@ -329,7 +338,7 @@ Events on the Medusa event bus:
 
 The plugin listens to `order.placed` and, when the Fakturownia plugin is installed, to `fakturownia.document.issued`.
 
-Order metadata the plugin writes, readable by your storefront through the Store API: `baselinker_order_id`, `baselinker_status_id`, `baselinker_status_name`, `baselinker_tracking_number`, `baselinker_tracking_url`, `baselinker_carrier`; on imported orders also `baselinker_imported`, `baselinker_order_source`, `baselinker_external_order_id` and `marketplace_order_ref`. Products created by the catalog import carry `metadata.baselinker_product_id` (and `metadata.manufacturer` unless `manufacturerAs` is `tag`).
+Order metadata the plugin writes in live mode, readable by your storefront through the Store API: `baselinker_order_id`, `baselinker_status_id`, `baselinker_status_name`, `baselinker_tracking_number`, `baselinker_tracking_url`, `baselinker_carrier`; on imported orders also `baselinker_imported`, `baselinker_import_id`, `baselinker_order_source`, `baselinker_external_order_id` and `marketplace_order_ref` (and `baselinker_demo` on orders the demo created). The plugin itself never decides anything by these keys: its tables are the record. Products created by the catalog import carry `metadata.baselinker_product_id` (and `metadata.manufacturer` unless `manufacturerAs` is `tag`).
 
 ## Security and personal data
 
@@ -337,8 +346,14 @@ Order metadata the plugin writes, readable by your storefront through the Store 
 - **One HTTP client:** the BaseLinker URL appears in one file, behind the barrier, a process-wide rate limiter and a timeout.
 - **Masked token:** the token and every token-like run of characters are masked in logs, stored errors and the admin.
 - **Personal data:** the plugin's own tables hold ids, statuses, totals and tracking, never buyer data. The order payload sent to BaseLinker is built at send time and not stored. An imported marketplace order carries the buyer's name, address, e-mail and phone on the Medusa order itself, as any order does, because the store has to ship it. Returns are stored without the buyer's data.
-- **Reads only while rendering:** the admin never calls BaseLinker to draw a page; network calls sit behind jobs and clicks.
-- **One worker per item:** locks through the Medusa Locking module (per store order, per marketplace order, per marketplace reference, per invoice document), plus the lookups before every create.
+- **Reads only while rendering:** the admin never calls BaseLinker and never writes to draw a page; network calls and the demo snapshot sit behind jobs and clicks.
+- **One worker per item:** leases in the plugin's own table (per job, per store order, per marketplace order, per invoice document) that hold across processes, plus the Medusa Locking module for the shared `marketplace-order-ref:<ref>` key, plus the lookups before every create.
+- **Write guard:** writes to `/admin/baselinker/*` need a JSON body or the `x-koda-request` header, so a form on another site cannot arm a writer or send an order with an admin's session cookie.
+- **Metadata a buyer can write:** the Store API takes any cart metadata and Medusa copies it to the order. The plugin decides by its own tables, never by order metadata (an order counts as imported only by its import row; a marketplace reference counts only on an order created without a cart), and the store routes refuse `baselinker_*` keys, `marketplace_order_ref` and the skip key with 400 `reserved_metadata_key`. A tax id or a note the buyer types stays allowed.
+
+## Running more than one process
+
+Medusa can run a store as a server and a worker, or as several instances. The plugin keeps one run of each job and one worker per store order, marketplace order and invoice document across all of them with leases in its own table (`baselinker_setting`, keys `lease:job:<kind>` and `lease:lock:<key>`): a lease is renewed every minute while its holder works and expires 5 minutes after a process died. A click on **Sync** in the admin takes the same lease as the scheduled job, so it never runs next to it. The shared `marketplace-order-ref:<ref>` key also goes through the Medusa Locking module, which spans processes only with a Redis or Postgres provider. A lock store that does not answer is an error in the history and the log, never a quiet "busy". The rate limit (`requestsPerMinute`) is counted per process: with a server and a worker, keep their sum under BaseLinker's 100 requests per minute.
 
 ## Out of scope
 
@@ -346,7 +361,7 @@ Order metadata the plugin writes, readable by your storefront through the Store 
 - Cards created from Medusa are simple cards, one per variant: it does not build main cards with variants in BaseLinker. Card updates cover the name and the EAN only; descriptions, images, categories and manufacturers of existing cards are left as they are. BaseLinker does not document whether an update keeps the text fields that are not sent; the plugin relies on the per key behaviour the documentation describes for images, and the guide advises trying the cards writer on one card first.
 - The catalog import gives products one option axis (`catalogImportOptionTitle`) whose values are the variant names; it does not turn BaseLinker features into separate options like Colour and Size. Categories are matched by name, flat; the category tree is not rebuilt.
 - One catalog, one warehouse and one price group per store. Kits and bundles are left out of stock, prices and the import.
-- It does not change orders that are already in BaseLinker, and it does not push Medusa order edits, refunds or cancellations to BaseLinker. An order cancelled in Medusa before it went out is skipped.
+- Orders that already reached BaseLinker stay as BaseLinker has them: edits, refunds and cancellations made in Medusa afterwards are not carried over, so change such an order in BaseLinker by hand. An order cancelled in Medusa before its send never goes out (a `skipped` row with the code `canceled`).
 - Imported orders are fulfilled from BaseLinker statuses only when `orderImportShippingOptionId` is set. An imported order that BaseLinker cancels after it was fulfilled in Medusa is flagged for a person, never cancelled automatically.
 - Returns are read only: no Medusa return or refund is created from them.
 - It does not send e-mails, and it cannot see your e-mail code: skipping the confirmation e-mail for marketplace orders is up to your `order.placed` subscriber.

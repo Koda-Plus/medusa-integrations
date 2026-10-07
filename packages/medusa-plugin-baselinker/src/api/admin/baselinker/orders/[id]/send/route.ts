@@ -3,9 +3,9 @@ import type { SendResponse } from "../../../../../../modules/baselinker/lib/cont
 import { toOrderDto, type OrderRow } from "../../../../../../modules/baselinker/lib/dto"
 import { isSkipped } from "../../../../../../modules/baselinker/lib/order-payload"
 import { canExportOrders } from "../../../../../../modules/baselinker/lib/options"
-import { exportVerdict } from "../../../../../../modules/baselinker/lib/order-import"
+import { exportVerdictOf } from "../../../../../../workflows/baselinker/order-facts"
 import { enqueueOrder, exportSkipReason, findOrderRow, loadOrderHead, sendOrderNow } from "../../../../../../workflows/baselinker/orders"
-import { baselinkerService } from "../../../helpers"
+import { baselinkerService, guarded } from "../../../helpers"
 
 /**
  * POST /admin/baselinker/orders/:id/send
@@ -18,7 +18,7 @@ import { baselinkerService } from "../../../helpers"
  * send itself scans for the order marker before writing, so an order that
  * reached BaseLinker without an answer is adopted, not duplicated.
  */
-export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+export const POST = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
   const o = svc.getOptions()
   if (!canExportOrders(o)) {
@@ -52,7 +52,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
   /* The loop guard: an order that came from BaseLinker, or straight from a marketplace, is never sent there. */
-  const verdict = exportVerdict(order.metadata, o.exportMarketplaceOrders)
+  const verdict = await exportVerdictOf(req.scope, order)
   if (!verdict.send) {
     res.status(409).json({ message: exportSkipReason(verdict) })
     return
@@ -71,4 +71,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   })
   const body: SendResponse = { order: toOrderDto(row) }
   res.status(202).json(body)
-}
+})
