@@ -72,11 +72,14 @@ export const tasksKeys = {
 
 const ENTITY_PATH: Record<LinkType, string> = { order: "orders", product: "products", customer: "customers" }
 
-export function useTasksStatus() {
+/** The status of the page (people, options, counters). `enabled: false` until something needs it (a widget's "New task"). */
+export function useTasksStatus(enabled = true) {
   return useQuery<StatusResponse>({
     queryKey: tasksKeys.status,
     queryFn: () => tasksFetch<StatusResponse>(`/admin/tasks?today=${localDay()}`),
-    refetchInterval: 30_000,
+    refetchInterval: enabled ? 60_000 : false,
+    staleTime: 30_000,
+    enabled,
   })
 }
 
@@ -107,12 +110,14 @@ export function useBoardActivity() {
   })
 }
 
+/** The tasks of one record with their assignees' faces: the widget's only read, once a minute and on focus. */
 export function useEntityTasks(type: LinkType, id: string) {
   return useQuery<EntityTasksResponse>({
     queryKey: tasksKeys.entity(type, id),
     queryFn: () => tasksFetch<EntityTasksResponse>(`/admin/tasks/${ENTITY_PATH[type]}/${encodeURIComponent(id)}`),
     enabled: Boolean(id),
-    refetchInterval: 30_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }
 

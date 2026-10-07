@@ -223,4 +223,8 @@ export interface EntityTasksResponse {
   sandbox: boolean
   tasks: TaskDto[]
   count: number
+  /** The admin users the shown tasks are assigned to, with their photos. */
+  people: PersonDto[]
+  /** The `people` option (team only; empty for sandbox accounts). */
+  named_people: NamedPersonDto[]
 }

@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-tasks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tasks by Koda Plus: a task board in the Medusa admin for the store team and the agency or developers who work with it. Board columns with drag and drop, comments, an activity log, tasks linked to orders, products and customers, secret API keys for scripts and AI agents, stable events and a sandbox board for public demo accounts.",
   "author": {
     "name": "Koda Plus",
@@ -40,7 +40,6 @@
     "./workflows": "./.medusa/server/src/workflows/index.js",
     "./.medusa/server/src/modules/*": "./.medusa/server/src/modules/*/index.js",
     "./modules/*": "./.medusa/server/src/modules/*/index.js",
-    "./providers/*": "./.medusa/server/src/providers/*/index.js",
     "./*": "./.medusa/server/src/*.js",
     "./admin": {
       "import": "./.medusa/server/src/admin/index.mjs",
@@ -53,7 +52,7 @@
     "dev": "medusa plugin:develop",
     "test": "node --experimental-strip-types --no-warnings --import ./test/ts-resolve.mjs --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json",
-    "prepublishOnly": "npm test && medusa plugin:build"
+    "prepublishOnly": "npm test && npm run typecheck && medusa plugin:build"
   },
   "devDependencies": {
     "@medusajs/admin-sdk": "2.15.3",

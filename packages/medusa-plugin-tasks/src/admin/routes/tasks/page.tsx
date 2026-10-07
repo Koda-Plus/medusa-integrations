@@ -8,7 +8,8 @@ import { Badge, Container, Heading, InlineTip, Table, Text } from "@medusajs/ui"
 import { isLinkType } from "../../../modules/tasks/lib/constants"
 import type { StatusResponse, TaskDto } from "../../../modules/tasks/lib/contract"
 import { errorMessage, localDay, tasksKeys, useBoard, useBoardActivity, useEnsureSandbox, useMoveTask, useTasksStatus } from "../../lib/tasks-api"
-import { BoardColumns, FilterBar, NO_FILTERS, RoadmapView, applyFilters, filtered, type BoardFilters, type QuickFilter } from "../../lib/tasks-board"
+import { BoardColumns, FilterBar, RoadmapView, applyFilters, filtered, type BoardFilters, type QuickFilter } from "../../lib/tasks-board"
+import { filtersFromParams, filtersToParams } from "../../lib/tasks-rules"
 import { TaskDrawer } from "../../lib/tasks-drawer"
 import { CreateTaskModal, useFailToast, type PickedRecord } from "../../lib/tasks-form"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/tasks-guide"
@@ -42,7 +43,11 @@ import {
  * - Settings (`?view=settings&tab=`): the options in use, the sandbox board.
  *
  * `?task=<id>` opens a task (the widgets link here); `?new=1&link=order:<id>`
- * opens "New task" with the record linked.
+ * opens "New task" with the record linked. The filters are in the URL too,
+ * so a counter or a host links straight to them: `?quick=overdue|due_today|
+ * urgent|unassigned|mine|open|review`, `?record=order:<id>`,
+ * `?record_type=order`, `?assignee=me|none|user:<id>`, `?q=`, `?tag=`,
+ * `?priority=`, and `?layout=board|roadmap`.
  *
  * Sandbox accounts (`sandboxAccounts`) get the sandbox board: the server
  * decides it on every request, the page only shows the badge.
@@ -54,7 +59,8 @@ type SettingsTabId = (typeof SETTINGS_TABS)[number]
 type Layout = "board" | "roadmap"
 const LAYOUT_KEY = "koda.tasks.layout"
 
-function readLayout(): Layout {
+function readLayout(asked: string | null): Layout {
+  if (asked === "board" || asked === "roadmap") return asked
   try {
     return window.localStorage.getItem(LAYOUT_KEY) === "roadmap" ? "roadmap" : "board"
   } catch {
@@ -81,12 +87,15 @@ const TasksPage = () => {
   const move = useMoveTask()
   const fail = useFailToast()
   const [params, setParams] = useSearchParams()
-  const [filters, setFilters] = useState<BoardFilters>({ ...NO_FILTERS })
-  const [layout, setLayoutState] = useState<Layout>(readLayout)
+  /* The filters are the URL: a deep link opens them, a change replaces them in place. */
+  const filters = useMemo(() => filtersFromParams(params), [params])
+  const setFilters = (f: BoardFilters) => setParams(filtersToParams(f, params), { replace: true })
+  const [layout, setLayoutState] = useState<Layout>(() => readLayout(params.get("layout")))
   const today = localDay()
   const index = usePeopleIndex(s?.people, s?.named_people)
   const tasks = useMemo(() => board.data?.tasks ?? [], [board.data])
-  const visible = useMemo(() => applyFilters(tasks, filters, today, lang), [tasks, filters, today, lang])
+  const viewerId = s?.viewer.type === "user" ? s.viewer.id : null
+  const visible = useMemo(() => applyFilters(tasks, filters, today, lang, viewerId), [tasks, filters, today, lang, viewerId])
   const openId = params.get("task")
   const creating = params.get("new") === "1"
 
@@ -103,6 +112,11 @@ const TasksPage = () => {
   const setLayout = (v: Layout) => {
     setLayoutState(v)
     saveLayout(v)
+    if (params.has("layout")) {
+      const p = new URLSearchParams(params)
+      p.set("layout", v)
+      setParams(p, { replace: true })
+    }
   }
   const setParam = (changes: Record<string, string | null>) => {
     const p = new URLSearchParams(params)

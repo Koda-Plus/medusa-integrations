@@ -25,13 +25,19 @@
 - Deleting a task keeps its activity; editing or deleting a comment logs the earlier text (`comment_edited`, `comment_deleted`).
 - The admin calls the API through the shared kit: Medusa's JWT auth (`__AUTH_TYPE__ = "jwt"`) works, writes carry the `x-koda-request` header.
 - Avatars load only from https or image data URIs, lazily and without a referrer.
+- The order, product and customer widgets read once (`GET /admin/tasks/<type>s/:id`, now with the assignees' faces in `people` and `named_people`) once a minute, instead of that read and the whole page status every 30 seconds; "New task" opens a window on the record's page instead of leaving it.
+- The unused `./providers/*` export is gone (the plugin has no providers).
 
 ### Added
 
 - `sandboxGuard`: sandbox accounts and the keys they created get 403 `sandbox_guard` on invites, admin users (their own profile takes only the language form), API keys, workflow executions, notifications outside the feed and every write outside Tasks (`allowWrites` adds prefixes). Medusa logs a warning at start while sandbox accounts are configured without it.
 - `sandboxLimits` (200 tasks, 50 comments per task, 60 changes per minute per account by default): 409 `sandbox_full` and 429 `sandbox_busy` on the shared sandbox board.
 - `hidden_open` in the board answer and a line on the page when a board has more than 1000 open tasks; `options.sandbox_guard` and `options.agent_key_prefix` in the status, shown in Settings.
-- README: what the sandbox protects and what it does not, rules for keys given to AI agents, the response shapes and every error code, the workflows' `board` and `actor_role`.
+- The koda.integration/1 contract: `GET /admin/tasks/integration`, `/integration/summary` (one line per order, product or customer with linked tasks: overdue red, due today or in review orange, open blue, all closed green, counted by the day of the request's time zone) and `/integration/attention` (`overdue_orders`, `overdue_products`, `overdue_customers`, `unassigned`, `mine`), on the board of the person or key asking, like every other route.
+- The order, product and customer cards register as `tasks.order`, `tasks.product` and `tasks.customer` and can be embedded by a host (`embedded`): no header of its own, a quiet line while loading and when nothing is linked.
+- Deep links into the board: `quick` (`overdue`, `due_today`, `urgent`, `unassigned`, `mine`, `open`, `review`), `record`, `record_type`, `assignee` (`me`), `q`, `tag`, `priority` and `layout` are read from and kept in the URL.
+- Type declarations in the package; the setup prompt installs this exact version.
+- README: what the sandbox protects and what it does not, rules for keys given to AI agents, the response shapes and every error code, the workflows' `board` and `actor_role`, Works with Koda Plus hosts, Public API, Uninstall, Compatibility and Trademarks.
 
 ## 0.1.0 (2026-10-07)
 

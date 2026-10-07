@@ -1,6 +1,7 @@
 import type en from "./en"
 import { typeset } from "../lib/tasks-guide"
 import { communityPl } from "../lib/tasks-kit-community"
+import { integrationPl } from "../../modules/tasks/lib/integration-texts"
 
 /* Typed by en.ts below (every English key exists here); Polish adds its plural forms (_few, _many). */
 const pl = {
@@ -82,9 +83,21 @@ const pl = {
     hiddenOpen_one: "Otwartych zadań, których nie widać: {{count}}. Tablica pokazuje pierwsze 1000.",
     hiddenOpen: "Otwartych zadań, których nie widać: {{count}}. Tablica pokazuje pierwsze 1000.",
     quick: {
+      none: "",
       overdue: "Tylko po terminie",
+      due_today: "Tylko na dziś",
       urgent: "Tylko pilne i ważne",
       unassigned: "Tylko bez osoby",
+      mine: "Tylko moje otwarte",
+      open: "Tylko otwarte",
+      review: "Tylko do sprawdzenia",
+    },
+    me: "Przypisane do mnie",
+    record: "Połączone z {{label}}",
+    recordType: {
+      order: "Połączone z zamówieniem",
+      product: "Połączone z produktem",
+      customer: "Połączone z klientem",
     },
     dragHint: "Przeciągnij, żeby przenieść",
   },
@@ -233,7 +246,14 @@ const pl = {
     },
     newTask: "Nowe zadanie",
     all: "Otwórz tablicę",
+    allOf: {
+      order: "Wszystkie zadania tego zamówienia",
+      product: "Wszystkie zadania tego produktu",
+      customer: "Wszystkie zadania tego klienta",
+    },
     more: "i jeszcze {{count}} na tablicy",
+    loading: "Wczytuję zadania",
+    failed: "Nie udało się wczytać zadań",
   },
   confirm: {
     title: "Usunąć to zadanie?",
@@ -331,7 +351,7 @@ const pl = {
     tasks: "Zadań na niej teraz",
     next: "Następne odnowienie",
     never: "jeszcze nie",
-    onOpen: "po {{time}}, przez cogodzinne zadanie albo przy następnej wizycie konta piaskownicy",
+    onOpen: "po {{time}}: przy najbliższym cogodzinnym przebiegu albo przy następnej wizycie konta piaskownicy",
     guard: "Poza Zadaniami",
     guardOn: "Odcięte (sandboxGuard)",
     guardOff: "Dalej użytkownik panelu sklepu",
@@ -495,6 +515,7 @@ const pl = {
     },
   },
   error: "Nie udało się wczytać tablicy: {{message}}",
+  integration: integrationPl,
 }
 
 const samePolishKeys: typeof en = pl

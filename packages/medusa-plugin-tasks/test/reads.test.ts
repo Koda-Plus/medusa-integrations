@@ -15,6 +15,9 @@ import * as boardActivityRoute from "../src/api/admin/tasks/activity/route.ts"
 import * as ordersRoute from "../src/api/admin/tasks/orders/[id]/route.ts"
 import * as productsRoute from "../src/api/admin/tasks/products/[id]/route.ts"
 import * as customersRoute from "../src/api/admin/tasks/customers/[id]/route.ts"
+import * as integrationRoute from "../src/api/admin/tasks/integration/route.ts"
+import * as summaryRoute from "../src/api/admin/tasks/integration/summary/route.ts"
+import * as attentionRoute from "../src/api/admin/tasks/integration/attention/route.ts"
 import { SANDBOX_KEY } from "../src/modules/tasks/lib/constants.ts"
 import { contextOf } from "../src/workflows/tasks/context.ts"
 import { addComment, createTask, deleteComment, deleteTask, editComment } from "../src/workflows/tasks/tasks.ts"
@@ -72,6 +75,10 @@ test("reads: no GET route writes, seeds, cleans or emits, for the team or for a 
     ["order widget", ordersRoute.GET as Handler, { params: { id: "order_1" } }],
     ["product widget", productsRoute.GET as Handler, { params: { id: "prod_1" } }],
     ["customer widget", customersRoute.GET as Handler, { params: { id: "cus_1" } }],
+    ["manifest", integrationRoute.GET as Handler, {}],
+    ["summary", summaryRoute.GET as Handler, { query: { entity: "order", ids: "order_1,order_2" } }],
+    ["summary of a customer", summaryRoute.GET as Handler, { query: { entity: "customer", id: "cus_1" } }],
+    ["attention", attentionRoute.GET as Handler, {}],
   ]
   for (const actor of [{ actor_id: "user_team", actor_type: "user" }, { actor_id: "user_demo", actor_type: "user" }, { actor_id: "apk_demo", actor_type: "api-key" }]) {
     for (const [name, handler, args] of gets) {

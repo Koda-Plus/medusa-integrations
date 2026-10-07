@@ -263,6 +263,24 @@ export interface BoardStore {
   deleteLink(taskId: string, linkId: string, activity: readonly ActivityInsert[], now: Date): Promise<LinkRow | null>
   /** Tasks linked to one Medusa record: open first, then the latest. */
   tasksForEntity(type: string, entityId: string, limit: number): Promise<{ rows: TaskRow[]; count: number }>
+  /** Every task linked to any of these records, with the record it is linked to: one statement (the contract summary). */
+  linkedTasks(type: string, entityIds: readonly string[]): Promise<LinkedTaskRow[]>
+  /**
+   * Open tasks past their due day (due before `dayStart`) linked to orders,
+   * products and customers, open tasks without a person, and open tasks of
+   * `assigneeId`: two grouped counts (the contract counters).
+   */
+  attentionCounts(dayStart: Date, assigneeId: string | null): Promise<AttentionCountRow>
+}
+
+export type LinkedTaskRow = TaskRow & { entity_id: string }
+
+export interface AttentionCountRow {
+  overdue_orders: number
+  overdue_products: number
+  overdue_customers: number
+  unassigned: number
+  mine: number
 }
 
 /* ------------------------------------------------------------------ */
@@ -683,6 +701,51 @@ export function createBoardStore(sql: SqlRunner, board: string): BoardStore {
       )
       const [count] = rowsOf<{ count: number | string }>(await sql.raw(`select count(*)::int as "count" from "${TASK_TABLE}" t where ${where}`, bindings))
       return { rows, count: Number(count?.count ?? rows.length) }
+    },
+
+    async linkedTasks(type, entityIds) {
+      if (entityIds.length === 0) return []
+      return rowsOf<LinkedTaskRow>(
+        await sql.raw(
+          `select t.*, l."entity_id" as "entity_id" from "${LINK_TABLE}" l
+           join "${TASK_TABLE}" t on t."id" = l."task_id" and t."board" = l."board" and t."deleted_at" is null
+           where l."board" = ? and l."entity_type" = ? and l."deleted_at" is null and l."entity_id" in (${list(entityIds.length)})
+           order by t."updated_at" desc, t."id" desc`,
+          [board, type, ...entityIds],
+        ),
+      )
+    },
+
+    async attentionCounts(dayStart, assigneeId) {
+      const [linked] = rowsOf<Record<string, number | string>>(
+        await sql.raw(
+          `select
+             (count(distinct t."id") filter (where l."entity_type" = 'order'))::int as "overdue_orders",
+             (count(distinct t."id") filter (where l."entity_type" = 'product'))::int as "overdue_products",
+             (count(distinct t."id") filter (where l."entity_type" = 'customer'))::int as "overdue_customers"
+           from "${TASK_TABLE}" t
+           join "${LINK_TABLE}" l on l."task_id" = t."id" and l."board" = t."board" and l."deleted_at" is null
+           where t."board" = ? and t."deleted_at" is null and t."status" in (${OPEN_SQL}) and t."due_date" < ?`,
+          [board, dayStart],
+        ),
+      )
+      const [own] = rowsOf<Record<string, number | string>>(
+        await sql.raw(
+          `select
+             (count(*) filter (where "assignee_id" is null and coalesce(btrim("assignee"), '') = ''))::int as "unassigned",
+             (count(*) filter (where "assignee_id" = ?))::int as "mine"
+           from "${TASK_TABLE}" where "board" = ? and "deleted_at" is null and "status" in (${OPEN_SQL})`,
+          [assigneeId ?? "", board],
+        ),
+      )
+      const n = (v: unknown) => Number(v) || 0
+      return {
+        overdue_orders: n(linked?.overdue_orders),
+        overdue_products: n(linked?.overdue_products),
+        overdue_customers: n(linked?.overdue_customers),
+        unassigned: n(own?.unassigned),
+        mine: assigneeId ? n(own?.mine) : 0,
+      }
     },
   }
 }
