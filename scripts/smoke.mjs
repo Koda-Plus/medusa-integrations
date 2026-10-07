@@ -164,16 +164,18 @@ function startPostgres() {
 /* The app                                                             */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The dependencies of the official Medusa starter, nothing more. The admin
+ * libraries (@medusajs/ui, @tanstack/react-query, react-router-dom,
+ * react-i18next) come with Medusa's dashboard at the exact versions it pins;
+ * the plugins import those same copies. An app that installs other versions
+ * of them splits the admin into two React contexts, and plugin pages fail.
+ */
 const PEERS = (v) => ({
   "@medusajs/admin-sdk": v,
   "@medusajs/cli": v,
   "@medusajs/framework": v,
   "@medusajs/medusa": v,
-  "@medusajs/icons": v,
-  "@medusajs/ui": "^4.0.0",
-  "@tanstack/react-query": "^5.64.2",
-  "react-i18next": "^15.0.0",
-  "react-router-dom": "^6.30.0",
 })
 
 function writeApp(dir, version, packages, tarballs, dbUrl) {
