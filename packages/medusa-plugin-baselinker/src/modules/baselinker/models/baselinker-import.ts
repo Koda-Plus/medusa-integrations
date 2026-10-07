@@ -57,6 +57,7 @@ const BaseLinkerImport = model
     { on: ["status", "next_attempt_at"], where: "deleted_at IS NULL" },
     { on: ["order_id"], where: "deleted_at IS NULL" },
     { on: ["marketplace_ref"], where: "deleted_at IS NULL" },
+    { on: ["flag"], where: "deleted_at IS NULL" },
   ])
 
 export default BaseLinkerImport

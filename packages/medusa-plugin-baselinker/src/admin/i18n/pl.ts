@@ -1,9 +1,11 @@
 import type en from "./en"
 import { typeset } from "../lib/baselinker-guide"
 import { communityPl } from "../lib/baselinker-kit-community"
+import { integrationPl } from "../../modules/baselinker/lib/integration-texts"
 
 const pl: typeof en = {
   title: "BaseLinker",
+  integration: integrationPl,
   by: "by Koda Plus",
   subtitle:
     "Medusa i BaseLinker w obie strony: karty łączone albo zakładane, produkty importowane, stany i ceny płyną w wybranym kierunku, zamówienia sklepu trafiają do BaseLinkera dokładnie raz, zamówienia z marketplace'ów wracają do Medusy dokładnie raz, a statusy, przesyłki, zwroty i numery faktur się zgadzają. Każdy zapis czeka za planem i przełącznikiem, który uzbraja człowiek.",

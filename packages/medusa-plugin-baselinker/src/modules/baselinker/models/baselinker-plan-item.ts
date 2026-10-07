@@ -37,6 +37,8 @@ const BaseLinkerPlanItem = model
   .indexes([
     { on: ["kind", "demo", "status"], where: "deleted_at IS NULL" },
     { on: ["kind", "demo", "action"], where: "deleted_at IS NULL" },
+    { on: ["variant_id"], where: "deleted_at IS NULL" },
+    { on: ["product_id"], where: "deleted_at IS NULL" },
   ])
 
 export default BaseLinkerPlanItem

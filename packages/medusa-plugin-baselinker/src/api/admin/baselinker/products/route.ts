@@ -13,7 +13,8 @@ const SELLABLE = { $or: [{ match_source: null }, { match_source: { $ne: "parent"
  *
  * The card snapshot with its links. `filter`: all, linked, unmatched (a card
  * without a variant and without a conflict: only in BaseLinker), conflicts,
- * nosku. `q` searches name, SKU, EAN, card id and the linked product.
+ * nosku. `q` searches name, SKU, EAN, card id and the linked product (by
+ * title, or exactly by a product or variant id).
  */
 export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Promise<void> => {
   const svc = baselinkerService(req.scope)
@@ -48,6 +49,8 @@ export const GET = guarded(async (req: MedusaRequest, res: MedusaResponse): Prom
         { bl_product_id: { $ilike: pattern } },
         { variant_sku: { $ilike: pattern } },
         { product_title: { $ilike: pattern } },
+        /* Deep links from a product or a variant (`?section=cards&q=prod_...`). */
+        ...(/^(prod|variant)_[A-Za-z0-9]+$/.test(q) ? [{ product_id: q }, { variant_id: q }] : []),
       ],
     })
   }

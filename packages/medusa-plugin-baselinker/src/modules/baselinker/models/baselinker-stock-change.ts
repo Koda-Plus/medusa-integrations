@@ -33,6 +33,10 @@ const BaseLinkerStockChange = model
     applied_at: model.dateTime().nullable(),
     demo: model.boolean().default(false),
   })
-  .indexes([{ on: ["demo", "delta"], where: "deleted_at IS NULL" }])
+  .indexes([
+    { on: ["demo", "delta"], where: "deleted_at IS NULL" },
+    { on: ["inventory_item_id"], where: "deleted_at IS NULL" },
+    { on: ["product_id"], where: "deleted_at IS NULL" },
+  ])
 
 export default BaseLinkerStockChange
