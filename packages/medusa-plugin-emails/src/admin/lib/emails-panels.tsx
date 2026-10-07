@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowUpRightMini, PaperPlane } from "@medusajs/icons"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import type { MessageDto, MessageFilter, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
+import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { errorMessage, useEmailsMessage, useEmailsMessages, useEmailsPreview, useEmailsRetry, useEmailsTest } from "./emails-api"
 import {
   EmailFrame,
@@ -254,14 +254,41 @@ function filterCount(status: StatusResponse, f: MessageFilter): number | undefin
   return undefined
 }
 
-export function MessagesSection({ status, lang, filter, onFilter, onOpen }: { status: StatusResponse; lang: string; filter: MessageFilter; onFilter: (f: MessageFilter) => void; onOpen: (id: string) => void }) {
+/** The log narrowed by a deep link: one order, one customer, a window of time. */
+export interface MessagesScope {
+  orderId: string
+  customerId: string
+  since: MessageWindow | ""
+}
+
+export function MessagesSection({
+  status,
+  lang,
+  filter,
+  onFilter,
+  onOpen,
+  scope,
+  initialQuery = "",
+  onClearScope,
+}: {
+  status: StatusResponse
+  lang: string
+  filter: MessageFilter
+  onFilter: (f: MessageFilter) => void
+  onOpen: (id: string) => void
+  scope?: MessagesScope
+  initialQuery?: string
+  onClearScope?: () => void
+}) {
   const { t } = useTranslation("emails")
   const demo = status.mode === "demo"
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery)
+  useEffect(() => setSearch(initialQuery), [initialQuery])
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
-  useEffect(() => setPage(0), [filter, q])
-  const messages = useEmailsMessages({ filter, q, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
+  useEffect(() => setPage(0), [filter, q, scope?.orderId, scope?.customerId, scope?.since])
+  const messages = useEmailsMessages({ filter, q, orderId: scope?.orderId, customerId: scope?.customerId, since: scope?.since, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const scoped = Boolean(scope && (scope.orderId || scope.customerId || scope.since))
   const rows = messages.data?.messages ?? []
   const count = messages.data?.count ?? 0
   const byKey = useMemo(() => new Map(status.templates.map((x) => [x.key, x])), [status.templates])
@@ -282,8 +309,32 @@ export function MessagesSection({ status, lang, filter, onFilter, onOpen }: { st
           {demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
         </Text>
       </div>
+      {scoped && scope ? (
+        <div className="flex flex-wrap items-center gap-2 px-6 py-3">
+          {scope.orderId ? (
+            <Badge size="2xsmall" color="blue">
+              {t("log.scope.order", { id: scope.orderId })}
+            </Badge>
+          ) : null}
+          {scope.customerId ? (
+            <Badge size="2xsmall" color="blue">
+              {t("log.scope.customer", { id: scope.customerId })}
+            </Badge>
+          ) : null}
+          {scope.since ? (
+            <Badge size="2xsmall" color="grey">
+              {t(`log.scope.since.${scope.since}`)}
+            </Badge>
+          ) : null}
+          {onClearScope ? (
+            <Button size="small" variant="transparent" onClick={onClearScope}>
+              {t("log.scope.clear")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: filterCount(status, f) }))} />
+        <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: scoped ? undefined : filterCount(status, f) }))} />
         <div className="w-full lg:w-72">
           <Input size="small" type="search" placeholder={t("log.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -426,15 +477,16 @@ export function ByTemplateSection({ status, lang }: { status: StatusResponse; la
 /* One message                                                         */
 /* ------------------------------------------------------------------ */
 
-export function MessageDrawer({ id, status, lang, onClose }: { id: string; status: StatusResponse; lang: string; onClose: () => void }) {
+/** One message. The page passes its status; the order card does not need one: the message names its template and mode itself. */
+export function MessageDrawer({ id, status, lang, onClose }: { id: string; status?: StatusResponse; lang: string; onClose: () => void }) {
   const { t } = useTranslation("emails")
   const q = useEmailsMessage(id)
   const retry = useEmailsRetry()
   const prompt = usePrompt()
   const errorText = useErrorText()
   const m: MessageDto | undefined = q.data?.message
-  const template = status.templates.find((x) => x.key === m?.template)
-  const demo = status.mode === "demo"
+  const template = status?.templates.find((x) => x.key === m?.template) ?? (m ? { key: m.template, label: m.label } : undefined)
+  const demo = status ? status.mode === "demo" : Boolean(m?.demo)
 
   const onRetry = async () => {
     if (!m) return

@@ -1,4 +1,5 @@
 import { communityEn } from "../lib/emails-kit-community"
+import { integrationEn } from "../../modules/emails/lib/integration-texts"
 
 const en = {
   /* The sidebar label: the key is the English name, so it reads right even where the admin cannot translate route labels. */
@@ -156,6 +157,16 @@ const en = {
       job: "Job",
       app: "Your code",
     },
+    scope: {
+      order: "Order {{id}}",
+      customer: "Customer {{id}}",
+      since: {
+        "24h": "Last 24 hours",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+      },
+      clear: "Show all e-mails",
+    },
     notReadyLabel: "Send log",
     notReady: "The send log table is missing or older than this version: run npx medusa db:migrate. Messages are still sent, but not logged.",
   },
@@ -305,8 +316,10 @@ const en = {
   },
   widget: {
     title: "E-mails",
-    all: "All e-mails",
+    all: "Open in E-mails",
     empty: "No e-mails for this order yet.",
+    loading: "Loading the e-mails of this order",
+    failed: "The e-mails of this order could not be read.",
   },
   languages: {
     en: "English",
@@ -356,6 +369,7 @@ const en = {
     prev: "Prev",
     next: "Next",
   },
+  integration: integrationEn,
   guide: {
     intro: {
       title: "Set up e-mails for a real store",
