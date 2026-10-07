@@ -54,6 +54,8 @@ async function exercise(store: BoardStore): Promise<void> {
   await store.insertLink({ id: "tlnk_2", task_id: "task_1", entity_type: "product", entity_id: "prod_1", created_by: null, created_by_id: null, created_at: NOW }, [])
   await store.deleteLink("task_1", "tlnk_1", [], NOW)
   await store.tasksForEntity("order", "order_1", 10)
+  await store.linkedTasks("order", ["order_1", "order_2"])
+  await store.attentionCounts(NOW, "user_1")
 }
 
 function assertBound(log: Recorded[], board: string, other: string) {

@@ -1,4 +1,5 @@
 import { communityEn } from "../lib/tasks-kit-community"
+import { integrationEn } from "../../modules/tasks/lib/integration-texts"
 
 const en = {
   nav: "Tasks",
@@ -77,9 +78,21 @@ const en = {
     hiddenOpen_one: "1 more open task is not shown: the board shows the first 1000.",
     hiddenOpen: "{{count}} more open tasks are not shown: the board shows the first 1000.",
     quick: {
+      none: "",
       overdue: "Overdue only",
+      due_today: "Due today only",
       urgent: "Urgent and high only",
       unassigned: "Unassigned only",
+      mine: "My open tasks only",
+      open: "Open tasks only",
+      review: "In review only",
+    },
+    me: "Assigned to me",
+    record: "Linked to {{label}}",
+    recordType: {
+      order: "Linked to an order",
+      product: "Linked to a product",
+      customer: "Linked to a customer",
     },
     dragHint: "Drag to move",
   },
@@ -228,7 +241,14 @@ const en = {
     },
     newTask: "New task",
     all: "Open the board",
+    allOf: {
+      order: "All tasks of this order",
+      product: "All tasks of this product",
+      customer: "All tasks of this customer",
+    },
     more: "and {{count}} more on the board",
+    loading: "Loading the tasks",
+    failed: "Could not load the tasks",
   },
   confirm: {
     title: "Delete this task?",
@@ -490,6 +510,8 @@ const en = {
     },
   },
   error: "Could not load the board: {{message}}",
+  /* koda.integration/1: the lines and counters a host shows (the same keys the server answers). */
+  integration: integrationEn,
 }
 
 export default en

@@ -27,7 +27,8 @@ Scripts and AI agents report their work on the same board through the admin API 
 - **Filters** by text, assignee, tag and priority.
 - **Assignees** are admin users, shown with their avatar or initials. Free text still works (rows of the KODA Panel module, a script that names a role), and the `people` option gives such names a photo and a role line.
 - **Comments** with the author's role: store team, agency (`agencyAccounts`) or AI agent. Authors edit and delete their own.
-- **Widgets** on the order, product and customer pages: the linked tasks, open ones first, and "New task" with the record linked.
+- **Widgets** on the order, product and customer pages: the linked tasks, open ones first, "New task" with the record linked (in a window, without leaving the record) and every task of the record on the board. One read a minute each.
+- **Deep links**: the filters live in the URL (`?quick=overdue&record_type=order`, `?record=order:<id>`, `?assignee=me`), so a link or a counter opens the board filtered.
 - **Links read live**: a link stores the record's id only; the order number, product title or customer name come from Medusa when shown.
 - **Setup guide** in the admin with live step states, a ready-to-copy API example, a checklist and troubleshooting, in English and Polish.
 - **Admin in English and Polish** through the Medusa admin translations.
@@ -35,7 +36,7 @@ Scripts and AI agents report their work on the same board through the admin API 
 
 ## Requirements
 
-- Medusa 2.12 or newer (tested on 2.15.3) and Node.js 20+.
+- Medusa 2.12 to 2.21 and Node.js 20+ (see Compatibility).
 - Postgres, as every Medusa store has.
 
 ## Installation
@@ -157,7 +158,8 @@ All routes answer JSON in snake case, like Medusa's own admin API. Refusals carr
 - `GET /admin/tasks/tasks/:id/activity`: the task's log, newest first.
 - `POST /admin/tasks/tasks/:id/links`: `{ type: "order" | "product" | "customer", id }`; linking twice changes nothing. `DELETE /admin/tasks/tasks/:id/links/:link_id` unlinks.
 - `GET /admin/tasks/activity`: the latest activity across the board.
-- `GET /admin/tasks/orders/:id`, `/products/:id`, `/customers/:id`: tasks linked to that record, for the widgets.
+- `GET /admin/tasks/orders/:id`, `/products/:id`, `/customers/:id`: tasks linked to that record, for the widgets: `{ board, sandbox, tasks, count, people, named_people }` (the faces of the shown assignees).
+- `GET /admin/tasks/integration`, `/integration/summary`, `/integration/attention`: the koda.integration/1 contract, see Works with Koda Plus hosts.
 - `POST /admin/tasks/sandbox/ensure`: seeds the sandbox board when it is stale (`sandbox_board.stale` in the status), for the Tasks page of a sandbox account; `{ seeded }`. A no-op for the team.
 - `POST /admin/tasks/sandbox/reset`: the sandbox board back to its sample tasks (a second reset within ten seconds changes nothing).
 
@@ -252,6 +254,20 @@ Then remove the old module, its admin routes, workflows and page from the app. T
 - **Reads do not write.** `GET` routes only read: the sandbox is seeded by `POST /admin/tasks/sandbox/ensure` and the job.
 - **Errors.** Unexpected server errors answer a plain sentence (`server_error`); the details stay in the server log, with keys and connection strings masked. Photos are shown only from https or image data URIs, without a referrer.
 
+## Works with Koda Plus hosts
+
+An app that shows every Koda Plus plugin in one place (like [medusa.koda.plus](https://medusa.koda.plus/app/orders?demo=en)) reads Tasks through the shared contract `koda.integration/1` and never needs to know its tables. Every answer is read on the board of the person or key asking, exactly like the plugin's own routes: a sandbox account gets the sandbox board and nothing else, and an account that cannot be read gets no data.
+
+- `GET /admin/tasks/integration`: the manifest (`kind: "module"`, mode `live`, or `sandbox` for a sandbox account, the widgets). The team also sees a setup problem while sandbox accounts are configured without `sandboxGuard`.
+- `GET /admin/tasks/integration/summary?entity=order&id=order_...` (or `ids=`, up to 50; `entity` is `order`, `product` or `customer`): one line per record with linked tasks, the worst task speaking: an open task past its due day is red ("2 tasks overdue"), one due today or waiting in review is orange, open tasks are blue, all closed is green, no linked task is `none`. The detail names the most urgent task; `counts` has `linked`, `open`, `overdue`, `due_today`, `review`, `done` and `rejected`; the link opens the board filtered to the record (`/tasks?record=order%3Aorder_...`). "Overdue" counts by the day in the request's time zone (`tz`). No facts: tasks are work about a record, not a fact of it, and nothing is read from order, cart or customer metadata.
+- `GET /admin/tasks/integration/attention?scope=orders,products,customers,integration`: the counters `overdue_orders`, `overdue_products` and `overdue_customers` (orange: open tasks past their due day linked to that kind of record), `unassigned` (blue: open tasks without a person) and `mine` (blue: open tasks of the admin user asking), each linking to the board with the same filter (`/tasks?quick=overdue&record_type=order`, `/tasks?quick=unassigned`, `/tasks?quick=mine`).
+- The cards register as `tasks.order` (zone `order.details`), `tasks.product` (`product.details`) and `tasks.customer` (`customer.details`), tab order 95. A host that claims the zone shows the card as a tab (`embedded`: no header of its own, a quiet line while loading or when nothing is linked) and Medusa's own spot stays empty. Without a host nothing changes.
+- The page opens on deep links: `quick` (`overdue`, `due_today`, `urgent`, `unassigned`, `mine`, `open`, `review`), `record` (`order:<id>`, `product:<id>`, `customer:<id>`), `record_type`, `assignee` (`me`, `none`, `user:<id>`, `text:<name>`), `q`, `tag`, `priority`, `layout` (`board`, `roadmap`), and as before `task`, `new`, `link`, `view`, `tab`.
+
+## Public API
+
+What other code may import: `@koda-plus/medusa-plugin-tasks/workflows` (the workflows, the flows and the request context), `@koda-plus/medusa-plugin-tasks/modules/tasks` (the module, its options and the types of the events and answers) and `/admin`. Type declarations ship with the package. Every other path is internal and may change in any release.
+
 ## What this plugin does not do
 
 - It does not send notifications or e-mails: it emits events for whatever sends them.
@@ -262,6 +278,16 @@ Then remove the old module, its admin routes, workflows and page from the app. T
 - It does not change orders, products or customers: links only point at them.
 - It does not drop or change the KODA Panel tables it takes over.
 
+## Uninstall
+
+1. Remove the plugin from `plugins` in `medusa-config.ts` and the package from `package.json`.
+2. The tables `tasks_task`, `tasks_comment`, `tasks_activity`, `tasks_link` and `tasks_setting` stay with your data. To drop them, run `npx medusa db:rollback tasks` while the plugin is still installed; if you drop them by hand instead, also delete the row `Migration20261007140000` from `mikro_orm_migrations`, or a later install will not create them again.
+3. Secret API keys made for agents (`tasks: ...`) are Medusa's: revoke them in Settings, Secret API Keys, since without the plugin they would reach the whole admin API.
+
+## Compatibility
+
+Medusa 2.12 to 2.21 (peer range `^2.12.0`) and Node.js 20+. The release of each version runs the smoke test on a fresh Medusa 2.12.6 and 2.21.2 app: migrations, build, start and the admin pages. Developed and unit tested on Medusa 2.15.3. Developing the plugin needs Node.js 22.6+ (the tests run the TypeScript sources directly).
+
 ## Development
 
 ```bash
@@ -271,17 +297,25 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the options, the `people` and `references` parsers, the status and position rules, due dates, request validation, the request context (boards for users and keys, failing closed), the isolation of the sandbox on every admin route, the flows end to end, API key authors, links, the sample tasks, the events and the adoption of the KODA Panel tables (the shape check against every known copy and the SQL the migration sends), plus every SQL statement of the stores bound to its board. With `TASKS_TEST_PG_URL` set to a scratch Postgres, one more test runs the migration (twice, on two copies of the old tables and on a foreign `task` table), every statement and the admin routes against a real database, in a schema of its own that it drops afterwards. To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-tasks` in the app.
+`npm test` covers the options, the `people` and `references` parsers, the status and position rules, due dates, request validation, the request context (boards for users and keys, failing closed), the isolation of the sandbox on every admin route, the admin guard (agent keys, `sandboxGuard`, path tricks), reads that never write, the order of locks and the answers of a broken transaction, the sandbox limits, the flows end to end, API key authors and reserved names, links, the sample tasks, the events, the koda.integration/1 contract (conformance for a team member and a sandbox account, the worst task, time zones, counters), the pure rules of the admin (deep links, filters, the board after a drag) and the adoption of the KODA Panel tables (the shape check against every known copy and the SQL the migration sends), plus every SQL statement of the stores bound to its board. With `TASKS_TEST_PG_URL` set to a scratch Postgres, one more test runs the migration (twice, on two copies of the old tables and on a foreign `task` table), every statement, the order of locks under parallel changes and the admin routes against a real database, in a schema of its own that it drops afterwards. To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-tasks` in the app.
 
 ## Commercial support
 
 Built and maintained by [Koda Plus](https://koda.plus), a Medusa agency from Poland. Koda Plus runs its own roadmap on this board, next to its OLX, Allegro, BaseLinker, Subiekt nexo and Fakturownia integrations. Need it wired into your team's tools, notifications or an AI agent of your own? Write to kontakt@koda.plus.
+
+## Trademarks
+
+Medusa is a trademark of its owner, named here only as the commerce platform this plugin extends. Tasks is a module of Koda Plus, not affiliated with or endorsed by Medusa.
 
 ## License
 
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-tasks/LICENSE).
 
 ## Changelog
+
+### 0.2.0
+
+Keys for AI agents that reach only Tasks (`tasks: ...`), an opt-in `sandboxGuard`, reads that never write, one order of locks, no teammate's name for keys, a paced sandbox without events; the koda.integration/1 contract for Koda Plus hosts with embeddable cards, deep links into the board, type declarations. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-tasks/CHANGELOG.md).
 
 ### 0.1.0 (2026-10-07)
 

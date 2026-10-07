@@ -256,6 +256,27 @@ export function memoryStores(): Memory {
         addActivity(newActivity)
         return copy(l as LinkRow)
       },
+      async linkedTasks(type, entityIds) {
+        const out: Array<TaskRow & { entity_id: string }> = []
+        for (const l of links.values()) {
+          if (!onBoard(l) || l.entity_type !== type || !entityIds.includes(l.entity_id)) continue
+          const t = task(l.task_id)
+          if (t) out.push({ ...copy(t), entity_id: l.entity_id })
+        }
+        return out.sort((a, b) => time(b.updated_at) - time(a.updated_at))
+      },
+      async attentionCounts(dayStart, assigneeId) {
+        const open = [...tasks.values()].filter((t) => onBoard(t) && (OPEN_STATUSES as readonly string[]).includes(t.status))
+        const overdue = open.filter((t) => t.due_date && time(t.due_date) < dayStart.getTime())
+        const linkedTo = (type: string) => overdue.filter((t) => [...links.values()].some((l) => onBoard(l) && l.task_id === t.id && l.entity_type === type)).length
+        return {
+          overdue_orders: linkedTo("order"),
+          overdue_products: linkedTo("product"),
+          overdue_customers: linkedTo("customer"),
+          unassigned: open.filter((t) => !t.assignee_id && !(t.assignee ?? "").trim()).length,
+          mine: assigneeId ? open.filter((t) => t.assignee_id === assigneeId).length : 0,
+        }
+      },
       async tasksForEntity(type, entityId, limit) {
         const rows = [...tasks.values()]
           .filter((t) => onBoard(t) && [...links.values()].some((l) => onBoard(l) && l.task_id === t.id && l.entity_type === type && l.entity_id === entityId))
@@ -335,7 +356,11 @@ export const API_KEYS = [
 ]
 
 export const RECORDS: Record<string, Array<Record<string, unknown>>> = {
-  order: [{ id: "order_1", display_id: 1042, customer_id: "cus_1" }],
+  order: [
+    { id: "order_1", display_id: 1042, customer_id: "cus_1" },
+    /* A shopper's metadata that looks like task state: nothing may read it. */
+    { id: "order_2", display_id: 1043, customer_id: null, metadata: { tasks: [{ status: "review" }], tasks_overdue: 7, tasks_board: "main" } },
+  ],
   product: [
     { id: "prod_1", title: "Linen shirt", status: "published" },
     { id: "prod_2", title: "Draft hat", status: "draft" },

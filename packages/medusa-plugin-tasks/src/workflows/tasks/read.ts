@@ -45,7 +45,7 @@ import { nextSandboxReset, sandboxStale } from "../../modules/tasks/lib/sandbox"
 import type { BoardStore, TaskQuery } from "../../modules/tasks/lib/store"
 import { cleanLine, isEntityId, likePattern } from "../../modules/tasks/lib/text"
 import type { TaskRow } from "../../modules/tasks/lib/rows"
-import { allUsers, usersByEmail } from "./context"
+import { allUsers, userProfiles, usersByEmail } from "./context"
 import { labelFor, linkLabels } from "./records"
 import { sandboxMarker } from "./sandbox"
 import { envOf, notFound, type Scope } from "./runtime"
@@ -152,12 +152,30 @@ export async function boardActivity(scope: Scope, ctx: RequestContext, query: Re
   return { activity: rows.map((a) => toActivityDto(a)) }
 }
 
-/** The widgets: tasks of the board linked to one order, product or customer. */
+/**
+ * The widgets: tasks of the board linked to one order, product or customer,
+ * with the faces of their assignees, so a widget needs this one read and
+ * never the whole status of the page.
+ */
 export async function entityTasks(scope: Scope, ctx: RequestContext, type: LinkType, id: string): Promise<EntityTasksResponse> {
   if (!isEntityId(id) || !id.startsWith(LINK_ID_PREFIX[type])) throw notFound(type[0].toUpperCase() + type.slice(1))
+  const { options } = envOf(scope)
   const store = boardStore(scope, ctx)
   const { rows, count } = await store.tasksForEntity(type, id, WIDGET_TASKS)
-  return { board: ctx.board, sandbox: ctx.sandbox, tasks: await taskDtos(scope, store, rows), count }
+  const tasks = await taskDtos(scope, store, rows)
+  const ids = [...new Set(tasks.map((t) => t.assignee_id).filter((v): v is string => Boolean(v)))]
+  let assignees: PersonDto[] = []
+  try {
+    const found = await userProfiles(scope, ids)
+    assignees = [...found.values()]
+      /* A board shows only its own people: the team on the main board, sandbox accounts on the sandbox board. */
+      .filter((u) => isSandboxEmail(u.email, options) === ctx.sandbox)
+      .map((u) => ({ id: u.id, name: userName(u) ?? u.id, email: u.email ?? null, avatar_url: u.avatar_url ?? null, role: isAgencyEmail(u.email, options) ? "agency" : "client" }))
+  } catch {
+    assignees = []
+  }
+  const named = ctx.sandbox ? [] : options.people.map((p) => ({ name: p.name, avatar: p.avatar, role: p.role, kind: p.kind }))
+  return { board: ctx.board, sandbox: ctx.sandbox, tasks, count, people: assignees, named_people: named }
 }
 
 /* ------------------------------------------------------------------ */

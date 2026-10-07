@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState, type DragEvent } from "react"
-import { ChatBubble } from "@medusajs/icons"
+import { ChatBubble, XMarkMini } from "@medusajs/icons"
 import { Badge, Button, Input, Select, Text, clx } from "@medusajs/ui"
 import { STATUSES, type TaskStatus } from "../../modules/tasks/lib/constants"
 import type { TaskDto } from "../../modules/tasks/lib/contract"
 import { personKey } from "../../modules/tasks/lib/people"
 import { PRIORITY_RANK } from "../../modules/tasks/lib/status"
-import type { MoveArgs } from "./tasks-rules"
+import { assigneeKey, NO_FILTERS, filtered, type BoardFilters, type MoveArgs } from "./tasks-rules"
 import {
   LinkChip,
   Person,
@@ -35,47 +35,21 @@ import {
 /* Filters                                                             */
 /* ------------------------------------------------------------------ */
 
-export type QuickFilter = "none" | "overdue" | "urgent" | "unassigned"
+/* The filters live in the URL (deep links from hosts and counters); the rules are in tasks-rules.ts. */
+export { NO_FILTERS, applyFilters, assigneeKey, filtered, type BoardFilters, type QuickFilter } from "./tasks-rules"
 
-export interface BoardFilters {
-  q: string
-  /** `all`, `none` (unassigned), `user:<id>` or `text:<name>`. */
-  assignee: string
-  tag: string
-  priority: string
-  quick: QuickFilter
-}
-
-export const NO_FILTERS: BoardFilters = { q: "", assignee: "all", tag: "all", priority: "all", quick: "none" }
-
-export function filtered(f: BoardFilters): boolean {
-  return f.q.trim() !== "" || f.assignee !== "all" || f.tag !== "all" || f.priority !== "all" || f.quick !== "none"
-}
-
-const isOpenTask = (t: TaskDto) => t.status !== "done" && t.status !== "rejected"
-const unassigned = (t: TaskDto) => !t.assignee_id && !(t.assignee ?? "").trim()
-
-export function assigneeKey(t: Pick<TaskDto, "assignee" | "assignee_id">): string {
-  if (t.assignee_id) return `user:${t.assignee_id}`
-  const name = personKey(t.assignee ?? "")
-  return name ? `text:${name}` : "none"
-}
-
-export function applyFilters(tasks: TaskDto[], f: BoardFilters, today: string, lang: string): TaskDto[] {
-  const q = f.q.trim().toLowerCase()
-  return tasks.filter((t) => {
-    if (f.quick === "overdue" && !overdue(t, today)) return false
-    if (f.quick === "urgent" && !(isOpenTask(t) && (t.priority === "urgent" || t.priority === "high"))) return false
-    if (f.quick === "unassigned" && !(isOpenTask(t) && unassigned(t))) return false
-    if (f.assignee !== "all" && assigneeKey(t) !== f.assignee) return false
-    if (f.tag !== "all" && !t.tags.some((tag) => tag.toLowerCase() === f.tag.toLowerCase())) return false
-    if (f.priority !== "all" && t.priority !== f.priority) return false
-    if (q) {
-      const hay = `${taskTitle(t, lang)} ${t.title} ${t.description ?? ""} ${t.assignee ?? ""} ${t.tags.join(" ")} ${t.links.map((l) => l.label ?? "").join(" ")}`.toLowerCase()
-      if (!hay.includes(q)) return false
-    }
-    return true
-  })
+/** A filter that came with a link (a record, a kind of record), with a way to drop it. */
+function FilterChip({ label, onClear, clearLabel }: { label: string; onClear: () => void; clearLabel: string }) {
+  return (
+    <span className="inline-flex items-center gap-x-1 rounded-full border border-ui-border-base bg-ui-bg-component py-0.5 pl-2.5 pr-1">
+      <Text size="xsmall" leading="compact" weight="plus">
+        {label}
+      </Text>
+      <button type="button" aria-label={clearLabel} title={clearLabel} onClick={onClear} className="rounded-full p-0.5 text-ui-fg-muted hover:text-ui-fg-base">
+        <XMarkMini />
+      </button>
+    </span>
+  )
 }
 
 export interface AssigneeOption {
@@ -119,6 +93,12 @@ export function FilterBar({
     return [...map.values()].sort((a, b) => a.localeCompare(b))
   }, [tasks])
   const set = (patch: Partial<BoardFilters>) => onChange({ ...value, ...patch })
+  /* The record of a deep link (`?record=order:...`), named as the tasks' links name it. */
+  const recordLabel = useMemo(() => {
+    if (!value.record) return null
+    for (const task of tasks) for (const l of task.links) if (`${l.type}:${l.entity_id}` === value.record && l.label) return l.label
+    return value.record.slice(value.record.indexOf(":") + 1)
+  }, [tasks, value.record])
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -132,6 +112,7 @@ export function FilterBar({
           </Select.Trigger>
           <Select.Content>
             <Select.Item value="all">{t("board.everyone")}</Select.Item>
+            <Select.Item value="me">{t("board.me")}</Select.Item>
             <Select.Item value="none">
               <Person who={null} fallback={t("board.unassigned")} plain />
             </Select.Item>
@@ -175,6 +156,8 @@ export function FilterBar({
           </Select.Content>
         </Select>
       </div>
+      {value.record ? <FilterChip label={t("board.record", { label: recordLabel ?? "" })} onClear={() => set({ record: null })} clearLabel={t("actions.clear")} /> : null}
+      {value.recordType ? <FilterChip label={t(`board.recordType.${value.recordType}`)} onClear={() => set({ recordType: null })} clearLabel={t("actions.clear")} /> : null}
       {filtered(value) ? (
         <Button size="small" variant="transparent" onClick={() => onChange({ ...NO_FILTERS })}>
           {t("actions.clear")}

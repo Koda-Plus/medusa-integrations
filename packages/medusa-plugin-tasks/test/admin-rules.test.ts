@@ -5,7 +5,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { completeDay, moveOnBoard, safeAvatarUrl } from "../src/admin/lib/tasks-rules.ts"
+import { NO_FILTERS, applyFilters, completeDay, filtered, filtersFromParams, filtersToParams, moveOnBoard, safeAvatarUrl, type BoardFilters } from "../src/admin/lib/tasks-rules.ts"
 import type { BoardResponse, TaskDto } from "../src/modules/tasks/lib/contract.ts"
 
 const task = (id: string, status: TaskDto["status"], position: number, completed_at: string | null = null): TaskDto =>
@@ -49,4 +49,61 @@ test("avatars: https and image data only", () => {
   assert.equal(safeAvatarUrl(" data:image/png;base64,iVBORw0KGgo= "), "data:image/png;base64,iVBORw0KGgo=")
   for (const bad of ["http://tracker.example/p.gif", "javascript:alert(1)", "//evil.example/x.png", "data:text/html;base64,PHNjcmlwdD4=", "https://a.example/x.png\" onerror=\"x", null, undefined])
     assert.equal(safeAvatarUrl(bad as string | null | undefined), null, String(bad))
+})
+
+const full = (over: Partial<TaskDto>): TaskDto =>
+  ({
+    id: "t",
+    title: "Task",
+    description: null,
+    status: "todo",
+    priority: "medium",
+    assignee: null,
+    assignee_id: null,
+    due_date: null,
+    tags: [],
+    links: [],
+    sample: null,
+    position: 0,
+    completed_at: null,
+    created_at: "2026-10-01T00:00:00.000Z",
+    updated_at: "2026-10-01T00:00:00.000Z",
+    ...over,
+  }) as TaskDto
+
+test("deep links: every counter and summary link opens a filter the page reads; unknown values are ignored", () => {
+  for (const href of ["/tasks?quick=overdue&record_type=order", "/tasks?quick=overdue&record_type=product", "/tasks?quick=overdue&record_type=customer", "/tasks?quick=unassigned", "/tasks?quick=mine", "/tasks?record=order%3Aorder_01ABC"]) {
+    const f = filtersFromParams(new URL(href, "https://admin.example.com").searchParams)
+    assert.ok(filtered(f), href)
+  }
+  const f = filtersFromParams(new URLSearchParams("quick=overdue&record_type=order&assignee=me&priority=high&tag=release&q=refund&record=order:order_1"))
+  assert.deepEqual(f, { q: "refund", assignee: "me", tag: "release", priority: "high", quick: "overdue", record: "order:order_1", recordType: "order" })
+  const junk = filtersFromParams(new URLSearchParams("quick=everything&record_type=invoice&assignee=admin&priority=asap&record=order:../x"))
+  assert.deepEqual(junk, NO_FILTERS)
+  /* Back to the URL: other parameters stay, defaults are dropped. */
+  const p = filtersToParams({ ...NO_FILTERS, quick: "mine", record: "product:prod_1" }, new URLSearchParams("view=panel&task=task_1&q=old"))
+  assert.equal(p.toString(), "view=panel&task=task_1&quick=mine&record=product%3Aprod_1")
+})
+
+test("filters: quick filters, the record and the kind of record, me and mine", () => {
+  const link = (type: "order" | "product" | "customer", entity_id: string) => ({ id: `l_${entity_id}`, type, entity_id, label: entity_id, found: true, created_by: null, created_at: "" })
+  const tasks = [
+    full({ id: "late", due_date: "2026-10-01T12:00:00.000Z", links: [link("order", "order_1")], assignee_id: "user_me" }),
+    full({ id: "today", due_date: "2026-10-07T12:00:00.000Z", links: [link("product", "prod_1")] }),
+    full({ id: "review", status: "review", assignee: "Anna" }),
+    full({ id: "done", status: "done", due_date: "2026-01-01T12:00:00.000Z", assignee_id: "user_me", links: [link("order", "order_2")] }),
+  ]
+  const ids = (f: Partial<BoardFilters>) => applyFilters(tasks, { ...NO_FILTERS, ...f }, "2026-10-07", "en", "user_me").map((t) => t.id)
+  assert.deepEqual(ids({ quick: "overdue" }), ["late"])
+  assert.deepEqual(ids({ quick: "due_today" }), ["today"])
+  assert.deepEqual(ids({ quick: "unassigned" }), ["today"])
+  assert.deepEqual(ids({ quick: "mine" }), ["late"], "open tasks of the person asking")
+  assert.deepEqual(ids({ quick: "open" }), ["late", "today", "review"])
+  assert.deepEqual(ids({ quick: "review" }), ["review"])
+  assert.deepEqual(ids({ assignee: "me" }), ["late", "done"])
+  assert.deepEqual(ids({ recordType: "order" }), ["late", "done"])
+  assert.deepEqual(ids({ quick: "overdue", recordType: "order" }), ["late"], "the overdue_orders counter")
+  assert.deepEqual(ids({ record: "order:order_2" }), ["done"])
+  assert.deepEqual(ids({ assignee: "text:anna" }), ["review"])
+  assert.deepEqual(applyFilters(tasks, { ...NO_FILTERS, quick: "mine" }, "2026-10-07", "en", null), [], "without a viewer nobody is me")
 })
