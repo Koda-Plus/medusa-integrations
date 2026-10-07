@@ -7,12 +7,14 @@
 import { beforeEach, test } from "node:test"
 import assert from "node:assert/strict"
 import { resolveOptions, type EmailsPluginOptions } from "../src/modules/emails/lib/options.ts"
-import { forgetSettings, templateKey } from "../src/modules/emails/lib/settings.ts"
+import { createResendClient } from "../src/modules/emails/lib/resend.ts"
+import { deliver, type IncomingNotification } from "../src/modules/emails/lib/send.ts"
+import { EMPTY_SETTINGS, forgetSettings, templateKey } from "../src/modules/emails/lib/settings.ts"
 import { runAbandonedCarts } from "../src/workflows/emails/abandoned-carts.ts"
 import { ensureDemoOutbox } from "../src/workflows/emails/demo.ts"
 import { onCustomerCreated, onNegotiation, onOrderCanceled, onOrderPlaced, onPasswordReset, onShipmentCreated, retryMessage } from "../src/workflows/emails/events.ts"
 import { runHousekeeping } from "../src/workflows/emails/housekeeping.ts"
-import { LIVE, logger, memoryStore, type MemoryStore } from "./helpers.ts"
+import { FakeResend, LIVE, logger, memoryStore, type MemoryStore } from "./helpers.ts"
 
 beforeEach(() => forgetSettings())
 
@@ -72,6 +74,9 @@ function matches(row: Row, filters: Row): boolean {
     if (v === null) return row[k] === null || row[k] === undefined
     if (v && typeof v === "object" && !Array.isArray(v)) {
       if ("$ne" in v) return row[k] !== null && row[k] !== undefined
+      const at = new Date(row[k]).getTime()
+      if ("$lt" in v && !(at < new Date(v.$lt).getTime())) return false
+      if ("$gt" in v && !(at > new Date(v.$gt).getTime())) return false
       return true
     }
     return row[k] === v
@@ -268,6 +273,64 @@ test("abandoned carts: off by default; on, one reminder per usable cart, never t
   const again = await runAbandonedCarts(s.scope)
   assert.equal(again?.sent, 0)
   assert.equal(again?.skipped, 2)
+})
+
+test("abandoned carts hour after hour for four days: one e-mail per cart, none for a cart idle for months, even when the job cannot read the send log", async () => {
+  // A job this plugin replaced kept a "reminded" mark in the cart's metadata. The mark was never
+  // written, nothing capped the cart's age, and one cart idle for months got the reminder every
+  // hour. Here the job's own read of the send log fails on every run, so it offers every cart in
+  // the window each hour; only the provider's claim stands between those offers and Resend.
+  const start = Date.parse("2026-10-06T12:00:00.000Z")
+  const idleFor = (hours: number) => new Date(start - hours * HOUR).toISOString()
+  const items = [{ title: "Szlifierka kątowa 125 mm", variant_sku: "KS-ELN-125", quantity: 11, unit_price: 289 }]
+  const carts: Row[] = [
+    { id: "cart_months", email: "ola@example.com", currency_code: "pln", updated_at: idleFor(82 * 24), items },
+    { id: "cart_ready", email: "anna@example.com", currency_code: "pln", updated_at: idleFor(30), items },
+    { id: "cart_later", email: "piotr@example.com", currency_code: "pln", updated_at: idleFor(2), items },
+    { id: "cart_guest", email: null, currency_code: "pln", updated_at: idleFor(30), items },
+  ]
+  const options = resolveOptions({ ...LIVE, templates: { "cart.abandoned": true } })
+  const store = memoryStore()
+  store.existingKeys = async () => {
+    throw new Error("Connection terminated unexpectedly")
+  }
+  const resend = new FakeResend()
+  const client = createResendClient({ apiKey: options.apiKey, timeoutMs: 2000, maxRetries: 0, requestsPerSecond: 1000, fetch: resend.fetch, sleep: async () => {}, random: () => 0.5 })
+  const log = logger()
+  let clock = start
+  const registry: Record<string, unknown> = {
+    emails: { getOptions: () => options, isDemo: () => false, getLogger: () => log, mask: (t: string) => t },
+    query: { graph: async (args: Row) => ({ data: carts.filter((r) => matches(r, args.filters)).slice(0, args.pagination?.take) }) },
+    // Medusa's notification module without its own idempotency (as if its rows were gone):
+    // every notification reaches the provider's delivery.
+    notification: {
+      createNotifications: (n: Row) => deliver({ options, store, loadSettings: async () => EMPTY_SETTINGS, client: () => client, logger: log, now: () => new Date(clock) }, n as IncomingNotification),
+    },
+    emailsMessageStore: store,
+  }
+  const scope = {
+    resolve(key: string, o?: { allowUnregistered?: boolean }) {
+      if (key in registry) return registry[key]
+      if (o?.allowUnregistered) return undefined
+      throw new Error(`not registered: ${key}`)
+    },
+  }
+  for (let hour = 0; hour <= 96; hour++) {
+    clock = start + hour * HOUR
+    await runAbandonedCarts(scope, new Date(clock))
+  }
+  assert.deepEqual(
+    resend.calls.map((c) => c.headers["idempotency-key"]),
+    ["emails:cart.abandoned:cart_ready", "emails:cart.abandoned:cart_later"],
+    "97 hourly runs: one e-mail per cart idle 24 to 72 hours, none for the cart idle for months or the guest",
+  )
+  assert.deepEqual(
+    store.rows.map((r) => [r.key, r.status]),
+    [
+      ["emails:cart.abandoned:cart_ready", "sent"],
+      ["emails:cart.abandoned:cart_later", "sent"],
+    ],
+  )
 })
 
 test("a person's retry reads the order again and asks the provider to take the row over, under a new Medusa key", async () => {
