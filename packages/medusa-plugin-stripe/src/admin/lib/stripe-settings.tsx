@@ -170,7 +170,7 @@ export function AccessTab({ status }: { status: StripeStatusResponse }) {
                       {t(`access.resource.${r}`)}
                     </Text>
                     <Badge size="2xsmall" color="green">
-                      Read
+                      {t("access.read")}
                     </Badge>
                   </span>
                 </Table.Cell>

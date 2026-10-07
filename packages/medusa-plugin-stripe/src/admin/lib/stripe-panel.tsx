@@ -31,7 +31,7 @@ import {
  */
 
 const PAGE_SIZE = 15
-const FILTERS: PaymentFilter[] = ["all", "succeeded", "failed", "attention", "refunded", "disputed", "outside"]
+export const PAYMENT_FILTERS: PaymentFilter[] = ["all", "succeeded", "failed", "attention", "refunded", "disputed", "outside", "foreign"]
 const METHOD_ORDER: MethodKey[] = ["blik", "card", "p24", "apple_pay", "google_pay", "link", "other"]
 
 const pagination = (t: (k: string) => string) => ({
@@ -258,11 +258,22 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
 /* Payments                                                            */
 /* ------------------------------------------------------------------ */
 
-export function PaymentsSection({ overview, lang }: { overview: StripeOverviewResponse; lang: string }) {
+export function PaymentsSection({
+  overview,
+  lang,
+  initialFilter = "all",
+  initialQuery = "",
+}: {
+  overview: StripeOverviewResponse
+  lang: string
+  /** From the page URL (?filter=, ?q=): the list a board counter or a host links to. */
+  initialFilter?: PaymentFilter
+  initialQuery?: string
+}) {
   const { t } = useTranslation("stripe")
-  const [filter, setFilter] = useState<PaymentFilter>("all")
+  const [filter, setFilter] = useState<PaymentFilter>(initialFilter)
   const [method, setMethod] = useState<MethodKey | "all">("all")
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery)
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, method, q])
@@ -286,7 +297,11 @@ export function PaymentsSection({ overview, lang }: { overview: StripeOverviewRe
       </div>
       <div className="flex flex-col gap-3 px-6 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <FilterPills<PaymentFilter> value={filter} onChange={setFilter} options={FILTERS.map((f) => ({ value: f, label: t(`payments.filter.${f}`), count: data?.counts?.[f] }))} />
+          <FilterPills<PaymentFilter>
+            value={filter}
+            onChange={setFilter}
+            options={PAYMENT_FILTERS.filter((f) => f !== "foreign" || filter === "foreign" || (data?.counts?.foreign ?? 0) > 0).map((f) => ({ value: f, label: t(`payments.filter.${f}`), count: data?.counts?.[f] }))}
+          />
           <div className="w-full lg:w-80">
             <Input size="small" type="search" placeholder={t("payments.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
@@ -333,8 +348,13 @@ export function PaymentsSection({ overview, lang }: { overview: StripeOverviewRe
                         </Badge>
                       ) : null}
                       {p.disputed ? (
-                        <Badge size="2xsmall" color="red">
+                        <Badge size="2xsmall" color={p.disputeOpen ? "red" : "grey"}>
                           {t("payments.disputed")}
+                        </Badge>
+                      ) : null}
+                      {p.refundFailed ? (
+                        <Badge size="2xsmall" color="red">
+                          {t("payments.refundFailed")}
                         </Badge>
                       ) : null}
                     </div>

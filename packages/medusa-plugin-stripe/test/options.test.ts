@@ -162,3 +162,40 @@ test("references: the since date of an older config is ignored, never an error; 
   assert.equal(pickText({ pl: "Tylko polski" }, "en"), "Tylko polski")
   assert.equal(pickText(null, "pl"), "")
 })
+
+test("demo only with demo: true; a missing key never turns a store into sample data; demoOrders defaults to stripe", () => {
+  assert.equal(resolveOptions({}).demo, false)
+  assert.equal(resolveOptions({ apiKey: "" }).demo, false)
+  assert.equal(resolveOptions({ demo: undefined }).demo, false)
+  assert.equal(resolveOptions({ demo: "maybe" }).demo, false)
+  assert.equal(resolveOptions({}).demoOrders, "stripe")
+  assert.equal(resolveOptions({ demoOrders: "stripe-or-none" }).demoOrders, "stripe-or-none")
+  assert.equal(resolveOptions({ demoOrders: " STRIPE-OR-NONE " }).demoOrders, "stripe-or-none")
+  assert.equal(resolveOptions({ demoOrders: "all" }).demoOrders, "stripe")
+})
+
+test("the start log: a warning for demo mode in production, and no promise that a restricted key is read only", async () => {
+  const { default: Service } = await import("../src/modules/stripe/service.ts")
+  const lines: string[] = []
+  const logger = { info: (m: string) => lines.push(`info ${m}`), warn: (m: string) => lines.push(`warn ${m}`), error() {}, debug() {} }
+  const env = process.env.NODE_ENV
+  try {
+    process.env.NODE_ENV = "production"
+    new Service({ logger: logger as never }, { demo: true })
+    assert.ok(lines.some((l) => l.startsWith("warn") && l.includes("production")), lines.join("\n"))
+    lines.length = 0
+    process.env.NODE_ENV = "development"
+    new Service({ logger: logger as never }, { demo: true })
+    assert.ok(!lines.some((l) => l.startsWith("warn")))
+    lines.length = 0
+    new Service({ logger: logger as never }, { apiKey: READ_KEY })
+    assert.ok(lines.some((l) => l.includes("Read or None")), lines.join("\n"))
+    assert.ok(!lines.some((l) => /read only\.?$/.test(l)))
+    lines.length = 0
+    new Service({ logger: logger as never }, { apiKey: "sk_live_FAKEsecretKey1234" })
+    assert.ok(lines.some((l) => l.startsWith("warn") && l.includes("secret")))
+    assert.ok(!lines.join("\n").includes("FAKEsecretKey1234"))
+  } finally {
+    process.env.NODE_ENV = env
+  }
+})

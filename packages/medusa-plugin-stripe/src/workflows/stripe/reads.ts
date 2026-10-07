@@ -25,7 +25,7 @@ export async function runStripeChecks(scope: Scope, options: { force?: boolean; 
   return loadChecks(scope, { force: options.force, origin: options.origin ?? null })
 }
 
-/** The Stripe payments of one order, for the order widget. */
-export async function loadStripeOrder(scope: Scope, orderId: string, options: { origin?: string | null } = {}): Promise<StripeOrderResponse> {
-  return loadOrderPayments(scope, orderId, { origin: options.origin ?? null })
+/** The Stripe payments of one order, for the order widget. `force` reads Stripe again once the last read is 30 seconds old. */
+export async function loadStripeOrder(scope: Scope, orderId: string, options: { origin?: string | null; force?: boolean } = {}): Promise<StripeOrderResponse> {
+  return loadOrderPayments(scope, orderId, { origin: options.origin ?? null, force: options.force })
 }

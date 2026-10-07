@@ -33,12 +33,18 @@ class KodaStripeModuleService {
     const key = keyInfo(this.options_.apiKey)
     if (this.options_.demo) {
       this.logger_.info("[stripe] Demo mode: sample Stripe data built from the store's orders, no requests to Stripe.")
+      if (process.env.NODE_ENV === "production") {
+        this.logger_.warn("[stripe] Demo mode is on in production: the admin shows sample payments, fees and disputes, not your Stripe account. Remove demo: true unless this is a demo store.")
+      }
     } else if (!key.kind) {
       this.logger_.info("[stripe] Waiting for configuration: set the apiKey option (a restricted key with read permissions). The admin page shows the setup.")
     } else if (key.kind === "publishable") {
       this.logger_.warn("[stripe] The apiKey option holds a publishable key (pk_), which cannot read from Stripe. Use a restricted key (rk_).")
+    } else if (key.kind === "secret") {
+      this.logger_.warn(`[stripe] Reading Stripe with a secret ${key.mode ?? ""} key (sk_), which can move money. The plugin only sends GET requests, but a restricted key with Read or None per resource is safer if it leaks.`.replace(/\s+/g, " "))
     } else {
-      this.logger_.info(`[stripe] Reading Stripe with a ${key.kind} ${key.mode ?? ""} key, read only.`.replace(/\s+/g, " "))
+      /* Stripe shows no API that lists a key's permissions: the plugin only promises its own GET requests. */
+      this.logger_.info(`[stripe] Reading Stripe with a ${key.kind} ${key.mode ?? ""} key. The plugin only sends GET requests; Stripe does not show it the key's permissions, so keep every resource at Read or None.`.replace(/\s+/g, " "))
     }
   }
 

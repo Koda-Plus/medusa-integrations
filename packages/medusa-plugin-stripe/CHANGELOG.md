@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+First npm release. 0.1.0 was never published: it ran only as vendored code on medusa.koda.plus.
+
+### Fixed
+
+- Admin pages work when the plugin is installed from npm: the admin libraries are optional peers, so the app keeps the copies of Medusa's dashboard instead of a second, newer copy.
+- Demo mode pays only orders Stripe would have paid: a Stripe provider among the order's Medusa payments (or, before a payment, its sessions). Marketplace imports marked paid, cash on delivery, other gateways, orders without a total and orders below Stripe's minimum charge get no sample payment, and order metadata is never read. BLIK and Przelewy24 follow the order's own provider. New option `demoOrders` (`stripe`, the default, or `stripe-or-none` for a demo store seeded without a checkout).
+- An order's sample payment is dated a few minutes before the order on the order page, also when the panel moves an older order into its 30 days; its refunds and dispute stay with it.
+- Paid without an order counts only payment sessions of this Medusa. A payment of another Medusa on the same Stripe account is information (filter "Another Medusa", grey in the list), a session Medusa replaced when the customer changed the method never counts, and the advice is to check, never to refund.
+- "Need a look", the paid without an order check and the board counter use one rule: paid by this store's checkout without an order (30 minutes to 7 days old), or the newest refund failed.
+- The PLN settlement, BLIK, Przelewy24 and capture mode checks judge only stores that sell in PLN (a region in PLN or PLN payments).
+- Failed webhook deliveries are the account's: a lost `payment_intent.succeeded` fails the check only when this Medusa's endpoint is the one endpoint listening to it.
+- Dispute deadlines are counted at every answer, not frozen in the cache.
+- The order widget reads Stripe again after a capture or a refund in Medusa, and on Read again (at most every 30 seconds). When Stripe does not answer, it shows the last good read, marked stale.
+- The order widget's cache keeps the normalized payment only: no client secret, billing details or dispute evidence in memory.
+- The cache keeps the order widgets apart from the snapshot and the checks, so browsing orders never pushes them out, and drops entries long past their time.
+- A whole read has a 25 second budget: no further page and no retry past it, so a Stripe outage no longer holds the page for a minute.
+- Open disputes are read 180 days back, page by page, so a dispute of a payment older than the panel's 30 days shows.
+- An error inside a check reaches the admin masked.
+- A failure outside Stripe (Medusa, the database) answers 500 with a plain sentence, the details in the server log; only a Stripe error answers 502.
+- The User-Agent names the package version.
+
+### Changed
+
+- "Copy prompt" turns demo mode on only with `STRIPE_DEMO=true`; a store whose read key is missing shows the setup, never sample data. Demo mode in production logs a warning at start.
+- The prompt and the guide keep an existing Stripe provider entry and its options (capture included) as they are.
+- The key check, the start log, the guide and the README no longer call a restricted key read only: Stripe does not show the plugin a key's permissions, so they ask for Read or None per resource. A secret key logs a warning.
+- The payments filter "Disputed" lists open disputes only; "Need a look" no longer lists declined cards or payments waiting for the customer (they have their own filter and status).
+- The admin fetch goes through the kit: admins signed in with a JWT work, and every write carries the header the write guard asks for. Writes to `/admin/stripe/*` take a JSON body or the `x-koda-request` header (415 otherwise); every route only reads today.
+- `prepublishOnly` runs the typecheck too.
+
 ## 0.1.0 (2026-10-07)
 
 First public release: Stripe in the Medusa admin, next to Medusa's official Stripe provider, read only, for Polish stores.

@@ -15,6 +15,7 @@ import {
   DEFAULT_PROVIDER_ID,
   DEFAULT_REQUESTS_PER_SECOND,
   DEFAULT_TIMEOUT_MS,
+  DEMO_ORDER_RULES,
   MAX_CACHE_SECONDS,
   MAX_MAX_PAGES,
   MAX_REQUESTS_PER_SECOND,
@@ -32,8 +33,21 @@ export interface StripePluginOptions {
    * too. Never sent to the browser.
    */
   apiKey?: string
-  /** Sample data built from the store's own orders; Stripe is never called. Default false. */
+  /**
+   * Sample data built from the store's own orders; Stripe is never called.
+   * Only `true` turns it on (default false): a missing key on production
+   * shows the setup, never sample data.
+   */
   demo?: boolean | string
+  /**
+   * Demo mode only: which orders get a sample Stripe payment. "stripe"
+   * (default): orders whose Medusa payment, or payment session when there is
+   * no payment yet, belongs to a Stripe provider (pp_stripe*). "stripe-or-none":
+   * also orders without any payment collection (a demo store seeded without a
+   * checkout). Marketplace imports, cash on delivery and other gateways never
+   * get one.
+   */
+  demoOrders?: "stripe" | "stripe-or-none" | string
   /** The `id` of the official Stripe provider entry in medusa-config (pp_stripe_<id>). Default "stripe". */
   providerId?: string
   /** The public address of this Medusa backend, for the webhook check. Default: the address the admin is opened on. */
@@ -54,9 +68,12 @@ export interface StripePluginOptions {
   references?: StripeReferenceOption[]
 }
 
+export type DemoOrderRule = (typeof DEMO_ORDER_RULES)[number]
+
 export interface ResolvedStripeOptions {
   apiKey: string
   demo: boolean
+  demoOrders: DemoOrderRule
   providerId: string
   backendUrl: string | null
   /** Null: derive from STORE_CORS at request time. */
@@ -150,7 +167,9 @@ export function resolveOptions(input: StripePluginOptions | null | undefined): R
   const checks = Object.fromEntries(CHECK_KEYS.map((k) => [k, bool((checksIn as Record<string, unknown>)[k], true)])) as Record<CheckKey, boolean>
   return {
     apiKey: typeof o.apiKey === "string" ? o.apiKey.trim() : "",
+    /* Only an explicit true: a missing key never turns real orders into sample payments. */
     demo: bool(o.demo, false),
+    demoOrders: demoOrderRule(o.demoOrders),
     providerId,
     backendUrl: baseUrl(o.backendUrl),
     storefrontDomains: domainList(o.storefrontDomains),
@@ -161,6 +180,12 @@ export function resolveOptions(input: StripePluginOptions | null | undefined): R
     checks,
     references: normalizeReferences(o.references),
   }
+}
+
+/** "stripe" unless the option names another known rule. */
+export function demoOrderRule(value: unknown): DemoOrderRule {
+  const v = typeof value === "string" ? value.trim().toLowerCase() : ""
+  return (DEMO_ORDER_RULES as readonly string[]).includes(v) ? (v as DemoOrderRule) : "stripe"
 }
 
 /** What keeps the plugin from reading Stripe. Empty in demo mode. */

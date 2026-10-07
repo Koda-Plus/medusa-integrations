@@ -6,10 +6,10 @@
  * the last 24 hours, the payment method domains. A check that is turned off
  * in the options skips its read. Medusa: the payment providers, the regions
  * and the mode of the recent Stripe payment sessions. The payments come from
- * the snapshot the panel already holds, so the checks cost five reads at
- * most, kept for `cacheSeconds` like the rest.
+ * the snapshot the panel already holds, so the checks cost six reads at most
+ * (the events take up to two pages), kept for `cacheSeconds` like the rest.
  */
-import { DELIVERY_WINDOW_HOURS, ERROR_CACHE_MS, FORCE_REFRESH_MIN_MS } from "../../modules/stripe/lib/constants"
+import { DELIVERY_WINDOW_HOURS, ERROR_CACHE_MS, FORCE_REFRESH_MIN_MS, READ_BUDGET_MS } from "../../modules/stripe/lib/constants"
 import type { CheckKey, StripeChecksResponse } from "../../modules/stripe/lib/contract"
 import { runChecks, summarize, type ChecksInput, type ProviderFacts, type Read, type RegionFacts } from "../../modules/stripe/lib/checks"
 import { isFailure, toFailure, type ReadFailure } from "../../modules/stripe/lib/errors"
@@ -78,14 +78,17 @@ export async function computeChecks(scope: Scope, args: { force?: boolean; origi
     const client = clientFor(scope, svc)
     const since = Math.floor((args.now.getTime() - DELIVERY_WINDOW_HOURS * HOUR) / 1000)
     const needAccount = on("account") || on("capabilities")
+    const deadline = Date.now() + READ_BUDGET_MS
     const [account, methodConfigs, endpoints, failedEvents, domains, providers, regions, sessionModes] = await Promise.all([
-      settle<RawAccount>(needAccount, () => client.get<RawAccount>("/account"), secrets),
-      settle<RawPaymentMethodConfiguration[]>(on("capabilities"), async () => (await client.list<RawPaymentMethodConfiguration>("/payment_method_configurations", {}, { maxPages: 1, limit: 20 })).data, secrets),
-      settle<RawWebhookEndpoint[]>(on("webhook"), async () => (await client.list<RawWebhookEndpoint>("/webhook_endpoints", {}, { maxPages: 1 })).data, secrets),
-      settle<RawEvent[]>(on("deliveries"), async () => (await client.list<RawEvent>("/events", { delivery_success: false, created: { gte: since }, type: "payment_intent.*" }, { maxPages: 2 })).data, secrets),
-      settle<RawPaymentMethodDomain[]>(on("domains"), async () => (await client.list<RawPaymentMethodDomain>("/payment_method_domains", {}, { maxPages: 1 })).data, secrets),
+      settle<RawAccount>(needAccount, () => client.get<RawAccount>("/account", undefined, { deadline }), secrets),
+      settle<RawPaymentMethodConfiguration[]>(on("capabilities"), async () => (await client.list<RawPaymentMethodConfiguration>("/payment_method_configurations", {}, { maxPages: 1, limit: 20, deadline })).data, secrets),
+      /* The deliveries check needs the endpoints too: a failed delivery is the account's, not always this Medusa's. */
+      settle<RawWebhookEndpoint[]>(on("webhook") || on("deliveries"), async () => (await client.list<RawWebhookEndpoint>("/webhook_endpoints", {}, { maxPages: 1, deadline })).data, secrets),
+      settle<RawEvent[]>(on("deliveries"), async () => (await client.list<RawEvent>("/events", { delivery_success: false, created: { gte: since }, type: "payment_intent.*" }, { maxPages: 2, deadline })).data, secrets),
+      settle<RawPaymentMethodDomain[]>(on("domains"), async () => (await client.list<RawPaymentMethodDomain>("/payment_method_domains", {}, { maxPages: 1, deadline })).data, secrets),
       settle<ProviderFacts[]>(on("provider"), () => readProviders(scope), secrets),
-      settle<RegionFacts[]>(on("regions") || on("capture"), () => readRegions(scope), secrets),
+      /* Whether the store sells in PLN decides the Polish parts of the account, methods and capture checks. */
+      settle<RegionFacts[]>(on("regions") || on("capture") || needAccount, () => readRegions(scope), secrets),
       settle<{ live: number; test: number }>(on("key"), () => readSessionModes(scope, o.providerId), secrets),
     ])
     const refused = [account, methodConfigs, endpoints, failedEvents, domains].find((r): r is ReadFailure => isFailure(r) && r.kind === "auth") ?? null
@@ -112,6 +115,7 @@ export async function computeChecks(scope: Scope, args: { force?: boolean; origi
       balanceCurrencies: snapshot.balance ? balanceCurrencies(snapshot.balance) : null,
       sessionModes: sessionModes && !isFailure(sessionModes) ? sessionModes : null,
       dashboard: dashboardFor(snapshot.mode),
+      secrets,
     }
   }
 

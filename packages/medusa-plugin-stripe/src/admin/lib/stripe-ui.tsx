@@ -312,7 +312,7 @@ export function MethodCell({ method, detail }: { method: MethodKey | null; detai
  * The Medusa side of a payment: its order, one click away, or why there is
  * none (a paid cart without an order stands out in red).
  */
-export function OrderCell({ order, payment }: { order: OrderLinkDto | null; payment?: Pick<PaymentRowDto, "fromMedusa" | "status" | "cartId"> }) {
+export function OrderCell({ order, payment }: { order: OrderLinkDto | null; payment?: Pick<PaymentRowDto, "fromMedusa" | "status" | "cartId"> & Partial<Pick<PaymentRowDto, "session">> }) {
   const { t } = useTranslation("stripe")
   if (order) {
     return (
@@ -337,7 +337,15 @@ export function OrderCell({ order, payment }: { order: OrderLinkDto | null; paym
       </Text>
     )
   }
-  if (payment?.status === "succeeded") {
+  /* Another Medusa on the same Stripe account: its payment, never this store's order. */
+  if (payment?.session === "foreign") {
+    return (
+      <Badge size="2xsmall" color="grey">
+        {t("payments.foreign")}
+      </Badge>
+    )
+  }
+  if (payment?.status === "succeeded" && payment.session !== "replaced") {
     return (
       <div className="flex flex-col items-start gap-y-0.5">
         <Badge size="2xsmall" color="red">

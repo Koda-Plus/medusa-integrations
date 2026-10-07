@@ -13,8 +13,9 @@ import { providerIds } from "../../modules/stripe/lib/checks"
 import { StripeReadClient } from "../../modules/stripe/lib/client"
 import { SESSION_CHUNK, STRIPE_MODULE } from "../../modules/stripe/lib/constants"
 import type { OrderLinkDto } from "../../modules/stripe/lib/contract"
-import type { DemoOrder, DemoRegion } from "../../modules/stripe/lib/demo"
-import { domainsFromCors } from "../../modules/stripe/lib/options"
+import { demoQualifies, type DemoOrder, type DemoPaymentRecord, type DemoRegion } from "../../modules/stripe/lib/demo"
+import { decimalString } from "../../modules/stripe/lib/money"
+import { domainsFromCors, type DemoOrderRule } from "../../modules/stripe/lib/options"
 import { safeStripeId } from "../../modules/stripe/lib/security"
 
 export type Scope = MedusaContainer | { resolve<T = unknown>(key: string, options?: { allowUnregistered?: boolean }): T }
@@ -78,6 +79,11 @@ export function cacheFor(svc: KodaStripeModuleService): TtlCache {
     caches.set(svc, cache)
   }
   return cache
+}
+
+/** Tests only: a cache with a clock of its own for this service. */
+export function setCacheForTests(svc: KodaStripeModuleService, cache: TtlCache): void {
+  caches.set(svc, cache)
 }
 
 /* ------------------------------------------------------------------ */
@@ -190,18 +196,77 @@ export function storefrontDomains(scope: Scope, option: string[] | null): { doma
   return domains.length > 0 ? { domains, source: "store_cors" } : { domains: [], source: "none" }
 }
 
+/** What Medusa itself records about the payment behind a PaymentIntent. */
+export interface MedusaPaymentFacts {
+  /** Medusa has a payment (authorized at checkout); a session alone was never authorized. */
+  payment: boolean
+  /** Major units, as Medusa keeps them (a decimal string). */
+  amount: string | null
+  currency: string | null
+  capturedAt: string | null
+  canceledAt: string | null
+  refunds: number
+}
+
 export interface OrderPaymentRef {
   paymentIntentId: string
   providerId: string | null
+  /** Changes when Medusa captures, cancels or refunds the payment, so the widget and the summary read Stripe again. */
+  stamp: string
+  medusa: MedusaPaymentFacts
+}
+
+export interface OrderPayments {
+  id: string
+  displayId: number | null
+  customerId: string | null
+  createdAt: string | null
+  /** The order has at least one payment collection. */
+  collections: number
+  refs: OrderPaymentRef[]
+}
+
+type PaymentRecord = {
+  provider_id?: string | null
+  data?: Record<string, unknown> | null
+  amount?: unknown
+  currency_code?: string | null
+  captured_at?: string | Date | null
+  canceled_at?: string | Date | null
+  refunds?: Array<{ id?: string } | null> | null
 }
 
 type OrderPaymentsRecord = {
   id?: string
   display_id?: number | null
+  customer_id?: string | null
+  created_at?: string | Date | null
   payment_collections?: Array<{
-    payments?: Array<{ provider_id?: string | null; data?: Record<string, unknown> | null; created_at?: string | Date | null } | null> | null
-    payment_sessions?: Array<{ provider_id?: string | null; data?: Record<string, unknown> | null; created_at?: string | Date | null } | null> | null
+    payments?: Array<PaymentRecord | null> | null
+    payment_sessions?: Array<{ provider_id?: string | null; data?: Record<string, unknown> | null } | null> | null
   } | null> | null
+}
+
+const ORDER_PAYMENT_FIELDS = [
+  "id",
+  "display_id",
+  "customer_id",
+  "created_at",
+  "payment_collections.payments.provider_id",
+  "payment_collections.payments.data",
+  "payment_collections.payments.amount",
+  "payment_collections.payments.currency_code",
+  "payment_collections.payments.captured_at",
+  "payment_collections.payments.canceled_at",
+  "payment_collections.payments.refunds.id",
+  "payment_collections.payment_sessions.provider_id",
+  "payment_collections.payment_sessions.data",
+]
+
+const isoOf = (v: unknown): string | null => {
+  if (!v) return null
+  const d = v instanceof Date ? v : new Date(String(v))
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
 
 const isStripeProvider = (id: unknown) => typeof id === "string" && /^pp_stripe(-[a-z0-9]+)?_/.test(id)
@@ -212,81 +277,138 @@ const isStripeProvider = (id: unknown) => typeof id === "string" && /^pp_stripe(
  * session without a payment yet (not authorized) is read the same way.
  * Payments first, sessions after, each PaymentIntent once, at most five.
  * Only the id is taken out of the data: the client secret stays where it is.
+ * Never metadata: what Medusa's payment module recorded is the record.
  */
-export async function readOrderPaymentRefs(scope: Scope, orderId: string): Promise<{ found: boolean; displayId: number | null; refs: OrderPaymentRef[] }> {
-  const { data } = await queryOf(scope).graph({
-    entity: "order",
-    fields: [
-      "id",
-      "display_id",
-      "payment_collections.payments.provider_id",
-      "payment_collections.payments.data",
-      "payment_collections.payments.created_at",
-      "payment_collections.payment_sessions.provider_id",
-      "payment_collections.payment_sessions.data",
-      "payment_collections.payment_sessions.created_at",
-    ],
-    filters: { id: orderId },
-  })
-  const order = (data as OrderPaymentsRecord[])[0]
-  if (!order) return { found: false, displayId: null, refs: [] }
+export function orderPaymentsOf(order: OrderPaymentsRecord): OrderPayments | null {
+  if (typeof order?.id !== "string") return null
   const refs: OrderPaymentRef[] = []
   const seen = new Set<string>()
-  const add = (provider: unknown, value: Record<string, unknown> | null | undefined) => {
+  const add = (provider: unknown, value: Record<string, unknown> | null | undefined, p: PaymentRecord | null) => {
     if (!isStripeProvider(provider)) return
     const id = safeStripeId(value?.id, "pi")
     if (!id || seen.has(id) || refs.length >= 5) return
     seen.add(id)
-    refs.push({ paymentIntentId: id, providerId: typeof provider === "string" ? provider : null })
+    const medusa: MedusaPaymentFacts = {
+      payment: p !== null,
+      amount: p ? decimalString(p.amount) : null,
+      currency: p && typeof p.currency_code === "string" ? p.currency_code.toLowerCase() : null,
+      capturedAt: p ? isoOf(p.captured_at) : null,
+      canceledAt: p ? isoOf(p.canceled_at) : null,
+      refunds: p ? (p.refunds ?? []).filter(Boolean).length : 0,
+    }
+    refs.push({
+      paymentIntentId: id,
+      providerId: typeof provider === "string" ? provider : null,
+      stamp: medusa.payment ? `${medusa.capturedAt ?? "-"}.${medusa.canceledAt ?? "-"}.${medusa.refunds}` : "session",
+      medusa,
+    })
   }
-  for (const c of order.payment_collections ?? []) for (const p of c?.payments ?? []) add(p?.provider_id, p?.data)
-  for (const c of order.payment_collections ?? []) for (const s of c?.payment_sessions ?? []) add(s?.provider_id, s?.data)
-  return { found: true, displayId: typeof order.display_id === "number" ? order.display_id : null, refs }
+  const collections = (order.payment_collections ?? []).filter(Boolean)
+  for (const c of collections) for (const p of c?.payments ?? []) if (p) add(p.provider_id, p.data, p)
+  for (const c of collections) for (const s of c?.payment_sessions ?? []) add(s?.provider_id, s?.data, null)
+  return {
+    id: order.id,
+    displayId: typeof order.display_id === "number" ? order.display_id : null,
+    customerId: typeof order.customer_id === "string" ? order.customer_id : null,
+    createdAt: isoOf(order.created_at),
+    collections: collections.length,
+    refs,
+  }
 }
 
-type DemoOrderRecord = { id?: string; display_id?: number | null; created_at?: string | Date | null; total?: unknown; currency_code?: string | null }
+/** The Stripe payments of many orders in one query (ids are checked by the caller). */
+export async function readOrdersPayments(scope: Scope, ids: readonly string[]): Promise<Map<string, OrderPayments>> {
+  const out = new Map<string, OrderPayments>()
+  if (ids.length === 0) return out
+  const { data } = await queryOf(scope).graph({ entity: "order", fields: ORDER_PAYMENT_FIELDS, filters: { id: [...ids] } })
+  for (const o of data as OrderPaymentsRecord[]) {
+    const read = orderPaymentsOf(o)
+    if (read) out.set(read.id, read)
+  }
+  return out
+}
 
-const DEMO_ORDER_FIELDS = ["id", "display_id", "created_at", "total", "currency_code"]
+/** The Stripe payments of the orders of some customers, newest first, in one query. */
+export async function readCustomersPayments(scope: Scope, customerIds: readonly string[], perCustomer = 50): Promise<OrderPayments[]> {
+  if (customerIds.length === 0) return []
+  const { data } = await queryOf(scope).graph({
+    entity: "order",
+    fields: ORDER_PAYMENT_FIELDS,
+    filters: { customer_id: [...customerIds] },
+    pagination: { take: Math.min(2_000, customerIds.length * perCustomer), order: { created_at: "DESC" } },
+  })
+  return (data as OrderPaymentsRecord[]).map(orderPaymentsOf).filter((o): o is OrderPayments => o !== null)
+}
 
-function toDemoOrder(o: DemoOrderRecord): DemoOrder | null {
+export async function readOrderPaymentRefs(scope: Scope, orderId: string): Promise<{ found: boolean; displayId: number | null; refs: OrderPaymentRef[] }> {
+  const read = (await readOrdersPayments(scope, [orderId])).get(orderId)
+  if (!read) return { found: false, displayId: null, refs: [] }
+  return { found: true, displayId: read.displayId, refs: read.refs }
+}
+
+type DemoOrderRecord = DemoPaymentRecord & { id?: string; display_id?: number | null; created_at?: string | Date | null; total?: unknown; currency_code?: string | null }
+
+/* Providers only: whether Stripe would have taken the payment. Never metadata. */
+const DEMO_ORDER_FIELDS = ["id", "display_id", "created_at", "currency_code", "payment_collections.payments.provider_id", "payment_collections.payment_sessions.provider_id"]
+
+function toDemoOrder(o: DemoOrderRecord, total: unknown, provider: string | null): DemoOrder | null {
   if (typeof o?.id !== "string") return null
-  return { id: o.id, displayId: typeof o.display_id === "number" ? o.display_id : null, createdAt: o.created_at ?? null, total: o.total, currency: String(o.currency_code ?? "pln").toLowerCase() }
+  return { id: o.id, displayId: typeof o.display_id === "number" ? o.display_id : null, createdAt: o.created_at ?? null, total, currency: String(o.currency_code ?? "pln").toLowerCase(), provider }
 }
 
 /**
- * The newest orders, for the demo payments. Totals are read one order at a time: Medusa refuses
- * to compute the totals of an order whose shipping method has no version (some orders imported by
- * other plugins carry such methods), and in one query a single such order emptied the whole demo.
- * An order without a total still gets a plausible sample amount.
+ * Totals of some orders: one query, and one order at a time only when that
+ * fails (Medusa refuses to compute the totals of an order whose shipping
+ * method has no version, as some imported orders carry; in one query a single
+ * such order would empty the whole demo). An order without a total gets no
+ * sample payment.
  */
-export async function readDemoOrders(scope: Scope, limit: number): Promise<DemoOrder[]> {
-  const listFields = DEMO_ORDER_FIELDS.filter((f) => f !== "total")
-  const { data } = await queryOf(scope).graph({ entity: "order", fields: listFields, pagination: { take: limit, order: { created_at: "DESC" } } })
-  const orders: DemoOrderRecord[] = []
-  for (const o of data as DemoOrderRecord[]) {
-    let total: unknown = null
-    if (typeof o?.id === "string") {
+async function readTotals(scope: Scope, ids: string[]): Promise<Map<string, unknown>> {
+  const totals = new Map<string, unknown>()
+  if (ids.length === 0) return totals
+  try {
+    const { data } = await queryOf(scope).graph({ entity: "order", fields: ["id", "total"], filters: { id: ids } })
+    for (const o of data as DemoOrderRecord[]) if (typeof o?.id === "string") totals.set(o.id, o.total ?? null)
+    return totals
+  } catch {
+    for (const id of ids) {
       try {
-        const { data: one } = await queryOf(scope).graph({ entity: "order", fields: ["id", "total"], filters: { id: o.id } })
-        total = (one as DemoOrderRecord[])[0]?.total ?? null
+        const { data } = await queryOf(scope).graph({ entity: "order", fields: ["id", "total"], filters: { id } })
+        totals.set(id, (data as DemoOrderRecord[])[0]?.total ?? null)
       } catch {
-        total = null
+        totals.set(id, null)
       }
     }
-    orders.push({ ...o, total })
+    return totals
   }
-  return orders.map(toDemoOrder).filter((o): o is DemoOrder => o !== null)
 }
 
-export async function readDemoOrder(scope: Scope, orderId: string): Promise<DemoOrder | null> {
-  try {
-    const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS, filters: { id: orderId } })
-    return toDemoOrder((data as DemoOrderRecord[])[0] ?? {})
-  } catch {
-    /* No totals for this order (see readDemoOrders): a sample amount stands in. */
-    const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS.filter((f) => f !== "total"), filters: { id: orderId } })
-    return toDemoOrder((data as DemoOrderRecord[])[0] ?? {})
-  }
+async function demoOrdersOf(scope: Scope, records: DemoOrderRecord[], rule: DemoOrderRule, limit: number): Promise<DemoOrder[]> {
+  const picked = records
+    .map((o) => ({ o, q: demoQualifies(o, rule) }))
+    .filter((x) => typeof x.o?.id === "string" && x.q.ok)
+    .slice(0, limit)
+  const totals = await readTotals(scope, picked.map((x) => String(x.o.id)))
+  return picked.map((x) => toDemoOrder(x.o, totals.get(String(x.o.id)) ?? null, x.q.provider)).filter((o): o is DemoOrder => o !== null)
+}
+
+/** The newest orders Stripe would have paid (option `demoOrders`), for the demo payments. */
+export async function readDemoOrders(scope: Scope, limit: number, rule: DemoOrderRule = "stripe"): Promise<DemoOrder[]> {
+  const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS, pagination: { take: limit * 3, order: { created_at: "DESC" } } })
+  return demoOrdersOf(scope, data as DemoOrderRecord[], rule, limit)
+}
+
+/** Some orders by id, those Stripe would have paid; the others are left out. */
+export async function readDemoOrdersById(scope: Scope, ids: readonly string[], rule: DemoOrderRule = "stripe"): Promise<Map<string, DemoOrder>> {
+  if (ids.length === 0) return new Map()
+  const { data } = await queryOf(scope).graph({ entity: "order", fields: DEMO_ORDER_FIELDS, filters: { id: [...ids] } })
+  const orders = await demoOrdersOf(scope, data as DemoOrderRecord[], rule, ids.length)
+  return new Map(orders.map((o) => [o.id, o]))
+}
+
+/** One order for the demo widget, or null when it is unknown or Stripe would not have paid it. */
+export async function readDemoOrder(scope: Scope, orderId: string, rule: DemoOrderRule = "stripe"): Promise<DemoOrder | null> {
+  return (await readDemoOrdersById(scope, [orderId], rule)).get(orderId) ?? null
 }
 
 /* ------------------------------------------------------------------ */

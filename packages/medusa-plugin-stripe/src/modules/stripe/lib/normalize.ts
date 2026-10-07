@@ -10,12 +10,15 @@
  * PaymentIntent with `metadata.session_id`, the Medusa payment session. The
  * session belongs to a payment collection, and a completed cart links that
  * collection to the order. So: PaymentIntent, session id, collection, order.
- * A PaymentIntent without `session_id` was not created by this Medusa (another
- * tool on the same account) and is shown as such.
+ * A PaymentIntent without `session_id` was not created by Medusa (another
+ * tool on the same account) and is shown as such. One with a `session_id`
+ * this Medusa does not know came from another Medusa on the same account (a
+ * second store, a staging server), unless it was canceled: then it is a
+ * session Medusa replaced when the customer changed the method.
  */
 import { compareDisputes, disputeDeadline, isOpenDispute } from "./disputes"
 import type { DashboardLinks } from "./dashboard"
-import type { BalanceDto, DisputeRowDto, MoneyDto, OrderLinkDto, PaymentRowDto, PaymentStatus, PayoutRowDto, RefundRowDto, RiskLevel } from "./contract"
+import type { BalanceDto, DisputeRowDto, MoneyDto, OrderLinkDto, PaymentRowDto, PaymentStatus, PayoutRowDto, RefundRowDto, RiskLevel, SessionKind } from "./contract"
 import { chargeOf, classifyPaymentIntent, methodOfType } from "./methods"
 import { money, MoneyBag } from "./money"
 import { maskSecrets } from "./security"
@@ -26,9 +29,18 @@ export interface OrderLookup {
   orderOf(sessionId: string | null | undefined): OrderLinkDto | null
   /** The cart of a session that has no order. */
   cartOf?(sessionId: string | null | undefined): string | null
+  /** This Medusa has the session. Absent when Medusa could not be asked: then the session's kind is unknown (null). */
+  known?(sessionId: string): boolean
 }
 
 export const NO_ORDERS: OrderLookup = { orderOf: () => null, cartOf: () => null }
+
+/** Whose checkout a PaymentIntent with a session id came from (see SessionKind). */
+export function sessionKind(sessionId: string | null, status: PaymentStatus, orders: OrderLookup): SessionKind | null {
+  if (!sessionId || !orders.known) return null
+  if (orders.known(sessionId)) return "known"
+  return status === "canceled" ? "replaced" : "foreign"
+}
 
 export interface NormalizeContext {
   dashboard: DashboardLinks
@@ -49,6 +61,8 @@ export interface PaymentFacts {
   /** The methods Stripe offered for this intent. */
   methodTypes: string[]
   sessionId: string | null
+  /** Whose checkout (see SessionKind); null without a session id or when Medusa could not be asked. */
+  session: SessionKind | null
   orderId: string | null
   cartId: string | null
   livemode: boolean | null
@@ -133,6 +147,9 @@ export function normalizePaymentIntent(pi: RawPaymentIntent, ctx: NormalizeConte
     risk,
     failure,
     fromMedusa: sessionId !== null,
+    session: sessionKind(sessionId, status, ctx.orders),
+    disputeOpen: false,
+    refundFailed: false,
     order,
     cartId,
     dashboardUrl: ctx.dashboard.payment(id),
@@ -148,6 +165,7 @@ export function normalizePaymentIntent(pi: RawPaymentIntent, ctx: NormalizeConte
     automatic: pi.automatic_payment_methods?.enabled === true,
     methodTypes: Array.isArray(pi.payment_method_types) ? pi.payment_method_types.filter((t): t is string => typeof t === "string") : [],
     sessionId,
+    session: row.session,
     orderId: order?.id ?? null,
     cartId,
     livemode: typeof pi.livemode === "boolean" ? pi.livemode : null,
@@ -211,6 +229,21 @@ export function normalizeDispute(d: RawDispute, ctx: NormalizeContext & { now: D
 
 export function sortDisputes(rows: DisputeRowDto[]): DisputeRowDto[] {
   return [...rows].sort(compareDisputes)
+}
+
+/**
+ * The days left and the urgency of a dispute at `now`: a read kept in the
+ * cache would otherwise still say "2 days left" after the deadline passed.
+ */
+export function disputeAt(row: DisputeRowDto, now: Date): DisputeRowDto {
+  const due = row.dueBy ? Date.parse(row.dueBy) : NaN
+  const deadline = disputeDeadline({ status: row.status, dueBy: Number.isFinite(due) ? due / 1000 : null, pastDue: !row.dueBy && row.urgency === "overdue", now })
+  return { ...row, daysLeft: deadline.daysLeft, urgency: deadline.urgency }
+}
+
+/** Every dispute at `now`, the most pressing first. */
+export function disputesAt(rows: readonly DisputeRowDto[], now: Date): DisputeRowDto[] {
+  return sortDisputes(rows.map((d) => disputeAt(d, now)))
 }
 
 export function normalizePayout(p: RawPayout, ctx: NormalizeContext): PayoutRowDto | null {

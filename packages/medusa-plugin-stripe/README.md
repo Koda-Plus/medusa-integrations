@@ -11,11 +11,11 @@ See Stripe in the Medusa admin and check that your Stripe setup is right. This p
 ## What it does
 
 - **Panel** for the last 7 or 30 days: volume, Stripe fees and net, the success rate (declined attempts against succeeded ones), refunds and open disputes, then a table by payment method (card, BLIK, Przelewy24, Apple Pay, Google Pay, Link, other) with payments, share, volume, fees, net and success rate.
-- **Payments** of the last 30 days, newest first, filtered by status and method and searchable by payment id, order number, card ending or Przelewy24 reference. Each row shows the method (the card brand and its last four digits, the wallet, the Przelewy24 bank), the status, the decline message, Radar's risk, the fee and the net, a link to its Medusa order and a link to the Stripe Dashboard. A payment that succeeded while its cart never became an order is marked in red.
+- **Payments** of the last 30 days, newest first, filtered by status and method and searchable by payment id, order number, card ending or Przelewy24 reference. Each row shows the method (the card brand and its last four digits, the wallet, the Przelewy24 bank), the status, the decline message, Radar's risk, the fee and the net, a link to its Medusa order and a link to the Stripe Dashboard. A payment of this store's checkout that succeeded while its cart never became an order is marked in red; a payment of another Medusa on the same Stripe account (a second store, a staging server) is marked grey and never counts as this store's.
 - **Open disputes** with the evidence deadline, the days left and the urgency, linked to the order and to the Dashboard, where you answer them.
 - **Recent refunds**, the **balance** (available and pending) and the **payouts** on their way and paid.
 - **Health checks**, each with a verdict (pass, warning, fail, info) and a fix: the Stripe provider registered in Medusa, the plugin's key, the account (country, currency, charges and payouts), the payment methods (`card_payments`, `blik_payments`, `p24_payments`, shown at checkout), the webhook endpoint at this backend with the events Medusa needs, failed webhook deliveries in the last 24 hours, the Apple Pay and Google Pay domains, the PLN regions offering BLIK and Przelewy24, the capture mode BLIK and Przelewy24 need, and payments without an order.
-- **Order widget** on the order page: the PaymentIntent behind the order's payment, its status, method, amount, Stripe fee and net (from the balance transaction), exchange rate, Radar risk level, refunds, a dispute with its deadline, and the Dashboard link (test or live).
+- **Order widget** on the order page: the PaymentIntent behind the order's payment, its status, method, amount, Stripe fee and net (from the balance transaction), exchange rate, Radar risk level, refunds, its disputes with their deadlines, and the Dashboard link (test or live). It reads Stripe again after a capture or a refund in Medusa, and on Read again.
 - **Setup guide** in the admin, step by step for a Polish store, each step with its state read from the health checks, plus a go-live checklist and troubleshooting.
 - **Settings**: the options in use (read only), which checks run and what each one reads, and the access a restricted key needs.
 
@@ -25,14 +25,14 @@ See Stripe in the Medusa admin and check that your Stripe setup is right. This p
 - **Next to the official provider**: it finds each payment's order through the payment session id the provider puts in every PaymentIntent (`metadata.session_id`), and the PaymentIntent behind an order through `payment.data.id`, exactly as the provider stores them.
 - **Polish methods first**: BLIK, Przelewy24 with its bank, cards with Apple Pay and Google Pay split out of them, Link; checks for the things that break them in practice (manual capture hides BLIK and Przelewy24 without an error, unregistered domains hide the wallets, a missing webhook leaves paid carts without orders).
 - **Money in integers**: amounts stay in the currency's minor unit as Stripe sends them; sums are integer sums per currency, never floats, and two currencies are never added together. Fees are shown in the currency Stripe settles in.
-- **Gentle on Stripe's limits**: Stripe allows about 500 read requests per payment over 30 days (at least 10 000 a month). The plugin reads only when someone opens the page, the order widget or clicks Refresh, never in the background; every read is cached for `cacheSeconds`, ten admins at once cause one read, lists are paginated, and requests keep to the plugin's own rate limit with retries that honour `Retry-After`.
+- **Gentle on Stripe's limits**: Stripe allows about 500 read requests per payment over 30 days (at least 10 000 a month). The plugin reads only when someone opens the page, the order widget or clicks Refresh, never in the background; every read is cached for `cacheSeconds`, ten admins at once cause one read, lists are paginated, and requests keep to the plugin's own rate limit with retries that honour `Retry-After`. A whole read has a budget of 25 seconds: while Stripe is down the page shows what came in, and the last good read, instead of waiting for retries.
 - **Never breaks the boot**: without a key the page shows the setup; a wrong key shows up as a failed check, never as a crash.
 - **Demo mode** built from the store's own orders, through the same parsers, sums and checks as live data.
 - **Admin in English and Polish**, with "Copy prompt" for an AI agent and help on the Koda Plus Discord.
 
 ## Requirements
 
-- Medusa 2.12 or newer (tested on 2.15.3) and Node.js 20+.
+- Medusa 2.12 to 2.21 and Node.js 20+ (see Compatibility).
 - The official Stripe provider, `@medusajs/medusa/payment-stripe`, registered in `medusa-config.ts` (below).
 - A Stripe account and, for this plugin, a restricted key with read access.
 
@@ -64,6 +64,8 @@ module.exports = defineConfig({
                   // pp_stripe-blik_stripe, pp_stripe-przelewy24_stripe and five more.
                   resolve: "@medusajs/medusa/payment-stripe",
                   id: "stripe",
+                  // Already registered? Keep this entry and its options as they are (capture
+                  // decides when card money is taken) and add only the plugin below.
                   options: {
                     apiKey: process.env.STRIPE_API_KEY,
                     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
@@ -81,7 +83,8 @@ module.exports = defineConfig({
     {
       resolve: "@koda-plus/medusa-plugin-stripe",
       options: {
-        apiKey: process.env.STRIPE_READ_KEY, // rk_live_..., read only
+        apiKey: process.env.STRIPE_READ_KEY, // rk_live_..., Read or None per resource
+        // demo: process.env.STRIPE_DEMO === "true", // sample data, no requests to Stripe
         // providerId: "stripe",                // the id of the provider entry above
         // backendUrl: "https://api.example.pl", // when the admin runs on another address
         // storefrontDomains: ["example.pl", "www.example.pl"],
@@ -96,22 +99,23 @@ module.exports = defineConfig({
 # .env
 STRIPE_API_KEY=sk_live_...        # the official provider
 STRIPE_WEBHOOK_SECRET=whsec_...   # the webhook endpoint's signing secret
-STRIPE_READ_KEY=rk_live_...       # this plugin: a restricted key, read only
+STRIPE_READ_KEY=rk_live_...       # this plugin: a restricted key, Read or None per resource
 ```
 
-If your `medusa-config.ts` already has the payment module, add the provider to its `providers` instead of a second entry. The plugin's own module registers in the container as `koda_stripe`, not `stripe`: the official provider lives inside the payment module as `pp_stripe_<id>`, many stores keep a `stripe` module of their own, and the plugin must collide with none of them.
+If your `medusa-config.ts` already has the payment module, add the provider to its `providers` instead of a second entry, and when the Stripe provider is already there, leave its options alone: the plugin needs only its own entry and a read key. It has no tables and no writes, so there is nothing to migrate or to arm. The plugin's own module registers in the container as `koda_stripe`, not `stripe`: the official provider lives inside the payment module as `pp_stripe_<id>`, many stores keep a `stripe` module of their own, and the plugin must collide with none of them.
 
 ### Options
 
-- `apiKey` (default none): the key the plugin reads with. A restricted key (`rk_live_...`) with read access is recommended; the provider's secret key works too, and the key check then suggests a restricted one. Used only in the `Authorization` header of the server's requests, masked in every log, error and admin screen; the admin sees its kind, its mode and its last four characters.
-- `demo` (default `false`): sample data built from the store's own orders; Stripe is never called. Without a key and without `demo`, the page shows the setup instead.
+- `apiKey` (default none): the key the plugin reads with. A restricted key (`rk_live_...`) with Read on the resources listed under Settings, Key access and None on the rest is recommended; the provider's secret key works too, and the key check then warns. Stripe has no API that shows a key's permissions, so the plugin cannot tell a read only key from one that may write: its own safety is that it sends GET requests only. Used only in the `Authorization` header of the server's requests, masked in every log, error and admin screen; the admin sees its kind, its mode and its last four characters.
+- `demo` (default `false`): sample data built from the store's own orders; Stripe is never called. Only `true` turns it on, so set it explicitly: `demo: process.env.STRIPE_DEMO === "true"`. Without a key and without `demo`, the page shows the setup instead, never sample data. Demo mode in production logs a warning at start.
+- `demoOrders` (default `stripe`): which orders the demo pays with Stripe. `stripe`: orders whose Medusa payment (or, before a payment, payment session) belongs to a Stripe provider. `stripe-or-none`: also orders without any payment collection, for a demo store seeded without a checkout. Marketplace imports, cash on delivery and other gateways never get a sample payment, and order metadata is never read.
 - `providerId` (default `stripe`): the `id` of the official provider entry. The checks look for `pp_stripe_<id>`, `pp_stripe-blik_<id>`, `pp_stripe-przelewy24_<id>` and the webhook at `/hooks/payment/stripe_<id>`.
 - `backendUrl` (default: the address the admin is opened on): this backend's public address, for the webhook check. Set it when the admin runs on another address than the API.
 - `storefrontDomains` (default: the http(s) origins of `STORE_CORS`, without localhost): the domains where the Payment Element runs, for the Apple Pay and Google Pay check. A list or a comma separated string.
 - `cacheSeconds` (default `300`, from 30 to 86400): how long a read of Stripe is reused. Refresh reads again, at most once every 30 seconds.
-- `maxPages` (default `20`): list pages of 100 one read may fetch, so up to 2 000 payments over 30 days. When a store has more, the panel says that the start of the period is missing.
+- `maxPages` (default `20`, from 1 to 100): list pages of 100 one read may fetch, so up to 2 000 payments over 30 days. When a store has more, the panel says that the start of the period is missing.
 - `requestsPerSecond` (default `10`, at most 50): the plugin's own rate limit. Stripe allows 100 a second in live mode and 25 in a sandbox, for the whole account, the official provider included.
-- `timeoutMs` (default `20000`): one Stripe request.
+- `timeoutMs` (default `20000`, from 2000 to 120000): one Stripe request.
 - `checks` (default: all on): turn a check off, and its read with it, e.g. `{ domains: false }`. Keys: `provider`, `key`, `account`, `capabilities`, `webhook`, `deliveries`, `domains`, `regions`, `capture`, `orphans`.
 - `references` (default none): stores running the integration, shown in the admin ("Running in stores built by Koda Plus"): `[{ name, url, icon?, description?, soon? }]`, texts plain or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped; an old `since` is ignored.
 
@@ -128,7 +132,7 @@ The admin page has the full guide (Stripe, then Setup guide, or `/app/stripe?vie
 5. **Enable the provider in the PLN region** (Settings, Regions): `pp_stripe_stripe`, which offers everything through the Payment Element. To offer BLIK and Przelewy24 as separate choices instead, enable `pp_stripe-blik_stripe` and `pp_stripe-przelewy24_stripe` too.
 6. **Register the domains** for Apple Pay and Google Pay: Settings, Payment method domains, the bare domain and www apart.
 7. **Storefront**: create the Stripe payment session for the cart, mount the Payment Element with its `client_secret` (BLIK needs the PaymentIntent created first), confirm with `redirect: "if_required"`: cards and BLIK finish on the page, Przelewy24 comes back to your `return_url`, then complete the cart.
-8. **Give this plugin a read key**: Developers, API keys, Create restricted key, Read for the resources listed under Settings, Key access in the admin, and pass it as `apiKey`.
+8. **Give this plugin a read key**: Developers, API keys, Create restricted key, Read for the resources listed under Settings, Key access in the admin and None for the rest, and pass it as `apiKey`.
 9. **Go live** with live keys and walk the go-live checklist.
 
 ## Health checks
@@ -136,19 +140,20 @@ The admin page has the full guide (Stripe, then Setup guide, or `/app/stripe?vie
 Every check reads Stripe or Medusa, says what it found and how to fix it, and links to the page where you fix it:
 
 - **Stripe provider in Medusa**: `pp_stripe_<id>` is registered (with BLIK and Przelewy24 beside it). Fails when no Stripe provider is registered; warns when Stripe runs under another id than `providerId`.
-- **The plugin's key**: a restricted live key passes; a secret key warns (it could move money if it leaked); a test key is info; a publishable key, a key Stripe refuses, or a key in another mode than the store's recent payments (test against live) fails.
+- **The plugin's key**: a restricted live key passes, with a reminder that Stripe does not show the plugin the key's permissions (keep every resource at Read or None); a secret key warns (it could move money if it leaked); a test key is info; a publishable key, a key Stripe refuses, or a key in another mode than the store's recent payments (test against live) fails.
 - **Stripe account**: country, settlement currency, charges and payouts enabled, requirements due. Warns when PLN payments would be converted before payout.
 - **Payment methods**: the `card_payments`, `blik_payments` and `p24_payments` capabilities, and whether each method (with Apple Pay and Google Pay) is on in the default payment method configuration the Payment Element uses.
+- The Polish parts (PLN settlement, BLIK, Przelewy24 and the capture mode they need) judge only a store that sells in PLN, with a region in PLN or PLN payments; a store in EUR gets no warning about them.
 - **Webhook endpoint**: an enabled endpoint at this backend's `/hooks/payment/stripe_<id>` with `payment_intent.succeeded` (and `amount_capturable_updated` when cards are captured by hand). Warns about an endpoint on another host and about two endpoints for one backend (the provider has one secret, so the second fails its signature check).
-- **Webhook deliveries**: events of the last 24 hours whose delivery failed or is still retrying. Fails when a `payment_intent.succeeded` is among them.
+- **Webhook deliveries**: events of the Stripe account of the last 24 hours whose delivery failed or is still retrying. Stripe does not say which endpoint failed, so a `payment_intent.succeeded` among them fails the check only when this Medusa's endpoint is the one endpoint listening to it, and warns when other endpoints of the account listen too.
 - **Apple Pay and Google Pay domains**: each storefront domain registered, enabled and active.
 - **PLN regions**: every region in PLN offers BLIK and Przelewy24, as providers of their own or through the Payment Element.
 - **Capture mode**: payments created for the Payment Element with manual capture lose BLIK and Przelewy24 without an error; this check finds them in the store's recent payments.
-- **Paid without an order**: payments that succeeded in the last 7 days (older than 30 minutes) while their cart never became an order, with the cart and the Dashboard link: the customer paid and is waiting.
+- **Paid without an order**: payments of this Medusa's checkout (their payment session is in this database) that succeeded in the last 7 days (older than 30 minutes) while their cart never became an order, with the cart and the Dashboard link: the customer paid, so look at the webhook and the cart. Payments of another Medusa on the same Stripe account are listed apart as information, and a session Medusa replaced when the customer changed the method never counts.
 
 ## Demo mode
 
-`demo: true` builds a sample Stripe account from the store's own orders, with zero requests to Stripe, and runs it through the same parsers, sums and checks as live data. Every order gets a payment for its total (BLIK leads, then cards, Przelewy24, Apple Pay, Google Pay, Link; EUR orders never pay with BLIK), with a few declined and abandoned checkouts, one payment waiting for the customer's BLIK approval, one from outside Medusa, one paid cart without an order, a partial and a full refund and a pending Przelewy24 one, a card dispute due in two days, a BLIK dispute under review, one won, payouts per currency on every business day (landing two business days later, with what came in since the last one left in the available balance) and a ready Polish account. A payment of a recent order is dated a few minutes before the order; older orders are moved into the last 30 days. Fees are illustrative, not Stripe's price list. The Medusa side of the checks is simulated too. Everything is deterministic per order id.
+`demo: true` builds a sample Stripe account from the store's own orders, with zero requests to Stripe, and runs it through the same parsers, sums and checks as live data. Only orders Stripe would have paid get a payment for their total (see `demoOrders`): never marketplace imports, cash on delivery, other gateways, orders without a total or below Stripe's minimum charge. BLIK and Przelewy24 follow the order's own Stripe provider; with the card provider BLIK leads, then cards, Przelewy24, Apple Pay, Google Pay, Link (EUR orders never pay with BLIK). With them come a few declined and abandoned checkouts, one payment waiting for the customer's BLIK approval, one from outside Medusa, one paid cart without an order, a partial and a full refund and a pending Przelewy24 one, a card dispute due in two days, a BLIK dispute under review, one won, payouts per currency on every business day (landing two business days later, with what came in since the last one left in the available balance) and a ready Polish account. A payment is dated a few minutes before its order; for the panel, orders older than 30 days are moved into the window, while the order page and its summary always show the payment at the order's own date. Fees are illustrative, not Stripe's price list. The Medusa side of the checks is simulated too. Everything is deterministic per order id.
 
 ## Admin API
 
@@ -156,9 +161,11 @@ Every route only reads, and Medusa authenticates `/admin` for you:
 
 - `GET /admin/stripe`: the setup (mode, the key's kind, mode and last four characters, the options, the expected webhook URL). No call to Stripe.
 - `GET /admin/stripe/overview?fresh=1`: the panel.
-- `GET /admin/stripe/payments?filter=all|succeeded|failed|attention|refunded|disputed|outside&method=blik&q=&offset=0&limit=20`: a page of payments from the cached read.
+- `GET /admin/stripe/payments?filter=all|succeeded|failed|attention|refunded|disputed|outside|foreign&method=blik&q=&offset=0&limit=20`: a page of payments from the cached read. `attention` is what a person should look at (paid without an order, a refund that failed), `disputed` an open dispute, `foreign` another Medusa on the same Stripe account.
 - `GET /admin/stripe/checks?fresh=1`: the health checks.
-- `GET /admin/stripe/orders/:id`: the order widget.
+- `GET /admin/stripe/orders/:id?fresh=1`: the order widget.
+
+A failed Stripe read answers 502 with Stripe's message, masked; any other failure answers 500 with a plain sentence, and the details stay in the server log, masked.
 
 ## Use it from your code
 
@@ -210,10 +217,10 @@ Stripe and the Stripe logo are trademarks of Stripe, Inc.; BLIK, Przelewy24, App
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-stripe/LICENSE).
 
 ## Changelog
 
 ### 0.1.0 (2026-10-07)
 
-First public release: the panel (7 and 30 days by payment method, payments next to their orders, disputes, refunds, balance, payouts), ten health checks with fixes, the order widget, the setup guide for a Polish store, settings, demo mode, English and Polish. Full list in [CHANGELOG.md](./CHANGELOG.md).
+First public release: the panel (7 and 30 days by payment method, payments next to their orders, disputes, refunds, balance, payouts), ten health checks with fixes, the order widget, the setup guide for a Polish store, settings, demo mode, English and Polish. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-stripe/CHANGELOG.md).

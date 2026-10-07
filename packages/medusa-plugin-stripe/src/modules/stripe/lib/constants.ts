@@ -66,6 +66,20 @@ export const DEFAULT_TIMEOUT_MS = 20_000
 export const MIN_TIMEOUT_MS = 2_000
 export const MAX_TIMEOUT_MS = 120_000
 
+/**
+ * Time budget of one whole read (the snapshot, the checks): past it, no
+ * further page and no retry is asked for, and what came in is used with the
+ * part that is missing marked. A Stripe outage costs the page this long, not
+ * a minute of retries.
+ */
+export const READ_BUDGET_MS = 25_000
+
+/** Board counters reuse a read this long (seconds), even when `cacheSeconds` is shorter. */
+export const COUNTER_MAX_AGE_SECONDS = 900
+
+/** PaymentIntents one summary request may read from Stripe; the rest come from the cache or from Medusa alone. */
+export const SUMMARY_READS = 5
+
 /** Retries of one read after a 429, a 5xx or a network error. */
 export const MAX_RETRIES = 2
 
@@ -78,6 +92,13 @@ export const WINDOW_DAYS = 30
 
 export const PAYOUTS_LIMIT = 20
 export const DISPUTES_LIMIT = 100
+/**
+ * Disputes are read this far back, page after page: a dispute may come up
+ * to 120 days after its payment and stay open for weeks, so an open one is
+ * never older than this, whatever the age of its payment.
+ */
+export const DISPUTES_WINDOW_DAYS = 180
+export const DISPUTES_MAX_PAGES = 5
 export const RECENT_REFUNDS = 10
 export const FIRST_PAGE = 10
 
@@ -113,5 +134,11 @@ export const OPEN_DISPUTE_STATUSES: readonly string[] = ["warning_needs_response
 /** Disputes where the merchant has to answer. */
 export const RESPONSE_DISPUTE_STATUSES: readonly string[] = ["warning_needs_response", "needs_response"]
 
-/** Demo mode: payments are built from this many newest orders. */
+/** Demo mode: payments are built from this many newest orders that qualify (see `demoOrders`). */
 export const DEMO_ORDERS = 60
+
+/** Which orders the demo pays with Stripe: only those whose Medusa payment is Stripe's, or also orders with no payment collection at all. */
+export const DEMO_ORDER_RULES = ["stripe", "stripe-or-none"] as const
+
+/** Stripe's minimum charge per currency, in minor units (others: 50). An order below it gets no sample payment. */
+export const MIN_CHARGE: Readonly<Record<string, number>> = { pln: 200, eur: 50, usd: 50, gbp: 30, chf: 50, czk: 1500, huf: 17500, sek: 300, nok: 300, dkk: 250 }

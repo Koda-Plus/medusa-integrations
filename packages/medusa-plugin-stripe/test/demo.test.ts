@@ -4,7 +4,7 @@ import { periodStats } from "../src/modules/stripe/lib/aggregate.ts"
 import { runChecks, summarize } from "../src/modules/stripe/lib/checks.ts"
 import { CHECK_KEYS } from "../src/modules/stripe/lib/constants.ts"
 import { DashboardLinks } from "../src/modules/stripe/lib/dashboard.ts"
-import { buildDemoData, demoFee, demoMethod, demoPaymentForOrder, hash32, type DemoOrder } from "../src/modules/stripe/lib/demo.ts"
+import { buildDemoData, demoAmount, demoFee, demoMethod, demoPaymentForOrder, demoQualifies, hash32, methodOfProvider, type DemoOrder } from "../src/modules/stripe/lib/demo.ts"
 import { normalizePaymentIntent, type PaymentFacts } from "../src/modules/stripe/lib/normalize.ts"
 import type { CheckKey, PaymentRowDto } from "../src/modules/stripe/lib/contract.ts"
 import { paymentsPage } from "../src/workflows/stripe/overview.ts"
@@ -42,7 +42,7 @@ function rowsOf(data: ReturnType<typeof buildDemoData>) {
     disputes: data.disputes,
     balance: data.balance,
     payouts: data.payouts,
-    orders: { orderOf: (id) => (id ? (data.sessions.get(id)?.order ?? null) : null), cartOf: (id) => (id ? (data.sessions.get(id)?.cartId ?? null) : null) },
+    orders: { orderOf: (id) => (id ? (data.sessions.get(id)?.order ?? null) : null), cartOf: (id) => (id ? (data.sessions.get(id)?.cartId ?? null) : null), known: (id) => data.sessions.has(id) },
   })
 }
 
@@ -203,7 +203,7 @@ test("through the same sums as live data: per method volumes add up to the total
 test("through the same checks as live data: a ready account, two deliveries retrying, one payment without an order", () => {
   const data = buildDemoData(input())
   const r = rowsOf(data)
-  const facts: PaymentFacts[] = data.paymentIntents.map((p) => normalizePaymentIntent(p, { dashboard: new DashboardLinks("live"), orders: { orderOf: (id) => (id ? (data.sessions.get(id)?.order ?? null) : null) }, demo: true })!.facts)
+  const facts: PaymentFacts[] = data.paymentIntents.map((p) => normalizePaymentIntent(p, { dashboard: new DashboardLinks("live"), orders: { orderOf: (id) => (id ? (data.sessions.get(id)?.order ?? null) : null), known: (id) => data.sessions.has(id) }, demo: true })!.facts)
   const results = runChecks({
     now: NOW,
     demo: true,
@@ -244,13 +244,62 @@ test("a store without orders still gets a demo, and a region in PLN when it has 
 })
 
 test("the order widget: the panel's payment for a recent order, a payment of its own for an older one", () => {
-  const data = buildDemoData(input())
-  const known = demoPaymentForOrder(data, orders()[3], NOW)
-  assert.equal(known.pi.id, data.paymentOfOrder.get(orders()[3].id))
+  const recent: DemoOrder = { id: "order_FixtureRecent", displayId: 99, createdAt: new Date(NOW.getTime() - 2 * 86_400_000).toISOString(), total: "120.00", currency: "pln" }
+  const data = buildDemoData(input({ orders: [recent, ...orders()] }))
+  const known = demoPaymentForOrder(data, recent, NOW)!
+  assert.equal(known.pi.id, data.paymentOfOrder.get(recent.id))
+  assert.equal(known.pi, data.paymentIntents.find((p) => p.id === known.pi.id), "the panel's own object: same refunds, same dispute")
   const old: DemoOrder = { id: "order_FixtureOld", displayId: 7, createdAt: "2025-01-10T10:00:00Z", total: "49.00", currency: "pln" }
-  const own = demoPaymentForOrder(data, old, NOW)
+  const own = demoPaymentForOrder(data, old, NOW)!
   assert.equal(own.pi.amount, 4900)
   assert.equal(own.pi.status, "succeeded")
   assert.equal(new Date((own.pi.created ?? 0) * 1000).toISOString().slice(0, 10), "2025-01-10")
   assert.equal(own.sessions.get(String(own.pi.metadata?.session_id))?.order?.id, "order_FixtureOld")
+})
+
+test("which orders the demo pays: a Stripe payment, or a Stripe session before the payment; never imports, cash on delivery or another gateway", () => {
+  const pay = (provider: string) => ({ payment_collections: [{ payments: [{ provider_id: provider }], payment_sessions: [] }] })
+  const session = (provider: string) => ({ payment_collections: [{ payments: [], payment_sessions: [{ provider_id: provider }] }] })
+  assert.deepEqual(demoQualifies(pay("pp_stripe_stripe"), "stripe"), { ok: true, provider: "pp_stripe_stripe" })
+  assert.deepEqual(demoQualifies(session("pp_stripe-blik_stripe"), "stripe"), { ok: true, provider: "pp_stripe-blik_stripe" })
+  for (const rule of ["stripe", "stripe-or-none"] as const) {
+    assert.equal(demoQualifies(pay("pp_system_default"), rule).ok, false, "an import marked paid")
+    assert.equal(demoQualifies(session("pp_cod_cod"), rule).ok, false, "cash on delivery")
+    assert.equal(demoQualifies(pay("pp_payu_payu"), rule).ok, false, "another gateway")
+    assert.equal(demoQualifies({ payment_collections: [{ payments: [], payment_sessions: [] }] }, rule).ok, false, "an unpaid import has a collection")
+    /* The payment decides over an older session of another method. */
+    assert.equal(demoQualifies({ payment_collections: [{ payments: [{ provider_id: "pp_system_default" }], payment_sessions: [{ provider_id: "pp_stripe_stripe" }] }] }, rule).ok, false)
+  }
+  /* No collection at all: only "stripe-or-none" pays it (a demo store seeded without a checkout). */
+  assert.equal(demoQualifies({}, "stripe").ok, false)
+  assert.equal(demoQualifies({ payment_collections: [] }, "stripe-or-none").ok, true)
+  assert.equal(methodOfProvider("pp_stripe-blik_stripe"), "blik")
+  assert.equal(methodOfProvider("pp_stripe-przelewy24_stripe"), "p24")
+  assert.equal(methodOfProvider("pp_stripe_stripe"), null)
+})
+
+test("an order without a total, or below Stripe's minimum charge, gets no sample payment", () => {
+  assert.equal(demoAmount({ total: null, currency: "pln" }), null)
+  assert.equal(demoAmount({ total: "1.99", currency: "pln" }), null)
+  assert.equal(demoAmount({ total: "2.00", currency: "pln" }), 200)
+  assert.equal(demoAmount({ total: "0.49", currency: "eur" }), null)
+  const data = buildDemoData(input({ orders: [{ id: "order_FixtureFree", displayId: 1, createdAt: NOW.toISOString(), total: "0", currency: "pln" }, ...orders(3)] }))
+  assert.equal(data.paymentOfOrder.has("order_FixtureFree"), false)
+  assert.equal(demoPaymentForOrder(data, { id: "order_FixtureFree", displayId: 1, createdAt: NOW.toISOString(), total: "0", currency: "pln" }, NOW), null)
+})
+
+test("an order the panel moved into its 30 days shows its own payment dated at the order, with the refunds and dispute of the panel's", () => {
+  const data = buildDemoData(input())
+  assert.ok(data.moved.size > 0, "the fixture orders are months old")
+  const disputedId = data.disputes.map((d) => (typeof d.payment_intent === "object" && d.payment_intent ? d.payment_intent.id : d.payment_intent)).find(Boolean)
+  const order = orders().find((o) => data.paymentOfOrder.get(o.id) === disputedId)!
+  assert.ok(data.moved.has(order.id))
+  const shown = data.paymentIntents.find((p) => p.id === disputedId)!
+  const own = demoPaymentForOrder(data, order, NOW)!
+  assert.equal(own.pi.id, shown.id)
+  const placed = Date.parse(String(order.createdAt))
+  assert.ok((own.pi.created ?? 0) * 1000 < placed && (own.pi.created ?? 0) * 1000 >= placed - 10 * 60_000, "a few minutes before the order")
+  assert.notEqual(own.pi.created, shown.created)
+  const charge = own.pi.latest_charge as { disputed?: boolean }
+  assert.equal(charge.disputed, true, "the dispute stays with the payment")
 })

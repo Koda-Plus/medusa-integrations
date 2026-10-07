@@ -32,8 +32,24 @@ export type Verdict = "pass" | "warn" | "fail" | "info" | "off" | "unknown"
  */
 export type PaymentStatus = "succeeded" | "processing" | "authorized" | "requires_action" | "failed" | "canceled" | "incomplete"
 
-/** attention: failed or waiting for the customer. outside: not created by this Medusa. */
-export type PaymentFilter = "all" | "succeeded" | "failed" | "refunded" | "disputed" | "attention" | "outside"
+/**
+ * attention: a person should look (paid by this Medusa's checkout without an
+ * order, or the newest refund failed). disputed: an open dispute. outside: no
+ * Medusa payment session at all. foreign: a session of another Medusa on the
+ * same Stripe account.
+ */
+export type PaymentFilter = "all" | "succeeded" | "failed" | "refunded" | "disputed" | "attention" | "outside" | "foreign"
+
+/**
+ * Whose checkout a PaymentIntent with a Medusa session id came from:
+ *   known     this Medusa has the session
+ *   replaced  this Medusa no longer has it and the payment was canceled (the
+ *             customer changed the method: Medusa deletes the old session and
+ *             cancels its PaymentIntent)
+ *   foreign   another Medusa (a second store or a staging server on the same
+ *             Stripe account): never this store's business
+ */
+export type SessionKind = "known" | "replaced" | "foreign"
 
 /** Radar's evaluation of the charge. Wallet-less bank methods (BLIK, Przelewy24) are `not_assessed`. */
 export type RiskLevel = "normal" | "elevated" | "highest" | "not_assessed" | "unknown"
@@ -122,8 +138,14 @@ export interface PaymentRowDto {
   risk: RiskLevel | null
   /** The last decline: Stripe's code (a decline code when there is one) and message, in English. */
   failure: { code: string | null; message: string | null } | null
-  /** Created by this Medusa (the official provider puts the payment session id in the metadata). */
+  /** Created by a Medusa checkout (the official provider puts the payment session id in the metadata). */
   fromMedusa: boolean
+  /** Whose checkout: this Medusa's, a replaced one, or another Medusa's. Null without a session id, or when Medusa could not be asked. */
+  session: SessionKind | null
+  /** A dispute of this payment is still open (needs a response or is under review). */
+  disputeOpen: boolean
+  /** The newest refund of this payment failed: the customer did not get the money back. */
+  refundFailed: boolean
   order: OrderLinkDto | null
   /** The cart of the payment session when it never became an order. */
   cartId: string | null
@@ -353,6 +375,8 @@ export interface StripeStatusResponse {
     requestsPerSecond: number
     timeoutMs: number
     checks: Record<CheckKey, boolean>
+    /** Demo mode: which orders get a sample payment. */
+    demoOrders: "stripe" | "stripe-or-none"
   }
   apiVersion: string
   webhookPath: string
@@ -368,8 +392,8 @@ export interface OrderPaymentDto {
   /** The Medusa payment provider, e.g. pp_stripe-blik_stripe. */
   providerId: string | null
   found: boolean
-  /** Why it could not be read: not_found (another account or mode), forbidden (a permission), error, unconfigured (no key yet). */
-  problem: "not_found" | "forbidden" | "error" | "unconfigured" | null
+  /** Why it could not be read: not_found (another account or mode), forbidden (a permission), error, unconfigured (no key yet), skipped (not read for this answer). */
+  problem: "not_found" | "forbidden" | "error" | "unconfigured" | "skipped" | null
   problemMessage: string | null
   permission: string | null
   payment: PaymentRowDto | null
@@ -381,6 +405,10 @@ export interface OrderPaymentDto {
   disputes: DisputeRowDto[]
   outcome: { type: string | null; sellerMessage: string | null; riskScore: number | null } | null
   livemode: boolean | null
+  /** When Stripe was read for this payment. Null when it was not read. */
+  readAt: string | null
+  /** The newest read failed; this is the last good one. */
+  stale: boolean
 }
 
 export interface StripeOrderResponse {

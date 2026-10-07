@@ -24,6 +24,9 @@ STRIPE_READ_KEY=rk_live_...       # this plugin: a restricted key, read only`
 /** The official provider, as the Polish stores of Koda Plus run it. */
 export function providerCode(providerId = "stripe"): string {
   return `// medusa-config.ts
+// When the Stripe provider is already registered here, keep its entry and its options
+// as they are (capture included: it decides when card money is taken), and add only
+// the plugin below with its read key. The plugin has no tables and no writes.
 modules: [
   // The official provider stops the boot without a key: register it only with one.
   ...(process.env.STRIPE_API_KEY
@@ -107,7 +110,8 @@ export function usePromptSpec(status?: StripeStatusResponse): SetupPromptSpec {
       summary: t("subtitle"),
       needs: NEEDS.map((k) => t(`guide.intro.needs.${k}`)),
       config: `${ENV}\n\n${providerCode(providerId)}\n\n${pluginCode(providerId)}`,
-      demo: 'demo: process.env.STRIPE_DEMO === "true" || !process.env.STRIPE_READ_KEY,',
+      /* Only an explicit switch: a store whose read key is missing shows the setup, never sample data. */
+      demo: 'demo: process.env.STRIPE_DEMO === "true",',
     }),
     [t, providerId],
   )
