@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-07)
 
 First npm release. 0.1.0 was never published: it ran only as vendored code on medusa.koda.plus.
 

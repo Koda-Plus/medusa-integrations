@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-07)
 
 Run `npx medusa db:migrate`: the send log gets two columns (`Migration20261008110000_emails`).
 
