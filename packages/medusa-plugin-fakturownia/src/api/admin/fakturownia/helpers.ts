@@ -10,7 +10,14 @@ import { describeError, FakturowniaApiError } from "../../../modules/fakturownia
 import { fetchDocumentPdf } from "../../../modules/fakturownia/lib/files"
 import { accountUrl } from "../../../modules/fakturownia/lib/options"
 import { contentDisposition, pdfFileName, unicodeFileName } from "../../../modules/fakturownia/lib/pdf"
-import { GOV_PROBLEMS } from "../../../modules/fakturownia/lib/status"
+import {
+  DOCUMENT_FILTERS,
+  GOV_ACCEPTED_VALUES,
+  GOV_PROBLEM_VALUES,
+  GOV_PROCESSING_VALUES,
+  documentFilters,
+  withAlternatives,
+} from "../../../modules/fakturownia/lib/filters"
 import { REMINDER_KINDS, unpaidFilters } from "../../../modules/fakturownia/lib/unpaid"
 import { ActionError } from "../../../workflows/fakturownia/documents"
 import {
@@ -29,12 +36,7 @@ import {
 
 export { fakturowniaService, ActionError }
 
-/** Every KSeF problem status, with the `demo_` twins of the KSeF test environment. */
-export const GOV_PROBLEM_VALUES: readonly string[] = [...GOV_PROBLEMS, ...GOV_PROBLEMS.map((s) => `demo_${s}`)]
-
-/** The KSeF statuses meaning "accepted" and "processing", with their `demo_` twins. */
-export const GOV_ACCEPTED_VALUES: readonly string[] = ["ok", "demo_ok"]
-export const GOV_PROCESSING_VALUES: readonly string[] = ["processing", "demo_processing"]
+export { DOCUMENT_FILTERS, GOV_ACCEPTED_VALUES, GOV_PROBLEM_VALUES, GOV_PROCESSING_VALUES, documentFilters, withAlternatives }
 
 async function count(svc: FakturowniaModuleService, filters: Record<string, unknown>): Promise<number> {
   const [, n] = await svc.listAndCountFakturowniaDocuments(filters as never, { take: 1, select: ["id"] } as never)
@@ -79,55 +81,6 @@ export async function planDtos(scope: Scope, plans: readonly PlanRow[]): Promise
   const rows = ids.length > 0 ? await listDocuments(svc, { id: ids }, { take: ids.length }) : []
   const names = await actorNames(scope, plans.flatMap((p) => [p.approved_by, p.closed_by]))
   return plans.map((p) => toPlanDto(p, rows.find((r) => r.id === p.correction_document_id) ?? null, names))
-}
-
-/** Every filter of the documents table; anything else in `?filter=` reads as "all". */
-export const DOCUMENT_FILTERS: readonly DocumentFilter[] = ["all", "pending", "issued", "attention", "unpaid", "ksef", "canceled", "corrections"]
-
-/**
- * The table filter as service filters, in the current mode. The same filters
- * count the tiles of the page and the counters of the Koda Plus contract, so
- * every number equals the length of its list. Alternatives go under `$and`
- * (never a bare `$or`), so a search can be added without replacing them.
- *
- *   attention  failed, unknown or needing a correction, and a proforma of a
- *              canceled order whose rejection Fakturownia refused
- *   unpaid     `lib/unpaid.ts`
- *   ksef       a VAT invoice or correction KSeF rejected (or could not take)
- */
-export function documentFilters(filter: DocumentFilter, demo: boolean): Record<string, unknown> {
-  const where: Record<string, unknown> = { demo }
-  switch (filter) {
-    case "pending":
-      where.status = ["pending", "issuing"]
-      break
-    case "issued":
-      where.status = "issued"
-      break
-    case "attention":
-      where.$and = [{ $or: [{ status: ["failed", "unknown", "needs_correction"] }, { status: "issued", kind: "proforma", error_code: "reject_failed" }] }]
-      break
-    case "unpaid":
-      return unpaidFilters(demo)
-    case "ksef":
-      where.status = ["issued", "needs_correction"]
-      where.kind = ["vat", "correction"]
-      where.gov_status = [...GOV_PROBLEM_VALUES]
-      break
-    case "canceled":
-      where.status = "canceled"
-      break
-    case "corrections":
-      where.kind = "correction"
-      break
-  }
-  return where
-}
-
-/** Adds alternatives (a search) to service filters without dropping the ones already there. */
-export function withAlternatives(where: Record<string, unknown>, or: Array<Record<string, unknown>>): Record<string, unknown> {
-  const and = Array.isArray(where.$and) ? (where.$and as Array<Record<string, unknown>>) : []
-  return { ...where, $and: [...and, { $or: or }] }
 }
 
 /**

@@ -1,4 +1,5 @@
 import { communityEn } from "../lib/fakturownia-kit-community"
+import { integrationEn } from "../../modules/fakturownia/lib/integration-texts"
 
 const en = {
   title: "Fakturownia",
@@ -132,6 +133,8 @@ const en = {
     channelDepartments: "Departments by sales channel",
     category: "Category",
     paymentTerm: "Payment term of unpaid documents",
+    /* i18next picks days_one for 1 and falls back to days for the other counts (Polish: dni for 2, 5 and 22). */
+    days_one: "{{count}} day",
     days: "{{count}} days",
     markPaid: "Mark paid on capture",
     email: "E-mail after issue",
@@ -267,6 +270,8 @@ const en = {
     doneToast: "Marked as done.",
   },
   documents: {
+    customer: "Customer {{id}}",
+    showAll: "show all",
     title: "Documents",
     subtitle: "Every invoice, proforma, receipt and correction issued for your orders, next to the order it belongs to. Click a document number to see its KSeF status, e-mails and corrections.",
     exactlyOnce:
@@ -419,6 +424,7 @@ const en = {
     noApi:
       "Fakturownia's API has no reminder call and no field for the text of an e-mail: a reminder e-mails the document again with the account's e-mail template, at most once a day. For reminders with their own text, use the automatic payment reminders in Fakturownia's settings.",
     reminders: "Reminders",
+    age_one: "{{count}} day ago",
     age: "{{count}} days ago",
     sentCount: "{{count}} sent",
     noneYet: "none yet",
@@ -453,6 +459,12 @@ const en = {
     capped: "More than 25 000 documents: older months may be incomplete.",
   },
   prompts: {
+    armCorrections: {
+      title: "Turn on the corrections writer?",
+      description:
+        "Approved corrections waiting to be issued: {{count}}. They go to Fakturownia (and to KSeF, by the account's setting) right after you turn it on, at most ten per pass. Check them under Corrections, Approved, first.",
+      confirm: "Turn on and issue",
+    },
     retry: {
       title: "Retry this document?",
       description: "The document of order {{number}} goes back to the queue. Before creating anything, the plugin looks for it in Fakturownia, so a document that is already there is adopted, not duplicated.",
@@ -517,6 +529,8 @@ const en = {
     title: "Fakturownia",
     demo: "Demo",
     more: "Fakturownia page",
+    loading: "Loading the documents...",
+    failed: "Could not load the documents of this order.",
     none: "No document for this order yet.",
     notConfigured: "The plugin is not configured to issue documents yet.",
     waiting: "The document is issued automatically: {{when}}.",
@@ -615,7 +629,7 @@ const en = {
       install: {
         title: "Add the plugin to Medusa",
         p1: "Install the package, add it to medusa-config.ts with the token and the account from the environment, and run the migrations. The options in comments are the decisions of the next steps.",
-        p2: "Without apiToken the plugin runs in demo mode; with demo: false and no token it waits and issues nothing. A missing option never stops Medusa.",
+        p2: "Without apiToken the plugin waits and issues nothing, and this page says so in red; demo mode runs only with demo: true. A missing option never stops Medusa.",
         check: "Medusa starts and the Fakturownia page shows Connected after the next step.",
       },
       check: {
@@ -686,7 +700,7 @@ const en = {
       title: "Go-live checklist",
       subtitle: "Ticked from the state of this store.",
       live: "A real Fakturownia account, not the simulation",
-      liveHint: "Set apiToken and account to leave demo mode.",
+      liveHint: "Set apiToken and account, and remove demo: true, to leave demo mode.",
       connection: "Connection checked without errors",
       firstDocument: "A first real document issued",
       attention: "No document waits for a person (failed or unknown)",
@@ -763,6 +777,8 @@ const en = {
     },
   },
   error: "Could not load Fakturownia data: {{message}}",
+  /* koda.integration/1: the lines, facts and counters a host shows (the server reads the same texts). */
+  integration: integrationEn,
 }
 
 export default en

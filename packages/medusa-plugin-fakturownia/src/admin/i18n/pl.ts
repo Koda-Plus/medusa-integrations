@@ -1,6 +1,7 @@
 import type en from "./en"
 import { typeset } from "../lib/fakturownia-guide"
 import { communityPl } from "../lib/fakturownia-kit-community"
+import { integrationPl } from "../../modules/fakturownia/lib/integration-texts"
 
 const pl: typeof en = {
   title: "Fakturownia",
@@ -134,6 +135,7 @@ const pl: typeof en = {
     channelDepartments: "Działy według kanałów sprzedaży",
     category: "Kategoria",
     paymentTerm: "Termin płatności nieopłaconych",
+    days_one: "{{count}} dzień",
     days: "{{count}} dni",
     markPaid: "Oznaczanie opłaconych po pobraniu",
     email: "E-mail po wystawieniu",
@@ -269,6 +271,8 @@ const pl: typeof en = {
     doneToast: "Oznaczono jako załatwioną.",
   },
   documents: {
+    customer: "Klient {{id}}",
+    showAll: "pokaż wszystkie",
     title: "Dokumenty",
     subtitle: "Faktury, proformy, paragony i korekty wystawione do Twoich zamówień, każdy dokument obok zamówienia, do którego należy. Kliknij numer dokumentu, żeby zobaczyć status KSeF, e-maile i korekty.",
     exactlyOnce:
@@ -421,6 +425,7 @@ const pl: typeof en = {
     noApi:
       "API Fakturowni nie ma wywołania przypomnienia ani pola na treść e-maila: przypomnienie wysyła dokument ponownie z szablonem e-maila konta, najwyżej raz dziennie. Przypomnienia z własną treścią ustawisz w automatycznych przypomnieniach o płatności w ustawieniach Fakturowni.",
     reminders: "Przypomnienia",
+    age_one: "{{count}} dzień temu",
     age: "{{count}} dni temu",
     sentCount: "wysłane: {{count}}",
     noneYet: "jeszcze żadne",
@@ -455,6 +460,12 @@ const pl: typeof en = {
     capped: "Ponad 25 000 dokumentów: starsze miesiące mogą być niepełne.",
   },
   prompts: {
+    armCorrections: {
+      title: "Włączyć zapis korekt?",
+      description:
+        "Zatwierdzone korekty czekające na wystawienie: {{count}}. Po włączeniu trafią do Fakturowni (i do KSeF, zgodnie z ustawieniem konta), najwyżej dziesięć w jednym przebiegu. Najpierw sprawdź je w sekcji Korekty, Zatwierdzone.",
+      confirm: "Włącz i wystaw",
+    },
     retry: {
       title: "Ponowić ten dokument?",
       description: "Dokument zamówienia {{number}} wraca do kolejki. Zanim cokolwiek powstanie, wtyczka szuka go w Fakturowni, więc dokument, który już tam jest, zostaje przejęty, a nie zdublowany.",
@@ -519,6 +530,8 @@ const pl: typeof en = {
     title: "Fakturownia",
     demo: "Demo",
     more: "Strona Fakturowni",
+    loading: "Wczytujemy dokumenty...",
+    failed: "Nie udało się wczytać dokumentów tego zamówienia.",
     none: "To zamówienie nie ma jeszcze dokumentu.",
     notConfigured: "Wtyczka nie jest jeszcze skonfigurowana do wystawiania dokumentów.",
     waiting: "Dokument zostanie wystawiony automatycznie: {{when}}.",
@@ -617,7 +630,7 @@ const pl: typeof en = {
       install: {
         title: "Dodaj wtyczkę do Medusy",
         p1: "Zainstaluj paczkę, dodaj ją do medusa-config.ts z tokenem i kontem ze zmiennych środowiska i uruchom migracje. Opcje w komentarzach to decyzje z kolejnych kroków.",
-        p2: "Bez apiToken wtyczka działa w trybie demo; z demo: false i bez tokenu czeka i niczego nie wystawia. Brak opcji nigdy nie zatrzymuje Medusy.",
+        p2: "Bez apiToken wtyczka czeka i niczego nie wystawia, a ta strona mówi o tym na czerwono; tryb demo działa tylko z demo: true. Brak opcji nigdy nie zatrzymuje Medusy.",
         check: "Medusa startuje, a strona Fakturowni po następnym kroku pokazuje Połączone.",
       },
       check: {
@@ -688,7 +701,7 @@ const pl: typeof en = {
       title: "Lista przed startem",
       subtitle: "Odhaczane na podstawie stanu tego sklepu.",
       live: "Prawdziwe konto Fakturowni, nie symulacja",
-      liveHint: "Ustaw apiToken i account, żeby wyjść z trybu demo.",
+      liveHint: "Ustaw apiToken i account oraz usuń demo: true, żeby wyjść z trybu demo.",
       connection: "Połączenie sprawdzone bez błędów",
       firstDocument: "Pierwszy prawdziwy dokument wystawiony",
       attention: "Żaden dokument nie czeka na osobę (nieudany lub nieznany)",
@@ -765,6 +778,7 @@ const pl: typeof en = {
     },
   },
   error: "Nie udało się wczytać danych Fakturowni: {{message}}",
+  integration: integrationPl,
 }
 
 /* Polish typography: no one-letter word left at the end of a line (nb in the page kit). */

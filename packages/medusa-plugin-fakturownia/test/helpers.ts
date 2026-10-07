@@ -455,6 +455,8 @@ export function setup(options: FakturowniaPluginOptions, orders: Row[] = []): Se
       graph: async ({ entity, filters, pagination }: Row) => {
         if (entity === "order") {
           let data = byIds(filters, orderMap).map((x) => structuredClone(x))
+          const customers = filters?.customer_id
+          if (customers !== undefined) data = data.filter((o: Row) => (Array.isArray(customers) ? customers : [customers]).includes(o.customer_id))
           if (pagination?.order?.created_at === "DESC") data = data.sort((a: Row, b: Row) => time(b.created_at) - time(a.created_at))
           if (pagination?.take) data = data.slice(0, pagination.take)
           return { data }
