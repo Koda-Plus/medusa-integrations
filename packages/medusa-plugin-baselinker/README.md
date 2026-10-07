@@ -340,7 +340,7 @@ Order metadata the plugin writes, readable by your storefront through the Store 
 - **Reads only while rendering:** the admin never calls BaseLinker to draw a page; network calls sit behind jobs and clicks.
 - **One worker per item:** locks through the Medusa Locking module (per store order, per marketplace order, per marketplace reference, per invoice document), plus the lookups before every create.
 
-## What this plugin does not do
+## Out of scope
 
 - It never deletes anything, in BaseLinker or in Medusa. A product removed in BaseLinker can only become a draft, and only with `draftRemovedProducts`.
 - Cards created from Medusa are simple cards, one per variant: it does not build main cards with variants in BaseLinker. Card updates cover the name and the EAN only; descriptions, images, categories and manufacturers of existing cards are left as they are. BaseLinker does not document whether an update keeps the text fields that are not sent; the plugin relies on the per key behaviour the documentation describes for images, and the guide advises trying the cards writer on one card first.
@@ -351,19 +351,6 @@ Order metadata the plugin writes, readable by your storefront through the Store 
 - Returns are read only: no Medusa return or refund is created from them.
 - It does not send e-mails, and it cannot see your e-mail code: skipping the confirmation e-mail for marketplace orders is up to your `order.placed` subscriber.
 - The Allegro reference of imported orders assumes BaseLinker's `external_order_id` of an Allegro order is the Allegro checkout form id, as BaseLinker documents it ("Allegro transaction number"); it has not been checked against an account connected to Allegro yet.
-
-## How it compares
-
-`medusa-baselinker` by digity-studio (version 0.3.2, as its README describes it) is built for stores whose catalog is owned by Base: it imports products, variants, options, prices and images from Base into Medusa on a schedule (every 6 hours by default), writes Base stock into Medusa every 15 minutes, sends orders on `order.placed` and brings status and tracking back. The facts, side by side:
-
-- **Catalog direction.** digity: Base to Medusa only, never pushed to Base. This plugin: your choice, BaseLinker to Medusa (`catalogSource: "baselinker"`) or Medusa to BaseLinker with card creation (`"medusa"`).
-- **Variant options.** digity turns consistent Base features into real Medusa options (separate Colour and Size selectors). This plugin uses one option axis with the variant names. digity is ahead here.
-- **Missing products.** digity drafts them by default (or deletes or ignores them), guarded by `max_missing_ratio`. This plugin never deletes; drafting is off by default and only follows a complete read.
-- **Stock.** digity writes the quantity Base reports, directly. This plugin plans first in either direction, and writes through an armed writer with a cap and per item quarantine.
-- **Prices.** digity imports them from Base. This plugin imports them from a price group, or pushes Medusa prices into one.
-- **Store orders.** Both send on `order.placed`. digity writes its mapping row before `addOrder`, skips orders that already carry a Base id, does not send an order with an unmapped line, and records the paid amount with `setOrderPayment` because it reports that `addOrder` ignores `paid`. This plugin also scans BaseLinker for its marker before every write and after an unclear answer, sends unlinked lines as free lines, and sets `paid` as the documentation describes.
-- **Marketplace orders, returns, invoice numbers.** digity sends orders one way, Medusa to Base, and its README lists no returns and states that a cancellation in Base does not cancel the Medusa order. This plugin imports marketplace orders exactly once, cancels imported orders that are not fulfilled yet, reads returns and writes Fakturownia invoice numbers into BaseLinker orders.
-- **Schedules.** digity sets its cron expressions through environment variables. This plugin has fixed schedules and an admin button for every job.
 
 ## Development
 
@@ -386,7 +373,7 @@ BaseLinker and Base are trademarks of their owner, used here only to identify th
 
 ## License
 
-MIT, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-baselinker/LICENSE).
 
 ## Changelog
 
