@@ -79,7 +79,7 @@ const pl: typeof en = {
   },
   stats: {
     volume: "Obroty",
-    volumeHint: "Płatności: {{count}}",
+    volumeHint: "Płatności: {{n}}",
     fees: "Prowizje Stripe",
     feesHint: "{{rate}} obrotów",
     feesPending: "Jeszcze nierozliczone: {{count}}",
@@ -502,7 +502,7 @@ const pl: typeof en = {
     cacheSeconds: "Pamięć podręczna (cacheSeconds)",
     seconds: "{{count}} s",
     maxPages: "Strony listy na odczyt (maxPages)",
-    maxPagesHint: "do {{count}} płatności",
+    maxPagesHint: "do {{n}} płatności",
     requestsPerSecond: "Zapytania na sekundę (requestsPerSecond)",
     timeoutMs: "Limit czasu zapytania (timeoutMs)",
     apiVersion: "Wersja API Stripe",

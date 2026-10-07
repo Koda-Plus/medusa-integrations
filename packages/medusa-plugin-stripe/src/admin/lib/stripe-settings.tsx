@@ -64,7 +64,7 @@ export function OptionsTab({ status }: { status: StripeStatusResponse }) {
         </Fact>
         <Fact label={t("options.cacheSeconds")}>{t("options.seconds", { count: o.cacheSeconds })}</Fact>
         <Fact label={t("options.maxPages")}>
-          {o.maxPages} <span className="text-ui-fg-subtle">({t("options.maxPagesHint", { count: fmtNumber(o.maxPages * 100, lang) })})</span>
+          {o.maxPages} <span className="text-ui-fg-subtle">({t("options.maxPagesHint", { n: fmtNumber(o.maxPages * 100, lang) })})</span>
         </Fact>
         <Fact label={t("options.requestsPerSecond")}>{o.requestsPerSecond}</Fact>
         <Fact label={t("options.timeoutMs")}>{`${o.timeoutMs} ms`}</Fact>

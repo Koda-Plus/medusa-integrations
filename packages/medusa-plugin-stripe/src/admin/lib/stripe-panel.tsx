@@ -112,7 +112,7 @@ export function PeriodTiles({ overview, days, lang, onDisputes }: { overview: St
   return (
     <div className="flex flex-col gap-y-3">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile label={t("stats.volume")} value={<MoneyValue values={p.volume} lang={lang} />} hint={t("stats.volumeHint", { count: fmtNumber(p.succeeded, lang) })} tone="green" />
+        <StatTile label={t("stats.volume")} value={<MoneyValue values={p.volume} lang={lang} />} hint={t("stats.volumeHint", { n: fmtNumber(p.succeeded, lang) })} tone="green" />
         <StatTile
           label={t("stats.fees")}
           value={<MoneyValue values={p.fees} lang={lang} />}
