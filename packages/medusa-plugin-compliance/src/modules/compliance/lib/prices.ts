@@ -9,6 +9,10 @@ import { complianceSvc } from "./store"
  * seed-pricing) and snapshots it, so the "lowest price of the last 30 days"
  * can be shown next to a discount. Medusa does not keep price history, so the
  * snapshots are the history.
+ *
+ * Amounts are in the SAME UNITS as `price.amount` of this store (major units
+ * in the Koda demo: 549 means 549.00 PLN), so the panel and the storefront
+ * compare them to the displayed prices directly, without conversion.
  */
 
 export interface VariantPrice {
@@ -90,11 +94,15 @@ export interface PriceWindow {
   product_id: string
   title: string | null
   currency_code: string
-  /** Current base amount, minor units. */
+  /** Current base amount, in the store's price units. */
   amount: number
-  /** Lowest snapshot (and current) amount in the last 30 days, minor units. */
+  /** Lowest amount in the last 30 days (snapshots plus the current price). */
   lowest_30d: number
-  /** Lowest snapshot amount in the last 30 days, without the current price; null when there are no snapshots. */
+  /**
+   * Lowest snapshot amount in the last 30 days EXCLUDING the current price:
+   * the reference the Omnibus Directive asks for when a price reduction is
+   * announced. Null when there is no such history.
+   */
   lowest_before: number | null
   snapshots: number
 }
@@ -105,23 +113,28 @@ export async function priceWindows(scope: MedusaContainer): Promise<PriceWindow[
   const variants = await readVariants(scope)
   const since = new Date(Date.now() - OMNIBUS_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const snaps = await svc.listCompliancePriceSnapshots({ captured_at: { $gte: since } }, { take: 10_000 })
-  const bySku = new Map<string, Array<{ amount: number }>>()
+  /* Snapshots grouped by SKU AND currency: a pln window never sees eur history. */
+  const bySkuCurrency = new Map<string, Array<{ amount: number }>>()
   for (const s of snaps) {
     const sku = typeof s.sku === "string" ? s.sku : ""
-    if (!sku) continue
+    const currency = typeof s.currency_code === "string" ? s.currency_code.toLowerCase() : ""
+    if (!sku || !currency) continue
     const amount = Number(s.amount)
     if (!Number.isFinite(amount)) continue
-    const list = bySku.get(sku) ?? []
+    const key = `${sku}:${currency}`
+    const list = bySkuCurrency.get(key) ?? []
     list.push({ amount })
-    bySku.set(sku, list)
+    bySkuCurrency.set(key, list)
   }
 
   const out: PriceWindow[] = []
   for (const v of variants) {
     for (const [currency, amount] of Object.entries(v.byCurrency)) {
-      const hist = bySku.get(v.sku) ?? []
+      const hist = bySkuCurrency.get(`${v.sku}:${currency.toLowerCase()}`) ?? []
       const lowest = Math.min(amount, ...hist.map((h) => h.amount))
-      const lowestBefore = hist.length > 0 ? Math.min(...hist.map((h) => h.amount)) : null
+      /* The reference before the reduction: snapshots at a price other than today's. */
+      const prior = hist.map((h) => h.amount).filter((a) => a !== amount)
+      const lowestBefore = prior.length > 0 ? Math.min(...prior) : null
       out.push({
         sku: v.sku,
         variant_id: v.variant_id,

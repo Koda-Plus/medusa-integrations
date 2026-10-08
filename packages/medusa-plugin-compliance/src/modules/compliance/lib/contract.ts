@@ -55,7 +55,7 @@ export interface PriceSnapshotDto {
   sku: string
   variant_id: string
   currency_code: string
-  /** Minor units, as Medusa stores them. */
+  /** The amount in the store's price units (the same units as `price.amount`). */
   amount: number
   captured_at: string
 }

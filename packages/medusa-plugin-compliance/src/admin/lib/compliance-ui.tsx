@@ -3,19 +3,18 @@ import { useTranslation } from "react-i18next"
 import { Badge, Text, clx } from "@medusajs/ui"
 import type { DsrStatus, OperatorKind } from "../../modules/compliance/lib/constants"
 
-/** Minor units (as Medusa stores them) to major units with the currency code. */
-export function fmtMinor(amount: number | null | undefined, currency: string | null | undefined, lang?: string): string {
+/** A price in the store's units (the same units as `price.amount`, major units in the demo). */
+export function fmtAmount(amount: number | null | undefined, currency: string | null | undefined, lang?: string): string {
   if (amount === null || amount === undefined || !Number.isFinite(amount)) return "-"
-  const value = amount / 100
   const code = (currency || "PLN").toUpperCase()
   try {
     return new Intl.NumberFormat((lang ?? "en").startsWith("pl") ? "pl-PL" : "en-GB", {
       style: "currency",
       currency: code,
       maximumFractionDigits: 2,
-    }).format(value)
+    }).format(amount)
   } catch {
-    return `${value.toFixed(2)} ${code}`
+    return `${amount.toFixed(2)} ${code}`
   }
 }
 
