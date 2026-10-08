@@ -7,6 +7,10 @@ import { integrationPl } from "../../modules/credit/lib/integration-texts"
 const pl = {
   nav: "Kredyt",
   title: "Kredyt kupiecki",
+  view: {
+    panel: "Panel",
+    guide: "Przewodnik wdrożenia",
+  },
   by: "by Koda Plus",
   subtitle: "Limity kredytowe i terminy płatności dla klientów B2B: net 14, 30 albo 60 dni, wykorzystana kwota z niezapłaconych zamówień, kontrola przeterminowania i przełącznik blokady.",
   mode: {

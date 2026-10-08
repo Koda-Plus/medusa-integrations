@@ -4,6 +4,10 @@ import { integrationEn } from "../../modules/whitelist/lib/integration-texts"
 const en = {
   nav: "Whitelist",
   title: "VAT Whitelist",
+  view: {
+    panel: "Panel",
+    guide: "Setup guide",
+  },
   by: "by Koda Plus",
   subtitle: "Verify a Polish NIP against the Ministry of Finance whitelist and EU VAT numbers against VIES: the VAT status, the bank accounts for split payment, and the check history.",
   mode: {

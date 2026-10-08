@@ -4,10 +4,14 @@ import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { DocumentText, XMark } from "@medusajs/icons"
 import { Button, Container, Heading, Input, Label, Table, Text, toast } from "@medusajs/ui"
+import { announce } from "../../lib/packaging-kit"
 import { usePackagingStatus, useSavePackaging, useSscc } from "../../lib/packaging-api"
 import { PackagingIcon } from "../../lib/packaging-icon"
 import { EmptyLine, SampleBadge, StatTile } from "../../lib/packaging-ui"
 import type { ProductDto, StatusResponse } from "../../../modules/packaging/lib/contract"
+
+/* The host of the koda.integration/1 cards learns about this plugin. */
+announce({ ns: "packaging", name: "Packaging", adminPath: "/packaging", Icon: PackagingIcon })
 
 /**
  * Packaging by Koda Plus. One page: the catalog products with their ladders

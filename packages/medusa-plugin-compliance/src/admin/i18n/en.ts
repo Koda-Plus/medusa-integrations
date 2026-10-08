@@ -4,6 +4,10 @@ import { integrationEn } from "../../modules/compliance/lib/integration-texts"
 const en = {
   nav: "Compliance",
   title: "EU Compliance",
+  view: {
+    panel: "Panel",
+    guide: "Setup guide",
+  },
   by: "by Koda Plus",
   subtitle: "GPSR product safety, RODO consent and data subject requests, and the Omnibus lowest-price-of-30-days history, in one panel.",
   tabs: {

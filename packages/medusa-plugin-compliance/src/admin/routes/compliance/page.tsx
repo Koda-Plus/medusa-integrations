@@ -4,11 +4,17 @@ import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpRightMini, Plus, Trash, XMark } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, IconButton, Input, Label, Select, Table, Text, Textarea, clx, toast } from "@medusajs/ui"
+import { announce } from "../../lib/compliance-kit"
+import { usePageView } from "../../lib/compliance-guide"
+import { GuideView } from "../../lib/compliance-guide-view"
 import { useCapturePrices, useComplianceStatus, useCreateOperator, useDeleteOperator, useSaveProduct, useUpdateDsr } from "../../lib/compliance-api"
 import { ComplianceIcon } from "../../lib/compliance-icon"
 import { DsrStatusBadge, EmptyLine, KindBadge, SampleBadge, StatTile, fmtAmount } from "../../lib/compliance-ui"
 import type { DsrDto, ProductComplianceDto, ResponsiblePersonDto, StatusResponse } from "../../../modules/compliance/lib/contract"
 import type { OperatorKind } from "../../../modules/compliance/lib/constants"
+
+/* The host of the koda.integration/1 cards learns about this plugin. */
+announce({ ns: "compliance", name: "Compliance", adminPath: "/compliance", Icon: ComplianceIcon })
 
 /**
  * EU Compliance by Koda Plus. Three sections, one panel:
@@ -28,6 +34,7 @@ const NONE = "__none__"
 const CompliancePage = () => {
   const { t } = useTranslation("compliance")
   const [tab, setTab] = useState<Tab>("gpsr")
+  const [view, setView] = usePageView()
   const status = useComplianceStatus()
 
   const allTabs: Array<{ key: Tab; label: string }> = [
@@ -55,27 +62,57 @@ const CompliancePage = () => {
               </Text>
             </div>
           </div>
-        </div>
-        <div role="tablist" className="flex flex-wrap gap-1 px-6 py-3">
-          {tabs.map((x) => (
+          <div role="tablist" className="flex flex-wrap items-center gap-1">
             <button
-              key={x.key}
               type="button"
               role="tab"
-              aria-selected={x.key === tab}
-              onClick={() => setTab(x.key)}
+              aria-selected={view === "panel"}
+              onClick={() => setView("panel")}
               className={clx(
                 "rounded-md px-2.5 py-1.5 transition-fg",
-                x.key === tab ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+                view === "panel" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
               )}
             >
-              {x.label}
+              {t("view.panel")}
             </button>
-          ))}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "guide"}
+              onClick={() => setView("guide")}
+              className={clx(
+                "rounded-md px-2.5 py-1.5 transition-fg",
+                view === "guide" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+              )}
+            >
+              {t("view.guide")}
+            </button>
+          </div>
         </div>
+        {view === "panel" ? (
+          <div role="tablist" className="flex flex-wrap gap-1 px-6 py-3">
+            {tabs.map((x) => (
+              <button
+                key={x.key}
+                type="button"
+                role="tab"
+                aria-selected={x.key === tab}
+                onClick={() => setTab(x.key)}
+                className={clx(
+                  "rounded-md px-2.5 py-1.5 transition-fg",
+                  x.key === tab ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+                )}
+              >
+                {x.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </Container>
 
-      {status.isError ? (
+      {view === "guide" ? <GuideView /> : null}
+
+      {view === "panel" && status.isError ? (
         <Container className="p-0">
           <Text size="small" className="px-6 py-4 text-ui-fg-error">
             {t("error", { message: String(status.error) })}
@@ -83,9 +120,9 @@ const CompliancePage = () => {
         </Container>
       ) : null}
 
-      {tab === "gpsr" ? <GpsrTab status={status.data} loading={status.isLoading} /> : null}
-      {tab === "rodo" ? <RodoTab status={status.data} loading={status.isLoading} /> : null}
-      {tab === "omnibus" ? <OmnibusTab status={status.data} loading={status.isLoading} /> : null}
+      {view === "panel" && tab === "gpsr" ? <GpsrTab status={status.data} loading={status.isLoading} /> : null}
+      {view === "panel" && tab === "rodo" ? <RodoTab status={status.data} loading={status.isLoading} /> : null}
+      {view === "panel" && tab === "omnibus" ? <OmnibusTab status={status.data} loading={status.isLoading} /> : null}
     </div>
   )
 }

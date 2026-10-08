@@ -7,6 +7,10 @@ import { integrationPl } from "../../modules/whitelist/lib/integration-texts"
 const pl = {
   nav: "Biała lista",
   title: "Biała lista VAT",
+  view: {
+    panel: "Panel",
+    guide: "Przewodnik wdrożenia",
+  },
   by: "by Koda Plus",
   subtitle: "Sprawdź polski NIP w białej liście Ministerstwa Finansów i numery VAT UE w VIES: status VAT, numery kont do podzielonej płatności i historia weryfikacji.",
   mode: {

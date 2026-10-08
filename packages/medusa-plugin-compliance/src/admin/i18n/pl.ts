@@ -7,6 +7,10 @@ import { integrationPl } from "../../modules/compliance/lib/integration-texts"
 const pl = {
   nav: "Zgodność",
   title: "Zgodność z UE",
+  view: {
+    panel: "Panel",
+    guide: "Przewodnik wdrożenia",
+  },
   by: "by Koda Plus",
   subtitle: "Bezpieczeństwo produktów GPSR, zgody RODO i żądania podmiotów danych oraz historia cen Omnibus, w jednym panelu.",
   tabs: {

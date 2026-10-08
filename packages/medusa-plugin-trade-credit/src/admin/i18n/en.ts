@@ -4,6 +4,10 @@ import { integrationEn } from "../../modules/credit/lib/integration-texts"
 const en = {
   nav: "Credit",
   title: "Trade Credit",
+  view: {
+    panel: "Panel",
+    guide: "Setup guide",
+  },
   by: "by Koda Plus",
   subtitle: "Credit limits and payment terms for B2B customers: net 14, 30 or 60 days, the used amount from their unpaid orders, the overdue check and a blocking toggle.",
   mode: {

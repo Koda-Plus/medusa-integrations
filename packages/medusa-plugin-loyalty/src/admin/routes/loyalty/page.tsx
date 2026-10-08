@@ -4,9 +4,13 @@ import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { Plus, XMark } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, Input, Label, Table, Text, toast } from "@medusajs/ui"
+import { announce } from "../../lib/loyalty-kit"
 import { useAdjust, useCustomerSearch, useLoyaltyStatus, type FoundCustomer } from "../../lib/loyalty-api"
 import { LoyaltyIcon } from "../../lib/loyalty-icon"
 import { EmptyLine, SampleBadge, StatTile } from "../../lib/loyalty-ui"
+
+/* The host of the koda.integration/1 cards learns about this plugin. */
+announce({ ns: "loyalty", name: "Loyalty", adminPath: "/loyalty", Icon: LoyaltyIcon })
 
 /**
  * Loyalty by Koda Plus. One page: the points accounts, the manual
