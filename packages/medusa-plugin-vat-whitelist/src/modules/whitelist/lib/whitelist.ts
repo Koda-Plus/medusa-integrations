@@ -145,19 +145,19 @@ export function demoGus(nip: string): { state: CheckState; legal_form: string | 
     }
   }
   const h = demoHash(nip)
-  return { state: "active", legal_form: DEMO_LEGAL_FORMS[(h >> 2) % DEMO_LEGAL_FORMS.length], regon: String(100000000 + (h % 900000000)) }
+  return { state: "active", legal_form: DEMO_LEGAL_FORMS[(h >>> 2) % DEMO_LEGAL_FORMS.length], regon: String(100000000 + (h % 900000000)) }
 }
 
 /** A full simulated company card for any valid NIP: name, address, registries. */
 export function demoCompany(nip: string): { name: string; address: string; statusVat: string; accounts: string[]; regon: string; krs: string; registered: string } {
   const h = demoHash(nip)
   const name = DEMO_NAMES[h % DEMO_NAMES.length]
-  const [city, code] = DEMO_CITIES[(h >> 3) % DEMO_CITIES.length]
-  const street = DEMO_STREETS[(h >> 6) % DEMO_STREETS.length]
-  const number = 1 + ((h >> 9) % 120)
+  const [city, code] = DEMO_CITIES[(h >>> 3) % DEMO_CITIES.length]
+  const street = DEMO_STREETS[(h >>> 6) % DEMO_STREETS.length]
+  const number = 1 + ((h >>> 9) % 120)
   const regon = String(100000000 + (h % 900000000))
-  const krs = String(1000000000 + ((h >> 4) % 9000000000))
-  const year = 1995 + ((h >> 11) % 30)
+  const krs = String(1000000000 + ((h >>> 4) % 9000000000))
+  const year = 1995 + ((h >>> 11) % 30)
   return {
     name,
     address: `ul. ${street} ${number}, ${code} ${city}`,
