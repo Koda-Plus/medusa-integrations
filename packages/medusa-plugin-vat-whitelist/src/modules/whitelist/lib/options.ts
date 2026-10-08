@@ -22,12 +22,19 @@ export interface WhitelistPluginOptions {
    * Default 24. 0: always ask.
    */
   staleHours?: number | string
+  /**
+   * The API key of the GUS Business Registry (BIR 1.1), for the REGON and
+   * legal form check next to the whitelist. Without it the GUS check is
+   * skipped in real mode; demo mode always answers with simulated data.
+   */
+  gusApiKey?: string
 }
 
 export interface ResolvedWhitelistOptions {
   demo: boolean
   baseUrl: string
   staleHours: number
+  gusApiKey: string | null
 }
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/
@@ -44,5 +51,6 @@ export function resolveOptions(o: WhitelistPluginOptions | undefined | null): Re
     demo: bool(opts.demo),
     baseUrl: base,
     staleHours: Number.isFinite(hours) ? Math.min(24 * 365, Math.max(0, Math.floor(hours))) : 24,
+    gusApiKey: typeof opts.gusApiKey === "string" && opts.gusApiKey.trim() ? opts.gusApiKey.trim() : null,
   }
 }

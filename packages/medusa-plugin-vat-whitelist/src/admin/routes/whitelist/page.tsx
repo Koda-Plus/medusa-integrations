@@ -7,7 +7,7 @@ import { Button, Container, Heading, IconButton, Input, Table, Text, toast } fro
 import { useCheckNip, useRecheckEntity, useWhitelistStatus } from "../../lib/whitelist-api"
 import { WhitelistIcon } from "../../lib/whitelist-icon"
 import { EmptyLine, SampleBadge, StateBadge, StatTile } from "../../lib/whitelist-ui"
-import type { StatusResponse } from "../../../modules/whitelist/lib/contract"
+import type { EntityDto, StatusResponse } from "../../../modules/whitelist/lib/contract"
 
 /**
  * VAT Whitelist by Koda Plus. One page: the check form, the counterparties
@@ -137,7 +137,6 @@ function CheckCard({ status }: { status: StatusResponse | undefined }) {
   const submit = () => {
     if (!nip.trim()) return
     check.mutate(nip, {
-      onSuccess: (r) => toast.success(t(`result.${r.entity.state}`, { name: r.entity.name || r.entity.nip })),
       onError: (e) => toast.error(t("toast.error", { error: e.message })),
     })
   }
@@ -158,7 +157,65 @@ function CheckCard({ status }: { status: StatusResponse | undefined }) {
           {t("check.run")}
         </Button>
       </div>
+      {check.data ? <ResultCard entity={check.data.entity} /> : null}
     </Container>
+  )
+}
+
+/** The answer of the last check, as a full company card. */
+function ResultCard({ entity }: { entity: EntityDto }) {
+  const { t } = useTranslation("whitelist")
+  return (
+    <div className="mx-6 mb-4 rounded-lg border border-ui-border-base bg-ui-bg-subtle p-4">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Text size="xsmall" weight="plus" className="uppercase tracking-wide text-ui-fg-muted">
+          {t("result.title")}
+        </Text>
+        <StateBadge state={entity.state} />
+      </div>
+      <Text size="base" weight="plus" className="mt-2 text-ui-fg-base">
+        {entity.name || entity.nip}
+      </Text>
+      {entity.address ? (
+        <Text size="small" className="mt-0.5 text-ui-fg-subtle">
+          {entity.address}
+        </Text>
+      ) : null}
+      {entity.legal_form ? (
+        <Text size="small" className="mt-0.5 text-ui-fg-subtle">
+          {entity.legal_form}
+        </Text>
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        {entity.krs ? (
+          <Text size="xsmall" className="text-ui-fg-muted">
+            {t("result.krs")}: <span className="tabular-nums">{entity.krs}</span>
+          </Text>
+        ) : null}
+        {entity.regon ? (
+          <Text size="xsmall" className="text-ui-fg-muted">
+            {t("result.regon")}: <span className="tabular-nums">{entity.regon}</span>
+          </Text>
+        ) : null}
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t(`source.${entity.source}`)}
+        </Text>
+      </div>
+      {entity.bank_accounts.length > 0 ? (
+        <div className="mt-2">
+          <Text size="xsmall" weight="plus" className="text-ui-fg-subtle">
+            {t("result.accounts")}
+          </Text>
+          <ul className="mt-1 flex flex-col gap-y-0.5">
+            {entity.bank_accounts.slice(0, 3).map((a) => (
+              <li key={a} className="font-mono txt-compact-xsmall text-ui-fg-base">
+                {a}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -179,11 +236,22 @@ function EntityRow({ status, entityId }: { status: StatusResponse; entityId: str
         )}
       </Table.Cell>
       <Table.Cell>
-        <span className="flex items-center gap-x-2">
-          <span className="txt-compact-small-plus text-ui-fg-base">{entity.name ?? "-"}</span>
-          {entity.demo ? <SampleBadge /> : null}
-          {entity.stale ? (
-            <span className="txt-compact-xsmall text-ui-fg-muted">{t("entities.stale")}</span>
+        <span className="flex flex-col gap-y-0.5">
+          <span className="flex items-center gap-x-2">
+            <span className="txt-compact-small-plus text-ui-fg-base">{entity.name ?? "-"}</span>
+            {entity.demo ? <SampleBadge /> : null}
+            {entity.stale ? (
+              <span className="txt-compact-xsmall text-ui-fg-muted">{t("entities.stale")}</span>
+            ) : null}
+          </span>
+          {entity.address ? <span className="txt-compact-xsmall text-ui-fg-muted">{entity.address}</span> : null}
+          {entity.legal_form ? <span className="txt-compact-xsmall text-ui-fg-muted">{entity.legal_form}</span> : null}
+          {entity.krs || entity.regon ? (
+            <span className="txt-compact-xsmall text-ui-fg-muted">
+              {entity.krs ? `${t("result.krs")}: ${entity.krs}` : ""}
+              {entity.krs && entity.regon ? " / " : ""}
+              {entity.regon ? `${t("result.regon")}: ${entity.regon}` : ""}
+            </span>
           ) : null}
         </span>
       </Table.Cell>

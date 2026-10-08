@@ -50,6 +50,7 @@ const pl = {
   source: {
     whitelist: "Biała lista (MF)",
     vies: "VIES",
+    gus: "GUS (REGON)",
   },
   state: {
     active: "Czynny",
@@ -64,6 +65,10 @@ const pl = {
     not_found: "{{name}}: nie ma w rejestrze",
     invalid: "Numer nie przechodzi walidacji",
     unavailable: "Rejestr nie odpowiedział, spróbuj za chwilę",
+    title: "Wynik weryfikacji",
+    accounts: "Konta z rejestru",
+    krs: "KRS",
+    regon: "REGON",
   },
   toast: {
     error: "Coś poszło nie tak: {{error}}",
