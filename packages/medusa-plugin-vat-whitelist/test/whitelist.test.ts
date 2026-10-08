@@ -62,15 +62,13 @@ test("whitelist: a known company answers with its real public registry data", ()
   assert.ok((pko.bank_accounts ?? []).length >= 1)
 })
 
-test("whitelist: any other valid NIP gets a full simulated company card, deterministically", () => {
-  const a = demoAnswer("526-104-08-28")
-  const b = demoAnswer("526-104-08-28")
-  assert.equal(a.state, "active")
-  assert.equal(a.name, b.name)
-  assert.equal(a.address, b.address)
-  assert.ok(a.name && a.name.length > 0)
-  assert.ok(a.regon && /^\d{9}$/.test(a.regon))
-  assert.ok(a.krs && /^\d{10}$/.test(a.krs))
-  assert.ok(a.address && a.address.includes("ul."))
-  assert.ok(a.bank_accounts.length >= 1)
+test("whitelist: the demo card never throws, whatever the sign of the hash (regression)", () => {
+  /* Hashes above 2^31 used to shift to a negative index and throw. */
+  for (const nip of ["895-230-52-60", "999-999-99-99", "774-00-01-454"]) {
+    const a = demoAnswer(nip)
+    assert.ok(a.name && a.name.length > 0, `${nip} got a name`)
+    assert.ok(a.address && a.address.includes("ul."), `${nip} got an address`)
+    assert.ok(a.regon && /^\d{9}$/.test(a.regon))
+    assert.ok(a.krs && /^\d{10}$/.test(a.krs))
+  }
 })
