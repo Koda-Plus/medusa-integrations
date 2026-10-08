@@ -182,7 +182,7 @@ function startPostgres() {
   }
   const as = (cmd) => (runAs ? `su ${runAs} -s /bin/sh -c '${cmd.replace(/'/g, "'\\''")}'` : cmd)
   must(as(`${exe("initdb")} -D "${data}" -U smoke -A trust -E UTF8 --no-locale`), {}, "initdb")
-  must(as(`${exe("pg_ctl")} -D "${data}" -o "-p ${port} -k ${isWin ? "''" : "/tmp"} -c listen_addresses=localhost" -l "${path.join(pgDir, "pg.log")}" -w start`), {}, "pg_ctl start")
+  must(as(`${exe("pg_ctl")} -D "${data}" -o "-p ${port}${isWin ? "" : ` -k /tmp`} -c listen_addresses=localhost" -l "${path.join(pgDir, "pg.log")}" -w start`), {}, "pg_ctl start")
   return {
     url: `postgres://smoke@localhost:${port}`,
     stop: () => {

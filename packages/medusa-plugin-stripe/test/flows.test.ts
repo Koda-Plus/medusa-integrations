@@ -14,7 +14,7 @@ import { cacheFor, requestOrigin, setCacheForTests } from "../src/workflows/stri
 import { loadOrderPayments } from "../src/workflows/stripe/order.ts"
 import { TtlCache } from "../src/modules/stripe/lib/cache.ts"
 import { loadSnapshot } from "../src/workflows/stripe/snapshot.ts"
-import { NOW, READ_KEY, account, bt, dispute, domain, endpoint, methodConfig, pi, refund } from "./fixtures.ts"
+import { READ_KEY, account, bt, dispute, domain, endpoint, methodConfig, pi, refund } from "./fixtures.ts"
 import { FakeStripe, PROVIDERS, REGIONS, RefusingStripe, container, type MedusaData } from "./harness.ts"
 
 const realFetch = globalThis.fetch
@@ -450,7 +450,7 @@ test("the widget keeps no client secret or personal data in memory, and counts d
   })
   const order = { id: "order_FixtureW3", display_id: 1044, payment_collections: [{ payments: [{ provider_id: "pp_stripe_stripe", data: { id: paymentIntent.id } }] }] }
   const c = container({ apiKey: READ_KEY, cacheSeconds: 86_400 }, { orders: [order] }, stripe)
-  const start = NOW.getTime()
+  const start = Date.now()
   const a = await loadOrderPayments(c, order.id, { origin: null, now: () => new Date(start) })
   assert.equal(a.payments[0].disputes[0].daysLeft, 3)
   /* The same cached read, two days later: the deadline moved closer. */
