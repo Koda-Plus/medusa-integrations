@@ -50,7 +50,7 @@ test("the most pressing first: overdue, then the closest deadline, then those un
 test("a dispute row carries its order, its method and its Dashboard link", () => {
   const payment = pi({ amount: 25_000, sessionId: "payses_order1", method: { type: "blik" } })
   const raw = dispute(payment, { dueInHours: 50, reason: "product_not_received", payment_method_details: { type: "blik" } })
-  const ctx = { dashboard: new DashboardLinks("live"), orders: { orderOf: (s: string | null | undefined) => (s === "payses_order1" ? { id: "order_Fixture1", displayId: 1001 } : null) }, demo: false, now: NOW }
+  const ctx = { dashboard: new DashboardLinks("live"), orders: { orderOf: (s: string | null | undefined) => (s === "payses_order1" ? { id: "order_Fixture1", displayId: 1001 } : null) }, demo: false, now: new Date() }
   const row = normalizeDispute(raw, ctx)
   assert.ok(row)
   assert.equal(row.open, true)

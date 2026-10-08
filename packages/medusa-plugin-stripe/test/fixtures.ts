@@ -162,7 +162,7 @@ export function dispute(paymentIntent: RawPaymentIntent, over: Partial<RawDisput
     reason: "fraudulent",
     charge: null,
     payment_intent: paymentIntent,
-    evidence_details: { due_by: dueInHours === null || dueInHours === undefined ? null : sec(NOW) + dueInHours * 3600, has_evidence: false, past_due: false, submission_count: 0 },
+    evidence_details: { due_by: dueInHours === null || dueInHours === undefined ? null : Math.floor(Date.now() / 1000) + dueInHours * 3600, has_evidence: false, past_due: false, submission_count: 0 },
     payment_method_details: { type: "card", card: { brand: "visa" } },
     livemode: true,
     ...rest,
