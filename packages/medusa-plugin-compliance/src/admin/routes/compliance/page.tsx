@@ -5,7 +5,7 @@ import { ArrowPath, Plus, Trash, XMark } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, IconButton, Input, Label, Select, Table, Text, Textarea, clx, toast } from "@medusajs/ui"
 import { useCapturePrices, useComplianceStatus, useCreateOperator, useDeleteOperator, useSaveProduct, useUpdateDsr } from "../../lib/compliance-api"
 import { ComplianceIcon } from "../../lib/compliance-icon"
-import { DsrStatusBadge, EmptyLine, KindBadge, SampleBadge, StatTile, fmtMinor } from "../../lib/compliance-ui"
+import { DsrStatusBadge, EmptyLine, KindBadge, SampleBadge, StatTile, fmtAmount } from "../../lib/compliance-ui"
 import type { DsrDto, ProductComplianceDto, ResponsiblePersonDto, StatusResponse } from "../../../modules/compliance/lib/contract"
 import type { OperatorKind } from "../../../modules/compliance/lib/constants"
 
@@ -526,8 +526,8 @@ function OmnibusTab({ status, loading }: { status: StatusResponse | undefined; l
                   <Table.Row key={`${p.sku}-${p.currency_code}`}>
                     <Table.Cell className="font-mono txt-compact-xsmall">{p.sku}</Table.Cell>
                     <Table.Cell className="txt-compact-small text-ui-fg-base">{p.title ?? p.product_id}</Table.Cell>
-                    <Table.Cell className="tabular-nums">{fmtMinor(p.amount, p.currency_code)}</Table.Cell>
-                    <Table.Cell className="tabular-nums text-ui-fg-subtle">{fmtMinor(p.lowest_30d, p.currency_code)}</Table.Cell>
+                    <Table.Cell className="tabular-nums">{fmtAmount(p.amount, p.currency_code)}</Table.Cell>
+                    <Table.Cell className="tabular-nums text-ui-fg-subtle">{fmtAmount(p.lowest_30d, p.currency_code)}</Table.Cell>
                     <Table.Cell className="tabular-nums text-ui-fg-subtle">{p.snapshots}</Table.Cell>
                   </Table.Row>
                 ))}
