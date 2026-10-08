@@ -1,6 +1,6 @@
 # CLAUDE.md: medusa-integrations
 
-Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Ten npm packages, each published on its own. Eight integrate an outside service and belong in the medusajs.com/integrations catalog; Negotiations and Tasks are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
+Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Fifteen npm packages, each published on its own. Nine integrate an outside service and belong in the medusajs.com/integrations catalog; Compliance, Trade Credit, Packaging, Loyalty, Negotiations and Tasks are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
 
 | Package | Namespace | Module (container key) | Catalog |
 | --- | --- | --- | --- |
@@ -12,8 +12,13 @@ Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`
 | `packages/medusa-plugin-inpost` | `inpost` | data module `inpost` and fulfillment provider `inpost` | Shipping |
 | `packages/medusa-plugin-stripe` | `stripe` | next to the official Stripe provider | Payment |
 | `packages/medusa-plugin-emails` | `emails` | `emails` and notification provider `emails` | Notification |
+| `packages/medusa-plugin-vat-whitelist` | `whitelist` | `whitelist` | Other |
 | `packages/medusa-plugin-negotiations` | `negotiations` | `negotiations` | outside the catalog |
 | `packages/medusa-plugin-tasks` | `tasks` | see the package README | outside the catalog |
+| `packages/medusa-plugin-compliance` | `compliance` | `compliance` | outside the catalog |
+| `packages/medusa-plugin-trade-credit` | `credit` | `credit` | outside the catalog |
+| `packages/medusa-plugin-packaging` | `packaging` | `packaging` | outside the catalog |
+| `packages/medusa-plugin-loyalty` | `loyalty` | `loyalty` | outside the catalog |
 
 The list of packages lives in each `package.json` (`koda` block: `ns`, `moduleDir`, `brand`, `title`, `kind`, `catalog`); every script reads it from there (`scripts/lib/packages.mjs`). The Subiekt plugin talks to a separate bridge on the store's Windows machine; the contract in `packages/medusa-plugin-subiekt-nexo/contract/` is the source of truth for it.
 

@@ -28,7 +28,7 @@ import path from "node:path"
 import { listPackages, root, selectPackages } from "./lib/packages.mjs"
 
 const NPM_USER = "koda-plus"
-const RELEASE_ORDER = ["olx", "allegro", "baselinker", "subiekt", "fakturownia", "negotiations", "emails", "inpost", "stripe", "tasks"]
+const RELEASE_ORDER = ["olx", "allegro", "baselinker", "subiekt", "fakturownia", "negotiations", "emails", "inpost", "stripe", "tasks", "compliance", "whitelist", "credit", "packaging", "loyalty"]
 
 const argv = process.argv.slice(2)
 const flag = (name) => argv.includes(name)

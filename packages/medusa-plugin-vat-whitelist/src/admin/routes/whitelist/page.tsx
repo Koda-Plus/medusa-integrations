@@ -3,11 +3,17 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, MagnifyingGlass } from "@medusajs/icons"
-import { Button, Container, Heading, IconButton, Input, Table, Text, toast } from "@medusajs/ui"
+import { Button, Container, Heading, IconButton, Input, Table, Text, clx, toast } from "@medusajs/ui"
+import { announce } from "../../lib/whitelist-kit"
+import { usePageView } from "../../lib/whitelist-guide"
+import { GuideView } from "../../lib/whitelist-guide-view"
 import { useCheckNip, useRecheckEntity, useWhitelistStatus } from "../../lib/whitelist-api"
 import { WhitelistIcon } from "../../lib/whitelist-icon"
 import { EmptyLine, SampleBadge, StateBadge, StatTile } from "../../lib/whitelist-ui"
 import type { EntityDto, StatusResponse } from "../../../modules/whitelist/lib/contract"
+
+/* The host of the koda.integration/1 cards learns about this plugin. */
+announce({ ns: "whitelist", name: "Whitelist", adminPath: "/whitelist", Icon: WhitelistIcon })
 
 /**
  * VAT Whitelist by Koda Plus. One page: the check form, the counterparties
@@ -16,6 +22,7 @@ import type { EntityDto, StatusResponse } from "../../../modules/whitelist/lib/c
 
 const WhitelistPage = () => {
   const { t } = useTranslation("whitelist")
+  const [view, setView] = usePageView()
   const status = useWhitelistStatus()
   const s = status.data
   return (
@@ -36,10 +43,38 @@ const WhitelistPage = () => {
               </Text>
             </div>
           </div>
+          <div role="tablist" className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "panel"}
+              onClick={() => setView("panel")}
+              className={clx(
+                "rounded-md px-2.5 py-1.5 transition-fg",
+                view === "panel" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+              )}
+            >
+              {t("view.panel")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "guide"}
+              onClick={() => setView("guide")}
+              className={clx(
+                "rounded-md px-2.5 py-1.5 transition-fg",
+                view === "guide" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+              )}
+            >
+              {t("view.guide")}
+            </button>
+          </div>
         </div>
       </Container>
 
-      {status.isError ? (
+      {view === "guide" ? <GuideView /> : null}
+
+      {view === "panel" && status.isError ? (
         <Container className="p-0">
           <Text size="small" className="px-6 py-4 text-ui-fg-error">
             {t("error", { message: String(status.error) })}
@@ -47,85 +82,89 @@ const WhitelistPage = () => {
         </Container>
       ) : null}
 
-      <Container className="p-0">
-        <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
-          <StatTile label={t("stats.entities")} value={s?.counts.entities ?? "-"} />
-          <StatTile label={t("stats.active")} value={s?.counts.active ?? "-"} tone="green" />
-          <StatTile label={t("stats.exempt")} value={s?.counts.exempt ?? "-"} tone="orange" />
-          <StatTile label={t("stats.notFound")} value={s?.counts.not_found ?? "-"} tone={(s?.counts.not_found ?? 0) > 0 ? "red" : "default"} />
-        </div>
-      </Container>
+      {view === "panel" ? (
+        <>
+          <Container className="p-0">
+            <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
+              <StatTile label={t("stats.entities")} value={s?.counts.entities ?? "-"} />
+              <StatTile label={t("stats.active")} value={s?.counts.active ?? "-"} tone="green" />
+              <StatTile label={t("stats.exempt")} value={s?.counts.exempt ?? "-"} tone="orange" />
+              <StatTile label={t("stats.notFound")} value={s?.counts.not_found ?? "-"} tone={(s?.counts.not_found ?? 0) > 0 ? "red" : "default"} />
+            </div>
+          </Container>
 
-      <CheckCard status={s} />
+          <CheckCard status={s} />
 
-      <Container className="divide-y p-0">
-        <div className="flex flex-col gap-1 px-6 py-4">
-          <Heading level="h2">{t("entities.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("entities.subtitle")}
-          </Text>
-        </div>
-        {!s || s.entities.length === 0 ? (
-          <EmptyLine>{t("entities.empty")}</EmptyLine>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <Table.Header>
-                <Table.Row>
-                  <Table.HeaderCell>{t("entities.nip")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("entities.name")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("entities.state")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("entities.accounts")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("entities.checked")}</Table.HeaderCell>
-                  <Table.HeaderCell />
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {s.entities.map((e) => (
-                  <EntityRow key={e.id} status={s} entityId={e.id} />
-                ))}
-              </Table.Body>
-            </Table>
-          </div>
-        )}
-      </Container>
+          <Container className="divide-y p-0">
+            <div className="flex flex-col gap-1 px-6 py-4">
+              <Heading level="h2">{t("entities.title")}</Heading>
+              <Text size="small" className="text-ui-fg-subtle">
+                {t("entities.subtitle")}
+              </Text>
+            </div>
+            {!s || s.entities.length === 0 ? (
+              <EmptyLine>{t("entities.empty")}</EmptyLine>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.HeaderCell>{t("entities.nip")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("entities.name")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("entities.state")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("entities.accounts")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("entities.checked")}</Table.HeaderCell>
+                      <Table.HeaderCell />
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {s.entities.map((e) => (
+                      <EntityRow key={e.id} status={s} entityId={e.id} />
+                    ))}
+                  </Table.Body>
+                </Table>
+              </div>
+            )}
+          </Container>
 
-      <Container className="divide-y p-0">
-        <div className="flex flex-col gap-1 px-6 py-4">
-          <Heading level="h2">{t("checks.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("checks.subtitle")}
-          </Text>
-        </div>
-        {!s || s.checks.length === 0 ? (
-          <EmptyLine>{t("checks.empty")}</EmptyLine>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <Table.Header>
-                <Table.Row>
-                  <Table.HeaderCell>{t("checks.when")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("checks.nip")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("checks.source")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("checks.state")}</Table.HeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {s.checks.map((c) => (
-                  <Table.Row key={c.id}>
-                    <Table.Cell className="text-ui-fg-subtle">{new Date(c.created_at).toLocaleString()}</Table.Cell>
-                    <Table.Cell className="font-mono txt-compact-xsmall">{c.nip}</Table.Cell>
-                    <Table.Cell className="text-ui-fg-subtle">{t(`source.${c.source}`)}</Table.Cell>
-                    <Table.Cell>
-                      <StateBadge state={c.state} />
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table>
-          </div>
-        )}
-      </Container>
+          <Container className="divide-y p-0">
+            <div className="flex flex-col gap-1 px-6 py-4">
+              <Heading level="h2">{t("checks.title")}</Heading>
+              <Text size="small" className="text-ui-fg-subtle">
+                {t("checks.subtitle")}
+              </Text>
+            </div>
+            {!s || s.checks.length === 0 ? (
+              <EmptyLine>{t("checks.empty")}</EmptyLine>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.HeaderCell>{t("checks.when")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("checks.nip")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("checks.source")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("checks.state")}</Table.HeaderCell>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {s.checks.map((c) => (
+                      <Table.Row key={c.id}>
+                        <Table.Cell className="text-ui-fg-subtle">{new Date(c.created_at).toLocaleString()}</Table.Cell>
+                        <Table.Cell className="font-mono txt-compact-xsmall">{c.nip}</Table.Cell>
+                        <Table.Cell className="text-ui-fg-subtle">{t(`source.${c.source}`)}</Table.Cell>
+                        <Table.Cell>
+                          <StateBadge state={c.state} />
+                        </Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table>
+              </div>
+            )}
+          </Container>
+        </>
+      ) : null}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 # Medusa plugins by Koda Plus
 
-Plugins for [Medusa](https://medusajs.com) v2 stores in Poland: the marketplaces, the multichannel hub, the ERP, the invoices, the parcels and the payments a Polish store has to talk to, plus transactional e-mails, B2B price negotiations and a task board for the team. Ten independent packages, one set of rules, all running in one public admin.
+Plugins for [Medusa](https://medusajs.com) v2 stores in Poland: the marketplaces, the multichannel hub, the ERP, the invoices, the parcels and the payments a Polish store has to talk to, plus the modules a B2B store runs on: transactional e-mails, B2B price negotiations, a task board, EU compliance, the VAT whitelist, trade credit, wholesale packaging and loyalty points. Fifteen independent packages, one set of rules, all running in one public admin.
 
 **Live demo:** [medusa.koda.plus/app](https://medusa.koda.plus/app/allegro?demo=en) signs you in to a public demo account by itself and opens the admin in English. Every plugin runs there in demo mode, so every screen has data and nothing leaves the server.
 
@@ -16,11 +16,16 @@ Integrations with an outside service:
 - **[InPost](packages/medusa-plugin-inpost)** (`@koda-plus/medusa-plugin-inpost`): Paczkomat lockers and the InPost courier, cash on delivery included, as a fulfillment provider: parcels planned first, labels, tracking and status by webhook. Library category: Fulfillment.
 - **[Stripe](packages/medusa-plugin-stripe)** (`@koda-plus/medusa-plugin-stripe`): installed next to Medusa's own Stripe provider, it shows what Stripe knows in the admin (payments by method with fees and net, disputes, refunds, balance and payouts) and checks the setup of a Polish store (BLIK, Przelewy24, webhook, wallet domains). Read only, it never moves money. Library category: Payment.
 - **[E-mails](packages/medusa-plugin-emails)** (`@koda-plus/medusa-plugin-emails`): transactional e-mails through Resend, ready on install, in English and Polish, sent once per event, logged, previewed live in the admin. Library category: Notification.
+- **[VAT Whitelist](packages/medusa-plugin-vat-whitelist)** (`@koda-plus/medusa-plugin-vat-whitelist`): a Polish NIP against the Ministry of Finance whitelist and EU VAT numbers against VIES, with the REGON and legal form from GUS. The counterparties, the check history, the registration preview and the customer's own status. Library category: Other.
 
 Modules of our own, no outside service:
 
 - **[Negotiations](packages/medusa-plugin-negotiations)** (`@koda-plus/medusa-plugin-negotiations`): B2B price talks between logged-in customers and the store team, from a product, a variant or a cart to an agreed price and, when allowed, a draft order.
 - **[Tasks](packages/medusa-plugin-tasks)** (`@koda-plus/medusa-plugin-tasks`): a task board in the admin for the store team and its agency, linked to orders, products and customers, with a clean way for scripts and AI agents to report work.
+- **[EU Compliance](packages/medusa-plugin-compliance)** (`@koda-plus/medusa-plugin-compliance`): GPSR product safety, RODO consent and data subject requests, and the Omnibus lowest-price-of-30-days history, in one panel.
+- **[Trade Credit](packages/medusa-plugin-trade-credit)** (`@koda-plus/medusa-plugin-trade-credit`): per-customer credit limits and payment terms (net 14, 30 or 60 days), the used amount from the unpaid orders and the overdue check.
+- **[Packaging](packages/medusa-plugin-packaging)** (`@koda-plus/medusa-plugin-packaging`): the wholesale packaging ladder (piece, box, pallet), the MOQ and the order step, the EAN codes and the SSCC labels.
+- **[Loyalty](packages/medusa-plugin-loyalty)** (`@koda-plus/medusa-plugin-loyalty`): points for every order, a reward ladder, redemption and manual adjustments, with the customer's own points in the storefront.
 
 Each package installs, versions and publishes on its own; pick the ones your store needs.
 

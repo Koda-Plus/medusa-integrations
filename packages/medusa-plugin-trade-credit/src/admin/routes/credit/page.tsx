@@ -3,11 +3,17 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowUpRightMini, PauseSolid, PlaySolid, Plus, XMark } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, IconButton, Input, Label, Select, Table, Text, toast } from "@medusajs/ui"
+import { Badge, Button, Container, Heading, IconButton, Input, Label, Select, Table, Text, clx, toast } from "@medusajs/ui"
+import { announce } from "../../lib/credit-kit"
+import { usePageView } from "../../lib/credit-guide"
+import { GuideView } from "../../lib/credit-guide-view"
 import { useCreditStatus, useCustomerSearch, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
 import { EmptyLine, SampleBadge, StatTile, fmtMoney } from "../../lib/credit-ui"
 import type { CreditOrderDto, LimitDto } from "../../../modules/credit/lib/contract"
+
+/* The host of the koda.integration/1 cards learns about this plugin. */
+announce({ ns: "credit", name: "Credit", adminPath: "/credit", Icon: CreditIcon })
 
 /**
  * Trade Credit by Koda Plus. One page: set the credit terms of a customer,
@@ -19,6 +25,7 @@ const NET_CHOICES = [0, 14, 30, 60]
 
 const CreditPage = () => {
   const { t } = useTranslation("credit")
+  const [view, setView] = usePageView()
   const status = useCreditStatus()
   const s = status.data
   const [editing, setEditing] = useState<string | null>(null)
@@ -42,10 +49,38 @@ const CreditPage = () => {
               </Text>
             </div>
           </div>
+          <div role="tablist" className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "panel"}
+              onClick={() => setView("panel")}
+              className={clx(
+                "rounded-md px-2.5 py-1.5 transition-fg",
+                view === "panel" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+              )}
+            >
+              {t("view.panel")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "guide"}
+              onClick={() => setView("guide")}
+              className={clx(
+                "rounded-md px-2.5 py-1.5 transition-fg",
+                view === "guide" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+              )}
+            >
+              {t("view.guide")}
+            </button>
+          </div>
         </div>
       </Container>
 
-      {status.isError ? (
+      {view === "guide" ? <GuideView /> : null}
+
+      {view === "panel" && status.isError ? (
         <Container className="p-0">
           <Text size="small" className="px-6 py-4 text-ui-fg-error">
             {t("error", { message: String(status.error) })}
@@ -53,81 +88,85 @@ const CreditPage = () => {
         </Container>
       ) : null}
 
-      <Container className="p-0">
-        <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
-          <StatTile label={t("stats.limits")} value={s?.counts.limits ?? "-"} />
-          <StatTile label={t("stats.used")} value={s ? fmtMoney(s.counts.used_total, "pln") : "-"} tone="blue" />
-          <StatTile label={t("stats.overdue")} value={s?.counts.overdue ?? "-"} tone={(s?.counts.overdue ?? 0) > 0 ? "red" : "default"} />
-          <StatTile label={t("stats.blocked")} value={s ? s.counts.blocked + s.counts.exhausted : "-"} tone={(s && s.counts.blocked + s.counts.exhausted > 0) ? "orange" : "default"} />
-        </div>
-      </Container>
+      {view === "panel" ? (
+        <>
+          <Container className="p-0">
+            <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
+              <StatTile label={t("stats.limits")} value={s?.counts.limits ?? "-"} />
+              <StatTile label={t("stats.used")} value={s ? fmtMoney(s.counts.used_total, "pln") : "-"} tone="blue" />
+              <StatTile label={t("stats.overdue")} value={s?.counts.overdue ?? "-"} tone={(s?.counts.overdue ?? 0) > 0 ? "red" : "default"} />
+              <StatTile label={t("stats.blocked")} value={s ? s.counts.blocked + s.counts.exhausted : "-"} tone={(s && s.counts.blocked + s.counts.exhausted > 0) ? "orange" : "default"} />
+            </div>
+          </Container>
 
-      <SetLimitCard />
+          <SetLimitCard />
 
-      <Container className="divide-y p-0">
-        <div className="flex flex-col gap-1 px-6 py-4">
-          <Heading level="h2">{t("limits.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("limits.subtitle")}
-          </Text>
-        </div>
-        {!s || s.limits.length === 0 ? (
-          <EmptyLine>{t("limits.empty")}</EmptyLine>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <Table.Header>
-                <Table.Row>
-                  <Table.HeaderCell>{t("limits.customer")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("limits.limit")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("limits.used")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("limits.remaining")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("limits.terms")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("limits.state")}</Table.HeaderCell>
-                  <Table.HeaderCell />
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {s.limits.map((l) => (
-                  <LimitRow key={l.id} limit={l} onEdit={() => setEditing(editing === l.id ? null : l.id)} />
-                ))}
-              </Table.Body>
-            </Table>
-          </div>
-        )}
-        {editingLimit ? <LimitEditor limit={editingLimit} onDone={() => setEditing(null)} /> : null}
-      </Container>
+          <Container className="divide-y p-0">
+            <div className="flex flex-col gap-1 px-6 py-4">
+              <Heading level="h2">{t("limits.title")}</Heading>
+              <Text size="small" className="text-ui-fg-subtle">
+                {t("limits.subtitle")}
+              </Text>
+            </div>
+            {!s || s.limits.length === 0 ? (
+              <EmptyLine>{t("limits.empty")}</EmptyLine>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.HeaderCell>{t("limits.customer")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("limits.limit")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("limits.used")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("limits.remaining")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("limits.terms")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("limits.state")}</Table.HeaderCell>
+                      <Table.HeaderCell />
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {s.limits.map((l) => (
+                      <LimitRow key={l.id} limit={l} onEdit={() => setEditing(editing === l.id ? null : l.id)} />
+                    ))}
+                  </Table.Body>
+                </Table>
+              </div>
+            )}
+            {editingLimit ? <LimitEditor limit={editingLimit} onDone={() => setEditing(null)} /> : null}
+          </Container>
 
-      <Container className="divide-y p-0">
-        <div className="flex flex-col gap-1 px-6 py-4">
-          <Heading level="h2">{t("orders.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("orders.subtitle")}
-          </Text>
-        </div>
-        {!s || s.orders.length === 0 ? (
-          <EmptyLine>{t("orders.empty")}</EmptyLine>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <Table.Header>
-                <Table.Row>
-                  <Table.HeaderCell>{t("orders.order")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("orders.customer")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("orders.amount")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("orders.due")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("orders.stateLabel")}</Table.HeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {s.orders.map((o) => (
-                  <OrderRow key={o.id} order={o} />
-                ))}
-              </Table.Body>
-            </Table>
-          </div>
-        )}
-      </Container>
+          <Container className="divide-y p-0">
+            <div className="flex flex-col gap-1 px-6 py-4">
+              <Heading level="h2">{t("orders.title")}</Heading>
+              <Text size="small" className="text-ui-fg-subtle">
+                {t("orders.subtitle")}
+              </Text>
+            </div>
+            {!s || s.orders.length === 0 ? (
+              <EmptyLine>{t("orders.empty")}</EmptyLine>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.HeaderCell>{t("orders.order")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("orders.customer")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("orders.amount")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("orders.due")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("orders.stateLabel")}</Table.HeaderCell>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {s.orders.map((o) => (
+                      <OrderRow key={o.id} order={o} />
+                    ))}
+                  </Table.Body>
+                </Table>
+              </div>
+            )}
+          </Container>
+        </>
+      ) : null}
     </div>
   )
 }
