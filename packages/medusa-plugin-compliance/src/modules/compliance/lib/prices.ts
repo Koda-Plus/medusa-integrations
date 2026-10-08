@@ -107,34 +107,45 @@ export interface PriceWindow {
   snapshots: number
 }
 
+/** The snapshots of one window, as the pure computation reads them. */
+export interface WindowSnapshot {
+  sku: string
+  currency_code: string
+  amount: number
+}
+
+/**
+ * The Omnibus window of one SKU and currency, pure (no database): the lowest
+ * amount of the window (snapshots plus the current price) and the lowest
+ * snapshot EXCLUDING the current price, the reference the directive asks for
+ * when a reduction is announced.
+ */
+export function windowOf(sku: string, currency: string, amount: number, snapshots: WindowSnapshot[]): { lowest_30d: number; lowest_before: number | null; snapshots: number } {
+  const hist = snapshots.filter((s) => s.sku === sku && s.currency_code.toLowerCase() === currency.toLowerCase()).map((s) => s.amount)
+  const lowest = Math.min(amount, ...hist)
+  const prior = hist.filter((a) => a !== amount)
+  return { lowest_30d: lowest, lowest_before: prior.length > 0 ? Math.min(...prior) : null, snapshots: hist.length }
+}
+
 /** Current price vs the lowest of the last 30 days, per variant and currency. */
 export async function priceWindows(scope: MedusaContainer): Promise<PriceWindow[]> {
   const svc = complianceSvc(scope)
   const variants = await readVariants(scope)
   const since = new Date(Date.now() - OMNIBUS_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const snaps = await svc.listCompliancePriceSnapshots({ captured_at: { $gte: since } }, { take: 10_000 })
-  /* Snapshots grouped by SKU AND currency: a pln window never sees eur history. */
-  const bySkuCurrency = new Map<string, Array<{ amount: number }>>()
+  const snapshots: WindowSnapshot[] = []
   for (const s of snaps) {
     const sku = typeof s.sku === "string" ? s.sku : ""
     const currency = typeof s.currency_code === "string" ? s.currency_code.toLowerCase() : ""
-    if (!sku || !currency) continue
     const amount = Number(s.amount)
-    if (!Number.isFinite(amount)) continue
-    const key = `${sku}:${currency}`
-    const list = bySkuCurrency.get(key) ?? []
-    list.push({ amount })
-    bySkuCurrency.set(key, list)
+    if (!sku || !currency || !Number.isFinite(amount)) continue
+    snapshots.push({ sku, currency_code: currency, amount })
   }
 
   const out: PriceWindow[] = []
   for (const v of variants) {
     for (const [currency, amount] of Object.entries(v.byCurrency)) {
-      const hist = bySkuCurrency.get(`${v.sku}:${currency.toLowerCase()}`) ?? []
-      const lowest = Math.min(amount, ...hist.map((h) => h.amount))
-      /* The reference before the reduction: snapshots at a price other than today's. */
-      const prior = hist.map((h) => h.amount).filter((a) => a !== amount)
-      const lowestBefore = prior.length > 0 ? Math.min(...prior) : null
+      const window = windowOf(v.sku, currency, amount, snapshots)
       out.push({
         sku: v.sku,
         variant_id: v.variant_id,
@@ -142,9 +153,9 @@ export async function priceWindows(scope: MedusaContainer): Promise<PriceWindow[
         title: v.title,
         currency_code: currency,
         amount,
-        lowest_30d: lowest,
-        lowest_before: lowestBefore,
-        snapshots: hist.length,
+        lowest_30d: window.lowest_30d,
+        lowest_before: window.lowest_before,
+        snapshots: window.snapshots,
       })
     }
   }

@@ -1,5 +1,5 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
-import { COMPLIANCE_MODULE, isOperatorKind, type OperatorKind } from "./constants"
+import { COMPLIANCE_MODULE, isConsentPurpose, isDsrStatus, isDsrType, isOperatorKind, type OperatorKind } from "./constants"
 import type { ConsentDto, DsrDto, ProductComplianceDto, ResponsiblePersonDto } from "./contract"
 import type { ResolvedComplianceOptions } from "./options"
 
@@ -88,7 +88,7 @@ export function toConsent(row: Row): ConsentDto {
   return {
     id: row.id,
     customer_id: str(row.customer_id),
-    purpose: (str(row.purpose) ?? "necessary") as ConsentDto["purpose"],
+    purpose: isConsentPurpose(row.purpose) ? row.purpose : "necessary",
     granted: row.granted === true,
     version: str(row.version),
     source: str(row.source) ?? "cookie_banner",
@@ -102,8 +102,8 @@ export function toDsr(row: Row): DsrDto {
     id: row.id,
     customer_id: str(row.customer_id) ?? "",
     customer_email: str(row.customer_email),
-    type: (str(row.type) ?? "access") as DsrDto["type"],
-    status: (str(row.status) ?? "pending") as DsrDto["status"],
+    type: isDsrType(row.type) ? row.type : "access",
+    status: isDsrStatus(row.status) ? row.status : "pending",
     note: str(row.note),
     demo: row.demo === true,
     created_at: toIso(row.created_at),

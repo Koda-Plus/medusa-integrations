@@ -1,3 +1,6 @@
+import { communityEn } from "../lib/compliance-kit-community"
+import { integrationEn } from "../../modules/compliance/lib/integration-texts"
+
 const en = {
   nav: "Compliance",
   title: "EU Compliance",
@@ -116,6 +119,8 @@ const en = {
     saved: "Saved",
     error: "Something went wrong: {{error}}",
   },
+  community: communityEn,
+  integration: integrationEn,
 }
 
 export default en

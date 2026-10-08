@@ -44,9 +44,12 @@ function bool(value: unknown): boolean {
   return value === true || value === "true"
 }
 
+const SECTION_NAMES = ["gpsr", "rodo", "omnibus"] as const
+
 export function resolveOptions(o: CompliancePluginOptions | undefined | null): ResolvedComplianceOptions {
   const opts = o && typeof o === "object" ? o : {}
-  const sections = entries(opts.sections)
+  /* Unknown names are dropped; an empty (or nonsense) list keeps everything on. */
+  const sections = entries(opts.sections).filter((s) => (SECTION_NAMES as readonly string[]).includes(s))
   const has = (n: string) => sections.length === 0 || sections.includes(n)
   const purposes = (opts.consentPurposes ? entries(opts.consentPurposes) : []).filter((p) => (CONSENT_PURPOSES as readonly string[]).includes(p))
   const inventory = Array.isArray(opts.cookieInventory)

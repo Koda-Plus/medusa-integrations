@@ -1,5 +1,7 @@
 import type en from "./en"
 import { typeset } from "../lib/compliance-typeset"
+import { communityPl } from "../lib/compliance-kit-community"
+import { integrationPl } from "../../modules/compliance/lib/integration-texts"
 
 /* Typed by en.ts below (every English key exists here). */
 const pl = {
@@ -120,6 +122,8 @@ const pl = {
     saved: "Zapisano",
     error: "Coś poszło nie tak: {{error}}",
   },
+  community: communityPl,
+  integration: integrationPl,
 }
 
 const samePolishKeys: typeof en = pl
