@@ -53,3 +53,24 @@ test("whitelist: a number that does not validate reads not found in the demo tab
   const other = demoAnswer("5260001241")
   assert.equal(other.state, "not_found")
 })
+
+test("whitelist: a known company answers with its real public registry data", () => {
+  const pko = demoAnswer("525-000-77-38")
+  assert.equal(pko.state, "active")
+  assert.equal(pko.name, "Powszechna Kasa Oszczędności Bank Polski S.A.")
+  assert.equal(pko.krs, "0000026438")
+  assert.ok((pko.bank_accounts ?? []).length >= 1)
+})
+
+test("whitelist: any other valid NIP gets a full simulated company card, deterministically", () => {
+  const a = demoAnswer("526-104-08-28")
+  const b = demoAnswer("526-104-08-28")
+  assert.equal(a.state, "active")
+  assert.equal(a.name, b.name)
+  assert.equal(a.address, b.address)
+  assert.ok(a.name && a.name.length > 0)
+  assert.ok(a.regon && /^\d{9}$/.test(a.regon))
+  assert.ok(a.krs && /^\d{10}$/.test(a.krs))
+  assert.ok(a.address && a.address.includes("ul."))
+  assert.ok(a.bank_accounts.length >= 1)
+})

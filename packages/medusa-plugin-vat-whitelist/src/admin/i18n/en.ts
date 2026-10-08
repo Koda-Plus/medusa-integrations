@@ -47,6 +47,7 @@ const en = {
   source: {
     whitelist: "Whitelist (MF)",
     vies: "VIES",
+    gus: "GUS (REGON)",
   },
   state: {
     active: "Active",
@@ -61,6 +62,10 @@ const en = {
     not_found: "{{name}}: not in the registry",
     invalid: "The number does not validate",
     unavailable: "The registry could not answer, try again later",
+    title: "Check result",
+    accounts: "Registry accounts",
+    krs: "KRS",
+    regon: "REGON",
   },
   toast: {
     error: "Something went wrong: {{error}}",

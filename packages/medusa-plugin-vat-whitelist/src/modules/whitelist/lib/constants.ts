@@ -24,7 +24,7 @@ export const ID_PREFIX = {
 /* ------------------------------------------------------------------ */
 
 /** Where the answer came from. */
-export const SOURCES = ["whitelist", "vies"] as const
+export const SOURCES = ["whitelist", "vies", "gus"] as const
 export type CheckSource = (typeof SOURCES)[number]
 
 /**

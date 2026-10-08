@@ -11,6 +11,9 @@ export interface EntityDto {
   name: string | null
   address: string | null
   bank_accounts: string[]
+  regon: string | null
+  krs: string | null
+  legal_form: string | null
   customer_id: string | null
   checked_at: string
   stale: boolean
@@ -28,6 +31,9 @@ export interface CheckDto {
   status_vat: string | null
   name: string | null
   bank_accounts: string[]
+  regon: string | null
+  krs: string | null
+  legal_form: string | null
   requested_by: string
   customer_id: string | null
   demo: boolean
