@@ -51,7 +51,9 @@
   "scripts": {
     "build": "medusa plugin:build",
     "dev": "medusa plugin:develop",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json"
+    "test": "node --experimental-strip-types --no-warnings --import ./test/ts-resolve.mjs --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/admin/tsconfig.json",
+    "prepublishOnly": "npm test && npm run typecheck && medusa plugin:build"
   },
   "devDependencies": {
     "@medusajs/admin-sdk": "2.15.3",
