@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, Plus, Trash, XMark } from "@medusajs/icons"
+import { ArrowPath, ArrowUpRightMini, Plus, Trash, XMark } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, IconButton, Input, Label, Select, Table, Text, Textarea, clx, toast } from "@medusajs/ui"
 import { useCapturePrices, useComplianceStatus, useCreateOperator, useDeleteOperator, useSaveProduct, useUpdateDsr } from "../../lib/compliance-api"
 import { ComplianceIcon } from "../../lib/compliance-icon"
@@ -55,7 +56,7 @@ const CompliancePage = () => {
             </div>
           </div>
         </div>
-        <div role="tablist" className="flex flex-wrap gap-1 px-6 pb-3">
+        <div role="tablist" className="flex flex-wrap gap-1 px-6 py-3">
           {tabs.map((x) => (
             <button
               key={x.key}
@@ -264,8 +265,16 @@ function ProductRow({ product, operators, onEdit }: { product: ProductCompliance
 
   return (
     <Table.Row className="cursor-pointer" onClick={onEdit}>
-      <Table.Cell className="font-mono txt-compact-xsmall">{product.sku ?? "-"}</Table.Cell>
-      <Table.Cell className="txt-compact-small text-ui-fg-base">{product.title ?? product.product_id}</Table.Cell>
+      <Table.Cell className="font-mono txt-compact-xsmall">
+        <Link to={`/products/${product.product_id}`} onClick={(e) => e.stopPropagation()} className="hover:text-ui-fg-interactive">
+          {product.sku ?? "-"}
+        </Link>
+      </Table.Cell>
+      <Table.Cell>
+        <Link to={`/products/${product.product_id}`} onClick={(e) => e.stopPropagation()} className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+          {product.title ?? product.product_id}
+        </Link>
+      </Table.Cell>
       <Table.Cell className="text-ui-fg-subtle">{nameOf(product.manufacturer_id) ?? "-"}</Table.Cell>
       <Table.Cell className="text-ui-fg-subtle">{nameOf(product.responsible_person_id) ?? "-"}</Table.Cell>
       <Table.Cell>
@@ -273,7 +282,14 @@ function ProductRow({ product, operators, onEdit }: { product: ProductCompliance
           {t(product.complete ? "products.complete" : "products.incomplete")}
         </Badge>
       </Table.Cell>
-      <Table.Cell className="text-right text-ui-fg-subtle">{t("products.edit")}</Table.Cell>
+      <Table.Cell className="text-right">
+        <span className="flex items-center justify-end gap-x-2">
+          <span className="txt-compact-xsmall text-ui-fg-subtle">{t("products.edit")}</span>
+          <Link to={`/products/${product.product_id}`} onClick={(e) => e.stopPropagation()} aria-label={t("products.open")} className="text-ui-fg-muted transition-fg hover:text-ui-fg-interactive">
+            <ArrowUpRightMini />
+          </Link>
+        </span>
+      </Table.Cell>
     </Table.Row>
   )
 }
@@ -455,7 +471,11 @@ function DsrRow({ dsr }: { dsr: DsrDto }) {
   return (
     <Table.Row>
       <Table.Cell className="text-ui-fg-subtle">{new Date(dsr.created_at).toLocaleDateString()}</Table.Cell>
-      <Table.Cell className="text-ui-fg-base">{dsr.customer_email ?? dsr.customer_id}</Table.Cell>
+      <Table.Cell>
+        <Link to={`/customers/${dsr.customer_id}`} className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+          {dsr.customer_email ?? dsr.customer_id}
+        </Link>
+      </Table.Cell>
       <Table.Cell>
         <Badge size="2xsmall" color="grey">
           {t(`type.${dsr.type}`)}
@@ -524,8 +544,16 @@ function OmnibusTab({ status, loading }: { status: StatusResponse | undefined; l
               <Table.Body>
                 {(status?.prices ?? []).map((p) => (
                   <Table.Row key={`${p.sku}-${p.currency_code}`}>
-                    <Table.Cell className="font-mono txt-compact-xsmall">{p.sku}</Table.Cell>
-                    <Table.Cell className="txt-compact-small text-ui-fg-base">{p.title ?? p.product_id}</Table.Cell>
+                    <Table.Cell className="font-mono txt-compact-xsmall">
+                      <Link to={`/products/${p.product_id}`} className="hover:text-ui-fg-interactive">
+                        {p.sku}
+                      </Link>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Link to={`/products/${p.product_id}`} className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+                        {p.title ?? p.product_id}
+                      </Link>
+                    </Table.Cell>
                     <Table.Cell className="tabular-nums">{fmtAmount(p.amount, p.currency_code)}</Table.Cell>
                     <Table.Cell className="tabular-nums text-ui-fg-subtle">{fmtAmount(p.lowest_30d, p.currency_code)}</Table.Cell>
                     <Table.Cell className="tabular-nums text-ui-fg-subtle">{p.snapshots}</Table.Cell>
