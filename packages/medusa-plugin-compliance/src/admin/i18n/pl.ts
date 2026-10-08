@@ -53,6 +53,7 @@ const pl = {
     incomplete: "Niekompletny",
     empty: "Brak produktów w katalogu.",
     edit: "Edytuj",
+    open: "Otwórz produkt w panelu",
     none: "Brak",
     warnings: "Ostrzeżenia",
     warningsPlaceholder: "Jedno ostrzeżenie w wierszu, w języku klienta",
@@ -71,6 +72,7 @@ const pl = {
     complete: "Gotowe",
     reject: "Odrzuć",
     empty: "Nie ma jeszcze żądań. Klient składa je na stronie swojego konta.",
+    open: "Otwórz klienta w panelu",
   },
   type: {
     access: "Dostęp",

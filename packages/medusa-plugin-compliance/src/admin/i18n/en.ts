@@ -49,6 +49,7 @@ const en = {
     incomplete: "Incomplete",
     empty: "No products in the catalog.",
     edit: "Edit",
+    open: "Open the product in the dashboard",
     none: "None",
     warnings: "Warnings",
     warningsPlaceholder: "One warning per line, in the customer's language",
@@ -67,6 +68,7 @@ const en = {
     complete: "Done",
     reject: "Reject",
     empty: "No requests yet. A customer files one from their account page.",
+    open: "Open the customer in the dashboard",
   },
   type: {
     access: "Access",
