@@ -4,6 +4,10 @@ import { integrationEn } from "../../modules/packaging/lib/integration-texts"
 const en = {
   nav: "Packaging",
   title: "Packaging",
+  view: {
+    panel: "Panel",
+    guide: "Setup guide",
+  },
   by: "by Koda Plus",
   subtitle: "The wholesale packaging ladder of the catalog: piece, box and pallet, the minimum order and the order step, the EAN codes and the SSCC labels.",
   mode: {

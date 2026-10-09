@@ -7,6 +7,10 @@ import { integrationPl } from "../../modules/packaging/lib/integration-texts"
 const pl = {
   nav: "Opakowania",
   title: "Opakowania",
+  view: {
+    panel: "Panel",
+    guide: "Przewodnik wdrożenia",
+  },
   by: "by Koda Plus",
   subtitle: "Drabinka opakowań zbiorczych katalogu: sztuka, karton i paleta, minimalne zamówienie i wielokrotność, kody EAN i etykiety SSCC.",
   mode: {

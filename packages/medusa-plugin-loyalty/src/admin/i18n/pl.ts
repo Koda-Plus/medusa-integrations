@@ -7,6 +7,10 @@ import { integrationPl } from "../../modules/loyalty/lib/integration-texts"
 const pl = {
   nav: "Lojalność",
   title: "Lojalność",
+  view: {
+    panel: "Panel",
+    guide: "Przewodnik wdrożenia",
+  },
   by: "by Koda Plus",
   subtitle: "Punkty za każde zamówienie: {{pointsPerPln}} punkt za 1,00, punkt wart {{redeemRate}}, drabinka nagród i historia wykupów.",
   mode: {
