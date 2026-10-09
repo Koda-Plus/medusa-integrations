@@ -6,6 +6,10 @@ A wholesaler keeps its customers close with points: every order earns, every rew
 
 **Live demo:** Medusa admin [medusa.koda.plus/app/loyalty](https://medusa.koda.plus/app/loyalty?demo=en), signed in to a public demo account by the link itself. The demo storefront [demo.koda.plus](https://demo.koda.plus/pl-pl) shows the points, the reward ring and the redeemed rewards in the account panel.
 
+![Loyalty page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-loyalty/docs/admin-loyalty.png)
+
+![The setup guide of the Loyalty page](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-loyalty/docs/admin-loyalty-guide.png)
+
 ## What it does
 
 - **Points per order**: an order placed by a customer awards the total times `pointsPerPln`, scaled by the customer's tier multiplier. Idempotent per order; marketplace imports are skipped.

@@ -6,6 +6,12 @@ A wholesaler sells in units, not pieces: twelve drills in a box, one hundred and
 
 **Live demo:** Medusa admin [medusa.koda.plus/app/packaging](https://medusa.koda.plus/app/packaging?demo=en), signed in to a public demo account by the link itself. The demo storefront [demo.koda.plus](https://demo.koda.plus/pl-pl) shows the ladder on the product pages.
 
+![Packaging page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-packaging/docs/admin-packaging.png)
+
+![The setup guide of the Packaging page](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-packaging/docs/admin-packaging-guide.png)
+
+![The packaging ladder on a product page of the demo storefront](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-packaging/docs/store-ladder.png)
+
 ## What it does
 
 - **The ladder per product**: the piece, the box and the pallet, each with how many pieces fit into it, the box EAN and the pallet SSCC prefix.

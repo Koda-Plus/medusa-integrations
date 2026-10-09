@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { DocumentText, XMark } from "@medusajs/icons"
-import { Button, Container, Heading, Input, Label, Table, Text, toast } from "@medusajs/ui"
+import { Button, Container, Heading, Input, Label, Table, Text, clx, toast } from "@medusajs/ui"
 import { announce } from "../../lib/packaging-kit"
+import { usePageView } from "../../lib/packaging-guide"
+import { GuideView } from "../../lib/packaging-guide-view"
 import { usePackagingStatus, useSavePackaging, useSscc } from "../../lib/packaging-api"
 import { PackagingIcon } from "../../lib/packaging-icon"
 import { EmptyLine, SampleBadge, StatTile } from "../../lib/packaging-ui"
@@ -21,6 +23,7 @@ announce({ ns: "packaging", name: "Packaging", adminPath: "/packaging", Icon: Pa
 
 const PackagingPage = () => {
   const { t } = useTranslation("packaging")
+  const [view, setView] = usePageView()
   const status = usePackagingStatus()
   const s = status.data
   const [editing, setEditing] = useState<string | null>(null)
@@ -44,10 +47,38 @@ const PackagingPage = () => {
               </Text>
             </div>
           </div>
+          <div role="tablist" className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "panel"}
+              onClick={() => setView("panel")}
+              className={clx(
+                "rounded-md px-2.5 py-1.5 transition-fg",
+                view === "panel" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+              )}
+            >
+              {t("view.panel")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "guide"}
+              onClick={() => setView("guide")}
+              className={clx(
+                "rounded-md px-2.5 py-1.5 transition-fg",
+                view === "guide" ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
+              )}
+            >
+              {t("view.guide")}
+            </button>
+          </div>
         </div>
       </Container>
 
-      {status.isError ? (
+      {view === "guide" ? <GuideView /> : null}
+
+      {view === "panel" && status.isError ? (
         <Container className="p-0">
           <Text size="small" className="px-6 py-4 text-ui-fg-error">
             {t("error", { message: String(status.error) })}
@@ -55,72 +86,76 @@ const PackagingPage = () => {
         </Container>
       ) : null}
 
-      <Container className="p-0">
-        <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
-          <StatTile label={t("stats.products")} value={s?.counts.products ?? "-"} />
-          <StatTile label={t("stats.moq")} value={s?.counts.with_moq ?? "-"} tone="blue" />
-          <StatTile label={t("stats.sscc")} value={s?.counts.with_sscc ?? "-"} tone="green" />
-          <StatTile label={t("stats.units")} value={s?.counts.units ?? "-"} />
-        </div>
-      </Container>
+      {view === "panel" ? (
+        <>
+          <Container className="p-0">
+            <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
+              <StatTile label={t("stats.products")} value={s?.counts.products ?? "-"} />
+              <StatTile label={t("stats.moq")} value={s?.counts.with_moq ?? "-"} tone="blue" />
+              <StatTile label={t("stats.sscc")} value={s?.counts.with_sscc ?? "-"} tone="green" />
+              <StatTile label={t("stats.units")} value={s?.counts.units ?? "-"} />
+            </div>
+          </Container>
 
-      <SsccCard status={s} />
+          <SsccCard status={s} />
 
-      <Container className="divide-y p-0">
-        <div className="flex flex-col gap-1 px-6 py-4">
-          <Heading level="h2">{t("products.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("products.subtitle")}
-          </Text>
-        </div>
-        {!s || s.products.length === 0 ? (
-          <EmptyLine>{t("products.empty")}</EmptyLine>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <Table.Header>
-                <Table.Row>
-                  <Table.HeaderCell>{t("products.sku")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("products.product")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("products.ladder")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("products.moq")}</Table.HeaderCell>
-                  <Table.HeaderCell>{t("products.step")}</Table.HeaderCell>
-                  <Table.HeaderCell />
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {s.products.map((p) => (
-                  <Table.Row key={p.product_id} className="cursor-pointer" onClick={() => setEditing(editing === p.product_id ? null : p.product_id)}>
-                    <Table.Cell className="font-mono txt-compact-xsmall">
-                      <Link to={`/products/${p.product_id}`} onClick={(e) => e.stopPropagation()} className="hover:text-ui-fg-interactive">
-                        {p.sku ?? "-"}
-                      </Link>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <span className="flex items-center gap-x-2">
-                        <span className="txt-compact-small-plus text-ui-fg-base">{p.title ?? p.product_id}</span>
-                        {p.demo ? <SampleBadge /> : null}
-                      </span>
-                    </Table.Cell>
-                    <Table.Cell className="text-ui-fg-subtle">
-                      {p.units.length === 0
-                        ? t("products.unset")
-                        : [...p.units]
-                            .sort((a, b) => a.pieces - b.pieces)
-                            .map((u) => `${u.name} ${u.pieces}`)
-                            .join(" / ")}
-                    </Table.Cell>
-                    <Table.Cell className="tabular-nums">{p.moq > 0 ? p.moq : "-"}</Table.Cell>
-                    <Table.Cell className="tabular-nums">{p.step > 0 ? p.step : "-"}</Table.Cell>
-                    <Table.Cell className="text-right text-ui-fg-subtle">{t("products.edit")}</Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table>
-          </div>
-        )}
-        {editingProduct ? <ProductEditor product={editingProduct} onDone={() => setEditing(null)} /> : null}
-      </Container>
+          <Container className="divide-y p-0">
+            <div className="flex flex-col gap-1 px-6 py-4">
+              <Heading level="h2">{t("products.title")}</Heading>
+              <Text size="small" className="text-ui-fg-subtle">
+                {t("products.subtitle")}
+              </Text>
+            </div>
+            {!s || s.products.length === 0 ? (
+              <EmptyLine>{t("products.empty")}</EmptyLine>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.HeaderCell>{t("products.sku")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("products.product")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("products.ladder")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("products.moq")}</Table.HeaderCell>
+                      <Table.HeaderCell>{t("products.step")}</Table.HeaderCell>
+                      <Table.HeaderCell />
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {s.products.map((p) => (
+                      <Table.Row key={p.product_id} className="cursor-pointer" onClick={() => setEditing(editing === p.product_id ? null : p.product_id)}>
+                        <Table.Cell className="font-mono txt-compact-xsmall">
+                          <Link to={`/products/${p.product_id}`} onClick={(e) => e.stopPropagation()} className="hover:text-ui-fg-interactive">
+                            {p.sku ?? "-"}
+                          </Link>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="flex items-center gap-x-2">
+                            <span className="txt-compact-small-plus text-ui-fg-base">{p.title ?? p.product_id}</span>
+                            {p.demo ? <SampleBadge /> : null}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell className="text-ui-fg-subtle">
+                          {p.units.length === 0
+                            ? t("products.unset")
+                            : [...p.units]
+                                .sort((a, b) => a.pieces - b.pieces)
+                                .map((u) => `${u.name} ${u.pieces}`)
+                                .join(" / ")}
+                        </Table.Cell>
+                        <Table.Cell className="tabular-nums">{p.moq > 0 ? p.moq : "-"}</Table.Cell>
+                        <Table.Cell className="tabular-nums">{p.step > 0 ? p.step : "-"}</Table.Cell>
+                        <Table.Cell className="text-right text-ui-fg-subtle">{t("products.edit")}</Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table>
+              </div>
+            )}
+            {editingProduct ? <ProductEditor product={editingProduct} onDone={() => setEditing(null)} /> : null}
+          </Container>
+        </>
+      ) : null}
     </div>
   )
 }

@@ -4,6 +4,10 @@ import { integrationEn } from "../../modules/loyalty/lib/integration-texts"
 const en = {
   nav: "Loyalty",
   title: "Loyalty",
+  view: {
+    panel: "Panel",
+    guide: "Setup guide",
+  },
   by: "by Koda Plus",
   subtitle: "Points for every order: {{pointsPerPln}} point per 1.00, one point worth {{redeemRate}}, a reward ladder and the redemption history.",
   mode: {
