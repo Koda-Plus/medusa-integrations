@@ -76,9 +76,9 @@ async function main() {
     /* The Store API wants the publishable key: the product pages carry it in
      * their own requests. First find a product link on the homepage (it is
      * pre-rendered), then open it and take the key from its API requests. */
+    await page.goto("https://demo.koda.plus/pl-pl", { waitUntil: "networkidle", timeout: 120_000 })
     const productHref = await page.evaluate(async () => {
-      const html = await (await fetch("https://demo.koda.plus/pl-pl")).text()
-      const m = html.match(/href="(\/pl-pl\/store\/[^"]+)"/)
+      const m = document.documentElement.outerHTML.match(/href="(\/pl-pl\/store\/[^"]+)"/)
       return m ? `https://demo.koda.plus${m[1]}` : null
     })
     let publishable = null
