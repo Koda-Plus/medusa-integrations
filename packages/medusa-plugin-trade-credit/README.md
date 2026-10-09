@@ -6,6 +6,10 @@ A wholesaler does not sell on prepayment alone: its customers buy on invoice wit
 
 **Live demo:** Medusa admin [medusa.koda.plus/app/credit](https://medusa.koda.plus/app/credit?demo=en), signed in to a public demo account by the link itself. The demo storefront [demo.koda.plus](https://demo.koda.plus/pl-pl) shows the credit card in the account panel.
 
+![Trade Credit page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-trade-credit/docs/admin-credit.png)
+
+![The setup guide of the Credit page](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-trade-credit/docs/admin-credit-guide.png)
+
 ## What it does
 
 - **Credit limits per customer**: how much a customer may owe, the used amount from their unpaid orders, and what is left.

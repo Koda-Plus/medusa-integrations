@@ -6,6 +6,12 @@ The store sells to people in the European Union, so its offers must name the man
 
 **Live demo:** Medusa admin [medusa.koda.plus/app/compliance](https://medusa.koda.plus/app/compliance?demo=en), signed in to a public demo account by the link itself. The demo storefront [demo.koda.plus](https://demo.koda.plus/pl-pl) shows the product safety block on every product page and the data requests in the account panel.
 
+![EU Compliance page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-compliance/docs/admin-compliance.png)
+
+![The setup guide of the Compliance page](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-compliance/docs/admin-compliance-guide.png)
+
+![The product safety block on a product page of the demo storefront](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-compliance/docs/store-gpsr.png)
+
 ## What it does
 
 - **GPSR**: manufacturers and responsible persons in the EU, a safety record per product (who made it, who is responsible, warnings and safety information), and the completeness check the distance-sales offer reads from.

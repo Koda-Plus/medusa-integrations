@@ -6,6 +6,12 @@ Every B2B store in Poland must check who it sells to: an active VAT payer on the
 
 **Live demo:** Medusa admin [medusa.koda.plus/app/whitelist](https://medusa.koda.plus/app/whitelist?demo=en), signed in to a public demo account by the link itself. Demo mode answers with simulated registry data, so the public demo never calls the registries.
 
+![VAT Whitelist page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-vat-whitelist/docs/admin-whitelist.png)
+
+![The setup guide of the Whitelist page](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-vat-whitelist/docs/admin-whitelist-guide.png)
+
+![The NIP check of the registration step in the B2B zone of the demo storefront](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-vat-whitelist/docs/store-b2b-nip.png)
+
 ## What it does
 
 - **Polish NIP against the whitelist**: the VAT status (Czynny, Zwolniony, Niezarejestrowany), the taxpayer's name and address, and the bank accounts, from the Ministry of Finance API.
