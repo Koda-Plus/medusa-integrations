@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+﻿import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
@@ -393,6 +393,7 @@ function ActivitySection({ index, titles, onOpen }: { index: PeopleIndex; titles
 
 export const config = defineRouteConfig({
   label: "nav",
+  rank: 7,
   translationNs: "tasks",
   icon: TasksIcon,
 })

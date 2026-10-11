@@ -1,4 +1,4 @@
-import { defineRouteConfig } from "@medusajs/admin-sdk"
+﻿import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -89,9 +89,9 @@ const Panel = () => {
         {checkQ.data?.ok && checkQ.data.account ? (
           <Text size="small" className="text-ui-fg-base">
             {t("check.ok", { name: checkQ.data.account.name ?? checkQ.data.account.primary_email_address ?? "-" })}
-            {" · "}
+            {" Â· "}
             {t("check.tags", { n: checkQ.data.tags.length })}
-            {" · "}
+            {" Â· "}
             {t("check.forms", { n: checkQ.data.forms.length })}
           </Text>
         ) : s && !s.configured ? (
@@ -304,6 +304,7 @@ const SettingsCard = ({
 
 export const config = defineRouteConfig({
   label: "Kit",
+  rank: 4,
   icon: KitIcon,
 })
 

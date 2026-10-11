@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+﻿import { useEffect, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
@@ -1069,6 +1069,7 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
 
 export const config = defineRouteConfig({
   label: "BaseLinker",
+  rank: 2,
   icon: BaseLinkerIcon,
 })
 
