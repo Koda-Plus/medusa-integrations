@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+﻿import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
@@ -265,6 +265,7 @@ function Warnings({ status }: { status: StripeStatusResponse }) {
 
 export const config = defineRouteConfig({
   label: "Stripe",
+  rank: 1,
   icon: StripeIcon,
 })
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+﻿import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
@@ -275,6 +275,7 @@ function Warnings({ status }: { status: StatusResponse }) {
 
 export const config = defineRouteConfig({
   label: "InPost",
+  rank: 3,
   icon: InpostIcon,
 })
 

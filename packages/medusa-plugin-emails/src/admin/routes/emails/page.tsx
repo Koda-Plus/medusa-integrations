@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+﻿import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
@@ -249,6 +249,7 @@ function Warnings({ status }: { status: StatusResponse }) {
 
 export const config = defineRouteConfig({
   label: "E-mails",
+  rank: 6,
   translationNs: "emails",
   icon: EmailsIcon,
 })

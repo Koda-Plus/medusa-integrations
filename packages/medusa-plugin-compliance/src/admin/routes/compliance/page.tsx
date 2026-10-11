@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+﻿import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
@@ -607,6 +607,7 @@ function OmnibusTab({ status, loading }: { status: StatusResponse | undefined; l
 
 export const config = defineRouteConfig({
   label: "nav",
+  rank: 5,
   translationNs: "compliance",
   icon: ComplianceIcon,
 })
