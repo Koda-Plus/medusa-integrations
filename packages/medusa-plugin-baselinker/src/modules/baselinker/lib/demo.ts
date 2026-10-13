@@ -137,16 +137,16 @@ export const DEMO_BL_ONLY: ReadonlyArray<{
   bundle?: boolean
   variants?: Array<{ seed: string; sku: string; name: string; stock: number; price: number }>
 }> = [
-  { seed: "demo#bl-only-1", sku: "BL-ONLY-01", ean: "5906660000014", name: "Uchwyt ścienny na narzędzia", stock: 12, price: 49.99 },
-  { seed: "demo#bl-only-2", sku: "BL-ONLY-02", ean: "", name: "Organizer warsztatowy", stock: 0, price: 89 },
-  { seed: "demo#bl-only-3", sku: "BL-ONLY-03", ean: "5906660000038", name: "Taśma izolacyjna czarna", stock: 30, price: 7.5 },
-  { seed: "demo#bl-only-4", sku: "BL-ONLY-04", ean: "5906660000038", name: "Taśma izolacyjna czarna (stara karta)", stock: 2, price: 7.5 },
+  { seed: "demo#bl-only-1", sku: "BL-ONLY-01", ean: "5906660000014", name: "Parasol z logo", stock: 12, price: 49.99 },
+  { seed: "demo#bl-only-2", sku: "BL-ONLY-02", ean: "", name: "Plecak miejski z logo", stock: 0, price: 89 },
+  { seed: "demo#bl-only-3", sku: "BL-ONLY-03", ean: "5906660000038", name: "Naklejka z logo", stock: 30, price: 7.5 },
+  { seed: "demo#bl-only-4", sku: "BL-ONLY-04", ean: "5906660000038", name: "Naklejka z logo (stara karta)", stock: 2, price: 7.5 },
   { seed: "demo#bl-set", sku: "BL-SET-01", ean: "", name: "Zestaw startowy (komplet)", stock: 4, price: 199, bundle: true },
   {
     seed: "demo#gloves",
     sku: "",
     ean: "",
-    name: "Rękawice robocze nitrylowe",
+    name: "Skarpety z logo",
     stock: 0,
     price: null,
     variants: [

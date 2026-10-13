@@ -194,7 +194,7 @@ export function GuideView({ status: s, lang }: { status: OlxStatusResponse; lang
           {p("guide.step.sku.body2")}
         </>
       ),
-      code: "Kod produktu: KS-ELN-18V",
+      code: "Kod produktu: KS-CLT-HOD",
       check: t("guide.step.sku.check"),
     },
     {
