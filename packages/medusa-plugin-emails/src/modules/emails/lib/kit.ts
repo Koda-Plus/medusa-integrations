@@ -261,8 +261,8 @@ export interface KitItem {
 }
 
 /**
- * The short code of a product tile, from its SKU: KS-ELN-18V gives ELN over
- * 18V (with three parts or more the first is taken for a store prefix), ABC-1
+ * The short code of a product tile, from its SKU: KS-CLT-HOD gives CLT over
+ * HOD (with three parts or more the first is taken for a store prefix), ABC-1
  * gives ABC over 1, and without a SKU the initials of the name.
  */
 export function productCode(sku: string | null | undefined, title: string | null | undefined): [string, string] {

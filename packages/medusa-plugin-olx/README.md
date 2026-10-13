@@ -32,7 +32,7 @@ Writes are opt-in. Three writers, off until you allow them in the options and ar
 - **Product widget** on every product page: its adverts with status, price, statistics and unread messages, its alerts and its publish state, or how to link an advert.
 - **Setup guide** in the admin: the rollout from zero to production with live step states, a diagram, a go-live checklist and troubleshooting, in English and Polish.
 - **Running in production**: stores that use the plugin, from the `references` option, on the Panel and in the guide.
-- **SKU matching** by `external_id` first (what feeds, BaseLinker and this plugin fill in), then by a configurable SKU line in the description such as `Kod produktu: KS-ELN-18V`. Case-insensitive, never by title.
+- **SKU matching** by `external_id` first (what feeds, BaseLinker and this plugin fill in), then by a configurable SKU line in the description such as `Kod produktu: KS-CLT-HOD`. Case-insensitive, never by title.
 - **Safe incomplete reads**: an incomplete read adds and updates but removes nothing, and plans nothing new.
 - **Demo mode**: a simulated OLX account from your own catalog runs through the same parsers, plans and writers. Evaluate everything without an OLX developer account.
 - **Admin in English and Polish** through the Medusa admin translations.

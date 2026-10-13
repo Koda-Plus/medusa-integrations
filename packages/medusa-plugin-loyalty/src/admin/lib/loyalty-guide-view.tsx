@@ -21,7 +21,7 @@ const CONFIG = `module.exports = defineConfig({
         redeemRate: 0.05,
         rewards: [
           { at: 1500, name: { en: "50 off", pl: "Rabat 50 zł" } },
-          { at: 3000, name: { en: "Free 18V drill", pl: "Wkrętarka 18V gratis" } },
+          { at: 3000, name: { en: "Free hoodie", pl: "Bluza z kapturem gratis" } },
         ],
         demo: process.env.LOYALTY_DEMO === "true",
       },
