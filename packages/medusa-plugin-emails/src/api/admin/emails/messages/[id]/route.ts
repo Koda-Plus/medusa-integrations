@@ -1,11 +1,13 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import type { MessageDetailResponse } from "../../../../../modules/emails/lib/contract"
 import { templateLabels, toMessageDto } from "../../../../../modules/emails/lib/dto"
+import { historyMessage, type SqlRaw } from "../../../../../modules/emails/lib/medusa-history"
 import { resolveTemplate, sensitiveFields } from "../../../../../modules/emails/lib/registry"
 import { HIDDEN_LINK, scrubSecrets } from "../../../../../modules/emails/lib/security"
 import type { MessageRow } from "../../../../../modules/emails/lib/store"
 import { actorNames } from "../../../../../workflows/emails/runtime"
-import { emailsService, serverError } from "../../helpers"
+import { emailsService, historySubject, serverError } from "../../helpers"
 
 /**
  * GET /admin/emails/messages/:id
@@ -19,6 +21,19 @@ import { emailsService, serverError } from "../../helpers"
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = emailsService(req.scope)
   try {
+    /* App mode: a message of Medusa's history (no body is ever kept for it). */
+    if (svc.getOptions().mode === "app" && String(req.params.id).startsWith("noti_")) {
+      const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as SqlRaw
+      const row = await historyMessage(pg, String(req.params.id), historySubject(svc.getOptions()))
+      if (!row) {
+        res.status(404).json({ message: "Message not found." })
+        return
+      }
+      const body: MessageDetailResponse = { message: { ...toMessageDto(row, {}, templateLabels(svc.getOptions())), source: "medusa" }, html: null, text: null }
+      res.setHeader("Cache-Control", "private, no-store")
+      res.json(body)
+      return
+    }
     const rows = (await svc.listEmailsMessages({ id: req.params.id, demo: svc.isDemo() } as never, { take: 1 } as never)) as unknown as MessageRow[]
     const row = rows[0]
     if (!row) {

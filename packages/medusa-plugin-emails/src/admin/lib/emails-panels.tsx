@@ -307,6 +307,7 @@ export function MessagesSection({
         </span>
         <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
+          {status.mode === "app" && status.history?.firstAt ? ` ${t("log.historySince", { date: fmtDateTime(status.history.firstAt, lang) })}` : ""}
         </Text>
       </div>
       {scoped && scope ? (
@@ -534,6 +535,11 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
               {m.error ? (
                 <InlineTip variant={m.status === "skipped" ? "info" : "error"} label={errorText(m.errorCode) || m.errorCode || t("drawer.error")}>
                   {m.error}
+                </InlineTip>
+              ) : null}
+              {m.source === "medusa" ? (
+                <InlineTip variant="info" label={t("log.kinds.medusa")}>
+                  {m.status === "failed" ? t("drawer.medusaFailed") : t("drawer.medusaHistory")}
                 </InlineTip>
               ) : null}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
