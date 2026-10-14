@@ -130,6 +130,16 @@ export interface EmailsPluginOptions {
   references?: ReferenceOption[]
   /** Provider registration only: the channels it serves. Must include "email". */
   channels?: string[]
+  /**
+   * The id of YOUR OWN notification provider on the email channel (for
+   * example "resend"), when the store already sends its e-mails and keeps
+   * doing so. The plugin then does not register a provider and sends none of
+   * its built-in templates (they would duplicate the store's): the page shows
+   * the store's templates (from `templates`), previews them, sends tests
+   * through that provider, and lists what the provider records with
+   * `recordAppEmail()`. Leave it out to let the plugin send.
+   */
+  appProvider?: string
 }
 
 export interface ResolvedBrand {
@@ -148,15 +158,20 @@ export type LinkKey = keyof EmailsLinksOptions
 
 export const LINK_KEYS: readonly LinkKey[] = ["store", "account", "order", "cart", "passwordReset", "adminPasswordReset", "negotiation"]
 
-export type EmailsMode = "demo" | "dev" | "live"
+export type EmailsMode = "demo" | "dev" | "live" | "app"
 
 export interface ResolvedEmailsOptions {
   apiKey: string
   sender: Sender | null
   replyTo: string[]
   demo: boolean
-  /** demo: the simulated outbox; dev: no API key, the provider logs; live: sends through Resend. */
+  /**
+   * demo: the simulated outbox; dev: no API key, the provider logs; live:
+   * sends through Resend; app: the store's own provider (`appProvider`) sends.
+   */
   mode: EmailsMode
+  /** The store's own email provider id in app mode, else null. */
+  appProvider: string | null
   defaultLocale: EmailLocale
   timeZone: string
   storefrontUrl: string | null
@@ -348,12 +363,17 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
   const channels = Array.isArray(o.channels) ? o.channels.filter((c): c is string => typeof c === "string") : []
   const rps = Number(o.requestsPerSecond)
 
+  const appProviderRaw = str(o.appProvider)
+  const appProvider = /^[A-Za-z0-9_.-]{1,64}$/.test(appProviderRaw) ? appProviderRaw : null
+  if (appProviderRaw && !appProvider) problems.push('appProvider (the id of a notification provider, like "resend")')
+
   return {
     apiKey,
     sender,
     replyTo,
     demo,
-    mode: demo ? "demo" : apiKey ? "live" : "dev",
+    mode: demo ? "demo" : appProvider ? "app" : apiKey ? "live" : "dev",
+    appProvider: demo ? null : appProvider,
     defaultLocale,
     timeZone,
     storefrontUrl,
@@ -378,9 +398,9 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
   }
 }
 
-/** Options live mode still needs; empty in demo mode and when the provider can send. */
+/** Options live mode still needs; empty in demo mode, in app mode (the store's provider has its own key) and when the provider can send. */
 export function missingOptions(o: ResolvedEmailsOptions): string[] {
-  if (o.demo) return []
+  if (o.demo || o.mode === "app") return []
   const missing: string[] = []
   if (!o.apiKey) missing.push("apiKey")
   if (!o.sender) missing.push("from")
@@ -411,6 +431,7 @@ export function optionsFingerprint(o: ResolvedEmailsOptions): Record<string, str
   const brand = { ...o.brand, footer: o.brand.footer }
   return {
     mode: o.mode,
+    appProvider: o.appProvider ?? "",
     apiKey: o.apiKey ? sha256(o.apiKey).slice(0, 12) : "",
     from: o.sender?.value ?? "",
     replyTo: o.replyTo.join(","),

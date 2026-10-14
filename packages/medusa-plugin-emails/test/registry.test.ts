@@ -31,11 +31,18 @@ const companyApproved = defineEmailTemplate<{ company_name?: string; tier_label?
   }),
 })
 
-test("the built-in set comes first in a fixed order, then app templates by key", () => {
+test("the built-in set comes first in a fixed order, then the store's templates in the order of the options, then code ones by key", () => {
   const o = resolveOptions({ templates: { "invoice.ready": { render: () => ({ subject: "x", html: "<p>x</p>" }) }, "company.approved": companyApproved } })
-  const keys = listTemplates(o).map((t) => t.key)
-  assert.deepEqual(keys.slice(0, 9), ["order.placed", "order.shipped", "order.canceled", "customer.welcome", "password.reset", "cart.abandoned", "negotiation.countered", "negotiation.accepted", "negotiation.rejected"])
-  assert.deepEqual(keys.slice(9), ["company.approved", "invoice.ready"])
+  registerEmailTemplate("zeta.code", { render: () => ({ subject: "z", html: "<p>z</p>" }) })
+  registerEmailTemplate("alpha.code", { render: () => ({ subject: "a", html: "<p>a</p>" }) })
+  try {
+    const keys = listTemplates(o).map((t) => t.key)
+    assert.deepEqual(keys.slice(0, 9), ["order.placed", "order.shipped", "order.canceled", "customer.welcome", "password.reset", "cart.abandoned", "negotiation.countered", "negotiation.accepted", "negotiation.rejected"])
+    assert.deepEqual(keys.slice(9), ["invoice.ready", "company.approved", "alpha.code", "zeta.code"])
+  } finally {
+    unregisterEmailTemplate("zeta.code")
+    unregisterEmailTemplate("alpha.code")
+  }
 })
 
 test("lookup order: the options, then registerEmailTemplate, then the built-in set", () => {

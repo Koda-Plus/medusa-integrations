@@ -97,6 +97,17 @@ async function channelProviders(scope: Scope, channel: "email" | "feed"): Promis
   }
 }
 
+/**
+ * Whether the store's own provider is among the email providers in Medusa's
+ * table. Medusa keeps a module provider under its registration id
+ * ("resend") or, in some versions, with the module's prefix
+ * ("notification_resend"); both count. Null when the table could not be read.
+ */
+export function appProviderServes(emailProviders: string[] | null, id: string): boolean | null {
+  if (!emailProviders) return null
+  return emailProviders.some((p) => p === id || p.endsWith(`_${id}`))
+}
+
 function emptyStats(): TemplateDto["stats"] {
   return { sent: 0, failed: 0, skipped: 0, lastAt: null }
 }
@@ -138,7 +149,9 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   }
 
   const names = await actorNames(scope, [settings.brandUpdatedBy, ...Object.values(settings.templates).map((t) => t.updatedBy)])
-  const templates: TemplateDto[] = listTemplates(o).map((t) => {
+  /* App mode: the store's own provider cannot send the plugin's built-in templates, so the gallery shows only the store's. */
+  const listed = o.mode === "app" ? listTemplates(o).filter((t) => t.source !== "builtin") : listTemplates(o)
+  const templates: TemplateDto[] = listed.map((t) => {
     const state = templateState(t.key, t.def.enabledByDefault !== false, o, settings)
     return {
       key: t.key,
@@ -158,15 +171,17 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   })
 
   const note = providerNote()
+  const emailProviders = await channelProviders(scope, "email")
   const provider: ProviderDto = {
     loaded: Boolean(note),
     loadedAt: note?.loadedAt ?? null,
     channels: note?.channels ?? [],
     mode: note?.mode ?? null,
-    emailProviders: await channelProviders(scope, "email"),
+    emailProviders,
     feedProviders: await channelProviders(scope, "feed"),
     sameOptions: note ? fingerprintDifferences(note.fingerprint, optionsFingerprint(o)).length === 0 : null,
     differences: note ? fingerprintDifferences(note.fingerprint, optionsFingerprint(o)) : [],
+    app: o.mode === "app" && o.appProvider ? { id: o.appProvider, serving: appProviderServes(emailProviders, o.appProvider) } : null,
   }
 
   const overrides = settings.brand ?? {}

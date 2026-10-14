@@ -307,6 +307,7 @@ export function ProviderSection({ status, lang }: { status: StatusResponse; lang
   const p = status.provider
   const yes = t("provider.yes")
   const no = t("provider.no")
+  if (status.mode === "app" && p.app) return <AppProviderSection status={status} lang={lang} />
   return (
     <Container className="divide-y p-0">
       <div className="flex flex-col gap-1 px-6 py-4">
@@ -387,6 +388,86 @@ export function ProviderSection({ status, lang }: { status: StatusResponse; lang
           ))}
         </div>
       </div>
+      {status.problems.length > 0 ? (
+        <div className="px-6 py-4">
+          <InlineTip variant="warning" label={t("provider.problems")}>
+            {status.problems.join("; ")}
+          </InlineTip>
+        </div>
+      ) : null}
+    </Container>
+  )
+}
+
+/**
+ * App mode (`appProvider`): the store's own notification provider sends and
+ * reports each message with `recordAppEmail`. Nothing here is the plugin's
+ * provider, so the facts are the ones that still matter: who sends, whether
+ * Medusa routes the email channel to it, and the plugin's own settings.
+ */
+function AppProviderSection({ status, lang }: { status: StatusResponse; lang: string }) {
+  const { t } = useTranslation("emails")
+  const p = status.provider
+  const app = p.app as { id: string; serving: boolean | null }
+  return (
+    <Container className="divide-y p-0">
+      <div className="flex flex-col gap-1 px-6 py-4">
+        <Heading level="h2">{t("provider.title")}</Heading>
+        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
+          {t("provider.app.subtitle", { id: app.id })}
+        </Text>
+      </div>
+      <div className="flex flex-col gap-y-3 px-6 py-4">
+        {app.serving === false ? (
+          <InlineTip variant="error" label={t("provider.app.missingLabel")}>
+            {t("provider.app.missingText", { id: app.id })}
+          </InlineTip>
+        ) : (
+          <InlineTip variant="info" label={t("provider.app.label")}>
+            {t("provider.app.text", { id: app.id })}
+          </InlineTip>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-3">
+        <Fact label={t("provider.mode")}>{t(`mode.${modeState(status).key}`)}</Fact>
+        <Fact label={t("provider.app.sender")} mono>
+          {app.id}
+        </Fact>
+        <Fact label={t("provider.app.serving")}>
+          {app.serving === null ? <span>{t("provider.unknown")}</span> : <OnOff on={app.serving} labels={[t("provider.yes"), t("provider.no")]} />}
+        </Fact>
+        <Fact label={t("provider.emailProviders")} mono>
+          {p.emailProviders === null ? <span className="font-sans">{t("provider.unknown")}</span> : p.emailProviders.length > 0 ? p.emailProviders.join(", ") : t("provider.none")}
+        </Fact>
+        <Fact label={t("provider.feedProviders")} mono>
+          {p.feedProviders === null ? (
+            <span className="font-sans">{t("provider.unknown")}</span>
+          ) : p.feedProviders.length > 0 ? (
+            p.feedProviders.join(", ")
+          ) : (
+            <span className="font-sans text-ui-tag-red-text">{t("provider.none")}</span>
+          )}
+        </Fact>
+        <Fact label={t("provider.defaultLocale")}>{t(`languages.${status.defaultLocale}`)}</Fact>
+        <Fact label={t("provider.timeZone")} mono>
+          {status.timeZone}
+        </Fact>
+        <Fact label={t("provider.storefront")} mono>
+          {status.storefrontUrl ?? <span className="font-sans text-ui-tag-orange-text">{t("provider.missing")}</span>}
+        </Fact>
+        <Fact label={t("provider.retention")}>{status.retentionDays > 0 ? t("provider.days", { count: status.retentionDays }) : t("provider.keepAll")}</Fact>
+        <Fact label={t("provider.version")} mono>
+          {status.version}
+        </Fact>
+        <Fact label={t("provider.app.recorded")}>{fmtNumber(status.counts.sent30d, lang)}</Fact>
+      </div>
+      {p.feedProviders && p.feedProviders.length === 0 ? (
+        <div className="px-6 py-4">
+          <InlineTip variant="error" label={t("provider.noFeedLabel")}>
+            {t("provider.noFeedText")}
+          </InlineTip>
+        </div>
+      ) : null}
       {status.problems.length > 0 ? (
         <div className="px-6 py-4">
           <InlineTip variant="warning" label={t("provider.problems")}>

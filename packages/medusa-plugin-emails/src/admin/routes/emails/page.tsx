@@ -171,7 +171,7 @@ function Header({
       by={t("by")}
       badges={
         status ? (
-          <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={status.mode === "dev" ? t("devNote.label") : t("demo.label")}>
+          <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={status.mode === "dev" ? t("devNote.label") : status.mode === "app" ? t("provider.app.label") : t("demo.label")}>
             {note}
           </ModeBadge>
         ) : null
@@ -217,7 +217,12 @@ function Warnings({ status }: { status: StatusResponse }) {
   const { t } = useTranslation("emails")
   const tips: Array<{ key: string; variant: "warning" | "error"; label: string; text: string }> = []
   if (status.mode === "live" && status.missing.length > 0) tips.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }) })
-  if (!status.provider.loaded) tips.push({ key: "provider", variant: "error", label: t("provider.notLoaded.label"), text: t("provider.notLoaded.text") })
+  if (status.mode === "app") {
+    /* The store's own provider sends: only its absence from the email channel needs a person. */
+    if (status.provider.app?.serving === false) {
+      tips.push({ key: "appProvider", variant: "error", label: t("provider.app.missingLabel"), text: t("provider.app.missingText", { id: status.provider.app.id }) })
+    }
+  } else if (!status.provider.loaded) tips.push({ key: "provider", variant: "error", label: t("provider.notLoaded.label"), text: t("provider.notLoaded.text") })
   else if (status.provider.mode && status.provider.mode !== status.mode) {
     tips.push({
       key: "modes",

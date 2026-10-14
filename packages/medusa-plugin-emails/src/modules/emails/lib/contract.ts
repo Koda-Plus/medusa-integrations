@@ -7,7 +7,7 @@
 
 import type { EmailLocale } from "./constants"
 
-export type EmailsModeDto = "demo" | "dev" | "live"
+export type EmailsModeDto = "demo" | "dev" | "live" | "app"
 
 export interface LocalizedTextDto {
   en: string | null
@@ -82,6 +82,12 @@ export interface ProviderDto {
   /** The provider got the same options as the plugin; null when it is not loaded. */
   sameOptions: boolean | null
   differences: string[]
+  /**
+   * App mode: the store's own provider that sends (`appProvider`), and whether
+   * it serves the email channel in Medusa's database (null when that could
+   * not be read). Null outside app mode.
+   */
+  app: { id: string; serving: boolean | null } | null
 }
 
 export interface StatusResponse {
