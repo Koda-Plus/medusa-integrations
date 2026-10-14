@@ -13,6 +13,8 @@ const en = {
   mode: { live: "On Medusa promotions", label: "How it works", text: "The plugin keeps no tables: it writes and reads Medusa promotions." },
   error: "Could not load the coupons: {{message}}",
   stats: {
+    all: "All coupons",
+    discountHint: "{{amount}} off",
     active: "Active",
     scheduled: "Scheduled",
     orders30d: "Orders with a coupon, 30 days",

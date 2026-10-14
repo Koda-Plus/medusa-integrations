@@ -15,6 +15,8 @@ const pl: typeof en = {
   mode: { live: "Na promocjach Medusy", label: "Jak to działa", text: "Wtyczka nie ma własnych tabel: zapisuje i czyta promocje Medusy." },
   error: "Nie udało się wczytać kuponów: {{message}}",
   stats: {
+    all: "Wszystkie kupony",
+    discountHint: "rabat {{amount}}",
     active: "Aktywne",
     scheduled: "Zaplanowane",
     orders30d: "Zamówienia z kuponem, 30 dni",

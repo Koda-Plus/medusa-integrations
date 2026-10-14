@@ -18,6 +18,7 @@ import { bankName, brandName } from "../../modules/stripe/lib/methods"
 import { formatMoney } from "../../modules/stripe/lib/money"
 import { pickText } from "../../modules/stripe/lib/references"
 import type { Reference } from "./stripe-guide"
+import { MethodName } from "./stripe-method-icon"
 
 type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
@@ -190,7 +191,7 @@ export function StatTile({
 }
 
 /** Pills with counts, the same look as the other Koda Plus integrations. */
-export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number }>; onChange: (v: T) => void }) {
+export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number; icon?: ReactNode }>; onChange: (v: T) => void }) {
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((o) => (
@@ -203,7 +204,7 @@ export function FilterPills<T extends string>({ value, options, onChange }: { va
             value === o.value ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color" : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
           )}
         >
-          {o.label}
+          {o.icon ? <span className="mr-1.5 inline-flex align-middle">{o.icon}</span> : null}{o.label}
           {typeof o.count === "number" ? <span className="tabular-nums opacity-80">{o.count}</span> : null}
         </button>
       ))}
@@ -297,7 +298,7 @@ export function MethodCell({ method, detail }: { method: MethodKey | null; detai
   return (
     <div className="flex min-w-0 flex-col">
       <Text size="small" weight="plus" className={clx("truncate", method ? "text-ui-fg-base" : "text-ui-fg-muted")}>
-        {methodLabel(t, method)}
+        {method ? <MethodName method={method} label={methodLabel(t, method)} /> : methodLabel(t, method)}
       </Text>
       {sub ? (
         <Text size="xsmall" className="truncate text-ui-fg-muted" title={sub}>

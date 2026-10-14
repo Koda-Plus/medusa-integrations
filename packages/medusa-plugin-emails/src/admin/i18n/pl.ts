@@ -18,8 +18,9 @@ const pl: typeof en = {
     title: "Ustawienia",
     subtitle: "Wygląd wiadomości, które szablony wysyłają, oraz dostawca z opcjami w użyciu.",
     tab: {
+      gallery: "Podgląd szablonów",
       branding: "Wygląd",
-      templates: "Szablony",
+      templates: "Włączanie szablonów",
       provider: "Dostawca",
     },
   },
@@ -50,12 +51,14 @@ const pl: typeof en = {
   actions: {
     moreActions: "Więcej akcji",
     sendTest: "Wyślij test",
+    templates: "Podgląd szablonów",
     refresh: "Odśwież",
     cancel: "Anuluj",
     close: "Zamknij",
     save: "Zapisz",
   },
   stats: {
+    all: "Wszystkie e-maile",
     sent24h: "Wysłane w 24 h",
     sent30d: "Wysłane w 30 dni",
     simulated24h: "Symulowane w 24 h",

@@ -262,6 +262,13 @@ export interface MessagesScope {
   since: MessageWindow | ""
 }
 
+/** The message in Resend's dashboard, when Resend sent it (the plugin's provider, or the store's own Resend provider in app mode). */
+export function resendLink(status: StatusResponse | undefined, m: Pick<MessageDto, "externalId" | "demo">): string | null {
+  if (!status || !m.externalId || m.demo) return null
+  const viaResend = status.mode === "live" || (status.mode === "app" && /resend/i.test(status.provider.app?.id ?? ""))
+  return viaResend && /^[0-9a-f-]{20,}$/i.test(m.externalId) ? `https://resend.com/emails/${encodeURIComponent(m.externalId)}` : null
+}
+
 export function MessagesSection({
   status,
   lang,
@@ -390,6 +397,12 @@ export function MessagesSection({
                   <Table.Cell className="max-w-xs">
                     <div className="flex flex-col items-start gap-y-1">
                       <MessageStatusBadge message={m} demo={demo} />
+                      {resendLink(status, m) ? (
+                        <a href={resendLink(status, m)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-0.5 txt-compact-xsmall text-ui-fg-interactive hover:underline">
+                          Resend
+                          <ArrowUpRightMini />
+                        </a>
+                      ) : null}
                       {m.errorCode ? (
                         <Text size="xsmall" className={m.status === "skipped" ? "text-ui-fg-muted" : "text-ui-tag-red-text"} title={m.error ?? undefined}>
                           {errorText(m.errorCode) || m.errorCode}
@@ -567,7 +580,14 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
                 ) : null}
                 {m.externalId ? (
                   <Fact label={demo ? t("drawer.simulatedId") : t("drawer.externalId")} mono>
-                    {m.externalId}
+                    {resendLink(status, m) ? (
+                      <a href={resendLink(status, m)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-1 text-ui-fg-interactive hover:underline">
+                        {m.externalId}
+                        <ArrowUpRightMini />
+                      </a>
+                    ) : (
+                      m.externalId
+                    )}
                   </Fact>
                 ) : null}
                 <Fact label={t("drawer.attempts")}>{fmtNumber(m.attempts, lang)}</Fact>

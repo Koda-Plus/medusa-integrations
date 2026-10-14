@@ -17,6 +17,7 @@ const en = {
     title: "Settings",
     subtitle: "The look of the messages, which templates send, and the provider with the options in use.",
     tab: {
+      gallery: "Template previews",
       branding: "Branding",
       templates: "Templates",
       provider: "Provider",
@@ -49,12 +50,14 @@ const en = {
   actions: {
     moreActions: "More actions",
     sendTest: "Send a test",
+    templates: "Template previews",
     refresh: "Refresh",
     cancel: "Cancel",
     close: "Close",
     save: "Save",
   },
   stats: {
+    all: "All e-mails",
     sent24h: "Sent in 24 h",
     sent30d: "Sent in 30 days",
     simulated24h: "Simulated in 24 h",
