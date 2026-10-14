@@ -25,7 +25,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     if (!stripeService(req.scope).isConfigured()) {
       return { payments: [], count: 0, offset, limit, fetchedAt: null, counts: Object.fromEntries(PAYMENT_FILTERS.map((f) => [f, 0])) as Record<PaymentFilter, number>, methods: {} }
     }
-    const { snapshot } = await loadSnapshot(req.scope, { origin: originOf(req) })
+    const { snapshot } = await loadSnapshot(req.scope, { origin: originOf(req), staleWhileRevalidate: true })
     return paymentsPage(snapshot, { filter, method, q: strParam(q.q).slice(0, 100), offset, limit })
   })
 }

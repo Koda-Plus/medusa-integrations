@@ -4,6 +4,7 @@ import { integrationPl } from "../../modules/stripe/lib/integration-texts"
 import { communityPl } from "../lib/stripe-kit-community"
 
 const pl: typeof en = {
+  loading: "Czytam Stripe: płatności, zwroty, spory i saldo z 30 dni. Pierwsze wczytanie trwa kilka sekund, potem dane są od razu, a nowe dochodzą w tle.",
   title: "Stripe",
   by: "by Koda Plus",
   subtitle:
