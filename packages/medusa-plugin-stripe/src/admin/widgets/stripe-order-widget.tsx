@@ -9,6 +9,7 @@ import { errorMessage, useStripeOrder, useStripeOrderRefresh } from "../lib/stri
 import { StripeIcon } from "../lib/stripe-icon"
 import { WidgetFrame, hostable } from "../lib/stripe-kit"
 import { DisputeDue, ExternalLink, PaymentStatusBadge, declineText, fmtDate, fmtDateTime, fmtMoney, methodDetail, methodLabel } from "../lib/stripe-ui"
+import { MethodName } from "../lib/stripe-method-icon"
 
 /**
  * Order page, side column: the PaymentIntent behind the order's Stripe
@@ -175,7 +176,7 @@ function PaymentBlock({ payment: p, lang, wide }: { payment: OrderPaymentDto; la
         </Line>
         <Line label={t("widget.method")}>
           <div className="flex flex-col items-end">
-            <span className="txt-compact-small">{methodLabel(t, row.method)}</span>
+            <span className="txt-compact-small">{row.method ? <MethodName method={row.method} label={methodLabel(t, row.method)} /> : methodLabel(t, row.method)}</span>
             {detail ? <span className="txt-compact-xsmall text-ui-fg-muted">{detail}</span> : null}
           </div>
         </Line>

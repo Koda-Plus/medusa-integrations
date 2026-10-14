@@ -74,6 +74,8 @@ const CouponsPage = () => {
     if (f === "all") p.delete("status")
     else p.set("status", f)
     setParams(p, { replace: true })
+    /* A tile shows what it counts: the list below, scrolled into view. */
+    requestAnimationFrame(() => document.getElementById("coupons-list")?.scrollIntoView({ behavior: "smooth", block: "start" }))
   }
 
   const now = Date.now()
@@ -134,7 +136,7 @@ const CouponsPage = () => {
       </Container>
 
       {nav.view === "panel" ? (
-        <Container className="divide-y p-0">
+        <Container id="coupons-list" className="scroll-mt-4 divide-y p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
             <div>
               <Heading level="h2">{t("list.title")}</Heading>
@@ -228,10 +230,10 @@ function Tiles({ data, filter, onFilter }: { data: ListResponse; filter: Filter;
   const x = data.tiles
   return (
     <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-6">
+      <StatTile label={t("stats.all")} value={fmt.number(data.coupons.length)} tone="blue" active={filter === "all"} onClick={() => onFilter("all")} />
       <StatTile label={t("stats.active")} value={fmt.number(x.active)} tone="green" active={filter === "active"} onClick={() => onFilter(filter === "active" ? "all" : "active")} />
       <StatTile label={t("stats.scheduled")} value={fmt.number(x.scheduled)} tone="blue" active={filter === "scheduled"} onClick={() => onFilter(filter === "scheduled" ? "all" : "scheduled")} />
-      <StatTile label={t("stats.orders30d")} value={fmt.number(x.orders30d)} tone="grey" />
-      <StatTile label={t("stats.discount30d")} value={fmt.money(x.discount30d, data.currencyCode)} tone="grey" />
+      <StatTile label={t("stats.orders30d")} value={fmt.number(x.orders30d)} hint={t("stats.discountHint", { amount: fmt.money(x.discount30d, data.currencyCode) })} tone="grey" />
       <StatTile label={t("stats.expiring")} value={fmt.number(x.expiringSoon)} tone={x.expiringSoon ? "orange" : "grey"} active={filter === "expiring"} onClick={() => onFilter(filter === "expiring" ? "all" : "expiring")} />
       <StatTile label={t("stats.automatic")} value={fmt.number(x.automaticForEveryone)} tone={x.automaticForEveryone ? "orange" : "grey"} active={filter === "automatic"} onClick={() => onFilter(filter === "automatic" ? "all" : "automatic")} />
     </div>

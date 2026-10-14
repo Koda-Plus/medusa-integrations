@@ -2,10 +2,10 @@
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, PaperPlane } from "@medusajs/icons"
+import { ArrowPath, EyeMini, PaperPlane } from "@medusajs/icons"
 import { Container, InlineTip } from "@medusajs/ui"
 import { MESSAGE_FILTERS, MESSAGE_WINDOWS, type MessageFilter, type MessageWindow, type StatusResponse } from "../../../modules/emails/lib/contract"
-import { errorMessage, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
+import { errorMessage, useEmailsMessages, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/emails-guide"
 import { GuideView, usePromptSpec } from "../../lib/emails-guide-view"
 import { EmailsIcon } from "../../lib/emails-icon"
@@ -25,7 +25,7 @@ import { StatTile, fmtNumber, fmtRating, modeState, referencesFor } from "../../
  * - Settings (`?view=settings&tab=`): the branding, the template switches, the
  *   provider and the options in use.
  */
-const SETTINGS_TABS = ["branding", "templates", "provider"] as const
+const SETTINGS_TABS = ["gallery", "templates", "branding", "provider"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
 const EmailsPage = () => {
@@ -62,6 +62,14 @@ const EmailsPage = () => {
     setFilter(f)
     requestAnimationFrame(() => document.getElementById("emails-log")?.scrollIntoView({ behavior: "smooth", block: "start" }))
   }
+  const everything = useEmailsMessages({ filter: "all", offset: 0, limit: 1, enabled: Boolean(s) })
+  const showAll = () => {
+    const next = new URLSearchParams(params)
+    for (const k of ["order_id", "customer_id", "q", "since", "filter"]) next.delete(k)
+    setParams(next, { replace: true })
+    setFilter("all")
+    requestAnimationFrame(() => document.getElementById("emails-log")?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
   const [openMessage, setOpenMessage] = useState<string | null>(null)
   const [test, setTest] = useState<TestInitial | null | "open">(null)
   /* Demo mode: the status only says the outbox is stale (a GET never writes); the page asks for the seed once. */
@@ -94,7 +102,14 @@ const EmailsPage = () => {
           </div>
         ) : null}
         {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-5">
+            <StatTile
+              label={t("stats.all")}
+              value={fmtNumber(everything.data?.count ?? 0, lang)}
+              tone="blue"
+              active={filter === "all" && !scope.since && !scope.orderId && !scope.customerId}
+              onClick={showAll}
+            />
             <StatTile label={s.mode === "demo" ? t("stats.simulated24h") : t("stats.sent24h")} value={fmtNumber(s.counts.sent24h, lang)} tone="green" active={filter === "sent" && scope.since === "24h"} onClick={() => showLog("sent", "24h")} />
             <StatTile label={s.mode === "demo" ? t("stats.simulated30d") : t("stats.sent30d")} value={fmtNumber(s.counts.sent30d, lang)} tone="green" active={filter === "sent" && scope.since === "30d"} onClick={() => showLog("sent", "30d")} />
             <StatTile
@@ -118,7 +133,6 @@ const EmailsPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          <GallerySection status={s} lang={lang} onSendTest={(initial) => setTest(initial)} />
           <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} scope={scope} initialQuery={initialQuery} onClearScope={clearScope} />
           <ByTemplateSection status={s} lang={lang} />
         </>
@@ -131,11 +145,13 @@ const EmailsPage = () => {
           value={nav.tab}
           onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
           tabs={[
-            { id: "branding", label: t("settings.tab.branding"), badge: s.brandOverridden.length || null, tone: "blue" },
+            { id: "gallery", label: t("settings.tab.gallery") },
             { id: "templates", label: t("settings.tab.templates"), badge: s.templates.filter((x) => x.enabled).length, tone: "green" },
+            { id: "branding", label: t("settings.tab.branding"), badge: s.brandOverridden.length || null, tone: "blue" },
             { id: "provider", label: t("settings.tab.provider"), badge: s.provider.loaded ? null : "!", tone: "red" },
           ]}
         >
+          {nav.tab === "gallery" ? <GallerySection status={s} lang={lang} onSendTest={(initial) => setTest(initial)} /> : null}
           {nav.tab === "branding" ? <BrandingSection status={s} lang={lang} /> : null}
           {nav.tab === "templates" ? <TemplatesSection status={s} lang={lang} /> : null}
           {nav.tab === "provider" ? <ProviderSection status={s} lang={lang} /> : null}
@@ -216,7 +232,14 @@ function Header({
       onView={(v) => nav.go(v)}
       labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
       primary={panel && status ? { key: "test", label: t("actions.sendTest"), icon: <PaperPlane />, onClick: onTest } : null}
-      actions={panel ? [{ key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, loading: refreshing, onClick: onRefresh }] : []}
+      actions={
+        panel
+          ? [
+              { key: "templates", label: t("actions.templates"), icon: <EyeMini />, onClick: () => nav.go("settings", "gallery") },
+              { key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, loading: refreshing, onClick: onRefresh },
+            ]
+          : []
+      }
     />
   )
 }

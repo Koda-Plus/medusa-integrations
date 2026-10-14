@@ -23,6 +23,7 @@ import {
   fmtPercent,
   refundFailureText,
 } from "./stripe-ui"
+import { MethodIcon, MethodName } from "./stripe-method-icon"
 
 /*
  * The Panel: the figures of a period, the methods, the payments next to
@@ -239,7 +240,7 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
                 <Table.Row key={m.method} className="[&_td]:py-2.5">
                   <Table.Cell>
                     <Text size="small" weight="plus">
-                      {t(`methods.${m.method}`)}
+                      <MethodName method={m.method} label={t(`methods.${m.method}`)} />
                     </Text>
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmtNumber(m.count, lang)}</Table.Cell>
@@ -321,7 +322,7 @@ export function PaymentsSection({
           <FilterPills<MethodKey | "all">
             value={method}
             onChange={setMethod}
-            options={[{ value: "all", label: t("payments.methodAll") }, ...methods.map((m) => ({ value: m, label: t(`methods.${m}`), count: data?.methods?.[m] }))]}
+            options={[{ value: "all", label: t("payments.methodAll") }, ...methods.map((m) => ({ value: m, label: t(`methods.${m}`), count: data?.methods?.[m], icon: <MethodIcon method={m} title={t(`methods.${m}`)} /> }))]}
           />
         ) : null}
       </div>
@@ -478,7 +479,7 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
                   <Table.Cell className="whitespace-nowrap text-right">
                     <div className="flex flex-col items-end">
                       <span className="txt-compact-small-plus tabular-nums">{fmtMoney(d.amount, lang)}</span>
-                      {d.method ? <span className="txt-compact-xsmall text-ui-fg-muted">{t(`methods.${d.method}`)}</span> : null}
+                      {d.method ? <span className="txt-compact-xsmall text-ui-fg-muted"><MethodName method={d.method} label={t(`methods.${d.method}`)} /></span> : null}
                     </div>
                   </Table.Cell>
                   <Table.Cell>{d.reason ? t(`disputes.reason.${d.reason}`, { defaultValue: d.reason }) : ""}</Table.Cell>
