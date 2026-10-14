@@ -192,6 +192,8 @@ await recordAppEmail(pg, { notification, status: "sent", subject, externalId: id
 
 `pg` is `ContainerRegistrationKeys.PG_CONNECTION` from the provider's container. In app mode the built-in templates of the plugin are off and hidden (your provider cannot render them, and they would only duplicate your e-mails), a test goes through your provider with the template's sample data, and the badge says who sends. Medusa retrying a failed notification updates the same row. A failed app e-mail is retried by Medusa or by your own code, not from this page.
 
+The log also reads Medusa's own history of your provider (its `notification` table, channel `email`), so it shows every e-mail from the store's first day, before the plugin was installed and even before its migrations ran. A notification your provider also reported is listed once, as the plugin's row. History rows are masked like every other row, never show a body, and get a subject only when the template has a `subjectOf(data, locale)` function: it receives the notification's data without attachments, links and anything named like a token or a secret.
+
 ## Custom templates
 
 A template is a definition with a `render` function. Build it with the kit to get the look, the dark mode, the escaping and the plain-text part for free, then pass it in `templates` (in the shared options object, so the plugin and the provider both get it):

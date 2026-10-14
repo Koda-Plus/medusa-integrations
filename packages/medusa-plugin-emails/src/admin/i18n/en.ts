@@ -158,6 +158,7 @@ const en = {
       seed: "Demo",
       job: "Job",
       app: "Your code",
+      medusa: "Medusa history",
     },
     scope: {
       order: "Order {{id}}",
@@ -171,6 +172,8 @@ const en = {
     },
     notReadyLabel: "Send log",
     notReady: "The send log table is missing or older than this version: run npx medusa db:migrate. Messages are still sent, but not logged.",
+    historyOnly: "The plugin log starts after the migrations (npx medusa db:migrate). Until then the list shows your provider's history from Medusa's notification table.",
+    historySince: "Together with your provider's history from Medusa, since {{date}}.",
   },
   byTemplate: {
     title: "By template",
@@ -204,6 +207,8 @@ const en = {
     body: "The message",
     noBody: "Live messages are not kept: open the template in the gallery to see how it looks.",
     noBodyDemo: "This message was not rendered (it failed before).",
+    medusaHistory: "A message from Medusa's history: your provider sent it, and Medusa kept the recipient, the template and the outcome. The log does not show the body.",
+    medusaFailed: "A message from Medusa's history: the provider did not send it. Medusa keeps no error text; the server logs of that moment have the details.",
     retry: "Send again",
     retryTitle: "Send this e-mail again?",
     retryText: "The data is read again from the order, the parcel, the customer or the cart, and the message goes out under a new key.",

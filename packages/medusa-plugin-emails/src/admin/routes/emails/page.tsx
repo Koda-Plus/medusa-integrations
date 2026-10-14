@@ -215,7 +215,7 @@ function Header({
 /** Only what needs a person now: missing options, a provider that is not wired, a log that is not there. */
 function Warnings({ status }: { status: StatusResponse }) {
   const { t } = useTranslation("emails")
-  const tips: Array<{ key: string; variant: "warning" | "error"; label: string; text: string }> = []
+  const tips: Array<{ key: string; variant: "info" | "warning" | "error"; label: string; text: string }> = []
   if (status.mode === "live" && status.missing.length > 0) tips.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }) })
   if (status.mode === "app") {
     /* The store's own provider sends: only its absence from the email channel needs a person. */
@@ -239,7 +239,9 @@ function Warnings({ status }: { status: StatusResponse }) {
   if (status.provider.emailProviders && status.provider.emailProviders.length > 1) {
     tips.push({ key: "several", variant: "warning", label: t("provider.severalLabel"), text: t("provider.severalText", { list: status.provider.emailProviders.join(", ") }) })
   }
-  if (!status.logReady) tips.push({ key: "log", variant: "error", label: t("log.notReadyLabel"), text: t("log.notReady") })
+  /* App mode reads Medusa's history even before the migrations: then the missing log is a note, not an error. */
+  if (!status.logReady && status.mode === "app" && status.history) tips.push({ key: "log", variant: "info", label: t("log.notReadyLabel"), text: t("log.historyOnly") })
+  else if (!status.logReady) tips.push({ key: "log", variant: "error", label: t("log.notReadyLabel"), text: t("log.notReady") })
   if (tips.length === 0) return null
   return (
     <div className="flex flex-col gap-y-2 px-6 py-4">

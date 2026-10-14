@@ -1,11 +1,13 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { MESSAGE_FILTERS, type MessageFilter, type MessagesResponse } from "../../../../modules/emails/lib/contract"
 import { templateLabels, toMessageDto } from "../../../../modules/emails/lib/dto"
 import { addressHash, customerIdOf } from "../../../../modules/emails/lib/keys"
+import { listAppLog, type SqlRaw } from "../../../../modules/emails/lib/medusa-history"
 import { isEmail } from "../../../../modules/emails/lib/security"
 import type { MessageRow } from "../../../../modules/emails/lib/store"
 import { actorNames, graphOne } from "../../../../workflows/emails/runtime"
-import { emailsService, intParam, like, messageFilters, serverError, sinceOf, strParam } from "../helpers"
+import { emailsService, historySubject, intParam, like, messageFilters, serverError, sinceOf, strParam } from "../helpers"
 
 /** Columns of a list row: everything but the stored bodies and the address hash. */
 const LIST_SELECT = [
@@ -39,7 +41,8 @@ const LIST_SELECT = [
  * GET /admin/emails/messages?filter=all|sent|attention|skipped|test|bounced&since=24h|7d|30d&template=&q=&order_id=&customer_id=&limit=&offset=
  *
  * The send log of the current mode, newest first, recipients masked. In demo
- * mode this is the simulated outbox.
+ * mode this is the simulated outbox; in app mode the plugin's rows together
+ * with Medusa's history of the store's provider (each row says its `source`).
  *
  *   order_id      the messages of one order (its confirmation, shipments, cancellation)
  *   customer_id   the messages of one customer: by the customer id, and by
@@ -53,6 +56,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const limit = intParam(req.query.limit, 20, 1, 100)
   const offset = intParam(req.query.offset, 0, 0, 1_000_000)
   const filterParam = strParam(req.query.filter) as MessageFilter
+  if (svc.getOptions().mode === "app") {
+    await appLog(req, res, { filter: MESSAGE_FILTERS.includes(filterParam) ? filterParam : "all", limit, offset })
+    return
+  }
   const where: Record<string, unknown> = messageFilters(MESSAGE_FILTERS.includes(filterParam) ? filterParam : "all", svc.isDemo())
   const and: Array<Record<string, unknown>> = []
   const template = strParam(req.query.template)
@@ -88,5 +95,59 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     res.json(body)
   } catch (err) {
     serverError(req, res, err, "The send log cannot be read. Did the migrations run (npx medusa db:migrate)? The server log has the details.", 503)
+  }
+}
+
+/**
+ * App mode: the plugin's rows and Medusa's own history of the provider's
+ * e-mails in one list (lib/medusa-history.ts). Works before the migrations
+ * ran: the list is then the history alone.
+ */
+async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: MessageFilter; limit: number; offset: number }): Promise<void> {
+  const svc = emailsService(req.scope)
+  const o = svc.getOptions()
+  try {
+    const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as SqlRaw
+    const template = strParam(req.query.template).slice(0, 64) || null
+    const orderId = strParam(req.query.order_id).slice(0, 80) || null
+    const since = sinceOf(req.query.since)
+    const customerParam = strParam(req.query.customer_id)
+    const customerId = customerIdOf(customerParam)
+    if (customerParam && !customerId) {
+      res.status(400).json({ code: "invalid_customer_id", message: "customer_id is a Medusa customer id (cus_...)." })
+      return
+    }
+    let customerEmail: string | null = null
+    if (customerId) {
+      const customer = await graphOne<{ email?: string | null }>(req.scope, "customer", ["id", "email"], [], { id: customerId }).catch(() => null)
+      const email = String(customer?.email ?? "").trim()
+      customerEmail = isEmail(email) ? email : null
+    }
+    const q = strParam(req.query.q).slice(0, 254)
+    const email = q && isEmail(q) ? q : null
+    const { rows, count } = await listAppLog(
+      pg,
+      {
+        filter: page.filter,
+        template,
+        orderId,
+        since,
+        email,
+        emailHash: email ? addressHash(email) : null,
+        customerId,
+        customerEmail,
+        customerEmailHash: customerEmail ? addressHash(customerEmail) : null,
+        text: q && !email ? q : null,
+        limit: page.limit,
+        offset: page.offset,
+      },
+      historySubject(o),
+    )
+    const names = await actorNames(req.scope, rows.map((r) => r.requested_by))
+    const labels = templateLabels(o)
+    const body: MessagesResponse = { messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), source: r.source })), count, limit: page.limit, offset: page.offset }
+    res.json(body)
+  } catch (err) {
+    serverError(req, res, err, "The send log cannot be read. The server log has the details.", 503)
   }
 }

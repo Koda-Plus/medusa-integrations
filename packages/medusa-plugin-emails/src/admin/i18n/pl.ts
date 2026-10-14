@@ -159,6 +159,7 @@ const pl: typeof en = {
       seed: "Demo",
       job: "Zadanie",
       app: "Twój kod",
+      medusa: "Historia Medusy",
     },
     scope: {
       order: "Zamówienie {{id}}",
@@ -172,6 +173,8 @@ const pl: typeof en = {
     },
     notReadyLabel: "Log wysyłek",
     notReady: "Brakuje tabeli logu wysyłek albo jest starsza niż ta wersja: uruchom npx medusa db:migrate. Wiadomości dalej wychodzą, ale nie trafiają do logu.",
+    historyOnly: "Log wtyczki ruszy po migracji (npx medusa db:migrate). Do tego czasu lista pokazuje historię wysyłek Twojego dostawcy z tabeli powiadomień Medusy.",
+    historySince: "Razem z historią wysyłek Twojego dostawcy z Medusy, od {{date}}.",
   },
   byTemplate: {
     title: "Według szablonów",
@@ -205,6 +208,8 @@ const pl: typeof en = {
     body: "Wiadomość",
     noBody: "Wiadomości produkcyjne nie są przechowywane: otwórz szablon w galerii, żeby zobaczyć, jak wygląda.",
     noBodyDemo: "Ta wiadomość nie została wyrenderowana (wcześniej się nie udała).",
+    medusaHistory: "Wiadomość z historii Medusy: Twój dostawca ją wysłał, a Medusa zapisała adresata, szablon i wynik. Treści log nie pokazuje.",
+    medusaFailed: "Wiadomość z historii Medusy: dostawca jej nie wysłał. Medusa nie zapisuje treści błędu, szczegóły są w logach serwera z tej chwili.",
     retry: "Wyślij ponownie",
     retryTitle: "Wysłać ten e-mail ponownie?",
     retryText: "Dane zostaną odczytane jeszcze raz z zamówienia, przesyłki, klienta albo koszyka, a wiadomość wyjdzie pod nowym kluczem.",

@@ -121,6 +121,12 @@ export interface StatusResponse {
   references: ReferenceDto[]
   /** The send log could be read (the migrations ran). */
   logReady: boolean
+  /**
+   * App mode: Medusa's own history of the store's provider (its notification
+   * table), listed in the log next to the plugin's rows. Null in the other
+   * modes or when it cannot be read.
+   */
+  history?: { total: number; firstAt: string | null } | null
 }
 
 export type MessageStatusDto = "sending" | "sent" | "failed" | "unknown" | "skipped"
@@ -154,6 +160,8 @@ export interface MessageDto {
   createdAt: string
   requestedBy: string | null
   hasBody: boolean
+  /** App mode: "medusa" for a message read from Medusa's history, "plugin" for the plugin's own row. */
+  source?: "plugin" | "medusa"
 }
 
 /** `bounced`: refused for the recipient's address (`INVALID_RECIPIENT`); the plugin reads no bounce webhooks. */
