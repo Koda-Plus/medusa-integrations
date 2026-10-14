@@ -102,7 +102,7 @@ export class TtlCache {
   async get<T>(
     key: string,
     load: () => Promise<T>,
-    options: { ttlMs: number; force?: boolean; forceMinMs?: number; errorTtlMs?: number; isFailure?: (value: T) => boolean },
+    options: { ttlMs: number; force?: boolean; forceMinMs?: number; errorTtlMs?: number; isFailure?: (value: T) => boolean; staleWhileRevalidate?: boolean },
   ): Promise<CacheHit<T>> {
     const now = this.now()
     const entry = this.entry<T>(key)
@@ -111,6 +111,11 @@ export class TtlCache {
       const ttl = entry.error ? Math.min(options.ttlMs, options.errorTtlMs ?? options.ttlMs) : options.ttlMs
       const forced = options.force === true && age >= (options.forceMinMs ?? 0)
       if (age < ttl && !forced) return { value: entry.value, at: entry.at, fresh: false }
+      /* Stale while revalidate: an expired good value answers at once, one load refreshes it behind. */
+      if (options.staleWhileRevalidate && !forced && !entry.error) {
+        if (!this.loading.has(key)) void this.get(key, load, { ...options, staleWhileRevalidate: false, force: true, forceMinMs: 0 }).catch(() => undefined)
+        return { value: entry.value, at: entry.at, fresh: false }
+      }
     }
     const pending = this.loading.get(key) as Promise<CacheHit<T>> | undefined
     if (pending) return pending

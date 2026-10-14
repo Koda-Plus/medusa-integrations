@@ -40,7 +40,7 @@ export async function computeChecks(scope: Scope, args: { force?: boolean; origi
   const svc = stripeService(scope)
   const o = svc.getOptions()
   const on = (k: CheckKey) => o.checks[k] !== false
-  const { snapshot } = await loadSnapshot(scope, { force: args.force, origin: args.origin, now: () => args.now, maxAgeMs: args.maxAgeMs })
+  const { snapshot } = await loadSnapshot(scope, { force: args.force, origin: args.origin, now: () => args.now, maxAgeMs: args.maxAgeMs, staleWhileRevalidate: !args.force })
   const backend = backendOf(o, args.origin)
   const webhookUrl = expectedWebhookUrl(backend.base, o.providerId)
   const store = storefrontDomains(scope, o.storefrontDomains)

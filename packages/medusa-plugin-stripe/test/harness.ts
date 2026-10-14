@@ -35,7 +35,15 @@ export class FakeStripe {
     return this.answer(path, params) as T
   }
   async list<T>(path: string, params: StripeParams): Promise<{ data: T[]; complete: boolean; pages: number }> {
-    return { data: this.answer(path, params) as T[], complete: true, pages: 1 }
+    const rows = this.answer(path, params) as T[]
+    /* A list asked for a time slice (created.lt, the panel reads payment intents in slices) gets only that slice, like Stripe. */
+    const created = (params as { created?: { gte?: number; lt?: number } } | undefined)?.created
+    const inSlice = (r: unknown) => {
+      const at = (r as { created?: number }).created
+      if (!created || typeof created.lt !== "number" || typeof at !== "number") return true
+      return at >= (created.gte ?? -Infinity) && at < created.lt
+    }
+    return { data: Array.isArray(rows) ? rows.filter(inSlice) : rows, complete: true, pages: 1 }
   }
   count(path: string): number {
     return this.calls.filter((c) => c.path === path || (path.endsWith("/*") && c.path.startsWith(path.slice(0, -1)))).length

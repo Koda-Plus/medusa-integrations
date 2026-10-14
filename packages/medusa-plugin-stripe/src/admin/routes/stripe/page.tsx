@@ -2,8 +2,8 @@
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Container, InlineTip, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, Spinner } from "@medusajs/icons"
+import { Badge, Container, InlineTip, toast, Text } from "@medusajs/ui"
 import type { PaymentFilter, StripeMode, StripeOverviewResponse, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
 import { errorMessage, useStripeChecks, useStripeOverview, useStripeRefresh, useStripeStatus } from "../../lib/stripe-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/stripe-guide"
@@ -102,6 +102,21 @@ const StripePage = () => {
             </div>
             <PeriodTiles overview={o} days={days} lang={lang} onOpen={openTile} />
             <HealthStrip checks={checks.data} onOpen={() => nav.go("settings", "checks")} />
+          </div>
+        ) : null}
+        {s && nav.view === "panel" && configured && !o && overview.isLoading ? (
+          <div className="flex flex-col gap-3 px-6 py-5">
+            <div className="flex items-center gap-x-2">
+              <Spinner className="animate-spin text-ui-fg-muted" />
+              <Text size="small" className="text-ui-fg-subtle">
+                {t("loading")}
+              </Text>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {Array.from({ length: 6 }, (_, i) => (
+                <div key={i} className="h-[84px] animate-pulse rounded-lg bg-ui-bg-component" />
+              ))}
+            </div>
           </div>
         ) : null}
         {nav.view === "panel" && overview.isError ? (

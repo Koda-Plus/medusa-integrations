@@ -2,6 +2,7 @@ import { integrationEn } from "../../modules/stripe/lib/integration-texts"
 import { communityEn } from "../lib/stripe-kit-community"
 
 const en = {
+  loading: "Reading Stripe: payments, refunds, disputes and the balance of 30 days. The first read takes a few seconds; after that the data shows at once and new data arrives behind.",
   title: "Stripe",
   by: "by Koda Plus",
   subtitle:
