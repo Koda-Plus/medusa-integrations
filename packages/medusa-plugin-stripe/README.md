@@ -258,6 +258,8 @@ Built and maintained by [Koda Plus](https://koda.plus), a Medusa agency from Pol
 
 Stripe and the Stripe logo are trademarks of Stripe, Inc.; BLIK, Przelewy24, Apple Pay and Google Pay are trademarks of their owners. They are used here only to identify the services this plugin reads from. This is an independent integration built on Stripe's public API, not affiliated with or endorsed by Stripe.
 
+The payment method logos in the admin come from [@exisia/medusa-payment-icons](https://gitlab.com/exisia/medusajs/packages/medusa-payment-icons) (MIT, Exisia OÜ), the logos Stripe shows for its methods, and the Stripe mark for Link from [Simple Icons](https://simpleicons.org) (CC0).
+
 ## License
 
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-stripe/LICENSE).
