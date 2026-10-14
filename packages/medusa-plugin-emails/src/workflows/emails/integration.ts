@@ -44,10 +44,13 @@ export const emailsIntegration = integrationRoutes({
     if (o.demo) problems.push({ key: "integration.problem.demo" })
     else if (o.mode === "dev") problems.push({ key: "integration.problem.no_key" })
     else if (!configured) problems.push({ key: "integration.problem.not_configured" })
-    if (!note) problems.push({ key: "integration.problem.no_provider" })
-    else if (note.mode !== o.mode) problems.push({ key: "integration.problem.mode_differs" })
+    /* App mode: the store's own provider sends, the plugin registers none. */
+    if (o.mode !== "app") {
+      if (!note) problems.push({ key: "integration.problem.no_provider" })
+      else if (note.mode !== o.mode) problems.push({ key: "integration.problem.mode_differs" })
+    }
     return {
-      mode: o.demo ? "demo" : o.mode === "live" && configured ? "live" : "off",
+      mode: o.demo ? "demo" : (o.mode === "live" || o.mode === "app") && configured ? "live" : "off",
       configured,
       lastSyncAt: null,
       problems,

@@ -30,6 +30,8 @@ const pl: typeof en = {
     notConfigured: "Nieskonfigurowane",
     unknown: "Sprawdzam",
     mismatch: "Tryby się różnią",
+    app: "Wysyła dostawca sklepu",
+    appMissing: "Dostawca sklepu wyłączony",
   },
   demo: {
     label: "Tryb demo",
@@ -225,6 +227,7 @@ const pl: typeof en = {
       live: { label: "Prawdziwy e-mail", text: "Resend wyśle go na adres, który wpiszesz. Nigdy nie zawiera imienia ani adresu klienta: dane przykładowe albo Twoje najnowsze zamówienie z podmienioną osobą." },
       dev: { label: "Brak klucza API", text: "Wiadomość zostanie wyrenderowana i zapisana w logu, ale nie wysłana." },
       demo: { label: "Tryb demo", text: "Wiadomość trafi do symulowanej skrzynki. Nic nie wychodzi z serwera." },
+      app: { label: "Prawdziwy e-mail", text: "Wyśle go własny dostawca sklepu, na adres, który wpiszesz, z danymi przykładowymi szablonu." },
     },
     done: {
       sent: "Wysłano na {{to}}",
@@ -302,6 +305,16 @@ const pl: typeof en = {
       negotiation: "Negocjacja",
     },
     problems: "Pominięte wartości opcji",
+    app: {
+      label: "Własny dostawca sklepu",
+      text: "E-maile wysyła dostawca sklepu {{id}}, tak jak dotąd. Wtyczka pokazuje jego szablony, robi podgląd i testy, a w dzienniku zapisuje to, co dostawca zgłosi. Wbudowane szablony wtyczki są wyłączone, żeby nic nie przyszło dwa razy.",
+      subtitle: "Kto wysyła e-maile sklepu i czy Medusa kieruje do niego kanał email.",
+      missingLabel: "Dostawca sklepu",
+      missingText: "Dostawca {{id}} nie obsługuje teraz kanału email w Medusie, więc e-maile nie wychodzą. Sprawdź jego rejestrację w medusa-config.ts (kanał email) i klucz w zmiennych środowiska.",
+      sender: "Wysyła",
+      serving: "Obsługuje kanał email",
+      recorded: "Zapisane w 30 dni",
+    },
     notLoaded: {
       label: "Dostawca",
       text: "Dostawca powiadomień tej wtyczki nie jest zarejestrowany, więc Medusa nie ma czym wysyłać e-maili. Dodaj go do modułu powiadomień w medusa-config.ts, z tymi samymi opcjami co wtyczka i kanałem email, i uruchom sklep ponownie.",
@@ -374,6 +387,7 @@ const pl: typeof en = {
   },
   integration: integrationPl,
   guide: {
+    app: "E-maile wysyła własny dostawca sklepu ({{id}}). Kroki z kontem, domeną i kluczem Resend dotyczą jego konfiguracji i są już zrobione; wtyczka dokłada podgląd, testy i dziennik.",
     intro: {
       title: "Uruchom e-maile w prawdziwym sklepie",
       text:

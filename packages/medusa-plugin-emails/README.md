@@ -172,6 +172,26 @@ Presentation and data:
 
 Missing or broken options never break the boot: broken values fall back to their defaults and the admin lists them.
 
+## Next to your own e-mail provider
+
+A store that already sends its e-mails through its own notification provider (on the `email` channel) can keep it and still get this page: the gallery and previews of its own templates, test sends, the send log, the order widget and the counters. Medusa routes a channel to one provider, so the plugin registers none of its own.
+
+1. Register only the plugin, with `appProvider` set to the id of your provider and your templates in `templates`:
+
+```ts
+plugins: [{ resolve: "@koda-plus/medusa-plugin-emails", options: { appProvider: "resend", templates: myTemplates, defaultLocale: "pl", timeZone: "Europe/Warsaw" } }]
+```
+
+2. Let your provider report what it sent, after every send and every failure. `recordAppEmail` never throws and never stores an address in the clear:
+
+```ts
+import { recordAppEmail } from "@koda-plus/medusa-plugin-emails/app"
+
+await recordAppEmail(pg, { notification, status: "sent", subject, externalId: id })
+```
+
+`pg` is `ContainerRegistrationKeys.PG_CONNECTION` from the provider's container. In app mode the built-in templates of the plugin are off and hidden (your provider cannot render them, and they would only duplicate your e-mails), a test goes through your provider with the template's sample data, and the badge says who sends. Medusa retrying a failed notification updates the same row. A failed app e-mail is retried by Medusa or by your own code, not from this page.
+
 ## Custom templates
 
 A template is a definition with a `render` function. Build it with the kit to get the look, the dark mode, the escaping and the plain-text part for free, then pass it in `templates` (in the shared options object, so the plugin and the provider both get it):
@@ -272,7 +292,7 @@ All three routes only read the send log (and, for a customer, the customer's add
 
 ## Public API
 
-What other code may import: `@koda-plus/medusa-plugin-emails/templates` (your own templates: `defineEmailTemplate`, `registerEmailTemplate`, the kit, `renderEmailPreview`, the data types), `@koda-plus/medusa-plugin-emails/workflows` (`sendEmailWorkflow`, `sendAbandonedCartsWorkflow`, `sendTemplate`, `emailsIntegration`), `@koda-plus/medusa-plugin-emails/modules/emails` (the module, its options and the same template API), `@koda-plus/medusa-plugin-emails/providers/emails` (the notification provider) and `/admin`. Type declarations ship with the package, so `defineEmailTemplate<{ ... }>(...)` is checked in a strict TypeScript app. Every other path is internal and may change in any release.
+What other code may import: `@koda-plus/medusa-plugin-emails/app` (app mode: `recordAppEmail`), `@koda-plus/medusa-plugin-emails/templates` (your own templates: `defineEmailTemplate`, `registerEmailTemplate`, the kit, `renderEmailPreview`, the data types), `@koda-plus/medusa-plugin-emails/workflows` (`sendEmailWorkflow`, `sendAbandonedCartsWorkflow`, `sendTemplate`, `emailsIntegration`), `@koda-plus/medusa-plugin-emails/modules/emails` (the module, its options and the same template API), `@koda-plus/medusa-plugin-emails/providers/emails` (the notification provider) and `/admin`. Type declarations ship with the package, so `defineEmailTemplate<{ ... }>(...)` is checked in a strict TypeScript app. Every other path is internal and may change in any release.
 
 ## Uninstall
 

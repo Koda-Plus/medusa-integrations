@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Added
+
+- App mode: `appProvider: "resend"` (the id of your own notification provider) keeps the store's provider on the email channel. The plugin registers no provider and sends none of its built-in templates (hidden from the gallery, never sent, not even as a test); it shows the store's own templates from `templates`, previews them, sends tests through the store's provider and lists what that provider reports with `recordAppEmail` (`@koda-plus/medusa-plugin-emails/app`). The badge says "Sent by your provider", and red when Medusa has that provider off the email channel; the Settings and Setup guide say who sends instead of asking for a key.
+- `recordAppEmail(pg, { notification, status, subject, externalId, error })`: one row per message in the send log, the address masked and hashed, the error masked, no body. A second report under the same key (Medusa retried the notification) updates the outcome of that app row; rows of the plugin's own flows are never touched.
+
+### Changed
+
+- The gallery lists the templates of the `templates` option in the order the store gave them (a store groups its own: orders first, then accounts), then the ones registered by code by key; before, all of them were sorted by key.
+
 ## 0.2.0 (2026-10-07)
 
 Run `npx medusa db:migrate`: the send log gets two columns (`Migration20261008110000_emails`).

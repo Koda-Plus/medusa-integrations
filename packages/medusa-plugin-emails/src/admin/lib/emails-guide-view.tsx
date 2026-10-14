@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { InlineTip } from "@medusajs/ui"
 import type { StatusResponse } from "../../modules/emails/lib/contract"
 import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./emails-guide"
 import { fmtRating, referencesFor } from "./emails-ui"
@@ -96,7 +97,9 @@ export function usePromptSpec(): SetupPromptSpec {
 export function GuideView({ status }: { status: StatusResponse }) {
   const { t, i18n } = useTranslation("emails")
   const lang = i18n.language || "en"
-  const live = status.mode === "live"
+  /* App mode: the store's own provider sends, so the Resend steps are its setup, already done. */
+  const app = status.mode === "app"
+  const live = status.mode === "live" || app
   const c = status.counts
   const p = (key: string, values?: Record<string, unknown>) => <p key={key}>{t(key, values)}</p>
   const state = (done: boolean, otherwise: StepState = "todo"): StepState => (done ? "done" : otherwise)
@@ -107,7 +110,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
     {
       id: "account",
       title: t("guide.steps.account.title"),
-      state: state(status.sender.apiKeySet),
+      state: state(status.sender.apiKeySet || app),
       body: [p("guide.steps.account.p1"), p("guide.steps.account.p2")],
       link: { label: t("guide.steps.account.link"), href: "https://resend.com/signup" },
       check: t("guide.steps.account.check"),
@@ -124,7 +127,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
     {
       id: "key",
       title: t("guide.steps.key.title"),
-      state: state(status.sender.apiKeySet),
+      state: state(status.sender.apiKeySet || app),
       body: [p("guide.steps.key.p1"), p("guide.steps.key.p2")],
       code: ENV,
       link: { label: t("guide.steps.key.link"), href: "https://resend.com/api-keys" },
@@ -133,7 +136,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
     {
       id: "install",
       title: t("guide.steps.install.title"),
-      state: state(status.provider.loaded && status.logReady),
+      state: state((status.provider.loaded || app) && status.logReady),
       body: [p("guide.steps.install.p1"), p("guide.steps.install.p2"), p("guide.steps.install.p3")],
       code: `${INSTALL}\n\n${CONFIG}`,
       check: t("guide.steps.install.check"),
@@ -179,9 +182,9 @@ export function GuideView({ status }: { status: StatusResponse }) {
 
   const checklist = [
     { label: t("guide.checklist.live"), done: live, hint: live ? undefined : t("guide.checklist.liveHint") },
-    { label: t("guide.checklist.provider"), done: status.provider.loaded && status.provider.sameOptions !== false },
+    { label: t("guide.checklist.provider"), done: app ? status.provider.app?.serving !== false : status.provider.loaded && status.provider.sameOptions !== false },
     { label: t("guide.checklist.log"), done: status.logReady },
-    { label: t("guide.checklist.from"), done: Boolean(status.sender.from) },
+    { label: t("guide.checklist.from"), done: Boolean(status.sender.from) || app },
     { label: t("guide.checklist.replyTo"), done: status.sender.replyTo.length > 0 || Boolean(status.brand.supportEmail) },
     { label: t("guide.checklist.storefront"), done: Boolean(status.storefrontUrl) },
     { label: t("guide.checklist.timeZone"), done: status.timeZone !== "UTC" },
@@ -196,6 +199,11 @@ export function GuideView({ status }: { status: StatusResponse }) {
 
   return (
     <div className="flex flex-col gap-y-3">
+      {app && status.provider.app ? (
+        <InlineTip variant="info" label={t("provider.app.label")}>
+          {t("guide.app", { id: status.provider.app.id })}
+        </InlineTip>
+      ) : null}
       <GuideIntro
         title={t("guide.intro.title")}
         text={t("guide.intro.text")}

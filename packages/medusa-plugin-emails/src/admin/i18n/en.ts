@@ -29,6 +29,8 @@ const en = {
     notConfigured: "Not configured",
     unknown: "Checking",
     mismatch: "Modes differ",
+    app: "Sent by your provider",
+    appMissing: "Your provider is off",
   },
   demo: {
     label: "Demo mode",
@@ -224,6 +226,7 @@ const en = {
       live: { label: "A real e-mail", text: "Resend sends it to the address you type. It never carries a customer's name or address: sample data, or your newest order with the person replaced." },
       dev: { label: "No API key", text: "The message is rendered and logged, not sent." },
       demo: { label: "Demo mode", text: "The message lands in the simulated outbox. Nothing leaves the server." },
+      app: { label: "A real e-mail", text: "Your store's own provider sends it to the address you type, with the template's sample data." },
     },
     done: {
       sent: "Sent to {{to}}",
@@ -301,6 +304,16 @@ const en = {
       negotiation: "Negotiation",
     },
     problems: "Ignored option values",
+    app: {
+      label: "Your own provider",
+      text: "Your store's provider {{id}} sends the e-mails, as before. The plugin shows its templates, previews and tests them, and lists what the provider reports. The plugin's built-in templates are off, so nothing arrives twice.",
+      subtitle: "Who sends the store's e-mails and whether Medusa routes the email channel to it.",
+      missingLabel: "Your provider",
+      missingText: "The provider {{id}} does not serve the email channel in Medusa right now, so no e-mail goes out. Check its registration in medusa-config.ts (the email channel) and its key in the environment.",
+      sender: "Sends",
+      serving: "Serves the email channel",
+      recorded: "Recorded in 30 days",
+    },
     notLoaded: {
       label: "Provider",
       text: "The notification provider of this plugin is not registered, so Medusa has nothing to send e-mails with. Add it to the notification module in medusa-config.ts with the same options as the plugin and the email channel, then restart.",
@@ -373,6 +386,7 @@ const en = {
   },
   integration: integrationEn,
   guide: {
+    app: "Your store's own provider ({{id}}) sends the e-mails. The Resend account, domain and key steps are its setup and are done already; the plugin adds the preview, the tests and the log.",
     intro: {
       title: "Set up e-mails for a real store",
       text:
