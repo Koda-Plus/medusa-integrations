@@ -102,7 +102,10 @@ export function feeRate(p: PeriodStatsDto): number | null {
   return v.currency === f.currency && v.amount > 0 ? f.amount / v.amount : null
 }
 
-export function PeriodTiles({ overview, days, lang, onDisputes }: { overview: StripeOverviewResponse; days: PeriodDays; lang: string; onDisputes: () => void }) {
+/** Where a tile leads: the payments list with a filter, or a section of the panel. */
+export type TileTarget = { payments: PaymentFilter } | { section: "stripe-balance" | "stripe-refunds" | "stripe-disputes" }
+
+export function PeriodTiles({ overview, days, lang, onOpen }: { overview: StripeOverviewResponse; days: PeriodDays; lang: string; onOpen: (target: TileTarget) => void }) {
   const { t } = useTranslation("stripe")
   const p = overview.periods.find((x) => x.days === days) ?? overview.periods[0]
   if (!p) return null
@@ -112,26 +115,28 @@ export function PeriodTiles({ overview, days, lang, onDisputes }: { overview: St
   return (
     <div className="flex flex-col gap-y-3">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile label={t("stats.volume")} value={<MoneyValue values={p.volume} lang={lang} />} hint={t("stats.volumeHint", { n: fmtNumber(p.succeeded, lang) })} tone="green" />
+        <StatTile label={t("stats.volume")} value={<MoneyValue values={p.volume} lang={lang} />} hint={t("stats.volumeHint", { n: fmtNumber(p.succeeded, lang) })} tone="green" onClick={() => onOpen({ payments: "succeeded" })} />
         <StatTile
           label={t("stats.fees")}
           value={<MoneyValue values={p.fees} lang={lang} />}
           hint={p.feesPending > 0 ? t("stats.feesPending", { count: p.feesPending }) : rate !== null ? t("stats.feesHint", { rate: fmtPercent(rate, lang, 2) }) : undefined}
+          onClick={() => onOpen({ section: "stripe-balance" })}
         />
-        <StatTile label={t("stats.net")} value={<MoneyValue values={p.net} lang={lang} />} hint={t("stats.netHint")} tone="green" />
+        <StatTile label={t("stats.net")} value={<MoneyValue values={p.net} lang={lang} />} hint={t("stats.netHint")} tone="green" onClick={() => onOpen({ section: "stripe-balance" })} />
         <StatTile
           label={t("stats.success")}
           value={p.successRate === null ? "0" : fmtPercent(p.successRate, lang, 1)}
           hint={p.successRate === null ? t("stats.successNone") : t("stats.successHint", { failed: p.failed, attempts: p.failed + p.succeeded })}
           tone={p.successRate === null ? "default" : p.successRate >= 0.9 ? "green" : p.successRate >= 0.75 ? "orange" : "red"}
+          onClick={() => onOpen({ payments: "failed" })}
         />
-        <StatTile label={t("stats.refunds")} value={<MoneyValue values={p.refunded} lang={lang} />} hint={t("stats.refundsHint", { count: p.refunds })} tone={p.refunds > 0 ? "orange" : "default"} />
+        <StatTile label={t("stats.refunds")} value={<MoneyValue values={p.refunded} lang={lang} />} hint={t("stats.refundsHint", { count: p.refunds })} tone={p.refunds > 0 ? "orange" : "default"} onClick={() => onOpen({ section: "stripe-refunds" })} />
         <StatTile
           label={t("stats.disputes")}
           value={overview.disputes.length}
           hint={respond > 0 ? t("stats.disputesHint", { count: respond }) : t("stats.disputesNone")}
           tone={urgent ? "red" : overview.disputes.length > 0 ? "orange" : "default"}
-          onClick={overview.disputes.length > 0 ? onDisputes : undefined}
+          onClick={() => onOpen(overview.disputes.length > 0 ? { section: "stripe-disputes" } : { payments: "disputed" })}
         />
       </div>
       {p.processing + p.authorized > 0 ? (
@@ -263,15 +268,21 @@ export function PaymentsSection({
   lang,
   initialFilter = "all",
   initialQuery = "",
+  focus,
 }: {
   overview: StripeOverviewResponse
   lang: string
   /** From the page URL (?filter=, ?q=): the list a board counter or a host links to. */
   initialFilter?: PaymentFilter
   initialQuery?: string
+  /** A tile asked for this list (at: when, so the same tile twice still applies). */
+  focus?: { filter: PaymentFilter; at: number } | null
 }) {
   const { t } = useTranslation("stripe")
   const [filter, setFilter] = useState<PaymentFilter>(initialFilter)
+  useEffect(() => {
+    if (focus) setFilter(focus.filter)
+  }, [focus])
   const [method, setMethod] = useState<MethodKey | "all">("all")
   const [search, setSearch] = useState(initialQuery)
   const q = useDebounced(search)
@@ -285,7 +296,7 @@ export function PaymentsSection({
   const methods = useMemo(() => METHOD_ORDER.filter((m) => (data?.methods?.[m] ?? 0) > 0), [data?.methods])
 
   return (
-    <Container className="divide-y p-0" id="stripe-payments">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-payments">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("payments.title")}</Heading>
@@ -425,7 +436,7 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
   const rows = overview.disputes
   const closed = overview.disputesClosed
   return (
-    <Container className="divide-y p-0" id="stripe-disputes">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-disputes">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("disputes.title")}</Heading>
@@ -508,7 +519,7 @@ export function RefundsSection({ overview, lang }: { overview: StripeOverviewRes
   const { t } = useTranslation("stripe")
   const rows = overview.refunds
   return (
-    <Container className="divide-y p-0">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-refunds">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("refunds.title")}</Heading>
@@ -626,7 +637,7 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
     </Table.Header>
   )
   return (
-    <Container className="divide-y p-0">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-balance">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("balance.title")}</Heading>

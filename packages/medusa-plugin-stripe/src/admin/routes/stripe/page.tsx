@@ -10,7 +10,7 @@ import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBa
 import { GuideView, usePromptSpec } from "../../lib/stripe-guide-view"
 import { HealthSection, HealthStrip } from "../../lib/stripe-health"
 import { StripeIcon } from "../../lib/stripe-icon"
-import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays } from "../../lib/stripe-panel"
+import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays, type TileTarget } from "../../lib/stripe-panel"
 import { AccessTab, ChecksTab, OptionsTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/stripe-settings"
 import { fmtRating, referencesFor } from "../../lib/stripe-ui"
 
@@ -67,13 +67,20 @@ const StripePage = () => {
       scrollToSection("stripe-disputes")
     } else if (focus === "checks" && checks.data) {
       scrolled.current = true
-      scrollToSection("stripe-health")
+      nav.go("settings", "checks")
     }
   }, [o, checks.data, focus])
   const summary = checks.data?.summary
-  const healthFirst = Boolean(summary && (summary.fail > 0 || summary.warn > 0 || !configured))
 
   const health = <HealthSection checks={checks.data} loading={checks.isLoading} lang={lang} />
+  /* A tile shows what it counts: the payments with its filter, or its section of the panel. */
+  const [paymentsFocus, setPaymentsFocus] = useState<{ filter: PaymentFilter; at: number } | null>(null)
+  const openTile = (target: TileTarget) => {
+    if ("payments" in target) {
+      setPaymentsFocus({ filter: target.payments, at: Date.now() })
+      requestAnimationFrame(() => scrollToSection("stripe-payments"))
+    } else scrollToSection(target.section)
+  }
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -93,8 +100,8 @@ const StripePage = () => {
               <PeriodSwitch value={days} onChange={setDays} />
               <Freshness overview={o} lang={lang} />
             </div>
-            <PeriodTiles overview={o} days={days} lang={lang} onDisputes={() => scrollToSection("stripe-disputes")} />
-            <HealthStrip checks={checks.data} onOpen={() => scrollToSection("stripe-health")} />
+            <PeriodTiles overview={o} days={days} lang={lang} onOpen={openTile} />
+            <HealthStrip checks={checks.data} onOpen={() => nav.go("settings", "checks")} />
           </div>
         ) : null}
         {nav.view === "panel" && overview.isError ? (
@@ -111,17 +118,16 @@ const StripePage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          {healthFirst ? health : null}
+          {!configured ? health : null}
           {configured && o ? (
             <>
               <MethodsSection overview={o} days={days} lang={lang} />
-              <PaymentsSection overview={o} lang={lang} initialFilter={initialFilter} initialQuery={initialQuery} />
+              <PaymentsSection overview={o} lang={lang} initialFilter={initialFilter} initialQuery={initialQuery} focus={paymentsFocus} />
               <DisputesSection overview={o} lang={lang} />
               <RefundsSection overview={o} lang={lang} />
               <BalanceSection overview={o} lang={lang} />
             </>
           ) : null}
-          {healthFirst ? null : health}
         </>
       ) : null}
 
@@ -138,7 +144,12 @@ const StripePage = () => {
           ]}
         >
           {nav.tab === "options" ? <OptionsTab status={s} /> : null}
-          {nav.tab === "checks" ? <ChecksTab status={s} checks={checks.data} /> : null}
+          {nav.tab === "checks" ? (
+            <div className="flex flex-col gap-y-3">
+              {health}
+              <ChecksTab status={s} checks={checks.data} />
+            </div>
+          ) : null}
           {nav.tab === "access" ? <AccessTab status={s} /> : null}
         </SettingsView>
       ) : null}
