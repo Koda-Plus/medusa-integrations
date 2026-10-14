@@ -191,7 +191,7 @@ export function wizardWarnings(input: WizardInput, ctx: { active: readonly Coupo
   const target = input.kind === "free_shipping" ? "shipping" : input.kind === "percent_category" ? "items" : "order"
   const overlaps = ctx.active.filter((c) => {
     if (c.status !== "active" || !c.automatic) return false
-    const t = c.shape.kind === "free_shipping" ? "shipping" : c.shape.kind === "percent_items" || c.shape.kind === "fixed_items" ? "items" : "order"
+    const t = ["free_shipping", "percent_shipping", "fixed_shipping"].includes(c.shape.kind) ? "shipping" : c.shape.kind === "percent_items" || c.shape.kind === "fixed_items" ? "items" : "order"
     return t === target || (target === "order" && t === "items") || (target === "items" && t === "order")
   })
   if (overlaps.length > 0) out.push("stacking")

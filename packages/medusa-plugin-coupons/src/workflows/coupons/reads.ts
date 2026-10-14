@@ -157,13 +157,19 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
   const categories = coupons.flatMap((c) => c.shape.categoryIds)
   const products = coupons.flatMap((c) => c.shape.productIds)
   const customers = coupons.flatMap((c) => c.shape.customerIds)
-  const [g, cat, p, cus] = await Promise.all([
+  const ids = (k: "collectionIds" | "shippingTypeIds" | "shippingOptionIds" | "salesChannelIds" | "regionIds") => coupons.flatMap((c) => c.shape[k] ?? [])
+  const [g, cat, p, cus, col, st, so, sc, reg] = await Promise.all([
     nameMap(scope, "customer_group", groups, (r) => str(r.name), ["name"]),
     nameMap(scope, "product_category", categories, (r) => str(r.name), ["name"]),
     nameMap(scope, "product", products, (r) => str(r.title), ["title"]),
     nameMap(scope, "customer", customers, customerLabel, ["email", "first_name", "last_name", "company_name"]),
+    nameMap(scope, "product_collection", ids("collectionIds"), (r) => str(r.title), ["title"]),
+    nameMap(scope, "shipping_option_type", ids("shippingTypeIds"), (r) => str(r.label), ["label"]),
+    nameMap(scope, "shipping_option", ids("shippingOptionIds"), (r) => str(r.name), ["name"]),
+    nameMap(scope, "sales_channel", ids("salesChannelIds"), (r) => str(r.name), ["name"]),
+    nameMap(scope, "region", ids("regionIds"), (r) => str(r.name), ["name"]),
   ])
-  return { groups: g, categories: cat, products: p, customers: cus }
+  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg }
 }
 
 /* ------------------------------------------------------------------ */
@@ -303,17 +309,19 @@ export async function orderCoupons(scope: Scope, orderId: string) {
 
 export async function productCoupons(scope: Scope, productId: string, now: Date = new Date()) {
   let categoryIds: string[] = []
+  let collectionId: string | null = null
   try {
-    const { data } = await queryOf(scope).graph({ entity: "product", fields: ["id", "categories.id"], filters: { id: productId } })
-    const row = (data?.[0] ?? {}) as { categories?: Array<{ id?: string }> }
+    const { data } = await queryOf(scope).graph({ entity: "product", fields: ["id", "collection_id", "categories.id"], filters: { id: productId } })
+    const row = (data?.[0] ?? {}) as { collection_id?: string | null; categories?: Array<{ id?: string }> }
     categoryIds = (row.categories ?? []).map((c) => String(c.id ?? "")).filter(Boolean)
+    collectionId = row.collection_id ?? null
   } catch {
     categoryIds = []
   }
   const promotions = await readPromotions(scope)
   const coupons = promotions
     .map((p) => toCouponDto(p, undefined, now))
-    .filter((c) => c.status === "active" && reachesProduct(c.shape, productId, categoryIds))
+    .filter((c) => c.status === "active" && reachesProduct(c.shape, productId, categoryIds, collectionId))
     .slice(0, 15)
   return { coupons, names: await namesFor(scope, coupons) }
 }

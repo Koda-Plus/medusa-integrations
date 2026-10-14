@@ -5,7 +5,7 @@
  */
 
 import { MINIMUM_ATTRIBUTES, RULE } from "./constants"
-import type { CouponDto, CouponKind, CouponShape, CouponStats, CouponStatus } from "./contract"
+import type { CouponDto, CouponKind, CouponRuleDto, CouponShape, CouponStats, CouponStatus } from "./contract"
 
 /** The fields of a promotion the plugin reads (Query or the promotion module). */
 export interface PromotionLike {
@@ -63,7 +63,10 @@ function kindOf(p: PromotionLike): CouponKind {
   if (p.type === "buyget") return "buy_get"
   const am = p.application_method ?? {}
   const value = num(am.value)
-  if (am.target_type === "shipping_methods") return am.type === "percentage" && value !== null && value >= 100 ? "free_shipping" : "other"
+  if (am.target_type === "shipping_methods") {
+    if (am.type === "percentage") return value !== null && value >= 100 ? "free_shipping" : "percent_shipping"
+    return am.type === "fixed" ? "fixed_shipping" : "other"
+  }
   if (am.target_type === "order") return am.type === "percentage" ? "percent_order" : am.type === "fixed" ? "fixed_order" : "other"
   if (am.target_type === "items") return am.type === "percentage" ? "percent_items" : am.type === "fixed" ? "fixed_items" : "other"
   return "other"
@@ -76,21 +79,34 @@ export function shapeOf(p: PromotionLike): CouponShape {
   const groupIds: string[] = []
   const customerIds: string[] = []
   let minimum: number | null = null
-  let otherRules = 0
+  const salesChannelIds: string[] = []
+  const regionIds: string[] = []
+  const extra: CouponRuleDto[] = []
+  const isIn = (r: RuleLike) => r.operator === "in" || r.operator === "eq"
+  const keep = (scope: CouponRuleDto["scope"], r: RuleLike) => extra.push({ scope, attribute: r.attribute ?? "", operator: r.operator ?? "", values: ruleValues(r) })
   for (const r of rules) {
     const attr = r.attribute ?? ""
-    if (attr === RULE.groups && (r.operator === "in" || r.operator === "eq")) groupIds.push(...ruleValues(r))
-    else if ((attr === RULE.customer || attr === RULE.customerAlt) && (r.operator === "in" || r.operator === "eq")) customerIds.push(...ruleValues(r))
+    if (attr === RULE.groups && isIn(r)) groupIds.push(...ruleValues(r))
+    else if ((attr === RULE.customer || attr === RULE.customerAlt) && isIn(r)) customerIds.push(...ruleValues(r))
     else if (MINIMUM_ATTRIBUTES.includes(attr) && (r.operator === "gte" || r.operator === "gt")) minimum = num(ruleValues(r)[0])
     else if (attr === RULE.currency) continue
-    else otherRules += 1
+    else if (attr === RULE.salesChannel && isIn(r)) salesChannelIds.push(...ruleValues(r))
+    else if (attr === RULE.region && isIn(r)) regionIds.push(...ruleValues(r))
+    else keep("order", r)
   }
   const categoryIds: string[] = []
   const productIds: string[] = []
+  const collectionIds: string[] = []
+  const shippingTypeIds: string[] = []
+  const shippingOptionIds: string[] = []
   for (const r of targets) {
-    if (r.attribute === RULE.category) categoryIds.push(...ruleValues(r))
-    else if (r.attribute === RULE.product) productIds.push(...ruleValues(r))
-    else otherRules += 1
+    const attr = r.attribute ?? ""
+    if (attr === RULE.category && isIn(r)) categoryIds.push(...ruleValues(r))
+    else if (attr === RULE.product && isIn(r)) productIds.push(...ruleValues(r))
+    else if (attr === RULE.collection && isIn(r)) collectionIds.push(...ruleValues(r))
+    else if (attr === RULE.shippingType && isIn(r)) shippingTypeIds.push(...ruleValues(r))
+    else if (attr === RULE.shippingOption && isIn(r)) shippingOptionIds.push(...ruleValues(r))
+    else keep("target", r)
   }
   const kind = kindOf(p)
   return {
@@ -99,10 +115,16 @@ export function shapeOf(p: PromotionLike): CouponShape {
     currency: am.currency_code ? String(am.currency_code).toLowerCase() : null,
     categoryIds: [...new Set(categoryIds)],
     productIds: [...new Set(productIds)],
+    collectionIds: [...new Set(collectionIds)],
+    shippingTypeIds: [...new Set(shippingTypeIds)],
+    shippingOptionIds: [...new Set(shippingOptionIds)],
+    salesChannelIds: [...new Set(salesChannelIds)],
+    regionIds: [...new Set(regionIds)],
     groupIds: [...new Set(groupIds)],
     customerIds: [...new Set(customerIds)],
     minimum,
-    otherRules,
+    rules: extra,
+    otherRules: extra.length,
   }
 }
 
@@ -151,11 +173,13 @@ export function toCouponDto(p: PromotionLike, stats: CouponStats | undefined, no
   }
 }
 
-/** A coupon reaches a product: no item target at all, or the product or one of its categories is targeted. */
-export function reachesProduct(shape: CouponShape, productId: string, categoryIds: readonly string[]): boolean {
-  if (shape.kind === "free_shipping" || shape.kind === "other" || shape.kind === "buy_get") return false
-  if (shape.productIds.length === 0 && shape.categoryIds.length === 0) return true
+/** A coupon reaches a product: no item target at all, or the product, one of its categories or its collection is targeted. */
+export function reachesProduct(shape: CouponShape, productId: string, categoryIds: readonly string[], collectionId: string | null = null): boolean {
+  if (["free_shipping", "percent_shipping", "fixed_shipping", "other", "buy_get"].includes(shape.kind)) return false
+  const collections = shape.collectionIds ?? []
+  if (shape.productIds.length === 0 && shape.categoryIds.length === 0 && collections.length === 0) return true
   if (shape.productIds.includes(productId)) return true
+  if (collectionId && collections.includes(collectionId)) return true
   return shape.categoryIds.some((c) => categoryIds.includes(c))
 }
 

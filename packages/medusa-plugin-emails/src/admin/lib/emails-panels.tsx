@@ -89,7 +89,7 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr]">
         <div className="flex flex-col gap-y-2 border-b border-ui-border-base p-4 lg:border-b-0 lg:border-r">
           {templates.map((x) => (
-            <TemplateCard key={x.key} template={x} lang={lang} active={x.key === active} onClick={() => setActive(x.key)} />
+            <TemplateCard key={x.key} template={x} lang={lang} active={x.key === active} showSource={status.mode !== "app"} onClick={() => setActive(x.key)} />
           ))}
         </div>
         <div className="flex min-w-0 flex-col gap-y-4 p-4">
@@ -199,7 +199,8 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
   )
 }
 
-function TemplateCard({ template, lang, active, onClick }: { template: TemplateDto; lang: string; active: boolean; onClick: () => void }) {
+/* showSource: "Your template" next to the built-in ones; in app mode every template is the store's, so it says nothing. */
+function TemplateCard({ template, lang, active, showSource, onClick }: { template: TemplateDto; lang: string; active: boolean; showSource: boolean; onClick: () => void }) {
   const { t } = useTranslation("emails")
   return (
     <button
@@ -223,8 +224,8 @@ function TemplateCard({ template, lang, active, onClick }: { template: TemplateD
         <Text size="xsmall" leading="compact" className="font-mono text-ui-fg-muted">
           {template.key}
         </Text>
-        {template.source === "app" ? (
-          <Badge size="2xsmall" color="orange">
+        {showSource && template.source === "app" ? (
+          <Badge size="2xsmall" color="grey">
             {t("templates.app")}
           </Badge>
         ) : null}
@@ -295,7 +296,7 @@ export function MessagesSection({
   const errorText = useErrorText()
 
   return (
-    <Container className="divide-y p-0">
+    <Container id="emails-log" className="scroll-mt-4 divide-y p-0">
       <div className="flex flex-col gap-1 px-6 py-4">
         <span className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{demo ? t("log.demoTitle") : t("log.title")}</Heading>

@@ -221,8 +221,8 @@ export function TemplatesSection({ status, lang }: { status: StatusResponse; lan
                   {t("templates.optional")}
                 </Badge>
               ) : null}
-              {x.source === "app" ? (
-                <Badge size="2xsmall" color="orange">
+              {x.source === "app" && status.mode !== "app" ? (
+                <Badge size="2xsmall" color="grey">
                   {t("templates.app")}
                 </Badge>
               ) : null}

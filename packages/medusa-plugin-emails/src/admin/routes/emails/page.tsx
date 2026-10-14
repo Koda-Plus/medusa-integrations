@@ -53,6 +53,15 @@ const EmailsPage = () => {
     setParams(next, { replace: true })
     setFilter("all")
   }
+  /* A tile shows what it counts: the log narrowed to its filter and window, scrolled into view (it sits under the gallery). */
+  const showLog = (f: MessageFilter, since: MessageWindow) => {
+    const next = new URLSearchParams(params)
+    for (const k of ["order_id", "customer_id", "q"]) next.delete(k)
+    next.set("since", since)
+    setParams(next, { replace: true })
+    setFilter(f)
+    requestAnimationFrame(() => document.getElementById("emails-log")?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
   const [openMessage, setOpenMessage] = useState<string | null>(null)
   const [test, setTest] = useState<TestInitial | null | "open">(null)
   /* Demo mode: the status only says the outbox is stale (a GET never writes); the page asks for the seed once. */
@@ -86,14 +95,14 @@ const EmailsPage = () => {
         ) : null}
         {s && nav.view === "panel" ? (
           <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
-            <StatTile label={s.mode === "demo" ? t("stats.simulated24h") : t("stats.sent24h")} value={fmtNumber(s.counts.sent24h, lang)} tone="green" />
-            <StatTile label={s.mode === "demo" ? t("stats.simulated30d") : t("stats.sent30d")} value={fmtNumber(s.counts.sent30d, lang)} tone="green" active={filter === "sent"} onClick={() => setFilter("sent")} />
+            <StatTile label={s.mode === "demo" ? t("stats.simulated24h") : t("stats.sent24h")} value={fmtNumber(s.counts.sent24h, lang)} tone="green" active={filter === "sent" && scope.since === "24h"} onClick={() => showLog("sent", "24h")} />
+            <StatTile label={s.mode === "demo" ? t("stats.simulated30d") : t("stats.sent30d")} value={fmtNumber(s.counts.sent30d, lang)} tone="green" active={filter === "sent" && scope.since === "30d"} onClick={() => showLog("sent", "30d")} />
             <StatTile
               label={t("stats.attention")}
               value={fmtNumber(s.counts.attention30d, lang)}
               tone={s.counts.attention30d > 0 ? "red" : "default"}
-              active={filter === "attention"}
-              onClick={() => setFilter("attention")}
+              active={filter === "attention" && scope.since === "30d"}
+              onClick={() => showLog("attention", "30d")}
             />
             <StatTile
               label={t("stats.templatesOn")}

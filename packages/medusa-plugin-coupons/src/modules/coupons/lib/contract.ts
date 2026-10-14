@@ -7,7 +7,16 @@
 export type CouponStatus = "active" | "scheduled" | "expired" | "paused" | "draft" | "used_up"
 
 /** What a coupon gives, as the creator and the plain sentence know it. */
-export type CouponKind = "percent_order" | "fixed_order" | "free_shipping" | "percent_items" | "fixed_items" | "buy_get" | "other"
+export type CouponKind = "percent_order" | "fixed_order" | "free_shipping" | "percent_shipping" | "fixed_shipping" | "percent_items" | "fixed_items" | "buy_get" | "other"
+
+/** A rule the sentence has no words of its own for, shown as it is kept. */
+export interface CouponRuleDto {
+  /** order: who and what order may use it; target: what the discount lands on. */
+  scope: "order" | "target"
+  attribute: string
+  operator: string
+  values: string[]
+}
 
 /** A promotion read back into the creator's terms. */
 export interface CouponShape {
@@ -19,13 +28,23 @@ export interface CouponShape {
   categoryIds: string[]
   /** Product ids the discount is limited to. */
   productIds: string[]
+  /** Product collection ids the discount is limited to. */
+  collectionIds: string[]
+  /** Shipping option types (or options) the delivery discount is limited to. */
+  shippingTypeIds: string[]
+  shippingOptionIds: string[]
+  /** Sales channels and regions the coupon works in; empty: all. */
+  salesChannelIds: string[]
+  regionIds: string[]
   /** Customer group ids the coupon is for; empty: every group. */
   groupIds: string[]
   /** Customer ids the coupon is for; empty: anyone. */
   customerIds: string[]
   /** An order minimum (item total), null when there is none. */
   minimum: number | null
-  /** Rules the plain sentence does not describe (a region, a sales channel). */
+  /** Rules the plain sentence has no words of its own for, listed in it as they are kept. */
+  rules: CouponRuleDto[]
+  /** How many of them (rules.length), for older readers. */
   otherRules: number
 }
 
@@ -65,6 +84,11 @@ export interface NameMaps {
   categories: Record<string, string>
   products: Record<string, string>
   customers: Record<string, string>
+  collections?: Record<string, string>
+  shippingTypes?: Record<string, string>
+  shippingOptions?: Record<string, string>
+  salesChannels?: Record<string, string>
+  regions?: Record<string, string>
 }
 
 export interface CouponTiles {
