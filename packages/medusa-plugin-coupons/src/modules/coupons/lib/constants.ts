@@ -25,6 +25,11 @@ export const RULE = {
   minimum: "item_total",
   category: "items.product.categories.id",
   product: "items.product.id",
+  collection: "items.product.collection_id",
+  shippingType: "shipping_methods.shipping_option.shipping_option_type_id",
+  shippingOption: "shipping_methods.shipping_option_id",
+  salesChannel: "sales_channel_id",
+  region: "region_id",
 } as const
 
 /** Rule attributes that mean an order minimum (the creator writes item_total). */

@@ -159,9 +159,9 @@ const CouponsPage = () => {
             </Table.Header>
             <Table.Body>
               {shown.map((c) => (
-                <Table.Row key={c.id} className="cursor-pointer" onClick={() => setOpenId(c.id)}>
+                <Table.Row key={c.id} className="cursor-pointer align-top [&_td]:h-auto [&_td]:py-4" onClick={() => setOpenId(c.id)}>
                   <Table.Cell>
-                    <div className="flex flex-col gap-y-1">
+                    <div className="flex flex-col gap-y-1.5">
                       <span className="font-mono txt-compact-small-plus">{c.code || t("list.noCode")}</span>
                       <span className="flex items-center gap-1">
                         <StatusBadge status={c.status} />
@@ -173,8 +173,8 @@ const CouponsPage = () => {
                       </span>
                     </div>
                   </Table.Cell>
-                  <Table.Cell className="max-w-[34rem] whitespace-normal py-3">
-                    <Text size="small">{couponSentence(c, data?.names as NameMaps, t, fmt, currency)}</Text>
+                  <Table.Cell className="max-w-[34rem] whitespace-normal">
+                    <Text size="small" className="leading-relaxed">{couponSentence(c, data?.names as NameMaps, t, fmt, currency)}</Text>
                   </Table.Cell>
                   <Table.Cell>
                     <Text size="small" className="tabular-nums">

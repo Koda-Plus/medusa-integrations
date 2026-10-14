@@ -124,13 +124,25 @@ test("every coupon in one sentence, in English and in Polish", () => {
   const c = toCouponDto(percentForGroups, undefined, NOW)
   assert.equal(
     couponSentence(c, NAMES, translator(en), fmt, "pln"),
-    "15% off the whole order, for B2B, with the code JESIEN15, from 300 PLN, from 2026-10-01 until 2026-10-31, up to 100 uses, and 1 more rules.",
+    "15% off the whole order, for B2B, with the code JESIEN15, from 300 PLN, from 2026-10-01 until 2026-10-31, up to 100 uses, rule region.id is one of: reg_1.",
   )
   /* Polish copy is typeset: short words keep a no-break space to the next one. */
   const plText = couponSentence(c, NAMES, translator(pl as unknown as Record<string, unknown>), fmt, "pln").replace(/ /g, " ")
   assert.ok(plText.startsWith("15% rabatu na całe zamówienie, dla grup: B2B, z kodem JESIEN15"))
   const live = couponSentence(wizardCoupon({ ...BASE, kind: "percent_category", categoryIds: ["pcat_1"], mode: "automatic", limit: 1 }, { startsAt: null, endsAt: null }), NAMES, translator(en), fmt, "pln")
   assert.equal(live, "15% off Kremy, for everyone, applied by itself, no code, with no end date, single use.")
+})
+
+test("the rules of real promotions read by name: a collection, delivery types, a sales channel, an amount off delivery", () => {
+  const names = { ...NAMES, collections: { pcol_1: "Detal" }, shippingTypes: { sotype_k: "Kurier", sotype_p: "Paczkomat" }, salesChannels: { sc_1: "Sklep" } }
+  const detal = toCouponDto({ id: "p1", code: "DETAL12", application_method: { type: "percentage", target_type: "items", allocation: "each", value: 12, target_rules: [{ attribute: "items.product.collection_id", operator: "in", values: ["pcol_1"] }] } }, undefined, NOW)
+  assert.equal(detal.shape.otherRules, 0)
+  assert.equal(couponSentence(detal, names, translator(en), fmt, "pln"), "12% off products of the Detal collection, for everyone, with the code DETAL12, with no end date, no limit of uses.")
+  assert.equal(reachesProduct(detal.shape, "prod_x", [], "pcol_1"), true)
+  assert.equal(reachesProduct(detal.shape, "prod_x", [], "pcol_2"), false)
+  const cod = toCouponDto({ id: "p2", code: "COD", is_automatic: true, application_method: { type: "fixed", target_type: "shipping_methods", value: 12.59, target_rules: [{ attribute: "shipping_methods.shipping_option.shipping_option_type_id", operator: "in", values: ["sotype_k", "sotype_p"] }] }, rules: [{ attribute: "sales_channel_id", operator: "in", values: ["sc_1"] }] }, undefined, NOW)
+  assert.equal(cod.shape.kind, "fixed_shipping")
+  assert.equal(couponSentence(cod, names, translator(en), fmt, "pln"), "12.59 PLN off delivery: Kurier and Paczkomat, in the Sklep sales channel, for everyone, applied by itself, no code, with no end date, no limit of uses.")
 })
 
 test("options: defaults, and bad values fall back with a problem named", () => {
