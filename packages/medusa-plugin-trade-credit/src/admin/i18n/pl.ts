@@ -128,6 +128,16 @@ const pl = {
     remindersFailed: "nie wyszło",
     remindersLog: "W E-mailach",
     remind: "Wyślij przypomnienie",
+    openOrder: "Otwórz zamówienie",
+    openIn: "Otwórz w {{name}}",
+    hide: {
+      button: "Testowe",
+      hint: "Zdejmij to zamówienie z kredytu na stałe (zamówienie testowe)",
+      title: "Ukryć zamówienie #{{id}}?",
+      text: "Zamówienie zostanie oznaczone jako testowe i zniknie z kredytu, z długu klienta i z przypomnień. Nic nie jest usuwane: dokumenty w Fakturowni i Subiekcie zostają i trzeba je rozliczyć tam.",
+      confirm: "Ukryj",
+      done: "Zamówienie #{{id}} ukryte",
+    },
     preview: {
       title: "Przypomnienie o płatności",
       subtitle: "Sprawdź, kto je dostanie i co w nim jest. Wyjdzie dopiero po kliknięciu Wyślij.",

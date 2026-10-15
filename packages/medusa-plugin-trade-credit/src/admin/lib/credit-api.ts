@@ -93,6 +93,14 @@ export function useSendReminder() {
   })
 }
 
+export function useHideOrder() {
+  const refresh = useRefresh()
+  return useMutation<{ hidden: boolean }, Error, string>({
+    mutationFn: (orderId) => creditFetch(`/admin/credit/orders/${encodeURIComponent(orderId)}/hide`, { method: "POST", body: {} }),
+    onSuccess: refresh,
+  })
+}
+
 export function useUpdateLimit() {
   const refresh = useRefresh()
   return useMutation<{ limit: LimitDto }, Error, { id: string; body: Record<string, unknown> }>({

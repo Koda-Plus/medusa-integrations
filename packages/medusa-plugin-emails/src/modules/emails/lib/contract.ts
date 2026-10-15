@@ -170,6 +170,8 @@ export interface MessageDto {
   hasBody: boolean
   /** The stage of the message in its template group (option templateGroups variant), e.g. "overdue". */
   variant?: string | null
+  /** The state of the order now, for a template group with orderState (e.g. paid / unpaid for a payment reminder). */
+  orderState?: { label: string; color: "green" | "red" | "orange" | "grey" | "blue"; hint?: string } | null
   /** App mode: "medusa" for a message read from Medusa's history, "plugin" for the plugin's own row. */
   source?: "plugin" | "medusa"
   /** What happened after the provider took it (Resend last_event), when the plugin can read it (option deliveryKey). */

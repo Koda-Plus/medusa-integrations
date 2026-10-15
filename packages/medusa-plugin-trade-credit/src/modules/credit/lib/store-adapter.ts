@@ -38,6 +38,8 @@ export interface StoreCreditOrder {
   overdue_days: number
   /** The document the term runs from (an invoice number), when there is one. */
   document?: string | null
+  /** Where the document opens (the invoicing service), shown as a link next to the order. */
+  document_url?: string | null
   /** How it is paid, in the store's words ("termin", "pobranie"). */
   payment_label?: string | null
   /** The last payment reminder the store sent, when it sends them. */
@@ -106,6 +108,10 @@ export interface CreditStoreAdapter {
   }
   /** The log of the e-mails of an order in the admin (a path with :order_id), for a link from the reminders. */
   emailsLogPath?: string
+  /** The service the documents live in, for the link next to the order (name and an icon as a data URI or https URL). */
+  documentSource?: { name: string; icon?: string }
+  /** Take an order off the credit page for good (a test order): the store marks it, the page asks first. */
+  hideOrder?(scope: unknown, orderId: string, actor: { id: string | null }): Promise<void>
 }
 
 export function isStoreAdapter(v: unknown): v is CreditStoreAdapter {

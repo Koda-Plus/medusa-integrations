@@ -447,6 +447,13 @@ export function MessagesSection({
                   <Table.Cell>
                     <div className="flex flex-col items-start gap-y-1">
                       {m.orderId ? <OrderLink id={m.orderId} open={t("log.openOrder")} /> : null}
+                      {m.orderState ? (
+                        <span title={m.orderState.hint ?? undefined}>
+                          <Badge size="2xsmall" color={m.orderState.color} className="whitespace-nowrap">
+                            {m.orderState.label}
+                          </Badge>
+                        </span>
+                      ) : null}
                       <GroupLink group={groupOf(m.template)} message={m} />
                     </div>
                   </Table.Cell>

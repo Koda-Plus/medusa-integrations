@@ -178,7 +178,20 @@ export interface EmailsPluginOptions {
     templates: string[]
     variant?: { field: string; labels: Record<string, string> }
     link?: { label: string; path: string }
+    /**
+     * The state of the order each message is about, now (for example paid or
+     * still unpaid for a payment reminder): a short label and a colour, read by
+     * the store when the log is shown.
+     */
+    orderState?: (scope: unknown, orderIds: string[]) => Promise<Record<string, OrderStateBadge>>
   }>
+}
+
+export interface OrderStateBadge {
+  label: string
+  color: "green" | "red" | "orange" | "grey" | "blue"
+  /** A longer line for the tooltip. */
+  hint?: string
 }
 
 export interface ResolvedBrand {
@@ -513,6 +526,7 @@ export interface TemplateGroup {
   templates: string[]
   variant: { field: string; labels: Record<string, string> } | null
   link: { label: string; path: string } | null
+  orderState: ((scope: unknown, orderIds: string[]) => Promise<Record<string, OrderStateBadge>>) | null
 }
 
 /** Option templateGroups: keys, templates and an admin path (relative, no scheme) that pass the checks. */
@@ -535,6 +549,7 @@ function resolveTemplateGroups(v: unknown): TemplateGroup[] {
         templates,
         variant: /^[a-z0-9_]{1,40}$/i.test(field) ? { field, labels } : null,
         link: text(g?.link?.label, 60) && path.startsWith("/") && !path.startsWith("//") ? { label: text(g.link.label, 60), path } : null,
+        orderState: typeof g?.orderState === "function" ? g.orderState : null,
       }
     })
     .filter((g): g is TemplateGroup => g !== null)
