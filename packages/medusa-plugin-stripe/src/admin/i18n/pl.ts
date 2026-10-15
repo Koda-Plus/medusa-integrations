@@ -314,6 +314,12 @@ const pl: typeof en = {
     },
   },
   payments: {
+    stripeId: "ID w Stripe:",
+    stripeIdHint: "Identyfikator płatności w Stripe (PaymentIntent): po nim znajdziesz ją w panelu Stripe i w wyciągu.",
+    refundInOrder: "Zwrot w zamówieniu",
+    refundInOrderHint: "Zwrot robisz w zamówieniu w Medusie: wtedy zamówienie, stany i dokumenty idą za nim. Zwrot zrobiony tylko w Stripe zostawia zamówienie opłacone w Medusie.",
+    refundInStripe: "Zwrot w Stripe",
+    refundInStripeHint: "Ta płatność nie ma zamówienia w tym sklepie, więc zwrot robisz w panelu Stripe.",
     title: "Płatności",
     subtitle: "Ostatnie 30 dni, od najnowszych, każda przy swoim zamówieniu w Medusie i z linkiem do panelu Stripe.",
     filter: {

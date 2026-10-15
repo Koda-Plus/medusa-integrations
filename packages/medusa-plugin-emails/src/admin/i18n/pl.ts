@@ -125,6 +125,8 @@ const pl: typeof en = {
     turnedOff: "{{name}}: wyłączony",
   },
   log: {
+    openOrder: "Otwórz zamówienie",
+    openResend: "Otwórz w Resend",
     title: "Wysłane e-maile",
     demoTitle: "Symulowana skrzynka nadawcza",
     simulated: "Symulacja",
@@ -144,6 +146,7 @@ const pl: typeof en = {
     details: "Szczegóły",
     col: {
       when: "Kiedy",
+      order: "Zamówienie",
       template: "Szablon",
       recipient: "Do",
       subject: "Temat",

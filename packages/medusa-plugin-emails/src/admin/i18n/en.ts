@@ -124,6 +124,8 @@ const en = {
     turnedOff: "{{name}} is off",
   },
   log: {
+    openOrder: "Open the order",
+    openResend: "Open in Resend",
     title: "Sent e-mails",
     demoTitle: "Simulated outbox",
     simulated: "Simulated",
@@ -143,6 +145,7 @@ const en = {
     details: "Details",
     col: {
       when: "When",
+      order: "Order",
       template: "Template",
       recipient: "To",
       subject: "Subject",
