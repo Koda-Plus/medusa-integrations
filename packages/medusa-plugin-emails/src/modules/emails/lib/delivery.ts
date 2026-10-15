@@ -128,6 +128,18 @@ export class DeliveryReader {
     return { list: out, error: null }
   }
 
+  private details = new Map<string, { subject: string | null; tags: Array<{ name: string; value: string }>; lastEvent: DeliveryEvent | null } | null>()
+
+  /** Subject, tags and last event of one message (cached: the tags and subject never change). */
+  async detail(id: string): Promise<{ subject: string | null; tags: Array<{ name: string; value: string }>; lastEvent: DeliveryEvent | null } | null> {
+    if (this.details.has(id)) return this.details.get(id) ?? null
+    const r = await this.get<{ subject?: string; tags?: Array<{ name: string; value: string }>; last_event?: string }>(`/emails/${encodeURIComponent(id)}`)
+    if (!r.ok) return null
+    const d = { subject: r.data.subject ?? null, tags: Array.isArray(r.data.tags) ? r.data.tags : [], lastEvent: r.data.last_event ?? null }
+    this.details.set(id, d)
+    return d
+  }
+
   /** The last event of each message id (Resend email ids), from the cache or one read each, a few per call. */
   async eventsFor(ids: Array<string | null | undefined>): Promise<Map<string, DeliveryEvent | null>> {
     const out = new Map<string, DeliveryEvent | null>()

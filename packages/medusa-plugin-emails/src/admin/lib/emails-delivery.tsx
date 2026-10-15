@@ -38,6 +38,19 @@ export function DeliveryBadge({ event }: { event: string | null | undefined }) {
   )
 }
 
+/** A message of a mailing outside the shop (option campaigns): the mailing's label. */
+export function CampaignBadge({ message, campaigns }: { message: { kind: string; template: string }; campaigns?: Array<{ key: string; label: string }> }) {
+  const { t } = useTranslation("emails")
+  if (message.kind !== "campaign") return null
+  const key = message.template.replace(/^campaign:/, "")
+  const label = campaigns?.find((c) => c.key === key)?.label ?? key
+  return (
+    <Badge size="2xsmall" color="purple" title={t("delivery.campaignHint")}>
+      {label}
+    </Badge>
+  )
+}
+
 export function useEmailsDelivery(enabled: boolean) {
   return useQuery<BouncesResponse>({
     queryKey: ["emails", "delivery"],
@@ -90,13 +103,14 @@ export function BouncesSection({ lang, onClose }: { lang: string; onClose: () =>
             <Table.Row>
               <Table.HeaderCell>{t("delivery.col.address")}</Table.HeaderCell>
               <Table.HeaderCell>{t("delivery.col.reason")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("delivery.col.subject")}</Table.HeaderCell>
               <Table.HeaderCell>{t("delivery.col.since")}</Table.HeaderCell>
               <Table.HeaderCell>{t("delivery.col.last")}</Table.HeaderCell>
               <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {q.isLoading ? <KitSkeletonRows cols={5} /> : null}
+            {q.isLoading ? <KitSkeletonRows cols={6} /> : null}
             {(d?.addresses ?? []).map((a) => (
               <Table.Row key={a.email} className="align-top [&_td]:h-auto [&_td]:py-2.5">
                 <Table.Cell>
@@ -115,6 +129,16 @@ export function BouncesSection({ lang, onClose }: { lang: string; onClose: () =>
                   <Badge size="2xsmall" color={a.origin === "manual" ? "grey" : "red"}>
                     {t(`delivery.origin.${a.origin}`, { defaultValue: a.origin })}
                   </Badge>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex max-w-xs flex-col items-start gap-y-1">
+                    {a.campaign ? (
+                      <Badge size="2xsmall" color="purple" title={t("delivery.campaignHint")}>
+                        {a.campaign.label}
+                      </Badge>
+                    ) : null}
+                    <Text size="small">{a.subject ?? "-"}</Text>
+                  </div>
                 </Table.Cell>
                 <Table.Cell>
                   <Text size="small" className="text-ui-fg-subtle">
@@ -143,7 +167,7 @@ export function BouncesSection({ lang, onClose }: { lang: string; onClose: () =>
             ))}
             {d && d.configured && !q.isLoading && d.addresses.length === 0 ? (
               <Table.Row>
-                <td colSpan={5} className="px-6">
+                <td colSpan={6} className="px-6">
                   <Text size="small" className="py-6 text-center text-ui-fg-subtle">
                     {t("delivery.empty")}
                   </Text>

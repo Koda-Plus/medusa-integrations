@@ -4,7 +4,7 @@ import { PaperPlane } from "@medusajs/icons"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { OrderLink, ResendLink } from "./emails-links"
-import { DeliveryBadge } from "./emails-delivery"
+import { CampaignBadge, DeliveryBadge } from "./emails-delivery"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "./emails-kit"
 import { errorMessage, useEmailsMessage, useEmailsMessages, useEmailsPreview, useEmailsRetry, useEmailsTest } from "./emails-api"
 import {
@@ -404,8 +404,8 @@ export function MessagesSection({
                   <Table.Cell className="max-w-xs">
                     <div className="flex flex-col items-start gap-y-1">
                       <MessageStatusBadge message={m} demo={demo} />
-                <DeliveryBadge event={m.delivery} />
                       <DeliveryBadge event={m.delivery} />
+                      <CampaignBadge message={m} campaigns={status?.campaigns} />
                       {resendLink(status, m) ? (
                         <ResendLink href={resendLink(status, m)!} className="txt-compact-xsmall">
                           {t("log.openResend")}
@@ -549,6 +549,7 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
               <div className="flex flex-wrap items-center gap-2">
                 <MessageStatusBadge message={m} demo={demo} />
                 <DeliveryBadge event={m.delivery} />
+                <CampaignBadge message={m} campaigns={status?.campaigns} />
                 <KindBadge kind={m.kind} />
                 {m.rotation > 0 ? (
                   <Badge size="2xsmall" color="grey">

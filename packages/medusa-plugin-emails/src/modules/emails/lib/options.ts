@@ -156,6 +156,14 @@ export interface EmailsPluginOptions {
    * store's provider sends) set it to show bounces in the log.
    */
   deliveryKey?: string
+  /**
+   * Mailings the store sent through the same Resend account outside the shop
+   * (a notice to all customers, a newsletter): each with the Resend tag it was
+   * sent with and a label. The log marks their messages (rows of kind
+   * "campaign", template "campaign:<key>") and the list of rejected addresses
+   * says which mailing caused a block.
+   */
+  campaigns?: Array<{ key: string; label: string; tag?: { name: string; value: string } }>
 }
 
 export interface ResolvedBrand {
@@ -192,6 +200,8 @@ export interface ResolvedEmailsOptions {
   showAddresses: boolean
   /** Resend key for reading delivery (option deliveryKey, or the live key). Never logged. */
   deliveryKey: string | null
+  /** Mailings outside the shop (option campaigns). */
+  campaigns: Array<{ key: string; label: string; tag: { name: string; value: string } | null }>
   defaultLocale: EmailLocale
   timeZone: string
   storefrontUrl: string | null
@@ -396,6 +406,9 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     appProvider: demo ? null : appProvider,
     showAddresses: o.showAddresses === true,
     deliveryKey: str(o.deliveryKey) || (!demo && !appProvider && apiKey ? apiKey : null),
+    campaigns: (Array.isArray(o.campaigns) ? o.campaigns : [])
+      .filter((c) => c && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(String(c.key ?? "")) && str(c.label))
+      .map((c) => ({ key: String(c.key), label: str(c.label).slice(0, 80), tag: c.tag && str(c.tag.name) && str(c.tag.value) ? { name: str(c.tag.name), value: str(c.tag.value) } : null })),
     defaultLocale,
     timeZone,
     storefrontUrl,

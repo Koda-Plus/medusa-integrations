@@ -28,6 +28,8 @@ const en = {
   },
   status: { active: "active", scheduled: "scheduled", expired: "expired", paused: "paused", draft: "draft", used_up: "used up" },
   list: {
+    automaticUses: "automatic",
+    automaticUsesHint: "Medusa does not count the uses of a promotion that applies by itself; the Orders column shows how many orders used it.",
     title: "Coupons",
     subtitle: "Newest first. Click a coupon to see its orders, pause it or open it in Medusa.",
     search: "Code",

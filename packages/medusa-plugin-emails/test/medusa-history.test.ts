@@ -139,7 +139,7 @@ test("showAddresses: part of an address is searched in both sources and shown in
   const r = await listAppLog(pg, { ...BASE, text: "jonik", addresses: true }, () => null)
   assert.ok(pg.calls[1].sql.includes(`n."to" ilike ?`))
   assert.ok(pg.calls[1].sql.includes(`n4."to" ilike ?`))
-  assert.equal(pg.calls[1].bindings.filter((b: unknown) => b === "%jonik%").length, 5)
+  assert.equal(pg.calls[1].bindings.filter((b: unknown) => b === "%jonik%").length, 6)
   assert.equal(r.rows[0].recipient, "jonik.agnieszka@gmail.com")
   const masked = await listAppLog(fakePg([[{ ok: true }], [{ source: "medusa", id: "noti_1", template: "x", status: "success", recipient: "jonik.agnieszka@gmail.com", recipient_full: "jonik.agnieszka@gmail.com", created_at: new Date() }], [{ n: 1 }]]), { ...BASE }, () => null)
   assert.notEqual(masked.rows[0].recipient, "jonik.agnieszka@gmail.com")

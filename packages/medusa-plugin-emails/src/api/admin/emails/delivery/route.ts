@@ -30,6 +30,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as SqlRaw
     const last = o.mode === "app" ? await lastHistoryByAddress(pg, sup.list.map((x) => x.email), historySubject(o), o.showAddresses).catch(() => new Map()) : new Map()
     const labels = templateLabels(o)
+    /* The message that caused each block (Resend source_id): its subject and tags, for the campaign. */
+    const details = new Map<string, Awaited<ReturnType<typeof reader.detail>>>()
+    for (const x of sup.list) if (x.sourceId && !details.has(x.sourceId)) details.set(x.sourceId, await reader.detail(x.sourceId).catch(() => null))
+    const campaignOf = (tags: Array<{ name: string; value: string }> | undefined) => {
+      const c = o.campaigns.find((k) => k.tag && (tags ?? []).some((t) => t.name === k.tag!.name && t.value === k.tag!.value))
+      return c ? { key: c.key, label: c.label } : null
+    }
     const body: BouncesResponse = {
       configured: true,
       readAt: sup.readAt,
@@ -41,6 +48,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
           origin: x.origin,
           since: x.createdAt,
           typo: domainTypo(x.email),
+          subject: (x.sourceId ? details.get(x.sourceId)?.subject : null) ?? m?.subject ?? null,
+          campaign: x.sourceId ? campaignOf(details.get(x.sourceId)?.tags) : null,
           sourceId: x.sourceId,
           resendUrl: x.sourceId ? `https://resend.com/emails/${encodeURIComponent(x.sourceId)}` : null,
           lastMessage: m ? { ...toMessageDto(m, {}, labels), source: m.source } : null,

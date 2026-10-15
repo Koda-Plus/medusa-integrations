@@ -273,9 +273,9 @@ function ownWhere(q: HistoryQuery): { sql: string; bindings: unknown[] } {
     const t = q.text.slice(0, 80)
     const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
     /* A plugin row keeps its address masked; the full one is on Medusa's notification it reports. */
-    const addr = q.addresses ? ` or exists (select 1 from "notification" n4 where n4.id = m.notification_id and n4."to" ilike ?)` : ""
+    const addr = q.addresses ? ` or exists (select 1 from "notification" n4 where n4.id = m.notification_id and n4."to" ilike ?) or (m.kind = 'campaign' and m.recipient ilike ?)` : ""
     parts.push(`(m.subject ilike ? or m.template ilike ? or m.order_id = ? or m.resource_id = ?${addr})`)
-    b.push(like, like, t, t, ...(q.addresses ? [like] : []))
+    b.push(like, like, t, t, ...(q.addresses ? [like, like] : []))
   }
   return { sql: parts.join(" and "), bindings: b }
 }

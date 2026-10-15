@@ -30,6 +30,8 @@ const pl: typeof en = {
   },
   status: { active: "aktywny", scheduled: "zaplanowany", expired: "wygasł", paused: "wstrzymany", draft: "szkic", used_up: "wykorzystany" },
   list: {
+    automaticUses: "automatyczny",
+    automaticUsesHint: "Medusa nie liczy użyć promocji, która nalicza się sama; ile zamówień z niej skorzystało, pokazuje kolumna Zamówienia.",
     title: "Kupony",
     subtitle: "Od najnowszych. Kliknij kupon, żeby zobaczyć jego zamówienia, wstrzymać go albo otworzyć w Medusie.",
     search: "Kod",

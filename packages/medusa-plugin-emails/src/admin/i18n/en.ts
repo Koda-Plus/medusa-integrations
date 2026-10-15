@@ -6,6 +6,7 @@ const en = {
   "E-mails": "E-mails",
   title: "E-mails",
   delivery: {
+    campaignHint: "A mailing outside the shop, through the same Resend account (for example a notice to all customers).",
     tile: "Rejected addresses",
     title: "Rejected addresses",
     subtitle: "Addresses Resend no longer sends to (its suppression list): the recipient's server rejected a message or the recipient reported spam. Fix the address with the customer (often a typo in the domain) and remove it from the list in Resend.",
@@ -16,7 +17,7 @@ const en = {
     noLast: "no message in this store",
     typo: "A typo in the domain? Probably {{fixed}}",
     hint: "What happened after sending, according to Resend",
-    col: { address: "Address", reason: "Reason", since: "Since", last: "Last message" },
+    col: { address: "Address", reason: "Reason", subject: "Subject", since: "Since", last: "Last message" },
     origin: { bounce: "bounced", complaint: "reported as spam", manual: "added by hand" },
     event: {
       sent: "sent",
