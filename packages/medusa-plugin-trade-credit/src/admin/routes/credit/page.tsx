@@ -119,7 +119,7 @@ const CreditPage = () => {
                 <Heading>{t("title")}</Heading>
                 {s?.demo ? <SampleBadge /> : null}
                 {store ? (
-                  <Badge size="2xsmall" color="blue" title={t("ui.storeModeHint")}>
+                  <Badge size="2xsmall" className="whitespace-nowrap" color="blue" title={t("ui.storeModeHint")}>
                     {t("ui.storeMode")}
                   </Badge>
                 ) : null}
@@ -437,12 +437,12 @@ function AccountsTable({ rows, status, choices, editing, setEditing, money, load
             </Table.Cell>
             <Table.Cell>
               <div className="flex flex-wrap gap-1">
-                {l.blocked ? <Badge size="2xsmall" color="red">{t("limits.blocked")}</Badge> : null}
-                {l.status === "paused" ? <Badge size="2xsmall" color="grey">{t("limits.paused")}</Badge> : null}
-                {(l.overdue_amount ?? 0) > 0 ? <Badge size="2xsmall" color="red">{t("ui.badgeOverdue")}</Badge> : null}
-                {l.exhausted ? <Badge size="2xsmall" color="orange">{t("limits.exhausted")}</Badge> : null}
-                {!l.blocked && l.status !== "paused" && !l.exhausted && !(l.overdue_amount ?? 0) ? <Badge size="2xsmall" color="green">{t("limits.active")}</Badge> : null}
-                {l.no_limit && l.net_days > 0 ? <Badge size="2xsmall" color="orange" title={t("ui.noLimitHint")}>{t("ui.noLimit")}</Badge> : null}
+                {l.blocked ? <Badge size="2xsmall" className="whitespace-nowrap" color="red">{t("limits.blocked")}</Badge> : null}
+                {l.status === "paused" ? <Badge size="2xsmall" className="whitespace-nowrap" color="grey">{t("limits.paused")}</Badge> : null}
+                {(l.overdue_amount ?? 0) > 0 ? <Badge size="2xsmall" className="whitespace-nowrap" color="red">{t("ui.badgeOverdue")}</Badge> : null}
+                {l.exhausted ? <Badge size="2xsmall" className="whitespace-nowrap" color="orange">{t("limits.exhausted")}</Badge> : null}
+                {!l.blocked && l.status !== "paused" && !l.exhausted && !(l.overdue_amount ?? 0) ? <Badge size="2xsmall" className="whitespace-nowrap" color="green">{t("limits.active")}</Badge> : null}
+                {l.no_limit && l.net_days > 0 ? <Badge size="2xsmall" className="whitespace-nowrap" color="orange" title={t("ui.noLimitHint")}>{t("ui.noLimit")}</Badge> : null}
               </div>
             </Table.Cell>
             <Table.Cell className="text-right">
@@ -557,7 +557,7 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
             <Table.Cell>
               {o.no_due_date ? (
                 <span title={t("ui.noDueHint")}>
-                  <Badge size="2xsmall" color="grey">
+                  <Badge size="2xsmall" className="whitespace-nowrap" color="grey">
                     {t("ui.noDue")}
                   </Badge>
                 </span>
@@ -572,11 +572,11 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
             </Table.Cell>
             <Table.Cell>
               {o.state === "overdue" ? (
-                <Badge size="2xsmall" color="red">
+                <Badge size="2xsmall" className="whitespace-nowrap" color="red">
                   {o.overdue_days ? t("ui.daysLate", { days: o.overdue_days }) : t("orders.state.overdue")}
                 </Badge>
               ) : (
-                <Badge size="2xsmall" color={o.no_due_date ? "grey" : "blue"}>
+                <Badge size="2xsmall" className="whitespace-nowrap" color={o.no_due_date ? "grey" : "blue"}>
                   {t("orders.state.open")}
                 </Badge>
               )}
@@ -623,7 +623,7 @@ function RemindersCell({ order, status, date, onRemind }: { order: CreditOrderDt
       ) : (
         list.map((r, i) => (
           <span key={`${r.at}-${i}`} className="flex flex-wrap items-center gap-1">
-            <Badge size="2xsmall" color={!r.ok ? "red" : r.overdue ? "orange" : "blue"}>
+            <Badge size="2xsmall" className="whitespace-nowrap" color={!r.ok ? "red" : r.overdue ? "orange" : "blue"}>
               {i + 1}. {r.stage}
             </Badge>
             <Text size="xsmall" className="text-ui-fg-subtle">
@@ -717,7 +717,7 @@ function ReminderDrawer({ order, onClose }: { order: CreditOrderDto; onClose: ()
                   {t("ui.preview.stage")}
                 </Text>
                 <span>
-                  <Badge size="2xsmall" color="orange">
+                  <Badge size="2xsmall" className="whitespace-nowrap" color="orange">
                     {p.stage}
                   </Badge>
                 </span>
