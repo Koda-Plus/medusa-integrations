@@ -669,31 +669,44 @@ function HideOrderButton({ order }: { order: CreditOrderDto }) {
 /* The reminders of an order: what went (stage, date, by hand or not), the next one, a link to the e-mail log and the send button. */
 function RemindersCell({ order, status, date, onRemind }: { order: CreditOrderDto; status: StatusResponse; date: (iso: string | null | undefined) => string; onRemind: () => void }) {
   const { t } = useTranslation("credit")
+  const [open, setOpen] = useState(false)
   const list = order.reminders ?? []
+  const sent = list.filter((r) => r.ok)
+  const failed = list.length - sent.length
+  const before = sent.filter((r) => !r.overdue).length
+  const after = sent.length - before
+  const last = sent[sent.length - 1] ?? null
   const log = status.reminders?.emailsLogPath ? status.reminders.emailsLogPath.split(":order_id").join(encodeURIComponent(order.order_id)) : null
   return (
-    <div className="flex min-w-[180px] flex-col items-start gap-y-1">
-      {list.length === 0 ? (
+    <div className="flex min-w-[190px] flex-col items-start gap-y-0.5">
+      {sent.length === 0 ? (
         <Text size="xsmall" className="text-ui-fg-muted">
           {t("ui.remindersNone")}
         </Text>
       ) : (
-        list.map((r, i) => (
-          <span key={`${r.at}-${i}`} className="flex flex-wrap items-center gap-1">
-            <Badge size="2xsmall" className="whitespace-nowrap" color={!r.ok ? "red" : r.overdue ? "orange" : "blue"}>
-              {i + 1}. {r.stage}
-            </Badge>
+        <>
+          <Text size="small" weight="plus">
+            {t("ui.remindersSent", { count: sent.length })}
+          </Text>
+          <Text size="xsmall" className="text-ui-fg-subtle">
+            {[before ? t("ui.remindersBefore", { count: before }) : null, after ? t("ui.remindersAfter", { count: after }) : null].filter(Boolean).join(", ")}
+          </Text>
+          {last ? (
             <Text size="xsmall" className="text-ui-fg-subtle">
-              {date(r.at)}
-              {r.manual ? `, ${t("ui.remindersManual")}` : ""}
-              {!r.ok ? `, ${t("ui.remindersFailed")}` : ""}
+              {t("ui.remindersLast", { date: date(last.at) })}
+              {last.manual ? `, ${t("ui.remindersManual")}` : ""}
             </Text>
-          </span>
-        ))
+          ) : null}
+        </>
       )}
+      {failed > 0 ? (
+        <Text size="xsmall" className="text-ui-tag-red-text">
+          {t("ui.remindersFailedCount", { count: failed })}
+        </Text>
+      ) : null}
       {order.next_reminder ? (
         <Text size="xsmall" className="text-ui-fg-muted">
-          {order.next_reminder.at ? t("ui.remindersNext", { stage: order.next_reminder.stage, date: date(order.next_reminder.at) }) : t("ui.remindersNextNoDate", { stage: order.next_reminder.stage })}
+          {order.next_reminder.at ? t("ui.remindersNextAt", { date: date(order.next_reminder.at) }) : t("ui.remindersNextNoDate", { stage: order.next_reminder.stage })}
         </Text>
       ) : null}
       {order.reminders_note ? (
@@ -701,7 +714,23 @@ function RemindersCell({ order, status, date, onRemind }: { order: CreditOrderDt
           {order.reminders_note}
         </Text>
       ) : null}
-      <span className="flex flex-wrap items-center gap-x-2">
+      {open && list.length ? (
+        <ol className="mt-1 flex flex-col gap-y-0.5 border-l-2 border-ui-border-base pl-2">
+          {list.map((r, i) => (
+            <li key={`${r.at}-${i}`} className={clx("txt-compact-xsmall", r.ok ? "text-ui-fg-subtle" : "text-ui-tag-red-text")}>
+              {date(r.at)}, {r.overdue ? t("ui.stageAfter") : t("ui.stageBefore")}
+              {r.manual ? `, ${t("ui.remindersManual")}` : ""}
+              {!r.ok ? `, ${t("ui.remindersFailed")}` : ""}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        {list.length > 1 ? (
+          <button type="button" onClick={() => setOpen((v) => !v)} className="txt-compact-xsmall-plus text-ui-fg-interactive hover:underline">
+            {open ? t("ui.remindersHide") : t("ui.remindersShow")}
+          </button>
+        ) : null}
         {log && list.length > 0 ? (
           <Link to={log} className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:underline">
             {t("ui.remindersLog")}
