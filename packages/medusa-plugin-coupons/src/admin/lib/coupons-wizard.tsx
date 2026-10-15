@@ -525,8 +525,7 @@ function BigCard({ on, icon, title, hint, onClick }: { on: boolean; icon: ReactN
 function Chips<T extends string | number>({ value, options, onChange }: { value: T | null; options: Array<{ value: T; label: string }>; onChange: (v: T) => void }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {options.map((o) {
-  return (
+      {options.map((o) => (
         <button
           key={String(o.value)}
           type="button"
