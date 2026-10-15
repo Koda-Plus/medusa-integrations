@@ -44,6 +44,35 @@ export interface StoreCreditOrder {
   reminded_at?: string | null
   /** Placed for this account by someone else (an account manager for a salon). */
   placed_by?: string | null
+  /** The payment reminders sent for the order, oldest first ("before the due date", "overdue, 2nd"). */
+  reminders?: StoreCreditReminder[]
+  /** The next reminder the store will send on its own, when it will. */
+  next_reminder?: { at: string | null; stage: string } | null
+  /** Why the store sends no reminders for this order (for example cash on delivery). */
+  reminders_note?: string | null
+}
+
+export interface StoreCreditReminder {
+  /** When it went (ISO). */
+  at: string
+  /** The stage in the store's words. */
+  stage: string
+  /** False when the provider failed to send it. */
+  ok: boolean
+  /** Sent by hand from the admin, not by the store's schedule. */
+  manual?: boolean
+  /** A reminder after the due date (shown in a warmer colour). */
+  overdue?: boolean
+}
+
+/** A payment reminder before it is sent: who gets it and exactly what. */
+export interface StoreReminderPreview {
+  to: string
+  subject: string
+  html: string
+  stage: string
+  /** Something to know before sending (for example a reminder went out today). */
+  warning?: string | null
 }
 
 export interface StoreCreditPatch {
@@ -70,6 +99,13 @@ export interface CreditStoreAdapter {
   ruleText?: string
   /** Where an order is marked paid in this store (an admin path with :id), for a link on the page. */
   markPaidPath?: string
+  /** Payment reminders sent from the page: preview first, then send (the store renders and sends its own e-mail). */
+  reminder?: {
+    preview(scope: unknown, orderId: string): Promise<StoreReminderPreview>
+    send(scope: unknown, orderId: string, actor: { id: string | null }): Promise<{ stage: string }>
+  }
+  /** The log of the e-mails of an order in the admin (a path with :order_id), for a link from the reminders. */
+  emailsLogPath?: string
 }
 
 export function isStoreAdapter(v: unknown): v is CreditStoreAdapter {

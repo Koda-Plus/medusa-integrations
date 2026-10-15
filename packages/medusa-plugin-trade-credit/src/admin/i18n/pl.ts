@@ -5,7 +5,9 @@ import { integrationPl } from "../../modules/credit/lib/integration-texts"
 
 /* Typed by en.ts below (every English key exists here). */
 const pl = {
-  nav: "Kredyt",
+  nav: "Kredyt kupiecki",
+  /* The sidebar entry (route config label, translationNs credit). */
+  Credit: "Kredyt kupiecki",
   title: "Kredyt kupiecki",
   view: {
     panel: "Panel",
@@ -118,6 +120,25 @@ const pl = {
     daysLate: "{{days}} dni po terminie",
     markPaid: "Rozlicz",
     markPaidHint: "Otwórz zamówienie, żeby zaksięgować wpłatę",
+    reminders: "Przypomnienia",
+    remindersNone: "jeszcze żadnego",
+    remindersNext: "następne: {{stage}}, {{date}}",
+    remindersNextNoDate: "następne: {{stage}}",
+    remindersManual: "ręcznie",
+    remindersFailed: "nie wyszło",
+    remindersLog: "W E-mailach",
+    remind: "Wyślij przypomnienie",
+    preview: {
+      title: "Przypomnienie o płatności",
+      subtitle: "Sprawdź, kto je dostanie i co w nim jest. Wyjdzie dopiero po kliknięciu Wyślij.",
+      to: "Do",
+      subject: "Temat",
+      stage: "Etap",
+      loading: "Przygotowuję e-mail",
+      send: "Wyślij przypomnienie",
+      cancel: "Anuluj",
+      sent: "Przypomnienie wysłane ({{stage}})",
+    },
   },
   toast: {
     saved: "Zapisano",

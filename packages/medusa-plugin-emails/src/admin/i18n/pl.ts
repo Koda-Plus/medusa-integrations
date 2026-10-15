@@ -158,6 +158,9 @@ const pl: typeof en = {
     turnedOff: "{{name}}: wyłączony",
   },
   log: {
+    group: {
+      all: "Wszystkie szablony",
+    },
     openOrder: "Otwórz zamówienie",
     openResend: "Otwórz w Resend",
     title: "Wysłane e-maile",

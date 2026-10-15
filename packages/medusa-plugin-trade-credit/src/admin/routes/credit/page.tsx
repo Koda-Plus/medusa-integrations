@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowUpRightMini, MagnifyingGlass, PauseSolid, PlaySolid, Plus, XMark } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast } from "@medusajs/ui"
+import { ArrowUpRightMini, EnvelopeSolid, MagnifyingGlass, PauseSolid, PlaySolid, Plus, XMark } from "@medusajs/icons"
+import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/credit-kit"
 import { usePageView } from "../../lib/credit-guide"
 import { GuideView } from "../../lib/credit-guide-view"
-import { useCreditStatus, useCustomerSearch, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
+import { errorMessage, useCreditStatus, useCustomerSearch, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
 import { EmptyLine, SampleBadge, fmtMoney } from "../../lib/credit-ui"
 import type { CreditOrderDto, LimitDto, StatusResponse } from "../../../modules/credit/lib/contract"
@@ -75,10 +75,14 @@ const CreditPage = () => {
   const s = status.data
   const store = s?.mode === "store"
   const choices = s?.netDayChoices?.length ? s.netDayChoices : DEFAULT_CHOICES
-  const [tab, setTab] = useState<Tab>("accounts")
+  /* Deep links (the E-mails log, a customer card): ?order_id= opens the order on credit, ?customer_id= the account. */
+  const [params] = useSearchParams()
+  const askedOrder = (params.get("order_id") ?? "").slice(0, 80)
+  const askedCustomer = (params.get("customer_id") ?? "").slice(0, 80)
+  const [tab, setTab] = useState<Tab>(askedOrder ? "orders" : "accounts")
   const [accountFilter, setAccountFilter] = useState<AccountFilter>("all")
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all")
-  const [q, setQ] = useState("")
+  const [q, setQ] = useState(askedOrder || askedCustomer)
   const [editing, setEditing] = useState<string | null>(null)
   const money = (n: number | null | undefined) => fmtMoney(n ?? 0, "pln", lang)
   const names = useMemo(() => new Map((s?.limits ?? []).map((l) => [l.customer_id, l.company || l.customer_name || l.customer_email || l.customer_id])), [s?.limits])
@@ -88,13 +92,13 @@ const CreditPage = () => {
     if (accountFilter === "overdue" && !(l.overdue_amount ?? 0)) return false
     if (accountFilter === "exhausted" && !l.exhausted) return false
     if (!needle) return true
-    return [l.customer_name, l.customer_email, l.company].some((x) => (x ?? "").toLowerCase().includes(needle))
+    return [l.customer_id, l.customer_name, l.customer_email, l.company].some((x) => (x ?? "").toLowerCase().includes(needle))
   })
   const orders = (s?.orders ?? []).filter((o) => {
     if (orderFilter === "overdue" && o.state !== "overdue") return false
     if (orderFilter === "no_due" && !o.no_due_date) return false
     if (!needle) return true
-    return [String(o.display_id ?? ""), o.document ?? "", names.get(o.customer_id) ?? ""].some((x) => x.toLowerCase().includes(needle))
+    return [o.order_id, o.customer_id, String(o.display_id ?? ""), o.document ?? "", names.get(o.customer_id) ?? ""].some((x) => x.toLowerCase().includes(needle))
   })
   const overdueOrders = (s?.orders ?? []).filter((o) => o.state === "overdue").length
   const showAccounts = (f: AccountFilter) => {
@@ -493,7 +497,11 @@ function AccountsTable({ rows, status, choices, editing, setEditing, money, load
 function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDto[]; names: Map<string, string>; status: StatusResponse; money: (n: number | null | undefined) => string; lang: string }) {
   const { t } = useTranslation("credit")
   const date = (iso: string | null | undefined) => (iso ? new Intl.DateTimeFormat(lang.startsWith("pl") ? "pl-PL" : "en-GB", { dateStyle: "medium" }).format(new Date(iso)) : "")
+  const withReminders = rows.some((o) => o.reminders !== undefined)
+  const [reminding, setReminding] = useState<CreditOrderDto | null>(null)
+  const cols = withReminders ? 8 : 7
   return (
+    <>
     <Table>
       <Table.Header>
         <Table.Row>
@@ -503,6 +511,7 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
           <Table.HeaderCell>{t("ui.document")}</Table.HeaderCell>
           <Table.HeaderCell>{t("orders.due")}</Table.HeaderCell>
           <Table.HeaderCell>{t("orders.stateLabel")}</Table.HeaderCell>
+          {withReminders ? <Table.HeaderCell>{t("ui.reminders")}</Table.HeaderCell> : null}
           <Table.HeaderCell />
         </Table.Row>
       </Table.Header>
@@ -572,6 +581,11 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
                 </Badge>
               )}
             </Table.Cell>
+            {withReminders ? (
+              <Table.Cell>
+                <RemindersCell order={o} status={status} date={date} onRemind={() => setReminding(o)} />
+              </Table.Cell>
+            ) : null}
             <Table.Cell className="text-right">
               {status.markPaidPath ? (
                 <Link to={status.markPaidPath.replace(":id", o.order_id)} className="txt-compact-small text-ui-fg-interactive hover:underline" title={t("ui.markPaidHint")}>
@@ -583,18 +597,152 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
         ))}
         {rows.length === 0 ? (
           <Table.Row>
-            <td colSpan={7}>
+            <td colSpan={cols}>
               <EmptyLine>{t("orders.empty")}</EmptyLine>
             </td>
           </Table.Row>
         ) : null}
       </Table.Body>
     </Table>
+    {reminding ? <ReminderDrawer order={reminding} onClose={() => setReminding(null)} /> : null}
+    </>
+  )
+}
+
+/* The reminders of an order: what went (stage, date, by hand or not), the next one, a link to the e-mail log and the send button. */
+function RemindersCell({ order, status, date, onRemind }: { order: CreditOrderDto; status: StatusResponse; date: (iso: string | null | undefined) => string; onRemind: () => void }) {
+  const { t } = useTranslation("credit")
+  const list = order.reminders ?? []
+  const log = status.reminders?.emailsLogPath ? status.reminders.emailsLogPath.split(":order_id").join(encodeURIComponent(order.order_id)) : null
+  return (
+    <div className="flex min-w-[180px] flex-col items-start gap-y-1">
+      {list.length === 0 ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("ui.remindersNone")}
+        </Text>
+      ) : (
+        list.map((r, i) => (
+          <span key={`${r.at}-${i}`} className="flex flex-wrap items-center gap-1">
+            <Badge size="2xsmall" color={!r.ok ? "red" : r.overdue ? "orange" : "blue"}>
+              {i + 1}. {r.stage}
+            </Badge>
+            <Text size="xsmall" className="text-ui-fg-subtle">
+              {date(r.at)}
+              {r.manual ? `, ${t("ui.remindersManual")}` : ""}
+              {!r.ok ? `, ${t("ui.remindersFailed")}` : ""}
+            </Text>
+          </span>
+        ))
+      )}
+      {order.next_reminder ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {order.next_reminder.at ? t("ui.remindersNext", { stage: order.next_reminder.stage, date: date(order.next_reminder.at) }) : t("ui.remindersNextNoDate", { stage: order.next_reminder.stage })}
+        </Text>
+      ) : null}
+      {order.reminders_note ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {order.reminders_note}
+        </Text>
+      ) : null}
+      <span className="flex flex-wrap items-center gap-x-2">
+        {log && list.length > 0 ? (
+          <Link to={log} className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:underline">
+            {t("ui.remindersLog")}
+            <ArrowUpRightMini />
+          </Link>
+        ) : null}
+        {status.reminders?.send && !order.no_due_date && !order.reminders_note ? (
+          <Button size="small" variant="transparent" className="px-1" onClick={onRemind}>
+            <EnvelopeSolid />
+            {t("ui.remind")}
+          </Button>
+        ) : null}
+      </span>
+    </div>
+  )
+}
+
+/* Preview first: who gets it, the subject and the rendered e-mail; it goes only on Send. */
+function ReminderDrawer({ order, onClose }: { order: CreditOrderDto; onClose: () => void }) {
+  const { t } = useTranslation("credit")
+  const preview = useReminderPreview(order.order_id)
+  const send = useSendReminder()
+  const p = preview.data
+  const submit = async () => {
+    try {
+      const r = await send.mutateAsync(order.order_id)
+      toast.success(t("ui.preview.sent", { stage: r.stage }))
+      onClose()
+    } catch (err) {
+      toast.error(t("toast.error", { error: errorMessage(err) }))
+    }
+  }
+  return (
+    <Drawer open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <Drawer.Content className="max-w-3xl">
+        <Drawer.Header>
+          <Drawer.Title>
+            {t("ui.preview.title")} #{order.display_id ?? "?"}
+          </Drawer.Title>
+          <Drawer.Description>{t("ui.preview.subtitle")}</Drawer.Description>
+        </Drawer.Header>
+        <Drawer.Body className="flex flex-col gap-y-3 overflow-y-auto">
+          {preview.isLoading ? <KitLoading label={t("ui.preview.loading")} /> : null}
+          {preview.isError ? (
+            <InlineTip variant="error" label={t("ui.preview.title")}>
+              {errorMessage(preview.error)}
+            </InlineTip>
+          ) : null}
+          {p ? (
+            <>
+              {p.warning ? (
+                <InlineTip variant="warning" label={t("ui.preview.title")}>
+                  {p.warning}
+                </InlineTip>
+              ) : null}
+              <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1.5">
+                <Text size="small" className="text-ui-fg-muted">
+                  {t("ui.preview.to")}
+                </Text>
+                <Text size="small" className="font-mono">
+                  {p.to}
+                </Text>
+                <Text size="small" className="text-ui-fg-muted">
+                  {t("ui.preview.subject")}
+                </Text>
+                <Text size="small" weight="plus">
+                  {p.subject}
+                </Text>
+                <Text size="small" className="text-ui-fg-muted">
+                  {t("ui.preview.stage")}
+                </Text>
+                <span>
+                  <Badge size="2xsmall" color="orange">
+                    {p.stage}
+                  </Badge>
+                </span>
+              </div>
+              <iframe title={p.subject} sandbox="" srcDoc={p.html} className="h-[60vh] w-full rounded-md border border-ui-border-base bg-white" />
+            </>
+          ) : null}
+        </Drawer.Body>
+        <Drawer.Footer>
+          <Button size="small" variant="secondary" onClick={onClose}>
+            {t("ui.preview.cancel")}
+          </Button>
+          <Button size="small" disabled={!p} isLoading={send.isPending} onClick={() => void submit()}>
+            <EnvelopeSolid />
+            {t("ui.preview.send")}
+          </Button>
+        </Drawer.Footer>
+      </Drawer.Content>
+    </Drawer>
   )
 }
 
 export const config = defineRouteConfig({
   label: "Credit",
+  translationNs: "credit",
   icon: CreditIcon,
 })
 

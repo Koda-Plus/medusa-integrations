@@ -3,6 +3,8 @@ import { integrationEn } from "../../modules/credit/lib/integration-texts"
 
 const en = {
   nav: "Credit",
+  /* The sidebar entry (route config label, translationNs credit). */
+  Credit: "Credit",
   title: "Trade Credit",
   view: {
     panel: "Panel",
@@ -115,6 +117,25 @@ const en = {
     daysLate: "{{days}} days late",
     markPaid: "Settle",
     markPaidHint: "Open the order to book the payment",
+    reminders: "Reminders",
+    remindersNone: "none sent yet",
+    remindersNext: "next: {{stage}}, {{date}}",
+    remindersNextNoDate: "next: {{stage}}",
+    remindersManual: "by hand",
+    remindersFailed: "not sent",
+    remindersLog: "In E-mails",
+    remind: "Send a reminder",
+    preview: {
+      title: "Payment reminder",
+      subtitle: "Check who gets it and what it says. It goes only after you send it.",
+      to: "To",
+      subject: "Subject",
+      stage: "Stage",
+      loading: "Preparing the e-mail",
+      send: "Send the reminder",
+      cancel: "Cancel",
+      sent: "Reminder sent ({{stage}})",
+    },
   },
   toast: {
     saved: "Saved",

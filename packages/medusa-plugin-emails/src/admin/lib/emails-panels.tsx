@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { PaperPlane } from "@medusajs/icons"
+import { ArrowUpRightMini, PaperPlane } from "@medusajs/icons"
+import { Link } from "react-router-dom"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { OrderLink, ResendLink } from "./emails-links"
@@ -258,10 +259,32 @@ function filterCount(status: StatusResponse, f: MessageFilter): number | undefin
 }
 
 /** The log narrowed by a deep link: one order, one customer, a window of time. */
+/** The admin page that acts on a message of a template group (option templateGroups link), with its order or customer filled in. */
+function GroupLink({ group, message }: { group: { link: { label: string; path: string } | null } | null; message: MessageDto }) {
+  if (!group?.link) return null
+  let path = group.link.path
+  if (path.includes(":order_id")) {
+    if (!message.orderId) return null
+    path = path.split(":order_id").join(encodeURIComponent(message.orderId))
+  }
+  if (path.includes(":customer_id")) {
+    if (!message.customerId) return null
+    path = path.split(":customer_id").join(encodeURIComponent(message.customerId))
+  }
+  return (
+    <Link to={path} className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:underline">
+      {group.link.label}
+      <ArrowUpRightMini />
+    </Link>
+  )
+}
+
 export interface MessagesScope {
   orderId: string
   customerId: string
   since: MessageWindow | ""
+  /** A template group of the log (option templateGroups), "" for all templates. */
+  group?: string
 }
 
 /** The message in Resend's dashboard, when Resend sent it (the plugin's provider, or the store's own Resend provider in app mode). */
@@ -280,6 +303,7 @@ export function MessagesSection({
   scope,
   initialQuery = "",
   onClearScope,
+  onGroup,
 }: {
   status: StatusResponse
   lang: string
@@ -289,16 +313,20 @@ export function MessagesSection({
   scope?: MessagesScope
   initialQuery?: string
   onClearScope?: () => void
+  onGroup?: (key: string) => void
 }) {
   const { t } = useTranslation("emails")
   const demo = status.mode === "demo"
+  const groups = status.templateGroups ?? []
+  const group = groups.find((g) => g.key === scope?.group) ?? null
+  const groupOf = (template: string) => groups.find((g) => g.templates.includes(template)) ?? null
   const [search, setSearch] = useState(initialQuery)
   useEffect(() => setSearch(initialQuery), [initialQuery])
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
-  useEffect(() => setPage(0), [filter, q, scope?.orderId, scope?.customerId, scope?.since])
-  const messages = useEmailsMessages({ filter, q, orderId: scope?.orderId, customerId: scope?.customerId, since: scope?.since, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
-  const scoped = Boolean(scope && (scope.orderId || scope.customerId || scope.since))
+  useEffect(() => setPage(0), [filter, q, scope?.orderId, scope?.customerId, scope?.since, scope?.group])
+  const messages = useEmailsMessages({ filter, q, template: group ? group.templates.join(",") : "", orderId: scope?.orderId, customerId: scope?.customerId, since: scope?.since, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const scoped = Boolean(scope && (scope.orderId || scope.customerId || scope.since || group))
   const rows = messages.data?.messages ?? []
   const count = messages.data?.count ?? 0
   const byKey = useMemo(() => new Map(status.templates.map((x) => [x.key, x])), [status.templates])
@@ -337,6 +365,17 @@ export function MessagesSection({
               {t(`log.scope.since.${scope.since}`)}
             </Badge>
           ) : null}
+          {group ? (
+            <Badge size="2xsmall" color="purple">
+              {group.label}
+            </Badge>
+          ) : null}
+          {group?.link && !group.link.path.includes(":") ? (
+            <Link to={group.link.path} className="txt-compact-small-plus inline-flex items-center gap-x-1 text-ui-fg-interactive hover:underline">
+              {group.link.label}
+              <ArrowUpRightMini />
+            </Link>
+          ) : null}
           {onClearScope ? (
             <Button size="small" variant="transparent" onClick={onClearScope}>
               {t("log.scope.clear")}
@@ -345,7 +384,12 @@ export function MessagesSection({
         </div>
       ) : null}
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: scoped ? undefined : filterCount(status, f) }))} />
+        <div className="flex flex-col gap-2">
+          <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: scoped ? undefined : filterCount(status, f) }))} />
+          {groups.length && onGroup ? (
+            <FilterPills<string> value={group?.key ?? ""} onChange={onGroup} options={[{ value: "", label: t("log.group.all") }, ...groups.map((g) => ({ value: g.key, label: g.label }))]} />
+          ) : null}
+        </div>
         <div className="w-full lg:w-72">
           <Input size="small" type="search" placeholder={t(status?.showAddresses ? "log.searchAddresses" : "log.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -387,6 +431,11 @@ export function MessagesSection({
                           {templateLabel(byKey.get(m.template), lang, m.template)}
                         </Text>
                         <KindBadge kind={m.kind} />
+                        {m.variant && groupOf(m.template)?.variantLabels?.[m.variant] ? (
+                          <Badge size="2xsmall" color={m.variant === "overdue" ? "red" : "blue"}>
+                            {groupOf(m.template)!.variantLabels![m.variant]}
+                          </Badge>
+                        ) : null}
                       </span>
                       <Text size="xsmall" className="font-mono text-ui-fg-muted">
                         {m.template}
@@ -395,7 +444,12 @@ export function MessagesSection({
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap font-mono txt-compact-small">{m.recipient ?? ""}</Table.Cell>
-                  <Table.Cell>{m.orderId ? <OrderLink id={m.orderId} open={t("log.openOrder")} /> : null}</Table.Cell>
+                  <Table.Cell>
+                    <div className="flex flex-col items-start gap-y-1">
+                      {m.orderId ? <OrderLink id={m.orderId} open={t("log.openOrder")} /> : null}
+                      <GroupLink group={groupOf(m.template)} message={m} />
+                    </div>
+                  </Table.Cell>
                   <Table.Cell className="max-w-md">
                     <Text size="small" className="line-clamp-2 break-words">
                       {m.subject ?? ""}

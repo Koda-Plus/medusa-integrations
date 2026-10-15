@@ -23,6 +23,8 @@ import type { MessageFilter } from "./contract"
 export interface HistoryQuery {
   filter: MessageFilter
   template?: string | null
+  /** Several templates at once (a template group of the log). */
+  templates?: string[] | null
   orderId?: string | null
   since?: Date | null
   /** A full address searched for (the `q` of the log when it is an address). */
@@ -187,7 +189,10 @@ function historyWhere(q: HistoryQuery, ownTable: boolean): { sql: string; bindin
     }
     parts.push(`(${or.join(" or ")})`)
   }
-  if (q.template) {
+  if (q.templates && q.templates.length) {
+    parts.push(`n.template in (${q.templates.map(() => "?").join(", ")})`)
+    b.push(...q.templates)
+  } else if (q.template) {
     parts.push(`n.template = ?`)
     b.push(q.template)
   }
@@ -244,7 +249,10 @@ function ownWhere(q: HistoryQuery): { sql: string; bindings: unknown[] } {
     }
     parts.push(`(${or.join(" or ")})`)
   }
-  if (q.template) {
+  if (q.templates && q.templates.length) {
+    parts.push(`m.template in (${q.templates.map(() => "?").join(", ")})`)
+    b.push(...q.templates)
+  } else if (q.template) {
     parts.push(`m.template = ?`)
     b.push(q.template)
   }

@@ -253,6 +253,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     showAddresses: o.showAddresses,
     delivery: await deliverySummary(o.deliveryKey),
     campaigns: o.campaigns.map((c) => ({ key: c.key, label: c.label })),
+    templateGroups: o.templateGroups.map((g) => ({ key: g.key, label: g.label, templates: g.templates, variantLabels: g.variant ? g.variant.labels : null, link: g.link })),
   }
 }
 

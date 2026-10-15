@@ -164,6 +164,21 @@ export interface EmailsPluginOptions {
    * says which mailing caused a block.
    */
   campaigns?: Array<{ key: string; label: string; tag?: { name: string; value: string } }>
+  /**
+   * Named sets of templates the log can be narrowed to (a pill above the log,
+   * `?group=<key>` in the URL), for example the store's payment reminders.
+   * `variant` names a field of the message data that tells its stage (shown
+   * as a badge, e.g. kind: upcoming / overdue); `link` points to the admin
+   * page that acts on such a message (`:order_id` and `:customer_id` are
+   * filled from the message).
+   */
+  templateGroups?: Array<{
+    key: string
+    label: string
+    templates: string[]
+    variant?: { field: string; labels: Record<string, string> }
+    link?: { label: string; path: string }
+  }>
 }
 
 export interface ResolvedBrand {
@@ -202,6 +217,8 @@ export interface ResolvedEmailsOptions {
   deliveryKey: string | null
   /** Mailings outside the shop (option campaigns). */
   campaigns: Array<{ key: string; label: string; tag: { name: string; value: string } | null }>
+  /** Named sets of templates for the log (option templateGroups). */
+  templateGroups: TemplateGroup[]
   defaultLocale: EmailLocale
   timeZone: string
   storefrontUrl: string | null
@@ -409,6 +426,7 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     campaigns: (Array.isArray(o.campaigns) ? o.campaigns : [])
       .filter((c) => c && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(String(c.key ?? "")) && str(c.label))
       .map((c) => ({ key: String(c.key), label: str(c.label).slice(0, 80), tag: c.tag && str(c.tag.name) && str(c.tag.value) ? { name: str(c.tag.name), value: str(c.tag.value) } : null })),
+    templateGroups: resolveTemplateGroups(o.templateGroups),
     defaultLocale,
     timeZone,
     storefrontUrl,
@@ -487,4 +505,37 @@ export function optionsFingerprint(o: ResolvedEmailsOptions): Record<string, str
 export function fingerprintDifferences(a: Record<string, string>, b: Record<string, string>): string[] {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)])
   return [...keys].filter((k) => a[k] !== b[k]).sort()
+}
+
+export interface TemplateGroup {
+  key: string
+  label: string
+  templates: string[]
+  variant: { field: string; labels: Record<string, string> } | null
+  link: { label: string; path: string } | null
+}
+
+/** Option templateGroups: keys, templates and an admin path (relative, no scheme) that pass the checks. */
+function resolveTemplateGroups(v: unknown): TemplateGroup[] {
+  const KEY = /^[a-z0-9][a-z0-9._:-]{0,63}$/i
+  const text = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "")
+  return (Array.isArray(v) ? v : [])
+    .map((g: any) => {
+      const key = text(g?.key, 64)
+      const label = text(g?.label, 80)
+      const templates = (Array.isArray(g?.templates) ? g.templates : []).map((t: unknown) => text(t, 64)).filter((t: string) => KEY.test(t)).slice(0, 20)
+      if (!KEY.test(key) || !label || templates.length === 0) return null
+      const field = text(g?.variant?.field, 40)
+      const labels: Record<string, string> = {}
+      for (const [k, l] of Object.entries((g?.variant?.labels ?? {}) as Record<string, unknown>)) if (text(l, 60)) labels[text(k, 40)] = text(l, 60)
+      const path = text(g?.link?.path, 200)
+      return {
+        key,
+        label,
+        templates,
+        variant: /^[a-z0-9_]{1,40}$/i.test(field) ? { field, labels } : null,
+        link: text(g?.link?.label, 60) && path.startsWith("/") && !path.startsWith("//") ? { label: text(g.link.label, 60), path } : null,
+      }
+    })
+    .filter((g): g is TemplateGroup => g !== null)
 }

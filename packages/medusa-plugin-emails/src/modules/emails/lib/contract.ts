@@ -133,6 +133,8 @@ export interface StatusResponse {
   delivery?: { suppressed: number; error: string | null; readAt: string | null } | null
   /** Mailings outside the shop (option campaigns): their messages are rows of kind "campaign". */
   campaigns?: Array<{ key: string; label: string }>
+  /** Named sets of templates for the log (option templateGroups). */
+  templateGroups?: Array<{ key: string; label: string; templates: string[]; variantLabels: Record<string, string> | null; link: { label: string; path: string } | null }>
 }
 
 export type MessageStatusDto = "sending" | "sent" | "failed" | "unknown" | "skipped"
@@ -166,6 +168,8 @@ export interface MessageDto {
   createdAt: string
   requestedBy: string | null
   hasBody: boolean
+  /** The stage of the message in its template group (option templateGroups variant), e.g. "overdue". */
+  variant?: string | null
   /** App mode: "medusa" for a message read from Medusa's history, "plugin" for the plugin's own row. */
   source?: "plugin" | "medusa"
   /** What happened after the provider took it (Resend last_event), when the plugin can read it (option deliveryKey). */
