@@ -157,6 +157,9 @@ const en = {
     turnedOff: "{{name}} is off",
   },
   log: {
+    group: {
+      all: "All templates",
+    },
     openOrder: "Open the order",
     openResend: "Open in Resend",
     title: "Sent e-mails",

@@ -49,6 +49,19 @@ export interface CreditOrderDto {
   placed_by?: string | null
   /** Store mode: no due date yet (for example no invoice), counted in the limit. */
   no_due_date?: boolean
+  /** Store mode: the payment reminders sent, the next one and why there are none. */
+  reminders?: Array<{ at: string; stage: string; ok: boolean; manual?: boolean; overdue?: boolean }>
+  next_reminder?: { at: string | null; stage: string } | null
+  reminders_note?: string | null
+}
+
+/** GET /admin/credit/orders/:id/reminder: the reminder before it is sent. */
+export interface ReminderPreviewResponse {
+  to: string
+  subject: string
+  html: string
+  stage: string
+  warning: string | null
 }
 
 /** The whole status the Credit page renders in one call. */
@@ -62,6 +75,8 @@ export interface StatusResponse {
   maxNetDays?: number
   ruleText?: string | null
   markPaidPath?: string | null
+  /** Store mode: payment reminders can be sent from the page, and where the e-mail log of an order is. */
+  reminders?: { send: boolean; emailsLogPath: string | null }
   counts: {
     limits: number
     blocked: number

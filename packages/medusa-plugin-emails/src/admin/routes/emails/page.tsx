@@ -48,11 +48,19 @@ const EmailsPage = () => {
     orderId: (params.get("order_id") ?? "").slice(0, 80),
     customerId: (params.get("customer_id") ?? "").slice(0, 80),
     since: (MESSAGE_WINDOWS.includes(askedSince as MessageWindow) ? askedSince : "") as MessageWindow | "",
+    group: (params.get("group") ?? "").slice(0, 64),
+  }
+  /* A template group (option templateGroups) is kept in the URL: other pages link to ?group=. */
+  const setGroup = (key: string) => {
+    const next = new URLSearchParams(params)
+    if (key) next.set("group", key)
+    else next.delete("group")
+    setParams(next, { replace: true })
   }
   const initialQuery = (params.get("q") ?? "").slice(0, 254)
   const clearScope = () => {
     const next = new URLSearchParams(params)
-    for (const k of ["order_id", "customer_id", "since", "q", "filter"]) next.delete(k)
+    for (const k of ["order_id", "customer_id", "since", "q", "filter", "group"]) next.delete(k)
     setParams(next, { replace: true })
     setFilter("all")
   }
@@ -147,7 +155,7 @@ const EmailsPage = () => {
       {s && nav.view === "panel" ? (
         <>
           {bounces ? <BouncesSection lang={lang} onClose={() => setBounces(false)} /> : null}
-          <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} scope={scope} initialQuery={initialQuery} onClearScope={clearScope} />
+          <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} scope={scope} initialQuery={initialQuery} onClearScope={clearScope} onGroup={setGroup} />
           <ByTemplateSection status={s} lang={lang} />
         </>
       ) : null}

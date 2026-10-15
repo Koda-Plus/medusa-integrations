@@ -57,6 +57,9 @@ export function storeOrderToDto(o: StoreCreditOrder): CreditOrderDto {
     reminded_at: o.reminded_at ?? null,
     placed_by: o.placed_by ?? null,
     no_due_date: !o.due_at,
+    reminders: (o.reminders ?? []).map((r) => ({ at: r.at, stage: r.stage, ok: r.ok, manual: r.manual === true, overdue: r.overdue === true })),
+    next_reminder: o.next_reminder ?? null,
+    reminders_note: o.reminders_note ?? null,
   }
 }
 
@@ -73,6 +76,7 @@ export async function storeStatus(scope: unknown, store: CreditStoreAdapter): Pr
     maxNetDays: store.maxNetDays ?? 365,
     ruleText: store.ruleText ?? null,
     markPaidPath: store.markPaidPath ?? null,
+    reminders: { send: Boolean(store.reminder), emailsLogPath: store.emailsLogPath ?? null },
     counts: {
       limits: limits.filter((l) => !l.no_limit || l.net_days > 0).length,
       blocked: limits.filter((l) => l.blocked).length,

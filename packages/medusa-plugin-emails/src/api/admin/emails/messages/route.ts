@@ -63,8 +63,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   }
   const where: Record<string, unknown> = messageFilters(MESSAGE_FILTERS.includes(filterParam) ? filterParam : "all", svc.isDemo())
   const and: Array<Record<string, unknown>> = []
-  const template = strParam(req.query.template)
-  if (template) where.template = template.slice(0, 64)
+  const templates = templatesOf(req.query.template)
+  if (templates.length === 1) where.template = templates[0]
+  else if (templates.length > 1) where.template = { $in: templates }
   const orderId = strParam(req.query.order_id)
   if (orderId) where.order_id = orderId.slice(0, 80)
   const since = sinceOf(req.query.since)
@@ -109,7 +110,7 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
   const o = svc.getOptions()
   try {
     const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as SqlRaw
-    const template = strParam(req.query.template).slice(0, 64) || null
+    const templates = templatesOf(req.query.template)
     const orderId = strParam(req.query.order_id).slice(0, 80) || null
     const since = sinceOf(req.query.since)
     const customerParam = strParam(req.query.customer_id)
@@ -137,7 +138,7 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
       pg,
       {
         filter: page.filter,
-        template,
+        templates,
         orderId,
         since,
         email,
@@ -158,7 +159,7 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
     const labels = templateLabels(o)
     const events = reader ? await reader.eventsFor(rows.map((r) => r.external_id)).catch(() => new Map()) : new Map()
     const body: MessagesResponse = {
-      messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), source: r.source, delivery: r.external_id ? events.get(r.external_id) ?? null : null })),
+      messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), source: r.source, delivery: r.external_id ? events.get(r.external_id) ?? null : null, variant: variantOf(o.templateGroups, r) })),
       count,
       limit: page.limit,
       offset: page.offset,
@@ -167,4 +168,22 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
   } catch (err) {
     serverError(req, res, err, "The send log cannot be read. The server log has the details.", 503)
   }
+}
+
+/** `template`: one key, or several separated by commas (a template group of the log). */
+function templatesOf(v: unknown): string[] {
+  return strParam(v)
+    .split(",")
+    .map((t) => t.trim().slice(0, 64))
+    .filter((t) => /^[a-z0-9][a-z0-9._:-]{0,63}$/i.test(t))
+    .slice(0, 20)
+}
+
+/** The stage of a message of a template group: its variant field in the message data. */
+function variantOf(groups: Array<{ templates: string[]; variant: { field: string } | null }>, row: { template?: string | null; data?: unknown }): string | null {
+  const g = groups.find((x) => x.variant && x.templates.includes(String(row.template ?? "")))
+  if (!g?.variant) return null
+  const data = (row.data && typeof row.data === "object" ? row.data : {}) as Record<string, unknown>
+  const v = data[g.variant.field]
+  return typeof v === "string" && v.length <= 40 ? v : null
 }
