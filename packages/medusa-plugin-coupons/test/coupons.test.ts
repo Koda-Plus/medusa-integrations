@@ -145,11 +145,20 @@ test("the rules of real promotions read by name: a collection, delivery types, a
   assert.equal(couponSentence(cod, names, translator(en), fmt, "pln"), "12.59 PLN off delivery: Kurier and Paczkomat, in the Sklep sales channel, for everyone, applied by itself, no code, with no end date, no limit of uses.")
 })
 
+test("a store rule takes the place of a marker value, or follows the sentence", () => {
+  const marker = toCouponDto({ id: "p7", code: "7DETAL6", application_method: { type: "percentage", target_type: "items", allocation: "each", value: 0.001, target_rules: [{ attribute: "items.product.collection_id", operator: "in", values: ["pcol_1"] }] } }, undefined, NOW)
+  const names = { ...NAMES, collections: { pcol_1: "Detal" }, storeRules: { p7: { text: "Za każde 7 sztuk 1 gratis.", replacesDiscount: true }, p8: { text: "Nie łączy się z DETAL15", replacesDiscount: false } } }
+  assert.equal(couponSentence(marker, names, translator(en), fmt, "pln"), "Za każde 7 sztuk 1 gratis. For everyone, with the code 7DETAL6, with no end date, no limit of uses.")
+  const plain = toCouponDto({ id: "p8", code: "DETAL12", application_method: { type: "percentage", target_type: "items", allocation: "each", value: 12, target_rules: [{ attribute: "items.product.collection_id", operator: "in", values: ["pcol_1"] }] } }, undefined, NOW)
+  assert.equal(couponSentence(plain, names, translator(en), fmt, "pln"), "12% off products of the Detal collection, for everyone, with the code DETAL12, with no end date, no limit of uses. The store's rule: Nie łączy się z DETAL15.")
+})
+
 test("options: defaults, and bad values fall back with a problem named", () => {
-  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, problems: [] })
+  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, problems: [] })
   const o = resolveOptions({ currencyCode: "euro", codePrefix: "to long prefix!", memberGroupIds: ["ok_1", 5 as unknown as string] })
   assert.equal(o.currencyCode, "pln")
   assert.equal(o.codePrefix, null)
   assert.deepEqual(o.memberGroupIds, ["ok_1"])
   assert.equal(o.problems.length, 3)
+  assert.equal(resolveOptions({ storeRules: "x" as never }).problems.length, 1)
 })

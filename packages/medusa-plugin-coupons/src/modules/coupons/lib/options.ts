@@ -21,12 +21,29 @@ export interface CouponsPluginOptions {
   memberGroupIds?: string[]
   /** A prefix for the codes the creator suggests ("SHOP" gives SHOP-AUTUMN15). Default none. */
   codePrefix?: string
+  /**
+   * The store's own rules of its promotions, for stores whose cart applies a
+   * promotion with logic of its own (a free item for every seven, a price
+   * list as the floor) while Medusa keeps only a marker of it (often a
+   * 0.001% value, because Medusa takes no zero). Given the promotion ids,
+   * answer a plain description per id; `replacesDiscount` says Medusa's
+   * value is only that marker, so the sentence shows the store's rule in its
+   * place. Never throws for the plugin: an error reads as no rules.
+   */
+  storeRules?: (scope: unknown, promotionIds: string[]) => Promise<Record<string, StoreRule>>
+}
+
+/** A promotion's rule as the store applies it, in one or two plain sentences. */
+export interface StoreRule {
+  text: string
+  replacesDiscount?: boolean
 }
 
 export interface ResolvedCouponsOptions {
   currencyCode: string
   memberGroupIds: string[]
   codePrefix: string | null
+  storeRules: CouponsPluginOptions["storeRules"] | null
   problems: string[]
 }
 
@@ -45,5 +62,7 @@ export function resolveOptions(input: CouponsPluginOptions | undefined | null): 
   const prefixRaw = typeof o.codePrefix === "string" ? o.codePrefix.trim().toUpperCase() : ""
   const codePrefix = /^[A-Z0-9]{1,12}$/.test(prefixRaw) ? prefixRaw : null
   if (o.codePrefix !== undefined && !codePrefix) problems.push("codePrefix (letters and digits, at most 12)")
-  return { currencyCode, memberGroupIds, codePrefix, problems }
+  const storeRules = typeof o.storeRules === "function" ? o.storeRules : null
+  if (o.storeRules !== undefined && !storeRules) problems.push("storeRules (a function)")
+  return { currencyCode, memberGroupIds, codePrefix, storeRules, problems }
 }

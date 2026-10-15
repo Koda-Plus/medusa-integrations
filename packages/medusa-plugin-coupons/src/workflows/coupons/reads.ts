@@ -11,7 +11,7 @@
 import { DETAIL_ORDERS, EXPIRING_DAYS, LIST_LIMIT } from "../../modules/coupons/lib/constants"
 import type { CouponDto, CouponOrderDto, CouponStats, CouponTiles, CustomerHit, NameMaps } from "../../modules/coupons/lib/contract"
 import { isForCustomer, reachesProduct, toCouponDto, type PromotionLike } from "../../modules/coupons/lib/describe"
-import { customerModule, num, queryOf, sqlOf, str, type Scope } from "./runtime"
+import { customerModule, num, queryOf, sqlOf, str, type Scope, couponsService } from "./runtime"
 
 export const PROMOTION_FIELDS = [
   "id",
@@ -169,7 +169,17 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
     nameMap(scope, "sales_channel", ids("salesChannelIds"), (r) => str(r.name), ["name"]),
     nameMap(scope, "region", ids("regionIds"), (r) => str(r.name), ["name"]),
   ])
-  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg }
+  /* The store's own rules (option storeRules), never a reason for the page to fail. */
+  let storeRules: NameMaps["storeRules"] = {}
+  const resolver = couponsService(scope).getOptions().storeRules
+  if (resolver && coupons.length) {
+    try {
+      storeRules = (await resolver(scope, [...new Set(coupons.map((c) => c.id))])) ?? {}
+    } catch {
+      storeRules = {}
+    }
+  }
+  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, storeRules }
 }
 
 /* ------------------------------------------------------------------ */

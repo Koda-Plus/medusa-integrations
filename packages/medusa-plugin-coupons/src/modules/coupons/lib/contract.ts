@@ -89,6 +89,8 @@ export interface NameMaps {
   shippingOptions?: Record<string, string>
   salesChannels?: Record<string, string>
   regions?: Record<string, string>
+  /** The store's own rules of its promotions, by promotion id (option storeRules). */
+  storeRules?: Record<string, { text: string; replacesDiscount?: boolean }>
 }
 
 export interface CouponTiles {

@@ -38,6 +38,7 @@ const pl: typeof en = {
     filter: { all: "Wszystkie", active: "Aktywne", scheduled: "Zaplanowane", ended: "Zakończone", paused: "Wstrzymane", automatic: "Automatyczne", expiring: "Kończą się" },
   },
   sentence: {
+    storeRule: "Zasada sklepu: {{text}}",
     percentOrder: "{{value}}% rabatu na całe zamówienie",
     fixedOrder: "{{amount}} rabatu od zamówienia",
     freeShipping: "darmowa dostawa",
