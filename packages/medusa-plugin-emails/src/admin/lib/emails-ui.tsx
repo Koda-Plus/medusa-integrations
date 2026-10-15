@@ -110,7 +110,8 @@ export function MessageStatusBadge({ message, demo }: { message: Pick<MessageDto
 
 export function KindBadge({ kind }: { kind: string }) {
   const { t } = useTranslation("emails")
-  if (kind === "event") return null
+  /* Where a message came from (the store's provider, Medusa's history) says nothing to the office: only test and demo sends are marked. */
+  if (kind === "event" || kind === "app" || kind === "medusa") return null
   const tone: Record<string, "blue" | "purple" | "grey" | "orange"> = { test: "blue", seed: "purple", job: "grey", app: "orange", medusa: "grey" }
   return (
     <Badge size="2xsmall" color={tone[kind] ?? "grey"}>
