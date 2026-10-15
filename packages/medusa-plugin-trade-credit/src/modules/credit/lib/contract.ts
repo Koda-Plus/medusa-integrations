@@ -49,6 +49,8 @@ export interface CreditOrderDto {
   placed_by?: string | null
   /** Store mode: no due date yet (for example no invoice), counted in the limit. */
   no_due_date?: boolean
+  /** Store mode: where the document opens. */
+  document_url?: string | null
   /** Store mode: the payment reminders sent, the next one and why there are none. */
   reminders?: Array<{ at: string; stage: string; ok: boolean; manual?: boolean; overdue?: boolean }>
   next_reminder?: { at: string | null; stage: string } | null
@@ -77,6 +79,9 @@ export interface StatusResponse {
   markPaidPath?: string | null
   /** Store mode: payment reminders can be sent from the page, and where the e-mail log of an order is. */
   reminders?: { send: boolean; emailsLogPath: string | null }
+  /** Store mode: the service of the documents (link next to the order) and whether an order can be hidden (a test order). */
+  documentSource?: { name: string; icon: string | null } | null
+  canHideOrder?: boolean
   counts: {
     limits: number
     blocked: number

@@ -125,6 +125,16 @@ const en = {
     remindersFailed: "not sent",
     remindersLog: "In E-mails",
     remind: "Send a reminder",
+    openOrder: "Open the order",
+    openIn: "Open in {{name}}",
+    hide: {
+      button: "Test order",
+      hint: "Take this order off the credit page for good (a test order)",
+      title: "Hide order #{{id}}?",
+      text: "The order is marked as a test order and leaves the credit page, the debt and the reminders. Nothing is deleted: the documents in the invoicing service stay and are handled there.",
+      confirm: "Hide",
+      done: "Order #{{id}} hidden",
+    },
     preview: {
       title: "Payment reminder",
       subtitle: "Check who gets it and what it says. It goes only after you send it.",

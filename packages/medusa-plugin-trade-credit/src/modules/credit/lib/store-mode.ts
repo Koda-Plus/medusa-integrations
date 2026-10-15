@@ -53,6 +53,7 @@ export function storeOrderToDto(o: StoreCreditOrder): CreditOrderDto {
     unpaid_amount: round2(o.unpaid_amount),
     overdue_days: o.overdue_days,
     document: o.document ?? null,
+    document_url: o.document_url ?? null,
     payment_label: o.payment_label ?? null,
     reminded_at: o.reminded_at ?? null,
     placed_by: o.placed_by ?? null,
@@ -77,6 +78,8 @@ export async function storeStatus(scope: unknown, store: CreditStoreAdapter): Pr
     ruleText: store.ruleText ?? null,
     markPaidPath: store.markPaidPath ?? null,
     reminders: { send: Boolean(store.reminder), emailsLogPath: store.emailsLogPath ?? null },
+    documentSource: store.documentSource ? { name: store.documentSource.name, icon: store.documentSource.icon ?? null } : null,
+    canHideOrder: typeof store.hideOrder === "function",
     counts: {
       limits: limits.filter((l) => !l.no_limit || l.net_days > 0).length,
       blocked: limits.filter((l) => l.blocked).length,

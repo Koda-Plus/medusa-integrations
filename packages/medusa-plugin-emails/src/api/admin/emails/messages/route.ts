@@ -93,7 +93,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     } as never)) as unknown as [MessageRow[], number]
     const names = await actorNames(req.scope, rows.map((r) => r.requested_by))
     const labels = templateLabels(svc.getOptions())
-    const body: MessagesResponse = { messages: rows.map((r) => toMessageDto(r, names, labels)), count, limit, offset }
+    const states = await orderStates(req.scope, svc.getOptions().templateGroups, rows)
+    const body: MessagesResponse = { messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), orderState: r.order_id ? states.get(String(r.order_id)) ?? null : null })), count, limit, offset }
     res.json(body)
   } catch (err) {
     serverError(req, res, err, "The send log cannot be read. Did the migrations run (npx medusa db:migrate)? The server log has the details.", 503)
@@ -158,8 +159,9 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
     const names = await actorNames(req.scope, rows.map((r) => r.requested_by))
     const labels = templateLabels(o)
     const events = reader ? await reader.eventsFor(rows.map((r) => r.external_id)).catch(() => new Map()) : new Map()
+    const states = await orderStates(req.scope, o.templateGroups, rows)
     const body: MessagesResponse = {
-      messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), source: r.source, delivery: r.external_id ? events.get(r.external_id) ?? null : null, variant: variantOf(o.templateGroups, r) })),
+      messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), source: r.source, delivery: r.external_id ? events.get(r.external_id) ?? null : null, variant: variantOf(o.templateGroups, r), orderState: r.order_id ? states.get(String(r.order_id)) ?? null : null })),
       count,
       limit: page.limit,
       offset: page.offset,
@@ -186,4 +188,25 @@ function variantOf(groups: Array<{ templates: string[]; variant: { field: string
   const data = (row.data && typeof row.data === "object" ? row.data : {}) as Record<string, unknown>
   const v = data[g.variant.field]
   return typeof v === "string" && v.length <= 40 ? v : null
+}
+
+/** The orders' state now, for the messages of template groups with orderState. A failing store reads as no state. */
+async function orderStates(
+  scope: unknown,
+  groups: Array<{ templates: string[]; orderState: ((scope: unknown, ids: string[]) => Promise<Record<string, { label: string; color: "green" | "red" | "orange" | "grey" | "blue"; hint?: string }>>) | null }>,
+  rows: Array<{ template?: string | null; order_id?: string | null }>,
+): Promise<Map<string, { label: string; color: "green" | "red" | "orange" | "grey" | "blue"; hint?: string }>> {
+  const out = new Map<string, { label: string; color: "green" | "red" | "orange" | "grey" | "blue"; hint?: string }>()
+  for (const g of groups) {
+    if (!g.orderState) continue
+    const ids = [...new Set(rows.filter((r) => r.order_id && g.templates.includes(String(r.template ?? ""))).map((r) => String(r.order_id)))]
+    if (!ids.length) continue
+    try {
+      const got = await g.orderState(scope, ids)
+      for (const [id, v] of Object.entries(got ?? {})) if (v && typeof v.label === "string") out.set(id, v)
+    } catch {
+      /* the store could not tell: the log shows the messages without it */
+    }
+  }
+  return out
 }

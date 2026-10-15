@@ -2,12 +2,12 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useSearchParams } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowUpRightMini, EnvelopeSolid, MagnifyingGlass, PauseSolid, PlaySolid, Plus, XMark } from "@medusajs/icons"
-import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast } from "@medusajs/ui"
+import { ArrowUpRightMini, ArrowUpRightOnBox, EnvelopeSolid, EyeSlash, MagnifyingGlass, PauseSolid, PlaySolid, Plus, XMark } from "@medusajs/icons"
+import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/credit-kit"
 import { usePageView } from "../../lib/credit-guide"
 import { GuideView } from "../../lib/credit-guide-view"
-import { errorMessage, useCreditStatus, useCustomerSearch, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
+import { errorMessage, useCreditStatus, useCustomerSearch, useHideOrder, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
 import { EmptyLine, SampleBadge, fmtMoney } from "../../lib/credit-ui"
 import type { CreditOrderDto, LimitDto, StatusResponse } from "../../../modules/credit/lib/contract"
@@ -499,7 +499,7 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
   const date = (iso: string | null | undefined) => (iso ? new Intl.DateTimeFormat(lang.startsWith("pl") ? "pl-PL" : "en-GB", { dateStyle: "medium" }).format(new Date(iso)) : "")
   const withReminders = rows.some((o) => o.reminders !== undefined)
   const [reminding, setReminding] = useState<CreditOrderDto | null>(null)
-  const cols = withReminders ? 8 : 7
+  const cols = withReminders ? 7 : 6
   return (
     <>
     <Table>
@@ -508,7 +508,6 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
           <Table.HeaderCell>{t("orders.order")}</Table.HeaderCell>
           <Table.HeaderCell>{t("orders.customer")}</Table.HeaderCell>
           <Table.HeaderCell className="text-right">{t("ui.unpaid")}</Table.HeaderCell>
-          <Table.HeaderCell>{t("ui.document")}</Table.HeaderCell>
           <Table.HeaderCell>{t("orders.due")}</Table.HeaderCell>
           <Table.HeaderCell>{t("orders.stateLabel")}</Table.HeaderCell>
           {withReminders ? <Table.HeaderCell>{t("ui.reminders")}</Table.HeaderCell> : null}
@@ -519,10 +518,7 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
         {rows.map((o) => (
           <Table.Row key={o.id} className="align-top [&_td]:h-auto [&_td]:py-3">
             <Table.Cell>
-              <Link to={`/orders/${o.order_id}`} className="inline-flex items-center gap-x-1 txt-compact-small-plus text-ui-fg-interactive hover:underline">
-                #{o.display_id ?? "?"}
-                <ArrowUpRightMini />
-              </Link>
+              <OrderCell order={o} status={status} />
             </Table.Cell>
             <Table.Cell>
               <Link to={`/customers/${o.customer_id}`} className="txt-compact-small hover:text-ui-fg-interactive">
@@ -541,16 +537,6 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
               {o.unpaid_amount != null && o.unpaid_amount + 0.01 < o.total_amount ? (
                 <Text size="xsmall" className="text-ui-fg-muted">
                   {t("ui.of", { total: money(o.total_amount) })}
-                </Text>
-              ) : null}
-            </Table.Cell>
-            <Table.Cell>
-              <Text size="small" className="font-mono">
-                {o.document ?? "-"}
-              </Text>
-              {o.payment_label ? (
-                <Text size="xsmall" className="text-ui-fg-muted">
-                  {o.payment_label}
                 </Text>
               ) : null}
             </Table.Cell>
@@ -587,11 +573,14 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
               </Table.Cell>
             ) : null}
             <Table.Cell className="text-right">
-              {status.markPaidPath ? (
-                <Link to={status.markPaidPath.replace(":id", o.order_id)} className="txt-compact-small text-ui-fg-interactive hover:underline" title={t("ui.markPaidHint")}>
-                  {t("ui.markPaid")}
-                </Link>
-              ) : null}
+              <div className="flex flex-col items-end gap-y-1">
+                {status.markPaidPath ? (
+                  <Link to={status.markPaidPath.replace(":id", o.order_id)} className="txt-compact-small text-ui-fg-interactive hover:underline" title={t("ui.markPaidHint")}>
+                    {t("ui.markPaid")}
+                  </Link>
+                ) : null}
+                {status.canHideOrder ? <HideOrderButton order={o} /> : null}
+              </div>
             </Table.Cell>
           </Table.Row>
         ))}
@@ -606,6 +595,74 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
     </Table>
     {reminding ? <ReminderDrawer order={reminding} onClose={() => setReminding(null)} /> : null}
     </>
+  )
+}
+
+/** The Medusa mark, in the text colour (the same as on the other Koda Plus pages). */
+function MedusaMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 36 38" fill="none" aria-hidden className={className}>
+      <path d="M30.85 6.16832L22.2453 1.21782C19.4299 -0.405941 15.9801 -0.405941 13.1648 1.21782L4.52043 6.16832C1.74473 7.79208 0 10.802 0 14.0099V23.9505C0 27.198 1.74473 30.1683 4.52043 31.7921L13.1251 36.7822C15.9405 38.4059 19.3903 38.4059 22.2056 36.7822L30.8103 31.7921C33.6257 30.1683 35.3307 27.198 35.3307 23.9505V14.0099C35.41 10.802 33.6653 7.79208 30.85 6.16832ZM17.6852 27.8317C12.8079 27.8317 8.8426 23.8713 8.8426 19C8.8426 14.1287 12.8079 10.1683 17.6852 10.1683C22.5625 10.1683 26.5674 14.1287 26.5674 19C26.5674 23.8713 22.6022 27.8317 17.6852 27.8317Z" fill="currentColor" />
+    </svg>
+  )
+}
+
+/* The order: Medusa (the mark and the number) and, under it, its document in the invoicing service. */
+function OrderCell({ order, status }: { order: CreditOrderDto; status: StatusResponse }) {
+  const { t } = useTranslation("credit")
+  const source = status.documentSource
+  return (
+    <div className="flex min-w-[150px] flex-col items-start gap-y-1.5">
+      <Link to={`/orders/${order.order_id}`} className="group flex items-center gap-x-2" title={t("ui.openOrder")}>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
+          <MedusaMark className="h-3 w-3 text-ui-fg-base" />
+        </span>
+        <span className="txt-compact-small-plus tabular-nums text-ui-fg-interactive group-hover:underline">#{order.display_id ?? "?"}</span>
+      </Link>
+      {order.document ? (
+        order.document_url ? (
+          <a href={order.document_url} target="_blank" rel="noreferrer" className="group flex items-center gap-x-2" title={source ? t("ui.openIn", { name: source.name }) : undefined}>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-ui-bg-component shadow-borders-base">
+              {source?.icon ? <img src={source.icon} alt="" className="h-6 w-6" /> : <ArrowUpRightOnBox className="text-ui-fg-muted" />}
+            </span>
+            <span className="txt-compact-xsmall font-mono text-ui-fg-interactive group-hover:underline">{order.document}</span>
+            <ArrowUpRightOnBox className="text-ui-fg-muted" />
+          </a>
+        ) : (
+          <Text size="xsmall" className="font-mono text-ui-fg-subtle">
+            {order.document}
+          </Text>
+        )
+      ) : null}
+      {order.payment_label ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {order.payment_label}
+        </Text>
+      ) : null}
+    </div>
+  )
+}
+
+/* A test order off the page for good: the store marks it (nothing is deleted), after a confirmation. */
+function HideOrderButton({ order }: { order: CreditOrderDto }) {
+  const { t } = useTranslation("credit")
+  const prompt = usePrompt()
+  const hide = useHideOrder()
+  const run = async () => {
+    const ok = await prompt({ title: t("ui.hide.title", { id: order.display_id ?? "?" }), description: t("ui.hide.text"), confirmText: t("ui.hide.confirm"), cancelText: t("ui.preview.cancel") })
+    if (!ok) return
+    try {
+      await hide.mutateAsync(order.order_id)
+      toast.success(t("ui.hide.done", { id: order.display_id ?? "?" }))
+    } catch (err) {
+      toast.error(t("toast.error", { error: errorMessage(err) }))
+    }
+  }
+  return (
+    <Button size="small" variant="transparent" className="px-1 text-ui-fg-muted" isLoading={hide.isPending} onClick={() => void run()} title={t("ui.hide.hint")}>
+      <EyeSlash />
+      {t("ui.hide.button")}
+    </Button>
   )
 }
 
