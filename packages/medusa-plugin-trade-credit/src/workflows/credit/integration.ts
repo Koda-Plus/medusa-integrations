@@ -3,6 +3,7 @@ import { integrationEn, integrationPl } from "../../modules/credit/lib/integrati
 import { KIT_META } from "../../modules/credit/lib/kit-meta"
 import { integrationRoutes, type SummaryDraft } from "../../modules/credit/lib/kit-routes"
 import { creditSvc, num, str, toLimit } from "../../modules/credit/lib/store"
+import { accountToLimit } from "../../modules/credit/lib/store-mode"
 
 /**
  * koda.integration/1 for Trade Credit: the manifest, one line per customer
@@ -41,6 +42,17 @@ export const creditIntegration = integrationRoutes({
     const out = new Map<string, SummaryDraft>()
     if (entity !== "customer") return out
     const svc = creditSvc(ctx.scope)
+    const store = svc.getOptions?.()?.store
+    if (store) {
+      const accounts = (await store.accounts(ctx.scope)).filter((a) => ids.includes(a.customer_id))
+      const money = (n: number) => ctx.money(n, "pln")
+      for (const a of accounts) {
+        const dto = accountToLimit(a)
+        const draft = customerSummary(a.customer_id, { blocked: dto.blocked, exhausted: dto.exhausted, used_amount: dto.used_amount, limit_amount: dto.limit_amount, remaining_amount: dto.remaining_amount, net_days: dto.net_days }, a.overdue_amount > 0 ? 1 : 0, money)
+        if (draft) out.set(a.customer_id, draft)
+      }
+      return out
+    }
     const limits = await svc.listCreditLimits({ customer_id: ids }, { take: ids.length })
     const overdueRows = await svc.listCreditOrders({ customer_id: ids, state: "overdue" }, { take: ids.length * 20 })
     const overdueOf = new Map<string, number>()
@@ -62,6 +74,11 @@ export const creditIntegration = integrationRoutes({
 
   async count(ctx) {
     const svc = creditSvc(ctx.scope)
+    const store = svc.getOptions?.()?.store
+    if (store) {
+      const accounts = await store.accounts(ctx.scope)
+      return creditCounters({ attention: accounts.filter((a) => a.overdue_amount > 0 || a.blocked || (a.limit_amount != null && a.limit_amount > 0 && a.used_amount >= a.limit_amount)).length })
+    }
     const limits = await svc.listCreditLimits({}, { take: 10_000 })
     const attention = limits.filter((l) => l.blocked === true || (num(l.limit_amount) > 0 && num(l.used_amount) >= num(l.limit_amount))).length
     return creditCounters({ attention })

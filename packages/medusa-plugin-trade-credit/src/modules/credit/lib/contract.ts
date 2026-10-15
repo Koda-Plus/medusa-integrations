@@ -17,6 +17,14 @@ export interface LimitDto {
   exhausted: boolean
   demo: boolean
   updated_at: string
+  /** Store mode: what is overdue on the account, and its oldest overdue order in days. */
+  overdue_amount?: number
+  oldest_overdue_days?: number
+  open_orders?: number
+  /** Store mode: no limit set on the account (only terms). */
+  no_limit?: boolean
+  company?: string | null
+  note?: string | null
 }
 
 /** One order on the customer's account, with its due date. */
@@ -32,18 +40,36 @@ export interface CreditOrderDto {
   paid_at: string | null
   state: CreditOrderState
   demo: boolean
+  /** Store mode: what is still unpaid, days past due, the document the term runs from. */
+  unpaid_amount?: number
+  overdue_days?: number
+  document?: string | null
+  payment_label?: string | null
+  reminded_at?: string | null
+  placed_by?: string | null
+  /** Store mode: no due date yet (for example no invoice), counted in the limit. */
+  no_due_date?: boolean
 }
 
 /** The whole status the Credit page renders in one call. */
 export interface StatusResponse {
   demo: boolean
   enforce: boolean
+  /** "own": the plugin keeps the credit; "store": the page over the credit the store keeps. */
+  mode?: "own" | "store"
+  capabilities?: { block: boolean; pause: boolean }
+  netDayChoices?: number[]
+  maxNetDays?: number
+  ruleText?: string | null
+  markPaidPath?: string | null
   counts: {
     limits: number
     blocked: number
     exhausted: number
     overdue: number
     used_total: number
+    /** Store mode: the overdue amount of all accounts. */
+    overdue_total?: number
   }
   limits: LimitDto[]
   orders: CreditOrderDto[]

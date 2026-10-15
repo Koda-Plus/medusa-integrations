@@ -1,3 +1,5 @@
+import { isStoreAdapter, type CreditStoreAdapter } from "./store-adapter"
+
 /**
  * Options of `@koda-plus/medusa-plugin-trade-credit`, passed in
  * `medusa-config.ts`:
@@ -19,11 +21,18 @@ export interface CreditPluginOptions {
    * keeps selling.
    */
   enforce?: boolean
+  /**
+   * Store mode: the store already keeps trade credit and the plugin is the
+   * page over it (see store-adapter.ts). The plugin then keeps no limits of
+   * its own, records no orders and gates nothing.
+   */
+  store?: CreditStoreAdapter
 }
 
 export interface ResolvedCreditOptions {
   demo: boolean
   enforce: boolean
+  store: CreditStoreAdapter | null
 }
 
 function bool(value: unknown): boolean {
@@ -32,5 +41,6 @@ function bool(value: unknown): boolean {
 
 export function resolveOptions(o: CreditPluginOptions | undefined | null): ResolvedCreditOptions {
   const opts = o && typeof o === "object" ? o : {}
-  return { demo: bool(opts.demo), enforce: bool(opts.enforce) }
+  const store = isStoreAdapter((opts as CreditPluginOptions).store) ? ((opts as CreditPluginOptions).store as CreditStoreAdapter) : null
+  return { demo: bool(opts.demo) && !store, enforce: bool(opts.enforce) && !store, store }
 }
