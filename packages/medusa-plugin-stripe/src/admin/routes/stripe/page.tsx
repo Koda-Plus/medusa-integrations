@@ -204,7 +204,7 @@ function Header({ status, overview, lang, nav }: { status: StripeStatusResponse 
             <ModeBadge color={MODE_COLOR[status.mode]} label={t(`mode.${status.mode}`)} title={t("demo.label")}>
               {status.mode === "demo" ? <DemoDetails /> : null}
             </ModeBadge>
-            <Badge size="2xsmall" color="grey">
+            <Badge size="2xsmall" color="orange">
               {t("mode.readOnly")}
             </Badge>
           </>

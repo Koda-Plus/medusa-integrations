@@ -312,6 +312,12 @@ const en = {
     },
   },
   payments: {
+    stripeId: "Stripe ID:",
+    stripeIdHint: "The payment's id in Stripe (PaymentIntent): find it with this in Stripe's dashboard and in the payout report.",
+    refundInOrder: "Refund in the order",
+    refundInOrderHint: "Refund in the Medusa order, so the order, the stock and the documents follow. A refund made in Stripe alone leaves the order paid in Medusa.",
+    refundInStripe: "Refund in Stripe",
+    refundInStripeHint: "This payment has no order in this store, so the refund is made in Stripe's dashboard.",
     title: "Payments",
     subtitle: "The last 30 days, newest first, each next to its Medusa order and with a link to the Stripe Dashboard.",
     filter: {

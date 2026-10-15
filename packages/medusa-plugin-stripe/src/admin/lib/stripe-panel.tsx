@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { Link } from "react-router-dom"
+import { ArrowUturnLeft } from "@medusajs/icons"
 import { Badge, Container, Heading, InlineTip, Input, Table, Text } from "@medusajs/ui"
-import type { MethodKey, MoneyDto, PaymentFilter, PeriodStatsDto, StripeOverviewResponse } from "../../modules/stripe/lib/contract"
+import type { MethodKey, MoneyDto, PaymentFilter, PaymentRowDto, PeriodStatsDto, StripeOverviewResponse } from "../../modules/stripe/lib/contract"
 import { useStripePayments } from "./stripe-api"
 import {
   DisputeDue,
@@ -264,6 +266,32 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
 /* Payments                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Where a refund of this payment is made. With an order: in the order, so
+ * Medusa, the stock and the invoices follow it (a refund made in Stripe alone
+ * leaves the order paid in Medusa). Without one: in Stripe's dashboard. The
+ * plugin itself never refunds; it only reads.
+ */
+function RefundLink({ payment: p }: { payment: PaymentRowDto }) {
+  const { t } = useTranslation("stripe")
+  const left = p.amount.amount - (p.refunded?.amount ?? 0)
+  if (p.status !== "succeeded" || left <= 0) return null
+  if (p.order) {
+    return (
+      <Link to={`/orders/${p.order.id}`} className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-subtle hover:text-ui-fg-interactive" title={t("payments.refundInOrderHint")}>
+        <ArrowUturnLeft className="shrink-0" />
+        {t("payments.refundInOrder")}
+      </Link>
+    )
+  }
+  return (
+    <a href={p.dashboardUrl} target="_blank" rel="noreferrer" className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-subtle hover:text-ui-fg-interactive" title={t("payments.refundInStripeHint")}>
+      <ArrowUturnLeft className="shrink-0" />
+      {t("payments.refundInStripe")}
+    </a>
+  )
+}
+
 export function PaymentsSection({
   overview,
   lang,
@@ -348,7 +376,9 @@ export function PaymentsSection({
                   <Table.Cell className="whitespace-nowrap">
                     <div className="flex flex-col">
                       <span className="txt-compact-small">{fmtDateTime(p.created, lang)}</span>
-                      <span className="txt-compact-xsmall font-mono text-ui-fg-muted">{p.id}</span>
+                      <span className="txt-compact-xsmall text-ui-fg-muted" title={t("payments.stripeIdHint")}>
+                        {t("payments.stripeId")} <span className="font-mono">{p.id}</span>
+                      </span>
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap text-right">
@@ -405,7 +435,10 @@ export function PaymentsSection({
                     <OrderCell order={p.order} payment={p} />
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap text-right">
-                    <ExternalLink href={p.dashboardUrl}>{t("actions.openStripe")}</ExternalLink>
+                    <div className="flex flex-col items-end gap-y-1.5">
+                      <ExternalLink href={p.dashboardUrl}>{t("actions.openStripe")}</ExternalLink>
+                      <RefundLink payment={p} />
+                    </div>
                   </Table.Cell>
                 </Table.Row>
               ))

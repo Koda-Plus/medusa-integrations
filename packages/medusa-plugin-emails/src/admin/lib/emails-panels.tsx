@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightMini, PaperPlane } from "@medusajs/icons"
+import { PaperPlane } from "@medusajs/icons"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
+import { OrderLink, ResendLink } from "./emails-links"
 import { errorMessage, useEmailsMessage, useEmailsMessages, useEmailsPreview, useEmailsRetry, useEmailsTest } from "./emails-api"
 import {
   EmailFrame,
@@ -362,6 +362,7 @@ export function MessagesSection({
               <Table.HeaderCell>{t("log.col.when")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.template")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.recipient")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("log.col.order")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.subject")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.status")}</Table.HeaderCell>
               <Table.HeaderCell />
@@ -369,7 +370,7 @@ export function MessagesSection({
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={6} text={messages.isLoading ? "" : demo ? t("log.demoEmpty") : t("log.empty")} />
+              <EmptyRow cols={7} text={messages.isLoading ? "" : demo ? t("log.demoEmpty") : t("log.empty")} />
             ) : (
               rows.map((m) => (
                 <Table.Row key={m.id} className="[&_td]:py-2.5 align-top">
@@ -389,6 +390,7 @@ export function MessagesSection({
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap font-mono txt-compact-small">{m.recipient ?? ""}</Table.Cell>
+                  <Table.Cell>{m.orderId ? <OrderLink id={m.orderId} open={t("log.openOrder")} /> : null}</Table.Cell>
                   <Table.Cell className="max-w-md">
                     <Text size="small" className="line-clamp-2 break-words">
                       {m.subject ?? ""}
@@ -398,10 +400,9 @@ export function MessagesSection({
                     <div className="flex flex-col items-start gap-y-1">
                       <MessageStatusBadge message={m} demo={demo} />
                       {resendLink(status, m) ? (
-                        <a href={resendLink(status, m)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-0.5 txt-compact-xsmall text-ui-fg-interactive hover:underline">
-                          Resend
-                          <ArrowUpRightMini />
-                        </a>
+                        <ResendLink href={resendLink(status, m)!} className="txt-compact-xsmall">
+                          {t("log.openResend")}
+                        </ResendLink>
                       ) : null}
                       {m.errorCode ? (
                         <Text size="xsmall" className={m.status === "skipped" ? "text-ui-fg-muted" : "text-ui-tag-red-text"} title={m.error ?? undefined}>
@@ -572,19 +573,13 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
                 <Fact label={t("drawer.sentAt")}>{m.sentAt ? fmtDateTime(m.sentAt, lang) : "-"}</Fact>
                 {m.orderId ? (
                   <Fact label={t("drawer.order")}>
-                    <Link to={`/orders/${m.orderId}`} className="inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                      <span className="font-mono">{m.orderId}</span>
-                      <ArrowUpRightMini />
-                    </Link>
+                    <OrderLink id={m.orderId} label={m.orderId} open={t("log.openOrder")} />
                   </Fact>
                 ) : null}
                 {m.externalId ? (
                   <Fact label={demo ? t("drawer.simulatedId") : t("drawer.externalId")} mono>
                     {resendLink(status, m) ? (
-                      <a href={resendLink(status, m)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-1 text-ui-fg-interactive hover:underline">
-                        {m.externalId}
-                        <ArrowUpRightMini />
-                      </a>
+                      <ResendLink href={resendLink(status, m)!}>{m.externalId}</ResendLink>
                     ) : (
                       m.externalId
                     )}

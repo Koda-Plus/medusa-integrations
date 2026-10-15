@@ -19,6 +19,7 @@ import { formatMoney } from "../../modules/stripe/lib/money"
 import { pickText } from "../../modules/stripe/lib/references"
 import type { Reference } from "./stripe-guide"
 import { MethodName } from "./stripe-method-icon"
+import { StripeIcon } from "./stripe-icon"
 
 type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
@@ -224,9 +225,12 @@ export function Fact({ label, children, mono = false }: { label: string; childre
 }
 
 /** An external link to the Stripe Dashboard (or any https page), opening in a new tab. */
+/** A page outside the admin, in a new tab: the Stripe mark when it is Stripe's dashboard, the text, the new-window icon. */
 export function ExternalLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
+  const stripe = /^https:\/\/([a-z0-9-]+\.)*stripe\.com\//i.test(href)
   return (
-    <a href={href} target="_blank" rel="noreferrer" className={clx("txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover", className)}>
+    <a href={href} target="_blank" rel="noreferrer" className={clx("txt-compact-small inline-flex items-center gap-x-1.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover", className)}>
+      {stripe ? <StripeIcon width={14} height={14} className="shrink-0" /> : null}
       {children}
       <ArrowUpRightOnBox className="shrink-0" />
     </a>
