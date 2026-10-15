@@ -1,4 +1,5 @@
 import { authenticate, defineMiddlewares } from "@medusajs/framework/http"
+import { writeGuard } from "../modules/credit/lib/kit-guards"
 
 /**
  * The Store API of this plugin serves the LOGGED-IN customer only: their own
@@ -12,6 +13,8 @@ import { authenticate, defineMiddlewares } from "@medusajs/framework/http"
  */
 export default defineMiddlewares({
   routes: [
+    /* A write to the credit admin comes from the admin (JSON or the kit header), never from a form on another site. */
+    { matcher: "/admin/credit*", middlewares: [writeGuard()] },
     {
       matcher: "/store/credit*",
       middlewares: [authenticate("customer", ["session", "bearer"])],

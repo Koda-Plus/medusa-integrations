@@ -11,6 +11,8 @@ import { refreshUsed } from "../workflows/credit/limits"
 export default async function creditOverdueJob(container: MedusaContainer): Promise<void> {
   try {
     const svc = creditSvc(container)
+    /* Store mode: the store keeps what is owed and overdue itself. */
+    if (svc.getOptions?.()?.store) return
     const rows = await svc.listCreditOrders({ state: ["open", "overdue"] }, { take: 5000 })
     if (rows.length === 0) return
 

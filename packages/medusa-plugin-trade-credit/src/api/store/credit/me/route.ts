@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { creditSvc, toCreditOrder, toLimit } from "../../../../modules/credit/lib/store"
 import { customerIdOf } from "../../../credit/helpers"
+import { accountToLimit, storeOrderToDto } from "../../../../modules/credit/lib/store-mode"
 
 /**
  * GET /store/credit/me
@@ -15,6 +16,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     return
   }
   const svc = creditSvc(req.scope)
+  const store = svc.getOptions?.()?.store
+  if (store) {
+    const account = (await store.accounts(req.scope)).find((a) => a.customer_id === customerId)
+    if (!account) {
+      res.status(404).json({ type: "not_found", code: "no_limit", message: "No credit terms set for your company." })
+      return
+    }
+    const orders = await store.orders(req.scope, [customerId])
+    res.json({ limit: accountToLimit(account), orders: orders.map(storeOrderToDto) })
+    return
+  }
   const limits = await svc.listCreditLimits({ customer_id: customerId }, { take: 1 })
   if (limits.length === 0) {
     res.status(404).json({ type: "not_found", code: "no_limit", message: "No credit terms set for your company." })
