@@ -129,6 +129,8 @@ export interface StatusResponse {
   history?: { total: number; firstAt: string | null } | null
   /** Full addresses in the log, searched by part (option showAddresses). */
   showAddresses?: boolean
+  /** Delivery read from Resend (option deliveryKey): suppressed addresses. Null when not configured. */
+  delivery?: { suppressed: number; error: string | null; readAt: string | null } | null
 }
 
 export type MessageStatusDto = "sending" | "sent" | "failed" | "unknown" | "skipped"
@@ -164,9 +166,28 @@ export interface MessageDto {
   hasBody: boolean
   /** App mode: "medusa" for a message read from Medusa's history, "plugin" for the plugin's own row. */
   source?: "plugin" | "medusa"
+  /** What happened after the provider took it (Resend last_event), when the plugin can read it (option deliveryKey). */
+  delivery?: string | null
 }
 
-/** `bounced`: refused for the recipient's address (`INVALID_RECIPIENT`); the plugin reads no bounce webhooks. */
+/** GET /admin/emails/delivery: the addresses Resend no longer sends to, each with its last message here. */
+export interface BouncesResponse {
+  configured: boolean
+  readAt: string | null
+  error: string | null
+  addresses: Array<{
+    email: string
+    origin: string
+    since: string | null
+    /** The address with a known domain typo corrected (gmial.com -> gmail.com), else null. */
+    typo: string | null
+    sourceId: string | null
+    resendUrl: string | null
+    lastMessage: MessageDto | null
+  }>
+}
+
+/** `bounced`: refused for the recipient's address (`INVALID_RECIPIENT`), and with option deliveryKey also bounced or suppressed in Resend. */
 export type MessageFilter = "all" | "sent" | "attention" | "skipped" | "test" | "bounced"
 
 export const MESSAGE_FILTERS: readonly MessageFilter[] = ["all", "sent", "attention", "skipped", "test", "bounced"]

@@ -13,6 +13,7 @@ import { ByTemplateSection, DemoDetails, GallerySection, MessageDrawer, Messages
 import { BrandingSection, ProviderSection, TemplatesSection } from "../../lib/emails-settings"
 import { StatTile, fmtNumber, fmtRating, modeState, referencesFor } from "../../lib/emails-ui"
 import { KitLoading } from "../../lib/emails-kit"
+import { BouncesSection } from "../../lib/emails-delivery"
 
 /**
  * E-mails by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -37,6 +38,7 @@ const EmailsPage = () => {
   const s = status.data
   const [params, setParams] = useSearchParams()
   const askedFilter = params.get("filter")
+  const [bounces, setBounces] = useState(false)
   const [filter, setFilter] = useState<MessageFilter>(() => (MESSAGE_FILTERS.includes(askedFilter as MessageFilter) ? (askedFilter as MessageFilter) : "all"))
   useEffect(() => {
     if (askedFilter && MESSAGE_FILTERS.includes(askedFilter as MessageFilter)) setFilter(askedFilter as MessageFilter)
@@ -104,7 +106,7 @@ const EmailsPage = () => {
           </div>
         ) : null}
         {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-5">
+          <div className={clxGrid(Boolean(s.delivery))}>
             <StatTile
               label={t("stats.all")}
               value={fmtNumber(everything.data?.count ?? 0, lang)}
@@ -121,6 +123,15 @@ const EmailsPage = () => {
               active={filter === "attention" && scope.since === "30d"}
               onClick={() => showLog("attention", "30d")}
             />
+            {s.delivery ? (
+              <StatTile
+                label={t("delivery.tile")}
+                value={fmtNumber(s.delivery.suppressed, lang)}
+                tone={s.delivery.suppressed > 0 ? "red" : "default"}
+                active={bounces}
+                onClick={() => setBounces((v) => !v)}
+              />
+            ) : null}
             <StatTile
               label={t("stats.templatesOn")}
               value={`${fmtNumber(s.templates.filter((x) => x.enabled).length, lang)}/${fmtNumber(s.templates.length, lang)}`}
@@ -135,6 +146,7 @@ const EmailsPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
+          {bounces ? <BouncesSection lang={lang} onClose={() => setBounces(false)} /> : null}
           <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} scope={scope} initialQuery={initialQuery} onClearScope={clearScope} />
           <ByTemplateSection status={s} lang={lang} />
         </>
@@ -286,6 +298,11 @@ function Warnings({ status }: { status: StatusResponse }) {
       ))}
     </div>
   )
+}
+
+/* Six tiles when delivery is read from Resend (the suppressed addresses tile), five without. */
+function clxGrid(withDelivery: boolean): string {
+  return `grid grid-cols-2 gap-3 px-6 py-4 ${withDelivery ? "md:grid-cols-3 xl:grid-cols-6" : "md:grid-cols-5"}`
 }
 
 export const config = defineRouteConfig({

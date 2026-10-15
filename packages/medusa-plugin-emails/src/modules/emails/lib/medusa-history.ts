@@ -34,6 +34,8 @@ export interface HistoryQuery {
   text?: string | null
   /** Search `text` also in the addresses, by any part (option showAddresses). */
   addresses?: boolean
+  /** Filter `bounced` with what Resend knows: suppressed addresses and bounced message ids. */
+  bounced?: { emails: string[]; ids: string[] } | null
   /** The hash of `email` / `customerEmail`, for the plugin's own rows. */
   emailHash?: string | null
   customerEmailHash?: string | null
@@ -164,12 +166,27 @@ const TO_ARRAY = `string_to_array(replace(lower(n."to"), ' ', ''), ',')`
 const N_ORDER = `coalesce(case when n.resource_type = 'order' then n.resource_id end, n.data->>'order_id', n.data->'order'->>'id')`
 
 function historyWhere(q: HistoryQuery, ownTable: boolean): { sql: string; bindings: unknown[] } | null {
-  /* History has no skips, tests or refusals of its own. */
-  if (q.filter === "skipped" || q.filter === "test" || q.filter === "bounced") return null
+  /* History has no skips or tests of its own; bounces only when Resend told us (q.bounced). */
+  if (q.filter === "skipped" || q.filter === "test") return null
+  if (q.filter === "bounced" && !(q.bounced && (q.bounced.emails.length || q.bounced.ids.length))) return null
   const parts: string[] = [`n.channel = 'email'`, `n.deleted_at is null`]
   const b: unknown[] = []
   if (q.filter === "sent") parts.push(`n.status = 'success'`)
   if (q.filter === "attention") parts.push(`n.status = 'failure'`)
+  if (q.filter === "bounced" && q.bounced) {
+    const e = q.bounced.emails.slice(0, 500)
+    const i = q.bounced.ids.slice(0, 500)
+    const or: string[] = []
+    if (e.length) {
+      or.push(`exists (select 1 from unnest(${TO_ARRAY}) a where a in (${e.map(() => "?").join(", ")}))`)
+      b.push(...e)
+    }
+    if (i.length) {
+      or.push(`n.external_id in (${i.map(() => "?").join(", ")})`)
+      b.push(...i)
+    }
+    parts.push(`(${or.join(" or ")})`)
+  }
   if (q.template) {
     parts.push(`n.template = ?`)
     b.push(q.template)
@@ -213,7 +230,20 @@ function ownWhere(q: HistoryQuery): { sql: string; bindings: unknown[] } {
   if (q.filter === "attention") parts.push(`m.status in ('failed', 'unknown')`)
   if (q.filter === "skipped") parts.push(`m.status = 'skipped'`)
   if (q.filter === "test") parts.push(`m.kind = 'test'`)
-  if (q.filter === "bounced") parts.push(`m.status = 'failed' and m.error_code = 'INVALID_RECIPIENT'`)
+  if (q.filter === "bounced") {
+    const or = [`(m.status = 'failed' and m.error_code = 'INVALID_RECIPIENT')`]
+    const i = (q.bounced?.ids ?? []).slice(0, 500)
+    const e = (q.bounced?.emails ?? []).slice(0, 500)
+    if (i.length) {
+      or.push(`m.external_id in (${i.map(() => "?").join(", ")})`)
+      b.push(...i)
+    }
+    if (e.length) {
+      or.push(`exists (select 1 from "notification" n5 where n5.id = m.notification_id and lower(n5."to") in (${e.map(() => "?").join(", ")}))`)
+      b.push(...e)
+    }
+    parts.push(`(${or.join(" or ")})`)
+  }
   if (q.template) {
     parts.push(`m.template = ?`)
     b.push(q.template)
@@ -357,4 +387,25 @@ export async function historyCounts(pg: SqlRaw, now: Date, ownTable: boolean): P
     firstAt: first && !Number.isNaN(first.getTime()) ? first.toISOString() : null,
     byTemplate: (t.rows ?? []).map((r) => ({ template: String(r.template), status: historyStatus(r.status), count: Number(r.count ?? 0), last_at: (r.last_at as Date | string | null) ?? null })),
   }
+}
+
+/** The latest history message to each address (lower-cased), for the list of suppressed addresses. */
+export async function lastHistoryByAddress(
+  pg: SqlRaw,
+  emails: string[],
+  subjectOf: (template: string, data: Record<string, unknown>, locale: string | null) => string | null,
+  showAddresses = false,
+): Promise<Map<string, MessageRow & { source: "plugin" | "medusa" }>> {
+  const out = new Map<string, MessageRow & { source: "plugin" | "medusa" }>()
+  const list = [...new Set(emails.map((e) => e.toLowerCase()))].slice(0, 500)
+  if (!list.length) return out
+  const r = await pg.raw(
+    `select distinct on (lower(n."to")) lower(n."to") as addr, ${HISTORY_SELECT}
+     from "notification" n
+     where n.channel = 'email' and n.deleted_at is null and lower(n."to") in (${list.map(() => "?").join(", ")})
+     order by lower(n."to"), n.created_at desc`,
+    list,
+  )
+  for (const row of r.rows ?? []) out.set(String(row.addr), unionRowToMessage(row, subjectOf, showAddresses))
+  return out
 }

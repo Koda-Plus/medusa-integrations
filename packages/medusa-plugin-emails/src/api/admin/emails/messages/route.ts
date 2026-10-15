@@ -5,6 +5,7 @@ import { templateLabels, toMessageDto } from "../../../../modules/emails/lib/dto
 import { addressHash, customerIdOf } from "../../../../modules/emails/lib/keys"
 import { listAppLog, type SqlRaw } from "../../../../modules/emails/lib/medusa-history"
 import { isEmail } from "../../../../modules/emails/lib/security"
+import { deliveryReader } from "../../../../modules/emails/lib/delivery"
 import type { MessageRow } from "../../../../modules/emails/lib/store"
 import { actorNames, graphOne } from "../../../../workflows/emails/runtime"
 import { emailsService, historySubject, intParam, like, messageFilters, serverError, sinceOf, strParam } from "../helpers"
@@ -125,6 +126,13 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
     }
     const q = strParam(req.query.q).slice(0, 254)
     const email = q && isEmail(q) && !o.showAddresses ? q : null
+    /* What Resend knows (option deliveryKey): suppressed addresses and bounced ids, for the filter and the badges. */
+    const reader = deliveryReader(o.deliveryKey)
+    let bounced: { emails: string[]; ids: string[] } | null = null
+    if (reader && page.filter === "bounced") {
+      const [sup, recent] = await Promise.all([reader.suppressions(), reader.recent()])
+      bounced = { emails: sup.list.map((x) => x.email), ids: recent.list.filter((x) => x.lastEvent === "bounced" || x.lastEvent === "complained" || x.lastEvent === "suppressed").map((x) => x.id) }
+    }
     const { rows, count } = await listAppLog(
       pg,
       {
@@ -140,6 +148,7 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
         /* With full addresses an address is also searched by part ("jonik", "@gmail.com"). */
         text: q && !email ? q : null,
         addresses: o.showAddresses,
+        bounced,
         limit: page.limit,
         offset: page.offset,
       },
@@ -147,7 +156,13 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
     )
     const names = await actorNames(req.scope, rows.map((r) => r.requested_by))
     const labels = templateLabels(o)
-    const body: MessagesResponse = { messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), source: r.source })), count, limit: page.limit, offset: page.offset }
+    const events = reader ? await reader.eventsFor(rows.map((r) => r.external_id)).catch(() => new Map()) : new Map()
+    const body: MessagesResponse = {
+      messages: rows.map((r) => ({ ...toMessageDto(r, names, labels), source: r.source, delivery: r.external_id ? events.get(r.external_id) ?? null : null })),
+      count,
+      limit: page.limit,
+      offset: page.offset,
+    }
     res.json(body)
   } catch (err) {
     serverError(req, res, err, "The send log cannot be read. The server log has the details.", 503)
