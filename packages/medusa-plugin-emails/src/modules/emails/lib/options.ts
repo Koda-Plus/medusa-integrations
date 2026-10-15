@@ -148,6 +148,14 @@ export interface EmailsPluginOptions {
    * identifies a message the way support looks for it, by the e-mail.
    */
   showAddresses?: boolean
+  /**
+   * A Resend API key with read access (full access), used ONLY to read what
+   * happened after sending (GET /emails, GET /suppressions): delivered,
+   * delayed, bounced, and the addresses Resend no longer sends to. In live
+   * mode the plugin's own key is used when this is left out; in app mode (the
+   * store's provider sends) set it to show bounces in the log.
+   */
+  deliveryKey?: string
 }
 
 export interface ResolvedBrand {
@@ -182,6 +190,8 @@ export interface ResolvedEmailsOptions {
   appProvider: string | null
   /** Full addresses in the log and search by part of an address (option showAddresses). */
   showAddresses: boolean
+  /** Resend key for reading delivery (option deliveryKey, or the live key). Never logged. */
+  deliveryKey: string | null
   defaultLocale: EmailLocale
   timeZone: string
   storefrontUrl: string | null
@@ -385,6 +395,7 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     mode: demo ? "demo" : appProvider ? "app" : apiKey ? "live" : "dev",
     appProvider: demo ? null : appProvider,
     showAddresses: o.showAddresses === true,
+    deliveryKey: str(o.deliveryKey) || (!demo && !appProvider && apiKey ? apiKey : null),
     defaultLocale,
     timeZone,
     storefrontUrl,

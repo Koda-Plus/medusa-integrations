@@ -1,4 +1,4 @@
-// GENERATED from kit/server/routes.ts (kit 1.0.3) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/server/routes.ts (kit 1.0.4) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { createHash } from "node:crypto"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import {
@@ -158,7 +158,7 @@ export interface IntegrationRoutes {
 }
 
 /** Set by scripts/kit.mjs when the file is generated into a package. */
-export const KIT_VERSION = "1.0.3"
+export const KIT_VERSION = "1.0.4"
 
 export class ContractError extends Error {
   readonly status: number

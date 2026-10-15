@@ -13,6 +13,7 @@ import { applyBrandOverrides, BRAND_FIELDS, templateState } from "../../../modul
 import type { Counts, StatRow } from "../../../modules/emails/lib/store"
 import { demoSeedState } from "../../../workflows/emails/demo"
 import { LATEST_TEMPLATES } from "../../../workflows/emails/preview"
+import { deliveryReader } from "../../../modules/emails/lib/delivery"
 import { actorNames, adminResetLink, emailsService, resolveOptional, settingsForDisplay, storeFor, type Scope } from "../../../workflows/emails/runtime"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
@@ -250,5 +251,18 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     logReady,
     history: history ? { total: history.total, firstAt: history.firstAt } : null,
     showAddresses: o.showAddresses,
+    delivery: await deliverySummary(o.deliveryKey),
+  }
+}
+
+/** Suppressed addresses in Resend (option deliveryKey), for the board; null when not configured. */
+async function deliverySummary(key: string | null): Promise<{ suppressed: number; error: string | null; readAt: string | null } | null> {
+  const reader = deliveryReader(key)
+  if (!reader) return null
+  try {
+    const s = await reader.suppressions()
+    return { suppressed: s.list.length, error: s.error, readAt: s.readAt }
+  } catch (e) {
+    return { suppressed: 0, error: (e as Error).message, readAt: null }
   }
 }

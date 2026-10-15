@@ -13,7 +13,7 @@ import { StripeIcon } from "../../lib/stripe-icon"
 import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays, type TileTarget } from "../../lib/stripe-panel"
 import { AccessTab, ChecksTab, OptionsTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/stripe-settings"
 import { fmtRating, referencesFor } from "../../lib/stripe-ui"
-import { KitFetchingBar, KitLoading } from "../../lib/stripe-kit"
+import { KitFetchingBar, KitHostSlot, KitLoading } from "../../lib/stripe-kit"
 
 /**
  * Stripe by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -139,10 +139,13 @@ const StripePage = () => {
           {!configured ? health : null}
           {configured && o ? (
             <>
-              <MethodsSection overview={o} days={days} lang={lang} />
+              {/* Sections the store adds (kit host slot), e.g. its own error log. */}
+              <KitHostSlot id="stripe.panel.before" />
               <PaymentsSection overview={o} lang={lang} initialFilter={initialFilter} initialQuery={initialQuery} focus={paymentsFocus} />
               <DisputesSection overview={o} lang={lang} />
               <RefundsSection overview={o} lang={lang} />
+              {/* Methods next to the balance: both read the period's money, fees and net. */}
+              <MethodsSection overview={o} days={days} lang={lang} />
               <BalanceSection overview={o} lang={lang} />
             </>
           ) : null}

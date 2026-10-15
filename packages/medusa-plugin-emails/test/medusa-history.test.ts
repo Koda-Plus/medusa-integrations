@@ -145,6 +145,19 @@ test("showAddresses: part of an address is searched in both sources and shown in
   assert.notEqual(masked.rows[0].recipient, "jonik.agnieszka@gmail.com")
 })
 
+test("bounced with Resend data: suppressed addresses and bounced ids in both sources", async () => {
+  const pg = fakePg([[{ ok: true }], [], [{ n: 0 }]])
+  await listAppLog(pg, { ...BASE, filter: "bounced", bounced: { emails: ["a@gmial.com"], ids: ["id-1"] } }, () => null)
+  const sql = pg.calls[1].sql
+  assert.ok(sql.includes(`from "notification" n where`), "history is read for bounced when Resend data is there")
+  assert.ok(sql.includes("n.external_id in (?)"))
+  assert.ok(sql.includes("m.external_id in (?)"))
+  assert.equal(pg.calls[1].bindings.filter((b: unknown) => b === "a@gmial.com").length, 2)
+  const none = fakePg([[{ ok: true }], [], [{ n: 0 }]])
+  await listAppLog(none, { ...BASE, filter: "bounced" }, () => null)
+  assert.ok(!none.calls[1].sql.includes(`from "notification" n where`), "without Resend data history has no bounces")
+})
+
 test("an address search matches the hash of the plugin's rows and the address in Medusa's", async () => {
   const pg = fakePg([[{ ok: true }], [], [{ n: 0 }]])
   await listAppLog(pg, { ...BASE, email: "Anna@Example.com", emailHash: "h1" }, () => null)
