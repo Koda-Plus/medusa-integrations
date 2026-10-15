@@ -1,7 +1,7 @@
 import { createKitClient, type KitClient } from "./client"
 import type { SubscriptionResult } from "./contract"
 import type { ResolvedKitOptions } from "./options"
-import type { KitSettings } from "./store"
+import { tagsForSource, type KitSettings } from "./store"
 
 /**
  * THE SUBSCRIBE FLOW, pure over the client and the container: the upsert
@@ -32,7 +32,7 @@ export async function subscribeToKit(args: {
 
   const email = input.email.trim().toLowerCase()
   const state = settings.double_opt_in ? "inactive" : "active"
-  const tags: number[] = settings.tags
+  const tags: number[] = tagsForSource(settings, input.source)
 
   try {
     const { subscriber, created } = await client.createSubscriber({

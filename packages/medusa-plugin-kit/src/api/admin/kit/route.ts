@@ -49,7 +49,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       storefrontUrl: o.storefrontUrl,
     },
     account,
-    settings: { tags: settings.tags, form_id: settings.form_id, double_opt_in: settings.double_opt_in },
+    settings: {
+      tags: settings.tags,
+      form_id: settings.form_id,
+      double_opt_in: settings.double_opt_in,
+      source_tags: settings.source_tags,
+      buyer_tags: settings.buyer_tags,
+      product_tags: settings.product_tags,
+      product_tag_prefix: settings.product_tag_prefix,
+    },
     counts,
   }
   res.setHeader("Cache-Control", "no-store, must-revalidate")

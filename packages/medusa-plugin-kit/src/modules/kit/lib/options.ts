@@ -15,7 +15,7 @@
 export interface KitPluginOptions {
   /** The Kit API v4 key (Kit: Settings, Developer, API keys). Never leaves the server. */
   apiKey?: string
-  /** The source shown in Kit for subscribers ("StonerChef"). Default: "Medusa". */
+  /** The source shown in Kit for subscribers ("My Store"). Default: "Medusa". */
   source?: string
   /** A subscriber in the `inactive` state waits for the form's confirmation (double opt-in). Default false. */
   doubleOptIn?: boolean | string
