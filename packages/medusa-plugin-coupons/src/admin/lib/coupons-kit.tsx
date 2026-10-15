@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/kit.tsx (kit 1.0.2) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/kit.tsx (kit 1.0.3) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useSyncExternalStore, type ComponentType, type ReactNode } from "react"
 import { Container, clx } from "@medusajs/ui"
 import type { HostZone } from "../../modules/coupons/lib/kit-contract"
@@ -268,5 +268,52 @@ export function WidgetFrame({ embedded, header, children, className }: { embedde
       {header}
       {children}
     </Container>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Loading                                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * What a page shows while it reads, the same in every plugin: never an empty
+ * table that says "nothing here" before the data came. The labels come from
+ * the plugin (its own language); the kit only draws.
+ */
+
+/** A section that is still reading: a spinner and what it reads, in the space the content will take. */
+export function KitLoading({ label, className }: { label?: string; className?: string }) {
+  return (
+    <div role="status" aria-live="polite" className={clx("flex min-h-[8rem] flex-col items-center justify-center gap-y-2 px-6 py-8", className)}>
+      <span className="size-5 animate-spin rounded-full border-2 border-ui-border-base border-t-ui-fg-interactive" />
+      {label ? <span className="txt-compact-small text-ui-fg-subtle">{label}</span> : null}
+    </div>
+  )
+}
+
+/** Placeholder rows of a table body while its first page reads (the header stays). */
+export function KitSkeletonRows({ cols, rows = 6 }: { cols: number; rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, r) => (
+        <tr key={r} aria-hidden className="border-b border-ui-border-base last:border-b-0">
+          {Array.from({ length: cols }, (_, c) => (
+            <td key={c} className="px-6 py-3.5">
+              <span className="block h-3 animate-pulse rounded bg-ui-bg-component" style={{ width: `${45 + ((r * 7 + c * 13) % 45)}%` }} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
+}
+
+/** A thin bar on top of a section that is reading again with its old data still shown. */
+export function KitFetchingBar({ active }: { active: boolean }) {
+  return (
+    <div aria-hidden className={clx("relative h-0.5 overflow-hidden", active ? "opacity-100" : "opacity-0")}>
+      <span className="absolute inset-y-0 left-0 w-1/3 animate-[kit-fetching_1.1s_ease-in-out_infinite] bg-ui-fg-interactive" />
+      <style>{`@keyframes kit-fetching{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}`}</style>
+    </div>
   )
 }

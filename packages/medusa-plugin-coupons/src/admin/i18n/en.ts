@@ -4,6 +4,10 @@ import { integrationEn } from "../../modules/coupons/lib/integration-texts"
 const en = {
   nav: "Coupons",
   title: "Coupons",
+  loading: {
+    page: "Reading the coupons and their results…",
+    detail: "Reading the coupon and its orders…",
+  },
   by: "by Koda Plus",
   subtitle:
     "Coupons on top of Medusa promotions: a creator in three steps, every coupon in one plain sentence, warnings before saving and what each coupon brought: uses, discount, revenue and new customers. Each coupon is an ordinary Medusa promotion, so the cart, invoices and every other module see it as usual.",

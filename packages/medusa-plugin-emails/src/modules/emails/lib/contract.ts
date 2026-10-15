@@ -127,6 +127,8 @@ export interface StatusResponse {
    * modes or when it cannot be read.
    */
   history?: { total: number; firstAt: string | null } | null
+  /** Full addresses in the log, searched by part (option showAddresses). */
+  showAddresses?: boolean
 }
 
 export type MessageStatusDto = "sending" | "sent" | "failed" | "unknown" | "skipped"

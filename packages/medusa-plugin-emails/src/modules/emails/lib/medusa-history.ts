@@ -32,6 +32,8 @@ export interface HistoryQuery {
   customerEmail?: string | null
   /** Any other search text: the template, an order id, an order number (#1234). */
   text?: string | null
+  /** Search `text` also in the addresses, by any part (option showAddresses). */
+  addresses?: boolean
   /** The hash of `email` / `customerEmail`, for the plugin's own rows. */
   emailHash?: string | null
   customerEmailHash?: string | null
@@ -74,6 +76,15 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null
 }
 
+/** The addresses of a `to` as they are, tidied (option showAddresses). */
+export function fullRecipients(to: unknown): string | null {
+  const parts = String(to ?? "")
+    .split(",")
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean)
+  return parts.length ? parts.join(", ") : null
+}
+
 /** Every address of a `to` masked, as the plugin's own rows keep it. */
 export function maskRecipients(to: unknown): string | null {
   const parts = String(to ?? "")
@@ -92,6 +103,7 @@ export function maskRecipients(to: unknown): string | null {
 export function unionRowToMessage(
   r: Record<string, unknown>,
   subjectOf: (template: string, data: Record<string, unknown>, locale: string | null) => string | null,
+  showAddresses = false,
 ): MessageRow & { source: "plugin" | "medusa" } {
   const medusa = r.source === "medusa"
   const template = str(r.template) ?? "unknown"
@@ -114,7 +126,7 @@ export function unionRowToMessage(
     demo: false,
     kind: medusa ? "medusa" : String(r.kind ?? "app"),
     status: medusa ? historyStatus(r.status) : String(r.status),
-    recipient: medusa ? maskRecipients(r.recipient) : str(r.recipient),
+    recipient: showAddresses && str(r.recipient_full) ? fullRecipients(r.recipient_full) : medusa ? maskRecipients(r.recipient) : str(r.recipient),
     subject: subject ? subject.slice(0, 300) : null,
     trigger: str(r.trigger),
     resource_type: str(r.resource_type),
@@ -186,8 +198,9 @@ function historyWhere(q: HistoryQuery, ownTable: boolean): { sql: string; bindin
   if (q.text) {
     const t = q.text.slice(0, 80)
     const number = t.replace(/^#/, "")
-    parts.push(`(n.template ilike ? or n.id = ? or n.resource_id = ? or ${N_ORDER} = ? or n.data->>'display_id' = ?)`)
-    b.push(`%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, t, t, t, number)
+    const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+    parts.push(`(n.template ilike ? or n.id = ? or n.resource_id = ? or ${N_ORDER} = ? or n.data->>'display_id' = ?${q.addresses ? ` or n."to" ilike ?` : ""})`)
+    b.push(like, t, t, t, number, ...(q.addresses ? [like] : []))
   }
   if (ownTable) parts.push(`not exists (select 1 from "emails_message" m2 where m2.notification_id = n.id and m2.deleted_at is null)`)
   return { sql: parts.join(" and "), bindings: b }
@@ -229,21 +242,24 @@ function ownWhere(q: HistoryQuery): { sql: string; bindings: unknown[] } {
   if (q.text) {
     const t = q.text.slice(0, 80)
     const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
-    parts.push(`(m.subject ilike ? or m.template ilike ? or m.order_id = ? or m.resource_id = ?)`)
-    b.push(like, like, t, t)
+    /* A plugin row keeps its address masked; the full one is on Medusa's notification it reports. */
+    const addr = q.addresses ? ` or exists (select 1 from "notification" n4 where n4.id = m.notification_id and n4."to" ilike ?)` : ""
+    parts.push(`(m.subject ilike ? or m.template ilike ? or m.order_id = ? or m.resource_id = ?${addr})`)
+    b.push(like, like, t, t, ...(q.addresses ? [like] : []))
   }
   return { sql: parts.join(" and "), bindings: b }
 }
 
 const OWN_SELECT = `'plugin' as source, m.id, m.key, m.template, m.locale, m.kind, m.status, m.recipient, m.subject, m.trigger,
   m.resource_type, m.resource_id, m.order_id, m.notification_id, m.customer_id, m.external_id, m.rotation, m.attempts, m.error_code, m.error,
-  m.retryable, m.sent_at, m.requested_by, (m.body_html is not null) as has_body, m.created_at, m.updated_at, null::jsonb as data`
+  m.retryable, m.sent_at, m.requested_by, (m.body_html is not null) as has_body, m.created_at, m.updated_at, null::jsonb as data,
+  (select n3."to" from "notification" n3 where n3.id = m.notification_id) as recipient_full`
 
 const HISTORY_SELECT = `'medusa' as source, n.id, ('medusa:' || n.id) as key, n.template, n.data->>'locale' as locale, 'medusa' as kind, n.status,
   n."to" as recipient, null as subject, n.trigger_type as trigger, n.resource_type, n.resource_id, ${N_ORDER} as order_id, n.id as notification_id,
   n.receiver_id as customer_id, n.external_id, 0 as rotation, 1 as attempts, null as error_code, null as error, false as retryable,
   case when n.status = 'success' then n.updated_at end as sent_at, null as requested_by, false as has_body, n.created_at, n.updated_at,
-  (n.data - array[${DROPPED_IN_SQL.map((k) => `'${k}'`).join(", ")}]::text[]) as data`
+  (n.data - array[${DROPPED_IN_SQL.map((k) => `'${k}'`).join(", ")}]::text[]) as data, n."to" as recipient_full`
 
 /** Whether the plugin's own log table exists (it does not before db:migrate). */
 export async function ownTableExists(pg: SqlRaw): Promise<boolean> {
@@ -282,7 +298,7 @@ export async function listAppLog(
   const page = await pg.raw(`select * from (${union}) u order by u.created_at desc, u.id desc limit ? offset ?`, [...bindings, q.limit, q.offset])
   const total = await pg.raw(`select count(*)::int as n from (${union}) u`, bindings)
   return {
-    rows: (page.rows ?? []).map((r) => unionRowToMessage(r, subjectOf)),
+    rows: (page.rows ?? []).map((r) => unionRowToMessage(r, subjectOf, q.addresses === true)),
     count: Number(total.rows?.[0]?.n ?? 0),
     ownTable,
   }
@@ -293,11 +309,12 @@ export async function historyMessage(
   pg: SqlRaw,
   id: string,
   subjectOf: (template: string, data: Record<string, unknown>, locale: string | null) => string | null,
+  showAddresses = false,
 ): Promise<(MessageRow & { source: "plugin" | "medusa" }) | null> {
   if (!/^noti_[A-Za-z0-9]+$/.test(id)) return null
   const r = await pg.raw(`select ${HISTORY_SELECT} from "notification" n where n.id = ? and n.channel = 'email' and n.deleted_at is null limit 1`, [id])
   const row = r.rows?.[0]
-  return row ? unionRowToMessage(row, subjectOf) : null
+  return row ? unionRowToMessage(row, subjectOf, showAddresses) : null
 }
 
 export interface HistoryCounts {

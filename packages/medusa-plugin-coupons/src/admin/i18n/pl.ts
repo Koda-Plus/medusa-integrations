@@ -6,6 +6,10 @@ import { integrationPl } from "../../modules/coupons/lib/integration-texts"
 const pl: typeof en = {
   nav: "Kupony",
   title: "Kupony",
+  loading: {
+    page: "Wczytuję kupony i ich wyniki…",
+    detail: "Wczytuję kupon i jego zamówienia…",
+  },
   by: "by Koda Plus",
   subtitle:
     "Kupony na promocjach Medusy: kreator w trzech krokach, każdy kupon opisany jednym zwykłym zdaniem, ostrzeżenia przed zapisem i to, co każdy kupon dał: użycia, rabat, obrót i nowi klienci. Każdy kupon to zwykła promocja Medusy, więc koszyk, faktury i każdy inny moduł widzą go jak zawsze.",

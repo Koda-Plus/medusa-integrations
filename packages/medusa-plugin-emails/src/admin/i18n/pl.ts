@@ -6,6 +6,10 @@ import { communityPl } from "../lib/emails-kit-community"
 const pl: typeof en = {
   "E-mails": "E-maile",
   title: "E-maile",
+  loading: {
+    page: "Wczytuję e-maile…",
+    message: "Wczytuję wiadomość…",
+  },
   by: "by Koda Plus",
   subtitle:
     "E-maile transakcyjne sklepu wysyłane przez Resend: potwierdzenie zamówienia, wysyłka z numerem przesyłki, anulowanie, powitanie i reset hasła, po polsku i po angielsku, w wyglądzie Twojego sklepu i z trybem ciemnym. Każdy szablon zobaczysz na żywo, wyślesz sobie test i wiesz, co wyszło.",
@@ -141,6 +145,7 @@ const pl: typeof en = {
       bounced: "Odrzucony adres",
     },
     search: "Szukaj w temacie, szablonie, zamówieniu albo po pełnym adresie",
+    searchAddresses: "Szukaj po e-mailu (też fragmencie), temacie, szablonie albo numerze zamówienia",
     empty: "Jeszcze nic nie wyszło. Wiadomości pojawią się tu razem z zamówieniami, wysyłkami i kontami albo po wysyłce testowej.",
     demoEmpty: "Skrzynka jest pusta. Złóż zamówienie w sklepie albo wyślij test.",
     details: "Szczegóły",

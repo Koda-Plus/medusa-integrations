@@ -8,7 +8,7 @@ import type { CouponDto, ListResponse, NameMaps } from "../../../modules/coupons
 import { errorMessage, useCoupon, useCoupons, useSetStatus } from "../../lib/coupons-api"
 import { CodeBlock, HelpButtons, IntegrationHeader, ModeBadge, communityLabels, usePageNav } from "../../lib/coupons-guide"
 import { CouponsIcon } from "../../lib/coupons-icon"
-import { announce } from "../../lib/coupons-kit"
+import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/coupons-kit"
 import { couponSentence } from "../../lib/coupons-sentence"
 import { Segment, StatTile, StatusBadge, useFormat } from "../../lib/coupons-ui"
 import { CreateCouponModal } from "../../lib/coupons-wizard"
@@ -126,6 +126,7 @@ const CouponsPage = () => {
           }
         />
         {nav.view === "panel" && data ? <Tiles data={data} filter={filter} onFilter={setFilter} /> : null}
+        {nav.view === "panel" && !data && list.isLoading ? <KitLoading label={t("loading.page")} /> : null}
         {list.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -137,6 +138,7 @@ const CouponsPage = () => {
 
       {nav.view === "panel" ? (
         <Container id="coupons-list" className="scroll-mt-4 divide-y p-0">
+          <KitFetchingBar active={list.isFetching && !list.isLoading} />
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
             <div>
               <Heading level="h2">{t("list.title")}</Heading>
@@ -160,6 +162,7 @@ const CouponsPage = () => {
               </Table.Row>
             </Table.Header>
             <Table.Body>
+              {list.isLoading && shown.length === 0 ? <KitSkeletonRows cols={5} /> : null}
               {shown.map((c) => (
                 <Table.Row key={c.id} className="cursor-pointer align-top [&_td]:h-auto [&_td]:py-4" onClick={() => setOpenId(c.id)}>
                   <Table.Cell>
@@ -267,6 +270,7 @@ function CouponDrawer({ id, onClose, currency }: { id: string | null; onClose: (
           </Drawer.Title>
         </Drawer.Header>
         <Drawer.Body className="flex flex-col gap-y-5 overflow-y-auto">
+          {!detail.data && detail.isLoading ? <KitLoading label={t("loading.detail")} /> : null}
           {c && detail.data ? (
             <>
               <Text weight="plus">{couponSentence(c, detail.data.names, t, fmt, currency)}</Text>

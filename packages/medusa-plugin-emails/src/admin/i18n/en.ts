@@ -5,6 +5,10 @@ const en = {
   /* The sidebar label: the key is the English name, so it reads right even where the admin cannot translate route labels. */
   "E-mails": "E-mails",
   title: "E-mails",
+  loading: {
+    page: "Reading the e-mails…",
+    message: "Reading the message…",
+  },
   by: "by Koda Plus",
   subtitle:
     "Transactional e-mails of the store, sent through Resend: order confirmation, shipping with tracking, cancellation, welcome and password reset, in English and Polish, in your store's look and with a dark mode. See every template live, send yourself a test, and know what went out.",
@@ -140,6 +144,7 @@ const en = {
       bounced: "Address refused",
     },
     search: "Search subject, template, order, or a full address",
+    searchAddresses: "Search by e-mail (or part of it), subject, template or order number",
     empty: "No e-mails yet. They appear here as orders, shipments and accounts come in, or after a test send.",
     demoEmpty: "The outbox is empty. Place an order in the storefront or send a test.",
     details: "Details",
