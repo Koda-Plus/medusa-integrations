@@ -140,6 +140,14 @@ export interface EmailsPluginOptions {
    * `recordAppEmail()`. Leave it out to let the plugin send.
    */
   appProvider?: string
+  /**
+   * Show full recipient addresses in the log and search them by any part
+   * ("jonik", "@gmail.com"). Default false: the log masks addresses and finds
+   * one only by the full address. Turn it on when the people using the admin
+   * already see customers' addresses on orders (most stores): the log then
+   * identifies a message the way support looks for it, by the e-mail.
+   */
+  showAddresses?: boolean
 }
 
 export interface ResolvedBrand {
@@ -172,6 +180,8 @@ export interface ResolvedEmailsOptions {
   mode: EmailsMode
   /** The store's own email provider id in app mode, else null. */
   appProvider: string | null
+  /** Full addresses in the log and search by part of an address (option showAddresses). */
+  showAddresses: boolean
   defaultLocale: EmailLocale
   timeZone: string
   storefrontUrl: string | null
@@ -374,6 +384,7 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     demo,
     mode: demo ? "demo" : appProvider ? "app" : apiKey ? "live" : "dev",
     appProvider: demo ? null : appProvider,
+    showAddresses: o.showAddresses === true,
     defaultLocale,
     timeZone,
     storefrontUrl,

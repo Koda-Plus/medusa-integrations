@@ -12,6 +12,7 @@ import { EmailsIcon } from "../../lib/emails-icon"
 import { ByTemplateSection, DemoDetails, GallerySection, MessageDrawer, MessagesSection, TestDrawer, type TestInitial } from "../../lib/emails-panels"
 import { BrandingSection, ProviderSection, TemplatesSection } from "../../lib/emails-settings"
 import { StatTile, fmtNumber, fmtRating, modeState, referencesFor } from "../../lib/emails-ui"
+import { KitLoading } from "../../lib/emails-kit"
 
 /**
  * E-mails by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -93,6 +94,7 @@ const EmailsPage = () => {
             </InlineTip>
           </div>
         ) : null}
+        {!s && status.isLoading ? <KitLoading label={t("loading.page")} /> : null}
         {s ? <Warnings status={s} /> : null}
         {seed.isPending ? (
           <div className="px-6 py-4">

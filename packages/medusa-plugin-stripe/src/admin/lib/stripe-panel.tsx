@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { ArrowUturnLeft } from "@medusajs/icons"
 import { Badge, Container, Heading, InlineTip, Input, Table, Text } from "@medusajs/ui"
+import { KitSkeletonRows } from "./stripe-kit"
 import type { MethodKey, MoneyDto, PaymentFilter, PaymentRowDto, PeriodStatsDto, StripeOverviewResponse } from "../../modules/stripe/lib/contract"
 import { useStripePayments } from "./stripe-api"
 import {
@@ -368,8 +369,10 @@ export function PaymentsSection({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={7} text={payments.isLoading ? "" : overview.paymentsTotal === 0 ? t("payments.emptyRead") : t("payments.empty")} />
+            {rows.length === 0 && payments.isLoading ? (
+              <KitSkeletonRows cols={7} rows={8} />
+            ) : rows.length === 0 ? (
+              <EmptyRow cols={7} text={overview.paymentsTotal === 0 ? t("payments.emptyRead") : t("payments.empty")} />
             ) : (
               rows.map((p) => (
                 <Table.Row key={p.id} className="align-top [&_td]:py-2.5">

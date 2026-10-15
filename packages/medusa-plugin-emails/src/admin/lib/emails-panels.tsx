@@ -4,6 +4,7 @@ import { PaperPlane } from "@medusajs/icons"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { OrderLink, ResendLink } from "./emails-links"
+import { KitFetchingBar, KitLoading, KitSkeletonRows } from "./emails-kit"
 import { errorMessage, useEmailsMessage, useEmailsMessages, useEmailsPreview, useEmailsRetry, useEmailsTest } from "./emails-api"
 import {
   EmailFrame,
@@ -345,7 +346,7 @@ export function MessagesSection({
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
         <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: scoped ? undefined : filterCount(status, f) }))} />
         <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("log.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input size="small" type="search" placeholder={t(status?.showAddresses ? "log.searchAddresses" : "log.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
       {messages.isError ? (
@@ -355,6 +356,7 @@ export function MessagesSection({
           </InlineTip>
         </div>
       ) : null}
+      <KitFetchingBar active={messages.isFetching && !messages.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -369,8 +371,10 @@ export function MessagesSection({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={7} text={messages.isLoading ? "" : demo ? t("log.demoEmpty") : t("log.empty")} />
+            {rows.length === 0 && messages.isLoading ? (
+              <KitSkeletonRows cols={7} />
+            ) : rows.length === 0 ? (
+              <EmptyRow cols={7} text={demo ? t("log.demoEmpty") : t("log.empty")} />
             ) : (
               rows.map((m) => (
                 <Table.Row key={m.id} className="[&_td]:py-2.5 align-top">
@@ -536,6 +540,7 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
               {errorMessage(q.error)}
             </InlineTip>
           ) : null}
+          {!m && q.isLoading ? <KitLoading label={t("loading.message")} /> : null}
           {m ? (
             <>
               <div className="flex flex-wrap items-center gap-2">

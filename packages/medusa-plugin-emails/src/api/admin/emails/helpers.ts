@@ -249,5 +249,6 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     references: o.references,
     logReady,
     history: history ? { total: history.total, firstAt: history.firstAt } : null,
+    showAddresses: o.showAddresses,
   }
 }

@@ -13,6 +13,7 @@ import { StripeIcon } from "../../lib/stripe-icon"
 import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays, type TileTarget } from "../../lib/stripe-panel"
 import { AccessTab, ChecksTab, OptionsTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/stripe-settings"
 import { fmtRating, referencesFor } from "../../lib/stripe-ui"
+import { KitFetchingBar, KitLoading } from "../../lib/stripe-kit"
 
 /**
  * Stripe by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -127,6 +128,8 @@ const StripePage = () => {
           </div>
         ) : null}
         {nav.view === "panel" ? <ReadErrors overview={o} /> : null}
+        {!s && status.isLoading ? <KitLoading label={t("loading")} /> : null}
+        {nav.view === "panel" && o ? <KitFetchingBar active={overview.isFetching} /> : null}
       </Container>
 
       {s && nav.view === "guide" ? <GuideView status={s} checks={checks.data} lang={lang} /> : null}

@@ -126,12 +126,23 @@ test("skips, tests and refusals come from the plugin's rows only", async () => {
   for (const filter of ["skipped", "test", "bounced"] as const) {
     const pg = fakePg([[{ ok: true }], [], [{ n: 0 }]])
     await listAppLog(pg, { ...BASE, filter }, () => null)
-    assert.ok(!pg.calls[1].sql.includes(`"notification" n`), filter)
+    assert.ok(!pg.calls[1].sql.includes(`from "notification" n where`), filter)
   }
   const none = fakePg([[{ ok: false }]])
   const r = await listAppLog(none, { ...BASE, filter: "test" }, () => null)
   assert.deepEqual(r, { rows: [], count: 0, ownTable: false })
   assert.equal(none.calls.length, 1)
+})
+
+test("showAddresses: part of an address is searched in both sources and shown in full", async () => {
+  const pg = fakePg([[{ ok: true }], [{ source: "medusa", id: "noti_1", template: "order-placed", status: "success", recipient: "Jonik.Agnieszka@gmail.com", recipient_full: "Jonik.Agnieszka@gmail.com", created_at: new Date() }], [{ n: 1 }]])
+  const r = await listAppLog(pg, { ...BASE, text: "jonik", addresses: true }, () => null)
+  assert.ok(pg.calls[1].sql.includes(`n."to" ilike ?`))
+  assert.ok(pg.calls[1].sql.includes(`n4."to" ilike ?`))
+  assert.equal(pg.calls[1].bindings.filter((b: unknown) => b === "%jonik%").length, 5)
+  assert.equal(r.rows[0].recipient, "jonik.agnieszka@gmail.com")
+  const masked = await listAppLog(fakePg([[{ ok: true }], [{ source: "medusa", id: "noti_1", template: "x", status: "success", recipient: "jonik.agnieszka@gmail.com", recipient_full: "jonik.agnieszka@gmail.com", created_at: new Date() }], [{ n: 1 }]]), { ...BASE }, () => null)
+  assert.notEqual(masked.rows[0].recipient, "jonik.agnieszka@gmail.com")
 })
 
 test("an address search matches the hash of the plugin's rows and the address in Medusa's", async () => {

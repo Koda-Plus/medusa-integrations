@@ -24,7 +24,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     /* App mode: a message of Medusa's history (no body is ever kept for it). */
     if (svc.getOptions().mode === "app" && String(req.params.id).startsWith("noti_")) {
       const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as SqlRaw
-      const row = await historyMessage(pg, String(req.params.id), historySubject(svc.getOptions()))
+      const row = await historyMessage(pg, String(req.params.id), historySubject(svc.getOptions()), svc.getOptions().showAddresses)
       if (!row) {
         res.status(404).json({ message: "Message not found." })
         return

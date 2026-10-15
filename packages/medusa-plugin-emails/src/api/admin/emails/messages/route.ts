@@ -124,7 +124,7 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
       customerEmail = isEmail(email) ? email : null
     }
     const q = strParam(req.query.q).slice(0, 254)
-    const email = q && isEmail(q) ? q : null
+    const email = q && isEmail(q) && !o.showAddresses ? q : null
     const { rows, count } = await listAppLog(
       pg,
       {
@@ -137,7 +137,9 @@ async function appLog(req: MedusaRequest, res: MedusaResponse, page: { filter: M
         customerId,
         customerEmail,
         customerEmailHash: customerEmail ? addressHash(customerEmail) : null,
+        /* With full addresses an address is also searched by part ("jonik", "@gmail.com"). */
         text: q && !email ? q : null,
+        addresses: o.showAddresses,
         limit: page.limit,
         offset: page.offset,
       },
