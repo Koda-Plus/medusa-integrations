@@ -36,6 +36,7 @@ const en = {
     filter: { all: "All", active: "Active", scheduled: "Scheduled", ended: "Ended", paused: "Paused", automatic: "Automatic", expiring: "Ending soon" },
   },
   sentence: {
+    storeRule: "The store's rule: {{text}}",
     percentOrder: "{{value}}% off the whole order",
     fixedOrder: "{{amount}} off the order",
     freeShipping: "free delivery",

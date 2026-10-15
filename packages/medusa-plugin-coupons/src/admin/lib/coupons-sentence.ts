@@ -16,6 +16,8 @@ export interface SentenceFormat {
 }
 
 export interface SentenceCoupon {
+  /** The promotion id, for the store's own rule (names.storeRules); the creator's draft has none. */
+  id?: string
   shape: CouponShape
   automatic: boolean
   code: string
@@ -32,7 +34,7 @@ function list(items: string[], t: T): string {
 }
 
 /** A rule with no words of its own: its field, the comparison and its values (three, then how many more). */
-function ruleText(r: CouponRuleDto, t: T): string {
+function describeRule(r: CouponRuleDto, t: T): string {
   const shown = r.values.slice(0, 3)
   const more = r.values.length - shown.length
   const values = more > 0 ? `${shown.join(", ")} ${t("sentence.andMore", { count: more })}` : shown.join(", ")
@@ -51,7 +53,11 @@ export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: Senten
   const on = (key: string, extra: Record<string, unknown> = {}) => (delivery ? t(`${key}On`, { ...extra, list: delivery }) : t(key, extra))
 
   const parts: string[] = []
-  switch (s.kind) {
+  const rule = c.id ? n.storeRules?.[c.id] : undefined
+  const ruleText = rule?.text?.trim().replace(/[.\s]+$/, "") ?? ""
+  /* The store applies its own rule and Medusa keeps a marker: the rule, its own sentence, takes the discount's place. */
+  const replaces = Boolean(rule?.replacesDiscount && ruleText)
+  if (!replaces) switch (s.kind) {
     case "percent_order":
       parts.push(t("sentence.percentOrder", { value: s.value ?? 0 }))
       break
@@ -91,9 +97,13 @@ export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: Senten
   else if (c.startsAt && new Date(c.startsAt).getTime() > Date.now()) parts.push(t("sentence.from", { date: fmt.date(c.startsAt) }))
   else parts.push(t("sentence.noEnd"))
   parts.push(c.limit === 1 ? t("sentence.once") : c.limit ? t("sentence.limit", { count: c.limit }) : t("sentence.noLimit"))
-  for (const r of s.rules ?? []) parts.push(ruleText(r, t))
+  for (const r of s.rules ?? []) parts.push(describeRule(r, t))
   const text = parts.join(", ")
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`
+  const cap = (x: string) => `${x.charAt(0).toUpperCase()}${x.slice(1)}`
+  if (replaces) return `${cap(ruleText)}. ${cap(text)}.`
+  /* A rule of the store that does not replace the discount: after the sentence, as its own. */
+  const extra = rule && ruleText ? ` ${t("sentence.storeRule", { text: ruleText })}.` : ""
+  return `${cap(text)}.${extra}`
 }
 
 /** The creator's answers as a coupon, so the sentence can be read before saving. */
