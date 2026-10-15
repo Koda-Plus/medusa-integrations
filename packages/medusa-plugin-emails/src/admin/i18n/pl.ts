@@ -7,6 +7,7 @@ const pl: typeof en = {
   "E-mails": "E-maile",
   title: "E-maile",
   delivery: {
+    campaignHint: "Wysyłka spoza sklepu, przez to samo konto Resend (np. zawiadomienie do wszystkich klientów).",
     tile: "Odrzucone adresy",
     title: "Odrzucone adresy",
     subtitle: "Adresy, na które Resend już nie wysyła (lista tłumienia): serwer adresata odrzucił wiadomość albo adresat zgłosił spam. Popraw adres u klienta (często to literówka w domenie) i usuń go z listy w Resend.",
@@ -17,7 +18,7 @@ const pl: typeof en = {
     noLast: "brak wiadomości w tym sklepie",
     typo: "Literówka w domenie? Pewnie {{fixed}}",
     hint: "Co stało się po wysłaniu, według Resend",
-    col: { address: "Adres", reason: "Powód", since: "Od", last: "Ostatnia wiadomość" },
+    col: { address: "Adres", reason: "Powód", subject: "Temat", since: "Od", last: "Ostatnia wiadomość" },
     origin: { bounce: "odbity", complaint: "zgłoszony jako spam", manual: "dodany ręcznie" },
     event: {
       sent: "wysłany",

@@ -263,9 +263,11 @@ const STATUS_TONE: Record<PaymentStatus, Tone> = {
 export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const { t } = useTranslation("stripe")
   return (
-    <StatusBadge color={STATUS_TONE[status] ?? "grey"} className="whitespace-nowrap">
-      {t(`payments.status.${status}`)}
-    </StatusBadge>
+    <span title={t(`payments.statusHint.${status}`, { defaultValue: "" }) || undefined}>
+      <StatusBadge color={STATUS_TONE[status] ?? "grey"} className="whitespace-nowrap">
+        {t(`payments.status.${status}`)}
+      </StatusBadge>
+    </span>
   )
 }
 

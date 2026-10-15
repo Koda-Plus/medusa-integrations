@@ -252,6 +252,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     history: history ? { total: history.total, firstAt: history.firstAt } : null,
     showAddresses: o.showAddresses,
     delivery: await deliverySummary(o.deliveryKey),
+    campaigns: o.campaigns.map((c) => ({ key: c.key, label: c.label })),
   }
 }
 

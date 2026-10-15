@@ -493,8 +493,8 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       const month = new Date(now.getTime() - 30 * 24 * 3600 * 1000)
       const result = await sql.raw(
         `select
-           count(*) filter (where "status" = 'sent' and "created_at" >= ?)::int as "sent24h",
-           count(*) filter (where "status" = 'sent')::int as "sent30d",
+           count(*) filter (where "status" = 'sent' and "kind" <> 'campaign' and "created_at" >= ?)::int as "sent24h",
+           count(*) filter (where "status" = 'sent' and "kind" <> 'campaign')::int as "sent30d",
            count(*) filter (where "status" in ('failed', 'unknown'))::int as "attention30d",
            count(*) filter (where "kind" = 'test')::int as "tests30d",
            count(*) filter (where "kind" = 'test' and "status" = 'sent')::int as "testsSent30d",

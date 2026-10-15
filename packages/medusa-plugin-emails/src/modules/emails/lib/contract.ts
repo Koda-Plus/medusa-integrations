@@ -131,6 +131,8 @@ export interface StatusResponse {
   showAddresses?: boolean
   /** Delivery read from Resend (option deliveryKey): suppressed addresses. Null when not configured. */
   delivery?: { suppressed: number; error: string | null; readAt: string | null } | null
+  /** Mailings outside the shop (option campaigns): their messages are rows of kind "campaign". */
+  campaigns?: Array<{ key: string; label: string }>
 }
 
 export type MessageStatusDto = "sending" | "sent" | "failed" | "unknown" | "skipped"
@@ -181,6 +183,10 @@ export interface BouncesResponse {
     since: string | null
     /** The address with a known domain typo corrected (gmial.com -> gmail.com), else null. */
     typo: string | null
+    /** The subject of the message that caused the block (this store's, else read from Resend). */
+    subject: string | null
+    /** The mailing outside the shop that caused it (option campaigns), matched by its Resend tag. */
+    campaign: { key: string; label: string } | null
     sourceId: string | null
     resendUrl: string | null
     lastMessage: MessageDto | null

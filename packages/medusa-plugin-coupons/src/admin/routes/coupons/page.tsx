@@ -183,7 +183,17 @@ const CouponsPage = () => {
                   </Table.Cell>
                   <Table.Cell>
                     <Text size="small" className="tabular-nums">
-                      {c.limit ? t("detail.usesOf", { used: c.used, limit: c.limit }) : fmt.number(c.used)}
+                      {c.automatic && !c.limit ? (
+                        <span title={t("list.automaticUsesHint")}>
+                          <Badge size="2xsmall" color="blue">
+                            {t("list.automaticUses")}
+                          </Badge>
+                        </span>
+                      ) : c.limit ? (
+                        t("detail.usesOf", { used: c.used, limit: c.limit })
+                      ) : (
+                        fmt.number(c.used)
+                      )}
                     </Text>
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmt.money(c.stats.discount, currency)}</Table.Cell>
@@ -275,7 +285,7 @@ function CouponDrawer({ id, onClose, currency }: { id: string | null; onClose: (
             <>
               <Text weight="plus">{couponSentence(c, detail.data.names, t, fmt, currency)}</Text>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                <StatTile label={t("detail.uses")} value={c.limit ? t("detail.usesOf", { used: c.used, limit: c.limit }) : fmt.number(c.used)} />
+                <StatTile label={t("detail.uses")} value={c.automatic && !c.limit ? t("list.automaticUses") : c.limit ? t("detail.usesOf", { used: c.used, limit: c.limit }) : fmt.number(c.used)} />
                 <StatTile label={t("detail.orders")} value={fmt.number(c.stats.orders)} />
                 <StatTile label={t("detail.discount")} value={fmt.money(c.stats.discount, currency)} />
                 <StatTile label={t("detail.revenue")} value={fmt.money(c.stats.revenue, currency)} />
