@@ -155,7 +155,11 @@ export function statusOf(p: PromotionLike, now: Date = new Date()): CouponStatus
 export const NO_STATS: CouponStats = { orders: 0, discount: 0, revenue: 0, newCustomers: 0, lastUsedAt: null }
 
 export function toCouponDto(p: PromotionLike, stats: CouponStats | undefined, now: Date = new Date()): CouponDto {
-  const { limit, used } = usageOf(p)
+  const usage = usageOf(p)
+  const limit = usage.limit
+  /* Medusa counts a use only for its own adjustments; orders found by the reads (also the
+     store's own rows, option codeInDescription) are uses too, so the larger number wins. */
+  const used = Math.max(usage.used, stats?.orders ?? 0)
   return {
     id: p.id,
     code: p.code ?? "",

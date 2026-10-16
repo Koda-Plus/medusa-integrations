@@ -154,11 +154,21 @@ test("a store rule takes the place of a marker value, or follows the sentence", 
 })
 
 test("options: defaults, and bad values fall back with a problem named", () => {
-  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, problems: [] })
+  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, codeInDescription: false, problems: [] })
   const o = resolveOptions({ currencyCode: "euro", codePrefix: "to long prefix!", memberGroupIds: ["ok_1", 5 as unknown as string] })
   assert.equal(o.currencyCode, "pln")
   assert.equal(o.codePrefix, null)
   assert.deepEqual(o.memberGroupIds, ["ok_1"])
   assert.equal(o.problems.length, 3)
   assert.equal(resolveOptions({ storeRules: "x" as never }).problems.length, 1)
+  assert.equal(resolveOptions({ codeInDescription: true }).codeInDescription, true)
+  assert.equal(resolveOptions({ codeInDescription: "yes" as never }).problems.length, 1)
+})
+
+test("uses: orders found by the reads count when Medusa's own counter is lower", () => {
+  const p = { id: "p7", code: "7DETAL6", used: 0, application_method: { type: "percentage", target_type: "items", allocation: "each", value: 0.001 } }
+  const stats = { orders: 70, discount: 21193, revenue: 0, newCustomers: 0, lastUsedAt: null }
+  assert.equal(toCouponDto(p, stats, NOW).used, 70)
+  assert.equal(toCouponDto({ ...p, used: 90 }, stats, NOW).used, 90)
+  assert.equal(toCouponDto(p, undefined, NOW).used, 0)
 })

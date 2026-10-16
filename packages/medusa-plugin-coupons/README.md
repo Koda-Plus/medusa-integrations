@@ -42,6 +42,7 @@ module.exports = defineConfig({
 - `currencyCode`: the currency of amount coupons and minimums. Default `pln`.
 - `memberGroupIds`: customer groups of logged-in members with their own prices (B2B, wholesale). The creator warns when an automatic coupon reaches them. Default: none named.
 - `codePrefix`: a prefix for the codes the creator suggests. Default none.
+- `codeInDescription`: `true` when the store writes its own adjustments for some promotions, without a promotion id and with a description that starts with the code and a colon (`SHOP7: 1 free`). Those count as the coupon's uses, discount and orders. Default `false`.
 
 Nothing breaks the boot: a wrong value falls back to its default and is listed in Settings.
 
