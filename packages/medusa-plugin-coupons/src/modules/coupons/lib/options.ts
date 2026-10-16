@@ -31,6 +31,14 @@ export interface CouponsPluginOptions {
    * place. Never throws for the plugin: an error reads as no rules.
    */
   storeRules?: (scope: unknown, promotionIds: string[]) => Promise<Record<string, StoreRule>>
+  /**
+   * The store writes its own adjustments for some promotions, without a
+   * promotion id (so Medusa cannot remove them on its own refresh), with a
+   * description that starts with the code and a colon ("SHOP7: 1 free").
+   * true counts those as the coupon's too, in its uses, discount and orders.
+   * Default false.
+   */
+  codeInDescription?: boolean
 }
 
 /** A promotion's rule as the store applies it, in one or two plain sentences. */
@@ -44,6 +52,7 @@ export interface ResolvedCouponsOptions {
   memberGroupIds: string[]
   codePrefix: string | null
   storeRules: CouponsPluginOptions["storeRules"] | null
+  codeInDescription: boolean
   problems: string[]
 }
 
@@ -64,5 +73,7 @@ export function resolveOptions(input: CouponsPluginOptions | undefined | null): 
   if (o.codePrefix !== undefined && !codePrefix) problems.push("codePrefix (letters and digits, at most 12)")
   const storeRules = typeof o.storeRules === "function" ? o.storeRules : null
   if (o.storeRules !== undefined && !storeRules) problems.push("storeRules (a function)")
-  return { currencyCode, memberGroupIds, codePrefix, storeRules, problems }
+  const codeInDescription = o.codeInDescription === true
+  if (o.codeInDescription !== undefined && typeof o.codeInDescription !== "boolean") problems.push("codeInDescription (true or false)")
+  return { currencyCode, memberGroupIds, codePrefix, storeRules, codeInDescription, problems }
 }

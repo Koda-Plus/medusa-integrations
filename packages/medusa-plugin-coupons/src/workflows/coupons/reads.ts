@@ -61,21 +61,36 @@ const marks = (n: number) => Array.from({ length: n }, () => "?").join(", ")
 /**
  * Every promotion adjustment of a non-canceled order in its current version,
  * on items and on shipping, with the order's customer and date. `where` adds
- * conditions on `o` (the order) and `x` (the adjustment) to both halves.
+ * conditions on `o` (the order) and `x` (the adjustment) to both halves;
+ * it gets the expression of the adjustment's promotion id to filter on.
+ *
+ * With the option codeInDescription an adjustment without a promotion id
+ * whose description starts with a coupon's code and a colon counts as that
+ * coupon's: stores that write their own rows that way keep them out of
+ * Medusa's refresh, which would otherwise remove them.
  */
-function adjustments(where: string): string {
+function adjustments(scope: Scope, where: (pid: string) => string): string {
+  const own = couponsService(scope).getOptions().codeInDescription
+  const pid = own ? "coalesce(x.promotion_id, pd.id)" : "x.promotion_id"
+  const code = own ? "coalesce(x.code, pd.code)" : "x.code"
+  const join = own
+    ? `left join promotion pd on x.promotion_id is null and position(':' in coalesce(x.description, '')) > 1
+        and pd.code = split_part(x.description, ':', 1) and pd.deleted_at is null`
+    : ""
   return `adj as (
-    select x.promotion_id, x.code, oi.order_id, x.amount::numeric as amount, 'items' as part, o.customer_id, o.created_at, o.currency_code
+    select ${pid} as promotion_id, ${code} as code, oi.order_id, x.amount::numeric as amount, 'items' as part, o.customer_id, o.created_at, o.currency_code
     from order_line_item_adjustment x
+    ${join}
     join order_item oi on oi.item_id = x.item_id and oi.deleted_at is null
     join "order" o on o.id = oi.order_id and o.version = oi.version and o.deleted_at is null and o.status <> 'canceled'
-    where x.deleted_at is null and ${where}
+    where x.deleted_at is null and ${where(pid)}
     union all
-    select x.promotion_id, x.code, os.order_id, x.amount::numeric as amount, 'shipping' as part, o.customer_id, o.created_at, o.currency_code
+    select ${pid} as promotion_id, ${code} as code, os.order_id, x.amount::numeric as amount, 'shipping' as part, o.customer_id, o.created_at, o.currency_code
     from order_shipping_method_adjustment x
+    ${join}
     join order_shipping os on os.shipping_method_id = x.shipping_method_id and os.deleted_at is null
     join "order" o on o.id = os.order_id and o.version = os.version and o.deleted_at is null and o.status <> 'canceled'
-    where x.deleted_at is null and ${where}
+    where x.deleted_at is null and ${where(pid)}
   )`
 }
 
@@ -88,7 +103,7 @@ export async function statsFor(scope: Scope, promotionIds: string[]): Promise<Ma
   if (promotionIds.length === 0) return out
   const ids = promotionIds.slice(0, LIST_LIMIT)
   /* The same ids for both halves of the union. */
-  const sql = `with ${adjustments(`x.promotion_id in (${marks(ids.length)})`)},
+  const sql = `with ${adjustments(scope, (pid) => `${pid} in (${marks(ids.length)})`)},
     per_order as (select promotion_id, order_id, sum(amount) as discount from adj group by promotion_id, order_id)
     select po.promotion_id,
       count(*)::int as orders,
@@ -115,7 +130,7 @@ export async function statsFor(scope: Scope, promotionIds: string[]): Promise<Ma
 
 /** Orders with any coupon and the discount they got, in the last 30 days. */
 async function last30Days(scope: Scope): Promise<{ orders: number; discount: number }> {
-  const sql = `with ${adjustments(`x.promotion_id is not null and o.created_at > now() - interval '30 days'`)}
+  const sql = `with ${adjustments(scope, (pid) => `${pid} is not null and o.created_at > now() - interval '30 days'`)}
     select count(distinct order_id)::int as orders, coalesce(sum(amount), 0)::float as discount from adj`
   const r = await sqlOf(scope).raw(sql)
   const row = r.rows?.[0] ?? {}
@@ -208,7 +223,7 @@ export async function couponDetail(scope: Scope, id: string, now: Date = new Dat
   if (!promotion) return null
   const stats = await statsFor(scope, [promotion.id])
   const coupon = toCouponDto(promotion, stats.get(promotion.id), now)
-  const sql = `with ${adjustments(`x.promotion_id = ?`)},
+  const sql = `with ${adjustments(scope, (pid) => `${pid} = ?`)},
     per_order as (select order_id, sum(amount) as discount from adj group by order_id)
     select o.id, o.display_id, o.created_at, o.email, o.currency_code, po.discount::float as discount,
       coalesce((s.totals->>'current_order_total')::numeric, 0)::float as total,
@@ -269,7 +284,7 @@ export async function searchCustomers(scope: Scope, q: string): Promise<Customer
 /* ------------------------------------------------------------------ */
 
 export async function customerCoupons(scope: Scope, customerId: string, now: Date = new Date()) {
-  const sql = `with ${adjustments(`o.customer_id = ?`)}
+  const sql = `with ${adjustments(scope, () => `o.customer_id = ?`)}
     select coalesce(code, '') as code, max(promotion_id) as promotion_id, count(distinct order_id)::int as orders,
       coalesce(sum(amount), 0)::float as discount, max(created_at) as last_at, max(currency_code) as currency_code
     from adj group by coalesce(code, '') order by max(created_at) desc limit 20`
@@ -300,7 +315,7 @@ export async function customerCoupons(scope: Scope, customerId: string, now: Dat
 }
 
 export async function orderCoupons(scope: Scope, orderId: string) {
-  const sql = `with ${adjustments(`o.id = ?`)}
+  const sql = `with ${adjustments(scope, () => `o.id = ?`)}
     select code, promotion_id, part, coalesce(sum(amount), 0)::float as discount, max(currency_code) as currency_code
     from adj group by code, promotion_id, part order by discount desc`
   const r = await sqlOf(scope).raw(sql, [orderId, orderId])
