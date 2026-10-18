@@ -1,6 +1,6 @@
 # CLAUDE.md: medusa-integrations
 
-Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Seventeen npm packages, each published on its own. Ten integrate an outside service and belong in the medusajs.com/integrations catalog; Compliance, Trade Credit, Packaging, Loyalty, Negotiations, Tasks and Coupons are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
+Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Eighteen npm packages, each published on its own. Eleven integrate an outside service and belong in the medusajs.com/integrations catalog; Compliance, Trade Credit, Packaging, Loyalty, Negotiations, Tasks and Coupons are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
 
 | Package | Namespace | Module (container key) | Catalog |
 | --- | --- | --- | --- |
@@ -10,6 +10,7 @@ Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`
 | `packages/medusa-plugin-subiekt-nexo` | `subiekt` | `subiekt_nexo` | ERP |
 | `packages/medusa-plugin-fakturownia` | `fakturownia` | `fakturownia` | Other |
 | `packages/medusa-plugin-inpost` | `inpost` | data module `inpost` and fulfillment provider `inpost` | Shipping |
+| `packages/medusa-plugin-inpost-pay` | `inpostpay` | data module `inpostpay` and payment provider `inpost-pay` (`pp_inpost-pay_inpost-pay`) | Payment |
 | `packages/medusa-plugin-stripe` | `stripe` | next to the official Stripe provider | Payment |
 | `packages/medusa-plugin-emails` | `emails` | `emails` and notification provider `emails` | Notification |
 | `packages/medusa-plugin-vat-whitelist` | `whitelist` | `whitelist` | Other |

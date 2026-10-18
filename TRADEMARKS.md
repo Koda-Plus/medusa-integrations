@@ -10,6 +10,7 @@ The MIT license of this repository covers the code of Koda Plus. It does not cov
 - **Subiekt nexo** and **InsERT**, of InsERT S.A.: `packages/medusa-plugin-subiekt-nexo/src/admin/lib/subiekt-icon.tsx`, redrawn from the program icon.
 - **Fakturownia** and its logo, of its owner: `packages/medusa-plugin-fakturownia/src/admin/lib/fakturownia-icon.tsx`, redrawn from the logo on fakturownia.pl. The original files the drawing was made from, if present in `packages/medusa-plugin-fakturownia/docs/brand-source/`, are kept only as the source of the drawing and are not part of any package.
 - **InPost** and **Paczkomat**, of InPost S.A.: `packages/medusa-plugin-inpost/src/admin/lib/inpost-icon.tsx`, the mark of InPost's own logo (inpost.pl) in the frame of the other icons.
+- **InPost Pay**, of InPost S.A.: named as the checkout service `packages/medusa-plugin-inpost-pay` connects to. That plugin draws no InPost mark: its icon is a Koda Plus mark, and stores show InPost's official button through InPost's own widget.
 - **Stripe**, **Link** and the Stripe logo, of Stripe, Inc.: `packages/medusa-plugin-stripe/src/admin/lib/stripe-icon.tsx`, the glyph from Simple Icons (its path is CC0, the mark stays Stripe's). **Apple Pay** (Apple Inc.), **Google Pay** (Google LLC), **BLIK** (Polski Standard Płatności sp. z o.o.) and **Przelewy24** (PayPro S.A.) are named as payment methods only.
 - **Discord** and its symbol, of Discord Inc.: the "Help on Discord" button of every plugin page (`kit/admin/guide.tsx`), the symbol as published on discord.com/branding.
 - **Resend**, of Resend, Inc.: named as the e-mail service; the E-mails icon is a Koda Plus mark, not the Resend logo.
@@ -17,7 +18,7 @@ The MIT license of this repository covers the code of Koda Plus. It does not cov
 - **Clutch**, of Clutch (clutch.co): named as the source of store ratings in the references.
 - **KSeF** (Krajowy System e-Faktur) is the Polish national e-invoicing system, named as such.
 
-The E-mails, Negotiations and Tasks icons and the Koda Plus name and logo are marks of Koda Plus.
+The E-mails, Negotiations, Tasks and InPost Pay icons and the Koda Plus name and logo are marks of Koda Plus.
 
 ## Asking us
 
