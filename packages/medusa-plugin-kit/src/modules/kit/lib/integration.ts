@@ -2,7 +2,7 @@ import type { EntitySummary, IntegrationManifest, Message } from "./kit-contract
 import { KODA_CONTRACT } from "./kit-contract"
 import { KIT_META } from "./kit-meta"
 import { integrationEn, integrationPl } from "./integration-texts"
-import type { ResolvedKitOptions } from "./options"
+import { isActive, type ResolvedKitOptions } from "./options"
 import type { KitSettings } from "./store"
 
 /**
@@ -16,7 +16,7 @@ function msg(key: string, params: Record<string, string | number> = {}): Message
 }
 
 export function kitManifest(o: ResolvedKitOptions, settings: KitSettings): IntegrationManifest {
-  const configured = Boolean(o.apiKey)
+  const configured = isActive(o)
   return {
     contract: KODA_CONTRACT,
     contracts: [KODA_CONTRACT],
@@ -26,7 +26,7 @@ export function kitManifest(o: ResolvedKitOptions, settings: KitSettings): Integ
     kit: KIT_META.kit,
     name: KIT_META.name,
     kind: "integration",
-    mode: configured ? "live" : "off",
+    mode: o.demo ? "demo" : configured ? "live" : "off",
     configured,
     adminPath: `/${KIT_META.ns}`,
     entities: ["customer"],

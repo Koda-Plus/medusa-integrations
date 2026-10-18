@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { kitBroadcasts } from "../../../../modules/kit/lib/insights"
 import { clientOf, optionsOf } from "../../../kit/helpers"
+import { isActive } from "../../../../modules/kit/lib/options"
 
 /**
  * GET /admin/kit/broadcasts - the newest campaigns (drafts included) with
@@ -8,7 +9,7 @@ import { clientOf, optionsOf } from "../../../kit/helpers"
  * minutes (`?fresh=1` asks Kit again). `take` is 1 to 20, default 10.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  if (!optionsOf(req.scope).apiKey) return res.json({ configured: false, broadcasts: [] })
+  if (!isActive(optionsOf(req.scope))) return res.json({ configured: false, broadcasts: [] })
   const take = Math.min(20, Math.max(1, Number(req.query.take) || 10))
   try {
     const broadcasts = await kitBroadcasts(clientOf(req.scope), take, req.query.fresh === "1")

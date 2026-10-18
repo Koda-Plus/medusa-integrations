@@ -1,6 +1,7 @@
 ﻿import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { subscribeToKit } from "../../../../modules/kit/lib/subscribe"
 import { clientOf, EMAIL_RE, optionsOf, settingsOf } from "../../../kit/helpers"
+import { isActive } from "../../../../modules/kit/lib/options"
 import type { KitApiError } from "../../../../modules/kit/lib/client"
 
 /**
@@ -55,7 +56,7 @@ export async function POST(req: MedusaRequest<Body>, res: MedusaResponse) {
   }
 
   const o = optionsOf(req.scope)
-  if (!o.apiKey) {
+  if (!isActive(o)) {
     return res.json({ ok: false, configured: false, message: "Newsletter nie jest jeszcze podłączony do wysyłki." })
   }
 

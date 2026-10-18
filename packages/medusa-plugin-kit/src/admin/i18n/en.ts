@@ -13,6 +13,8 @@ const en = {
   error: "Could not load the page: {{message}}",
   mode: {
     off: "Not configured",
+    demo: "Demo",
+    demoNote: "Demo mode: a sample Kit account in the server's memory. Sign-ups, tags and settings work, but nothing reaches Kit and no e-mail goes out.",
   },
   stats: {
     subscribed: "Subscribers from the store",

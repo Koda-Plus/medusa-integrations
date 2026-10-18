@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { kitOverview } from "../../../../modules/kit/lib/insights"
 import { clientOf, optionsOf } from "../../../kit/helpers"
+import { isActive } from "../../../../modules/kit/lib/options"
 
 /**
  * GET /admin/kit/overview - the list in numbers: active subscribers, growth
@@ -8,7 +9,7 @@ import { clientOf, optionsOf } from "../../../kit/helpers"
  * cached for ten minutes (`?fresh=1` asks Kit again).
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  if (!optionsOf(req.scope).apiKey) return res.json({ configured: false, overview: null })
+  if (!isActive(optionsOf(req.scope))) return res.json({ configured: false, overview: null })
   try {
     const overview = await kitOverview(clientOf(req.scope), req.query.fresh === "1")
     return res.json({ configured: true, overview })

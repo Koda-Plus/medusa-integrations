@@ -83,6 +83,7 @@ Every option is optional. Numbers and switches may come as strings, as environme
 - `source` (default `"Medusa"`): a name for the store, shown in the admin with the options. This version does not send it to Kit; the source of a sign-up is the `source` the storefront sends.
 - `requestsPerMinute` (default `90`, 1 to 120): a self-imposed limit on the requests to Kit from one process. Kit allows 120 requests per rolling 60 seconds per key.
 - `timeoutMs` (default `20000`, 1000 to 60000): the timeout of one request to Kit.
+- `demo` (default `false`, `true` or `"true"`): demo mode, see [Demo mode](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-kit#demo-mode). It wins over `apiKey`.
 
 The tags by source, the buyer tags, the product tags and their prefix have no option: they are chosen in the admin (Panel, Tags by source and for buyers) and kept in `kit_setting`.
 
@@ -153,13 +154,19 @@ Kit API v4 at `https://api.kit.com`, nothing else: `GET /v4/account`, `/v4/tags`
 
 An app that shows every Koda Plus plugin in one place reads Kit through the shared contract `koda.integration/1`:
 
-- `GET /admin/kit/integration`: the manifest (mode `live` with a key, `off` without, the problem "no API key", entity `customer`).
+- `GET /admin/kit/integration`: the manifest (mode `demo` in demo mode, `live` with a key, `off` without, the problem "no API key", entity `customer`).
 - `GET /admin/kit/integration/summary?entity=customer&id=cus_...`: one line for the customer: the subscriber's state in Kit, looked up by the customer's e-mail (active is green, waiting for the confirmation is orange, anything else grey; cancelled, bounced and complained count as failed).
 - `GET /admin/kit/integration/attention?scope=customers`: the counter `failed_subscriptions` (orange) of the last 7 days, linked to the Kit page.
 
 ## Demo mode
 
-There is none. Without a key the plugin says "Not configured" and sends nothing; no demo rows are ever made.
+Only on explicit request: `demo: process.env.KIT_DEMO === "true"`. The plugin then works on a sample Kit account kept in the memory of the process and never calls Kit, even with an `apiKey` set:
+
+- the panel shows a **Demo** badge and a note, the connection check answers with the sample account, its tags and forms, and the list in numbers and the newest broadcasts are fixed sample values;
+- the store route and the buyer tags on `order.placed` run the real flow against the in-memory list (an address signed up once is "already there" the next time), and the log rows are real rows in `kit_subscriber_log`;
+- no e-mail goes out (Kit would send the double opt-in confirmation; the demo sends nothing), and the in-memory list is gone after a restart.
+
+Without a key and without `demo` the plugin says "Not configured" and sends nothing.
 
 ## Security and data
 

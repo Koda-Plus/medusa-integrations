@@ -1,6 +1,7 @@
 ﻿import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { clientOf, optionsOf } from "../../../../kit/helpers"
+import { isActive } from "../../../../../modules/kit/lib/options"
 import { kitSummary } from "../../../../../modules/kit/lib/integration"
 import type { KitApiError } from "../../../../../modules/kit/lib/client"
 
@@ -17,7 +18,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   const o = optionsOf(req.scope)
-  if (!o.apiKey) {
+  if (!isActive(o)) {
     return res.json(kitSummary({ configured: false, subscriber: null, failed: false }))
   }
 

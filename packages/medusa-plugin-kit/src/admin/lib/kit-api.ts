@@ -4,6 +4,7 @@ import { kitFetch, type KitInit } from "./kit-kit"
 
 export type Status = {
   configured: boolean
+  demo?: boolean
   missing: string[]
   problems: string[]
   options: { apiKey: string; source: string; doubleOptIn: boolean; formId: number | null; tags: number[]; storefrontUrl: string | null }

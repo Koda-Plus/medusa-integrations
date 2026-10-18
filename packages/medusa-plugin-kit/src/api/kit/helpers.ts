@@ -17,7 +17,7 @@ export function kitServiceOf(scope: Scope) {
 
 export function optionsOf(scope: Scope): ResolvedKitOptions {
   const svc = kitServiceOf(scope)
-  return (svc.getOptions?.() ?? { apiKey: "", source: "Medusa", doubleOptIn: false, formId: null, tags: [], requestsPerMinute: 90, timeoutMs: 20_000, storefrontUrl: null, problems: [] }) as ResolvedKitOptions
+  return (svc.getOptions?.() ?? { apiKey: "", source: "Medusa", doubleOptIn: false, formId: null, tags: [], requestsPerMinute: 90, timeoutMs: 20_000, storefrontUrl: null, demo: false, problems: [] }) as ResolvedKitOptions
 }
 
 export async function settingsOf(scope: Scope): Promise<KitSettings> {

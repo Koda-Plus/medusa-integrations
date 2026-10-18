@@ -30,7 +30,9 @@ class KitModuleService extends MedusaService({
     super(...(arguments as unknown as [InjectedDependencies]))
     this.logger_ = deps.logger
     this.options_ = resolveOptions(options)
-    if (!this.options_.apiKey) {
+    if (this.options_.demo) {
+      this.logger_.info("[kit] Demo mode: a sample Kit account in memory, Kit is never called.")
+    } else if (!this.options_.apiKey) {
       this.logger_.info("[kit] No Kit API key: the store route answers politely and the admin shows the setup.")
     }
   }

@@ -1,6 +1,7 @@
 ﻿import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { StatusResponse } from "../../../modules/kit/lib/contract"
 import { clientOf, optionsOf, settingsOf } from "../../kit/helpers"
+import { isActive, missingOptions } from "../../../modules/kit/lib/options"
 
 /**
  * GET /admin/kit - the panel in one read: the configuration, the account
@@ -11,11 +12,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const svc = req.scope.resolve("kit") as any
   const o = optionsOf(req.scope)
   const settings = await settingsOf(req.scope)
-  const missing: string[] = []
-  if (!o.apiKey) missing.push("apiKey")
+  const missing = missingOptions(o)
 
   let account: StatusResponse["account"] = null
-  if (o.apiKey) {
+  if (isActive(o)) {
     try {
       const a = await clientOf(req.scope).account()
       account = { id: a.id, name: a.name, plan_type: a.plan_type, primary_email_address: a.primary_email_address }
@@ -36,8 +36,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   const body: StatusResponse = {
-    configured: Boolean(o.apiKey),
-    demo: false,
+    configured: isActive(o),
+    demo: o.demo,
     missing,
     problems: o.problems,
     options: {

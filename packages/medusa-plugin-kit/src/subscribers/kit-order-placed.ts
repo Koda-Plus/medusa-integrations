@@ -1,6 +1,7 @@
 import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { clientOf, optionsOf, settingsOf } from "../api/kit/helpers"
+import { isActive } from "../modules/kit/lib/options"
 import { maskKitSecrets } from "../modules/kit/lib/client"
 import { planBuyerTags, tagBuyer } from "../modules/kit/lib/order-tags"
 
@@ -12,7 +13,7 @@ import { planBuyerTags, tagBuyer } from "../modules/kit/lib/order-tags"
  */
 export default async function kitOrderPlaced({ event: { data }, container }: SubscriberArgs<{ id: string }>): Promise<void> {
   const o = optionsOf(container)
-  if (!data?.id || !o.apiKey) return
+  if (!data?.id || !isActive(o)) return
   const settings = await settingsOf(container)
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER) as { warn: (m: string) => void }
   const svc = container.resolve("kit") as any

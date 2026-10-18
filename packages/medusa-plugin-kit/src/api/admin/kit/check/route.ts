@@ -1,5 +1,6 @@
 ﻿import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { clientOf, optionsOf } from "../../../kit/helpers"
+import { isActive } from "../../../../modules/kit/lib/options"
 import type { KitApiError } from "../../../../modules/kit/lib/client"
 
 /**
@@ -9,7 +10,7 @@ import type { KitApiError } from "../../../../modules/kit/lib/client"
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const o = optionsOf(req.scope)
-  if (!o.apiKey) {
+  if (!isActive(o)) {
     return res.status(400).json({ error: "unconfigured", message: "No Kit API key: set the apiKey option." })
   }
   const client = clientOf(req.scope)
