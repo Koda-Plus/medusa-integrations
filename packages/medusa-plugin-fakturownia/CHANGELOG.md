@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1 (unreleased)
+## 0.3.1 (2026-10-18)
 
 No change to the documents, the writers or the tables: the shared admin kit moves from 1.0.1 to 1.0.9.
 

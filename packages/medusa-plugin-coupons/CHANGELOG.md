@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-18)
 
 First release: a coupon creator and a coupon overview on top of Medusa's own promotions. No tables of its own.
 
