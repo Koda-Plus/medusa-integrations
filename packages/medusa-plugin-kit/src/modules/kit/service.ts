@@ -37,6 +37,11 @@ class KitModuleService extends MedusaService({
     }
   }
 
+  /** Demo mode: the sample account in memory (hosts use it to let a demo account write). */
+  isDemo(): boolean {
+    return this.options_.demo
+  }
+
   getOptions(): ResolvedKitOptions {
     return this.options_
   }
