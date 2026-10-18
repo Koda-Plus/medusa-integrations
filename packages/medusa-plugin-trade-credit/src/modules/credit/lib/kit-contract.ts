@@ -1,4 +1,4 @@
-// GENERATED from kit/contract.ts (kit 1.0.9) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/contract.ts (kit 1.1.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 /**
  * koda.integration/1: what every Koda Plus plugin answers about itself and
  * about the records of a store, so that a host (an app that shows all

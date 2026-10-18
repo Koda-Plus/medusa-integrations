@@ -242,6 +242,14 @@ Every route needs an admin session or token. Writes take a JSON body or the `x-k
 - `POST /admin/inpostpay/demo/seed`: demo mode only, the sample rows.
 - `GET /admin/inpostpay/integration`, `/integration/summary`, `/integration/attention`: the koda.integration/1 contract (below).
 
+## One InPost menu
+
+With the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) of Koda Plus in the same app, InPost Pay does not take a sidebar entry of its own: its page is the "InPost Pay" tab of the "InPost" entry (`/app/inpost?service=pay`), next to Shipping and, when installed, Von Halsky. The page in the tab is the same page, drawn by this plugin (header with the mode badge, Panel, Setup guide, Settings).
+
+- `/app/inpostpay` keeps working: it moves to the tab with every parameter (`/app/inpostpay?filter=payment_problems` opens the tab on that list), so links from hosts, counters and the order card need no change.
+- The own sidebar entry steps aside at runtime (Medusa has no conditional sidebar entries): its icon draws a hidden marker while the InPost plugin is there and one CSS rule of the shared kit hides that link. In a browser without CSS `:has()` the entry stays and leads to the tab.
+- Without the InPost plugin nothing changes: the own entry "InPost Pay" and the page at `/app/inpostpay`, as before. Nothing to configure, and no import between the packages: the two meet in the registry of the shared kit (page tabs, kit 1.1.0).
+
 ## Works with Koda Plus hosts
 
 - `GET /admin/inpostpay/integration`: the manifest (mode `demo`, `sandbox`, `live` or `off`, entity `order`, the widget `inpostpay.order` in `order.details`, the writer of order events).
@@ -316,4 +324,4 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 Every release is in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost-pay/CHANGELOG.md).
 
-- 0.1.0 (unreleased): the first version. The button, the Merchant Backend API with signature verification, the order through the plugin's payment provider, order events to InPost, the admin page and the order widget, demo mode, the koda.integration/1 contract. It needs `npx medusa db:migrate`.
+- 0.1.0 (unreleased): the first version. The button, the Merchant Backend API with signature verification, the order through the plugin's payment provider, order events to InPost, the admin page and the order widget, demo mode, the koda.integration/1 contract, one InPost menu with the InPost plugin. It needs `npx medusa db:migrate`.

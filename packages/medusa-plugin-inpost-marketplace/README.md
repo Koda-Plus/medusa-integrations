@@ -141,6 +141,14 @@ Every route needs an admin session or token. Writes take a JSON body or the `x-k
 
 The plugin has no store routes.
 
+## One InPost menu
+
+With the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) of Koda Plus in the same app, InPost Von Halsky does not take a sidebar entry of its own: its page is the "Von Halsky" tab of the "InPost" entry (`/app/inpost?service=vonhalsky`), next to Shipping and, when installed, InPost Pay. The page in the tab is the same page, drawn by this plugin (header with the mode badge, Offers, Orders, Sync log, Setup guide, Settings).
+
+- `/app/vonhalsky` keeps working: it moves to the tab with every parameter (`/app/vonhalsky?section=orders&filter=held` opens the tab on that list), so links from hosts, counters and the order card need no change.
+- The own sidebar entry steps aside at runtime (Medusa has no conditional sidebar entries): its icon draws a hidden marker while the InPost plugin is there and one CSS rule of the shared kit hides that link. In a browser without CSS `:has()` the entry stays and leads to the tab.
+- Without the InPost plugin nothing changes: the own entry "InPost Von Halsky" and the page at `/app/vonhalsky`, as before. Nothing to configure, and no import between the packages: the two meet in the registry of the shared kit (page tabs, kit 1.1.0).
+
 ## Works with Koda Plus hosts
 
 - `GET /admin/vonhalsky/integration`: the manifest (mode `demo`, `sandbox`, `live` or `off`, entities `order` and `product`, the widget `vonhalsky.order` in `order.details`, the tracking writer; in sandbox and live the problem "seller API pending").
@@ -197,4 +205,4 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 Every release is in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost-marketplace/CHANGELOG.md).
 
-- 0.1.0 (unreleased): the first version. Offers from the catalog with eligibility, GPSR and channel pricing, order import into Medusa, tracking back, the admin page and the order widget, demo mode, the koda.integration/1 contract; the live seller API client is pending. It needs `npx medusa db:migrate`.
+- 0.1.0 (unreleased): the first version. Offers from the catalog with eligibility, GPSR and channel pricing, order import into Medusa, tracking back, the admin page and the order widget, demo mode, the koda.integration/1 contract, one InPost menu with the InPost plugin; the live seller API client is pending. It needs `npx medusa db:migrate`.

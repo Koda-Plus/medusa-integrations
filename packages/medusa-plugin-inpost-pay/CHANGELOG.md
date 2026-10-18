@@ -26,6 +26,7 @@ The first version: one-click checkout with the InPost mobile app (InPost Pay) fo
 - `/app/inpostpay`: Panel (counters, baskets with products, delivery, masked phone, payment status and history), Setup guide with live step states and the Merchant API address, Settings (delivery mapping, button places, the InPost account and the connection check).
 - The order widget `inpostpay.order` (order details, side column, hostable).
 - The koda.integration/1 contract: manifest, order summary, counters `payment_problems` and `failed_baskets`.
+- One InPost menu (shared kit 1.1.0, page tabs): with the InPost plugin of Koda Plus in the same app, the page is the "InPost Pay" tab of its "InPost" entry (`/app/inpost?service=pay`), `/app/inpostpay` redirects there with every parameter and the own sidebar entry steps aside. Without it the page and the entry stand alone.
 
 ### Writer
 

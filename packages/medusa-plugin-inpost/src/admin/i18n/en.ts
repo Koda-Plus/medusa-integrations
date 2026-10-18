@@ -10,6 +10,10 @@ const en = {
     panel: "Panel",
     guide: "Setup guide",
   },
+  tabs: {
+    label: "InPost services",
+    shipping: "Shipping",
+  },
   settings: {
     title: "Settings",
     subtitle: "The technical side: the InPost account and the webhook, the sender with the default parcel and label, the writers and the history.",

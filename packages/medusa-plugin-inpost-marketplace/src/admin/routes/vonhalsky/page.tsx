@@ -7,9 +7,10 @@ import { ArrowPath } from "@medusajs/icons"
 import { Badge, Container, InlineTip, toast } from "@medusajs/ui"
 import type { OfferFilter, OrderFilter, StatusResponse } from "../../../modules/vonhalsky/lib/contract"
 import { errorMessage, useImportNow, useRefreshOffers, useSimulateOrder, useVonHalskyStatus, vonHalskyKeys } from "../../lib/vonhalsky-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
 import { GuideView, usePromptSpec } from "../../lib/vonhalsky-guide-view"
 import { VonHalskyIcon } from "../../lib/vonhalsky-icon"
+import { addPageTab, hostedNavIcon } from "../../lib/vonhalsky-kit"
 import { LogSection } from "../../lib/vonhalsky-log"
 import { OFFER_FILTERS, OffersSection } from "../../lib/vonhalsky-offers"
 import { ORDER_FILTERS, OrdersSection } from "../../lib/vonhalsky-orders"
@@ -27,6 +28,12 @@ import { Chip, StatTile, fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
  *
  * Deep links from hosts and boards: /vonhalsky?section=orders&filter=held,
  * /vonhalsky?section=offers&filter=blocked, /vonhalsky?section=orders&q=...
+ *
+ * One menu entry for InPost: when the InPost plugin of Koda Plus is
+ * installed in the same app, this page is its "Von Halsky" tab
+ * (`/inpost?service=vonhalsky`), `/vonhalsky` redirects there with every
+ * parameter and the own sidebar entry steps aside. Without it the page
+ * stands alone as before. The plugins meet only in the kit's registry.
  */
 const SETTINGS_TABS = ["pricing", "orders", "shipping", "account"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
@@ -236,9 +243,18 @@ function Warnings({ status }: { status: StatusResponse }) {
   )
 }
 
+/* The tab on the InPost page (when that plugin is installed), drawn by this plugin's own page. */
+addPageTab({ host: "inpost", id: "vonhalsky", ns: "vonhalsky", name: "Von Halsky", order: 20, Icon: VonHalskyIcon, Component: VonHalskyPage })
+
+const VonHalskyRoute = () => (
+  <KitTabRoute host="inpost" tab="vonhalsky">
+    <VonHalskyPage />
+  </KitTabRoute>
+)
+
 export const config = defineRouteConfig({
   label: "InPost Von Halsky",
-  icon: VonHalskyIcon,
+  icon: hostedNavIcon(VonHalskyIcon, { host: "inpost", tab: "vonhalsky" }),
 })
 
-export default VonHalskyPage
+export default VonHalskyRoute

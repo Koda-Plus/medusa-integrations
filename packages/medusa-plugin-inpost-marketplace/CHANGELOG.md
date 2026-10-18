@@ -27,6 +27,7 @@ The first version: the InPost marketplace (InPost Von Halsky, also called InPost
 - `/app/vonhalsky`: counters, offers with photos and bulk actions, marketplace orders with their products and actions, the sync log, Setup guide with live step states, Settings (pricing, orders, shipping, account).
 - The order widget `vonhalsky.order` (order details, side column, hostable).
 - The koda.integration/1 contract: manifest, order and product summaries, counters `held_orders`, `tracking_failed`, `awaiting_shipment`, `blocked_offers`.
+- One InPost menu (shared kit 1.1.0, page tabs): with the InPost plugin of Koda Plus in the same app, the page is the "Von Halsky" tab of its "InPost" entry (`/app/inpost?service=vonhalsky`), `/app/vonhalsky` redirects there with every parameter and the own sidebar entry steps aside. Without it the page and the entry stand alone.
 
 ### Demo mode
 

@@ -7,9 +7,10 @@ import { ArrowPath } from "@medusajs/icons"
 import { Badge, Container, InlineTip, toast } from "@medusajs/ui"
 import type { BasketFilter, StatusResponse } from "../../../modules/inpostpay/lib/contract"
 import { errorMessage, inpostPayKeys, useInpostPaySeed, useInpostPayStatus } from "../../lib/inpostpay-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpostpay-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpostpay-guide"
 import { GuideView, usePromptSpec } from "../../lib/inpostpay-guide-view"
 import { InpostPayIcon } from "../../lib/inpostpay-icon"
+import { addPageTab, hostedNavIcon } from "../../lib/inpostpay-kit"
 import { BasketsSection, DemoDetails, FILTERS } from "../../lib/inpostpay-panel"
 import { AccountSection, ButtonSection, DeliverySection } from "../../lib/inpostpay-settings"
 import { StatTile, fmtNumber, modeOf } from "../../lib/inpostpay-ui"
@@ -26,6 +27,12 @@ import { StatTile, fmtNumber, modeOf } from "../../lib/inpostpay-ui"
  *   button, the InPost account with the Merchant API address.
  *
  * Deep links from hosts and boards: /inpostpay?filter=payment_problems, /inpostpay?q=order_...
+ *
+ * One menu entry for InPost: when the InPost plugin of Koda Plus is
+ * installed in the same app, this page is its "InPost Pay" tab
+ * (`/inpost?service=pay`), `/inpostpay` redirects there with every
+ * parameter and the own sidebar entry steps aside. Without it the page
+ * stands alone as before. The plugins meet only in the kit's registry.
  */
 const SETTINGS_TABS = ["delivery", "button", "account"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
@@ -191,9 +198,18 @@ function Warnings({ status }: { status: StatusResponse }) {
   )
 }
 
+/* The tab on the InPost page (when that plugin is installed), drawn by this plugin's own page. */
+addPageTab({ host: "inpost", id: "pay", ns: "inpostpay", name: "InPost Pay", order: 10, Icon: InpostPayIcon, Component: InpostPayPage })
+
+const InpostPayRoute = () => (
+  <KitTabRoute host="inpost" tab="pay">
+    <InpostPayPage />
+  </KitTabRoute>
+)
+
 export const config = defineRouteConfig({
   label: "InPost Pay",
-  icon: InpostPayIcon,
+  icon: hostedNavIcon(InpostPayIcon, { host: "inpost", tab: "pay" }),
 })
 
-export default InpostPayPage
+export default InpostPayRoute

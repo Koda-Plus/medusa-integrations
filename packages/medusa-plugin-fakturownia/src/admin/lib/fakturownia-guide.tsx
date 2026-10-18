@@ -1,8 +1,9 @@
-// GENERATED from kit/admin/guide.tsx (kit 1.0.9) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/guide.tsx (kit 1.1.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useMemo, useState, type ReactNode } from "react"
-import { useSearchParams } from "react-router-dom"
+import { Navigate, useSearchParams } from "react-router-dom"
 import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
 import { Badge, Button, Container, DropdownMenu, Heading, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
+import { PAGE_TAB_PARAM, usePageTabHost, usePageTabs, type IconComponent } from "./fakturownia-kit"
 import { KIT_META } from "./fakturownia-kit-meta"
 
 /*
@@ -21,6 +22,9 @@ import { KIT_META } from "./fakturownia-kit-meta"
  *   AddStoreButton   "Add your store" next to it: a request to Koda Plus, by mail
  *   HelpButtons      "Copy prompt" (an AI agent sets the integration up in another
  *                    Medusa project, like here) and help on the Koda Plus Discord
+ * One menu entry for a family of plugins
+ *   KitTabbedPage    the host page: its own page and the pages other plugins added, as tabs in ?service=
+ *   KitTabRoute      a plugin's own route that moves to its tab while the host is installed
  * Settings
  *   SettingsView     a title and tabs over the technical sections (account, writers, plans, history)
  * Guide
@@ -134,6 +138,78 @@ export function PageTabs({ value, onChange, labels }: { value: PageView; onChang
       })}
     </div>
   )
+}
+
+/* ------------------------------------------------------------------ */
+/* One menu entry for a family of plugins (the registry is in the kit: hostPageTabs, addPageTab) */
+
+/**
+ * The host page: its own page as the first tab, the pages other plugins of
+ * the family added (addPageTab) as the next ones, drawn by their own code.
+ * The tab lives in `?service=` (none for the own tab), so links and the
+ * browser's back button work; switching tabs starts the next page clean
+ * (its own `view`, `tab`, `filter` and `q` are not carried over). With no
+ * other tab registered the page is drawn exactly as before, without a bar.
+ */
+export function KitTabbedPage({ host, label, own, children }: { host: string; label: string; own: { id: string; label: string; Icon: IconComponent }; children: ReactNode }) {
+  const tabs = usePageTabs(host)
+  const [params, setParams] = useSearchParams()
+  if (!tabs.length) return <>{children}</>
+  const asked = params.get(PAGE_TAB_PARAM)
+  const active = tabs.find((t) => t.id === asked) ?? null
+  const current = active?.id ?? own.id
+  const go = (id: string) => {
+    if (id === current) return
+    const next = new URLSearchParams()
+    if (id !== own.id) next.set(PAGE_TAB_PARAM, id)
+    setParams(next)
+  }
+  const items = [{ id: own.id, name: own.label, Icon: own.Icon }, ...tabs.map((t) => ({ id: t.id, name: t.name, Icon: t.Icon }))]
+  return (
+    <div className="flex flex-col gap-y-3">
+      <Container className="overflow-hidden p-0">
+        <div role="tablist" aria-label={label} className="flex flex-wrap items-center gap-1 bg-ui-bg-subtle px-4 py-2">
+          {items.map((it) => {
+            const on = it.id === current
+            return (
+              <button
+                key={it.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => go(it.id)}
+                className={clx(
+                  "txt-compact-small-plus inline-flex items-center gap-x-2 rounded-md px-2.5 py-1.5 outline-none transition-fg focus-visible:shadow-borders-focus",
+                  on ? "bg-ui-bg-base text-ui-fg-base shadow-borders-base" : "text-ui-fg-subtle hover:bg-ui-bg-base-hover hover:text-ui-fg-base",
+                )}
+              >
+                <span className={clx("flex", on ? "" : "opacity-70")}>
+                  <it.Icon width={16} height={16} />
+                </span>
+                {it.name}
+              </button>
+            )
+          })}
+        </div>
+      </Container>
+      {active ? <active.Component key={active.id} /> : children}
+    </div>
+  )
+}
+
+/**
+ * The route of a plugin that is a tab of a host page: while the host plugin
+ * is installed, its own address (`/inpostpay?filter=...`) moves to the tab
+ * (`/inpost?service=pay&filter=...`) with every parameter kept; without the
+ * host it draws its own page as always.
+ */
+export function KitTabRoute({ host, tab, children }: { host: string; tab: string; children: ReactNode }) {
+  const target = usePageTabHost(host, tab)
+  const [params] = useSearchParams()
+  if (!target) return <>{children}</>
+  const next = new URLSearchParams(params)
+  next.set(PAGE_TAB_PARAM, tab)
+  return <Navigate to={`${target.path}?${next.toString()}`} replace />
 }
 
 /** One action of the page: the main one gets the dark button, the others sit next to it or under "More actions". */

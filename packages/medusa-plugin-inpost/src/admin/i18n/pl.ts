@@ -12,6 +12,10 @@ const pl: typeof en = {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
   },
+  tabs: {
+    label: "Usługi InPost",
+    shipping: "Przesyłki",
+  },
   settings: {
     title: "Ustawienia",
     subtitle: "Techniczna strona integracji: konto InPost i webhook, nadawca z domyślną paczką i etykietą, zapisy oraz historia.",

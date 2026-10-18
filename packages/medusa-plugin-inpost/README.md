@@ -339,6 +339,15 @@ Every route is behind Medusa's admin authentication. Writes answer 409 while the
 - `GET /admin/inpost/events`: the history. `POST /admin/inpost/demo/seed`: demo mode only, builds the sample shipments once. `POST /admin/inpost/demo/reset`: demo mode only, starts the simulation over.
 - `GET /admin/inpost/integration`, `/integration/summary`, `/integration/attention`: the koda.integration/1 contract, see below.
 
+## One InPost menu
+
+The InPost plugins of Koda Plus are three packages, each installed on its own: this one (shipping), [InPost Pay](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost-pay) (one-click checkout) and [InPost Von Halsky](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost-marketplace) (the marketplace). Installed in the same app they share one sidebar entry, "InPost":
+
+- `/app/inpost` opens on the Shipping tab, which is this page as before. Next to it each of the other plugins adds its own tab, drawn by its own code: InPost Pay (`/app/inpost?service=pay`) and Von Halsky (`/app/inpost?service=vonhalsky`), each with its own header, mode badge, setup guide and settings. A tab is there only when its plugin is installed; with no other InPost plugin the page has no tab bar at all.
+- The tab lives in `?service=`, so a link opens it and the back button returns; the parameters of the page in a tab (`view`, `tab`, `filter`, `q`) work as on its own page.
+- The other plugins' own addresses keep working: `/app/inpostpay?...` and `/app/vonhalsky?...` move to their tab with every parameter, and their own sidebar entries step aside.
+- Nothing to configure and no import between the packages: the plugins meet in the registry of the shared kit (page tabs, kit 1.1.0) when the admin starts. Medusa builds the sidebar from the route configs when the admin is built and has no conditional entries, so the entries of InPost Pay and Von Halsky are hidden at runtime: their sidebar icon draws a hidden marker while this plugin is there, and one CSS rule hides that link. In a browser without CSS `:has()` the entry stays and leads to the tab.
+
 ## Works with Koda Plus hosts
 
 An app that shows every Koda Plus plugin in one place (like [medusa.koda.plus](https://medusa.koda.plus/app/orders?demo=en)) reads InPost through the shared contract `koda.integration/1` and never needs to know its tables:
@@ -406,6 +415,10 @@ InPost, Paczkomat and the InPost logo are trademarks of InPost, used here only t
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost/LICENSE).
 
 ## Changelog
+
+### 0.3.0 (unreleased)
+
+One InPost menu: with InPost Pay or InPost Von Halsky in the same app, their pages are tabs of this page and the sidebar has one "InPost" entry (see above).
 
 ### 0.2.0 (first npm release)
 
