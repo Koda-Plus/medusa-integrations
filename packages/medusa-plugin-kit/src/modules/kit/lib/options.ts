@@ -29,6 +29,12 @@ export interface KitPluginOptions {
   timeoutMs?: number | string
   /** The public storefront address, the referrer of form submissions. */
   storefrontUrl?: string
+  /**
+   * Demo mode: the plugin works on a sample Kit account kept in memory and
+   * never calls Kit (sign-ups, tags and the panel all run). Only on explicit
+   * request; it wins over an API key. Default false.
+   */
+  demo?: boolean | string
 }
 
 export interface ResolvedKitOptions {
@@ -40,6 +46,8 @@ export interface ResolvedKitOptions {
   requestsPerMinute: number
   timeoutMs: number
   storefrontUrl: string | null
+  /** Demo mode: a sample account in memory, Kit is never called. */
+  demo: boolean
   /** Option values that were ignored, for the admin. */
   problems: string[]
 }
@@ -87,13 +95,19 @@ export function resolveOptions(input: KitPluginOptions | undefined | null): Reso
     requestsPerMinute: num(o.requestsPerMinute, 90, 1, 120),
     timeoutMs: num(o.timeoutMs, 20_000, 1_000, 60_000),
     storefrontUrl,
+    demo: o.demo === true || o.demo === "true",
     problems,
   }
+}
+
+/** Whether the plugin works: a key for live mode, or demo mode. */
+export function isActive(o: Pick<ResolvedKitOptions, "apiKey" | "demo">): boolean {
+  return o.demo || Boolean(o.apiKey)
 }
 
 /** Options live mode still needs; the admin lists them. */
 export function missingOptions(o: ResolvedKitOptions): string[] {
   const missing: string[] = []
-  if (!o.apiKey) missing.push("apiKey")
+  if (!o.demo && !o.apiKey) missing.push("apiKey")
   return missing
 }

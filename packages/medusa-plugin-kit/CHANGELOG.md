@@ -15,6 +15,10 @@ The first release on npm: the newsletter of a Medusa v2 store on the Kit list (k
 
 - Tags for buyers on `order.placed`: an address that is ALREADY an active subscriber gets the buyer tags and, when switched on, one tag per bought product (`<prefix><product title>`, created in Kit when missing, prefix `Bought: ` by default and set in the admin). An order never subscribes anyone, and an address that waits for confirmation is left alone. A canceled order, a missing key or Kit being down never fail the order: the log row and the server log say so.
 
+### Demo mode
+
+- The option `demo` (only on explicit request, it wins over `apiKey`): a sample Kit account in memory. The panel shows a Demo badge, the connection check, the list in numbers and the broadcasts answer with sample values, sign-ups and buyer tags run against the in-memory list, and nothing ever reaches Kit or sends an e-mail.
+
 ### Admin
 
 - The Kit page (`/app/kit`) with a Panel and a Setup guide: the counters of the subscription log (subscribers from the store, failed sign-ups, sign-ups in the last 7 days), the connection check (the account, its tags and forms), the list in numbers (active subscribers, new and unsubscribed in 30 days, net change and open and click rates over 90 days), the newest broadcasts with recipients, opens, clicks and unsubscribes, the list settings (tags, double opt-in, the form), tags by source and for buyers, and the subscription log with every attempt.

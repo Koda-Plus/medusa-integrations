@@ -15,6 +15,8 @@ const pl = {  nav: "Kit",
   error: "Nie udało się wczytać strony: {{message}}",
   mode: {
     off: "Brak konfiguracji",
+    demo: "Demo",
+    demoNote: "Tryb demo: przykładowe konto Kita w pamięci serwera. Zapisy, tagi i ustawienia działają, ale nic nie trafia do Kita i nie wychodzi żaden e-mail.",
   },
   stats: {
     subscribed: "Zapisów ze sklepu",

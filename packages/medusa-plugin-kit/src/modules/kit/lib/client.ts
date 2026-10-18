@@ -1,6 +1,7 @@
 import type { Logger } from "@medusajs/framework/types"
 import { KIT_API } from "./constants"
 import type { ResolvedKitOptions } from "./options"
+import { createDemoKitClient } from "./demo"
 
 /**
  * A minimal Kit API v4 client: only what the plugin needs. GET and POST
@@ -104,7 +105,12 @@ export function maskKitSecrets(text: string, apiKey: string): string {
 /** Creates a client for the resolved options; `keyed` re-keys an existing one. */
 const n = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0)
 
-export function createKitClient(options: ResolvedKitOptions, logger: Pick<Logger, "warn" | "error">) {
+export function createKitClient(options: ResolvedKitOptions, logger: Pick<Logger, "warn" | "error">): KitClient {
+  if (options.demo) return createDemoKitClient(options.source)
+  return createLiveKitClient(options, logger)
+}
+
+function createLiveKitClient(options: ResolvedKitOptions, logger: Pick<Logger, "warn" | "error">) {
   const o = options
   let nextCallAt = 0
   let queue: Promise<unknown> = Promise.resolve()
@@ -305,4 +311,4 @@ export function createKitClient(options: ResolvedKitOptions, logger: Pick<Logger
   }
 }
 
-export type KitClient = ReturnType<typeof createKitClient>
+export type KitClient = ReturnType<typeof createLiveKitClient>

@@ -71,7 +71,11 @@ const Panel = () => {
     <Container className="divide-y p-0">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-6 py-4">
         <Heading level="h2">{t("title")}</Heading>
-        {s?.configured ? (
+        {s?.demo ? (
+          <Badge size="2xsmall" color="orange" title={t("mode.demoNote")}>
+            {t("mode.demo")}
+          </Badge>
+        ) : s?.configured ? (
           <Badge size="2xsmall" color="green">
             {t("status.configured")}
           </Badge>
@@ -81,6 +85,14 @@ const Panel = () => {
           </Badge>
         )}
       </div>
+
+      {s?.demo ? (
+        <div className="px-6 py-3">
+          <Text size="small" className="text-ui-fg-subtle">
+            {t("mode.demoNote")}
+          </Text>
+        </div>
+      ) : null}
 
       {/* Stan */}
       <div className="flex flex-wrap items-center gap-2 px-6 py-3">

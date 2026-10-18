@@ -19,6 +19,8 @@ const CONFIG = `module.exports = defineConfig({
         // Everything is optional.
         apiKey: process.env.KIT_API_KEY,
         source: "Mój Sklep",
+        // A sample account in memory, Kit is never called:
+        demo: process.env.KIT_DEMO === "true",
       },
     },
   ],
