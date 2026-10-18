@@ -1,5 +1,5 @@
-// GENERATED from kit/admin/kit.tsx (kit 1.0.9) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
-import { useSyncExternalStore, type ComponentType, type ReactNode } from "react"
+// GENERATED from kit/admin/kit.tsx (kit 1.1.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+import { useLayoutEffect, useMemo, useSyncExternalStore, type ComponentType, type ReactNode } from "react"
 import { Container, clx } from "@medusajs/ui"
 import type { HostZone } from "../../modules/emails/lib/kit-contract"
 
@@ -18,6 +18,8 @@ import type { HostZone } from "../../modules/emails/lib/kit-contract"
  *   through a global symbol.
  * - WidgetFrame: the card's own frame, or none when a host embeds the card
  *   in its tab.
+ * - Page tabs: plugins of one family share one sidebar entry, each page a
+ *   tab of the host plugin's page (hostPageTabs, addPageTab, hostedNavIcon).
  */
 
 /* ------------------------------------------------------------------ */
@@ -322,6 +324,177 @@ export function KitHostSlot({ id }: { id: string }) {
 /** A plugin page without cards says it is installed, so a host can list it. */
 export function announce(entry: IntegrationEntry): void {
   registry().announce(entry)
+}
+
+/* ------------------------------------------------------------------ */
+/* Page tabs: one menu entry for a family of plugins                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Plugins of one family (InPost: shipping, InPost Pay, Von Halsky) can share
+ * one sidebar entry while each stays its own package. The host plugin calls
+ * hostPageTabs(...) at module load of its page file and draws its page
+ * inside <KitTabbedPage> (the page kit); every other plugin of the family
+ * calls addPageTab(...) at module load of its own page file, with its own
+ * page component. Medusa imports every route file when the dashboard starts,
+ * so both calls have run before the first render. The two sides meet only
+ * in this registry (a global symbol, the same in every bundle); no package
+ * imports another:
+ *
+ * - the host alone: its page as always, no tab bar;
+ * - a contributor alone: its own sidebar entry and page as always;
+ * - both: one sidebar entry, the contributor's page is a tab of the host
+ *   page (`?service=<tab>`), the contributor's own address redirects there
+ *   (<KitTabRoute>) and its own sidebar entry steps aside (hostedNavIcon).
+ *
+ * Why the entry is hidden at runtime: Medusa builds the sidebar from the
+ * route `config` it reads from the source when the admin is built, so an
+ * entry cannot be made conditional. The only part of an entry a plugin draws
+ * at runtime is its icon: hostedNavIcon draws the mark when no host is there
+ * and a hidden marker when one is, and one CSS rule (added to the page only
+ * then) hides the sidebar link that holds a marker. Where the rule does not
+ * apply (a browser without :has(), a changed sidebar), the entry just stays
+ * and leads to the tab.
+ */
+export const PAGE_TABS_KEY = Symbol.for("koda.page.tabs/1")
+
+/** The query parameter of the tab on a host page; `view`, `tab`, `section`, `filter` and `q` stay the pages' own. */
+export const PAGE_TAB_PARAM = "service"
+
+export interface PageTabHost {
+  /** "inpost" */
+  id: string
+  /** Dashboard route of the host page, e.g. "/inpost". */
+  path: string
+  /** The brand, never translated: "InPost". */
+  name: string
+}
+
+export interface PageTab {
+  /** The host page this tab goes to: "inpost". */
+  host: string
+  /** The tab in the URL, `?service=<id>`: "pay". Lowercase letters, digits and dashes. */
+  id: string
+  ns: string
+  /** The tab label, a brand, never translated: "InPost Pay". */
+  name: string
+  /** Tab order on the host page, low first (the host's own tab is always first). */
+  order: number
+  Icon: IconComponent
+  /** The plugin's whole page, drawn by the plugin's own code. */
+  Component: ComponentType
+}
+
+interface PageTabRegistry {
+  readonly version: 1
+  host(h: PageTabHost): void
+  add(t: PageTab): void
+  hostOf(id: string): PageTabHost | null
+  tabs(host: string): PageTab[]
+  subscribe(listener: () => void): () => void
+  revision(): number
+}
+
+const TAB_ID = /^[a-z0-9][a-z0-9-]{0,39}$/
+
+function pageTabs(): PageTabRegistry {
+  const g = globalThis as unknown as Record<symbol, PageTabRegistry | undefined>
+  const existing = g[PAGE_TABS_KEY]
+  if (existing && existing.version === 1) return existing
+  const hosts = new Map<string, PageTabHost>()
+  const tabs = new Map<string, PageTab>()
+  const listeners = new Set<() => void>()
+  let rev = 0
+  const changed = () => {
+    rev += 1
+    for (const l of [...listeners]) {
+      try {
+        l()
+      } catch {
+        /* a listener never breaks the others */
+      }
+    }
+  }
+  const created: PageTabRegistry = {
+    version: 1,
+    host(h) {
+      hosts.set(h.id, h)
+      changed()
+    },
+    add(t) {
+      if (!TAB_ID.test(t.id)) return
+      tabs.set(`${t.host}:${t.id}`, t)
+      changed()
+    },
+    hostOf: (id) => hosts.get(id) ?? null,
+    tabs: (host) => [...tabs.values()].filter((t) => t.host === host).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)),
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    revision: () => rev,
+  }
+  g[PAGE_TABS_KEY] = created
+  return created
+}
+
+/** The host plugin: its page takes the tabs of its family. Call at module load of the page file. */
+export function hostPageTabs(host: PageTabHost): void {
+  pageTabs().host(host)
+}
+
+/** A plugin of the family: its page becomes a tab of the host page, when the host is installed. Call at module load of the page file. */
+export function addPageTab(tab: PageTab): void {
+  pageTabs().add(tab)
+}
+
+function usePageTabsRevision(): number {
+  const r = pageTabs()
+  return useSyncExternalStore(r.subscribe, r.revision, r.revision)
+}
+
+/** The tabs other plugins gave this host page, in their order. */
+export function usePageTabs(host: string): PageTab[] {
+  const rev = usePageTabsRevision()
+  return useMemo(() => pageTabs().tabs(host), [host, rev])
+}
+
+/** The host page that shows this tab, or null when the host plugin is not installed (the plugin then stands alone). */
+export function usePageTabHost(host: string, tab: string): PageTabHost | null {
+  usePageTabsRevision()
+  const r = pageTabs()
+  const h = r.hostOf(host)
+  return h && r.tabs(host).some((t) => t.id === tab) ? h : null
+}
+
+const NAV_HIDE_STYLE = "koda-page-tabs-nav"
+/* The link that holds a marker, and Medusa's wrapper around exactly that one link (so no gap is left). */
+const NAV_HIDE_CSS = "a:has([data-koda-nav-hosted]){display:none!important}div:has(>div:only-child>a:only-child [data-koda-nav-hosted]){display:none!important}"
+
+function ensureNavHideStyle(): void {
+  if (typeof document === "undefined" || document.getElementById(NAV_HIDE_STYLE)) return
+  const style = document.createElement("style")
+  style.id = NAV_HIDE_STYLE
+  style.textContent = NAV_HIDE_CSS
+  document.head.appendChild(style)
+}
+
+/**
+ * The icon of a contributor's own sidebar entry, for `defineRouteConfig({ icon })`:
+ * the plugin's mark when it stands alone, a hidden marker (and so no sidebar
+ * entry) while a host page shows it as a tab.
+ */
+export function hostedNavIcon(Icon: IconComponent, at: { host: string; tab: string }): IconComponent {
+  const NavIcon = (props: { width?: number; height?: number; className?: string }) => {
+    const hosted = usePageTabHost(at.host, at.tab) !== null
+    useLayoutEffect(() => {
+      if (hosted) ensureNavHideStyle()
+    }, [hosted])
+    if (hosted) return <span data-koda-nav-hosted={`${at.host}:${at.tab}`} hidden />
+    return <Icon {...props} />
+  }
+  NavIcon.displayName = `HostedNavIcon(${at.host}:${at.tab})`
+  return NavIcon
 }
 
 /* ------------------------------------------------------------------ */

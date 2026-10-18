@@ -38,7 +38,7 @@ Each package installs, versions and publishes on its own; pick the ones your sto
 Every package follows the same rules, so a merchant who installed one already knows the others:
 
 - **Demo mode:** sample data built from your own catalog and orders, through the same code paths as real data. Evaluate without an account.
-- **An admin page under Extensions** with its own mark, counters and tables, a setup guide with live step states and a settings view, plus widgets where the data belongs (product, order or customer page).
+- **An admin page under Extensions** with its own mark, counters and tables, a setup guide with live step states and a settings view, plus widgets where the data belongs (product, order or customer page). Plugins of one family share one entry: with InPost installed, InPost Pay and InPost Von Halsky are tabs of the "InPost" page instead of entries of their own (each still works alone).
 - **Admin in English and Polish**, one i18n namespace per package.
 - **Writes only what the merchant switched on.** Every write into an outside system or into Medusa is a writer: allowed in the options, armed by a person in the admin, planned first, capped per run.
 - **The complete-read rule:** an incomplete read adds and updates, it never removes a link or zeroes a quantity.
@@ -62,7 +62,7 @@ Development needs Node.js 22.6 or newer (`.nvmrc`); the published packages run o
 
 ### The shared kit and the contract for hosts
 
-What every package shares (the `koda.integration/1` contract for apps that show all plugins in one place, the write and metadata guards, the admin fetch with session or JWT, the card registry, the page kit) lives once in [`kit/`](kit/README.md) and is copied into the packages by `npm run kit:sync`. Each plugin answers `GET /admin/<ns>/integration`, `/integration/summary` and `/integration/attention`, and its admin cards can be embedded by a host as tabs.
+What every package shares (the `koda.integration/1` contract for apps that show all plugins in one place, the write and metadata guards, the admin fetch with session or JWT, the card registry, the page kit) lives once in [`kit/`](kit/README.md) and is copied into the packages by `npm run kit:sync`. Each plugin answers `GET /admin/<ns>/integration`, `/integration/summary` and `/integration/attention`, and its admin cards can be embedded by a host as tabs. Page tabs give a family of plugins one sidebar entry: the host plugin's page shows the other plugins' pages as tabs (InPost with InPost Pay and InPost Von Halsky), see [the kit](kit/README.md).
 
 ### The demo admin
 

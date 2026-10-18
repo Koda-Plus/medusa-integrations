@@ -42,7 +42,7 @@ The repository is PUBLIC: nothing about clients, machines, accounts, tokens or r
 
 ## The shared kit
 
-`kit/` is the one source of what every package shares: the `koda.integration/1` contract (types, server routes for the manifest, record summaries and board counters), the guards (`writeGuard`, `reservedMetadataGuard`), the admin fetch (backend URL, session or JWT), the card registry (`hostable`, `WidgetFrame`), the page kit (`<ns>-guide.tsx`), the community strings and the conformance tests. `npm run kit:sync` writes the copies into the packages, `npm run kit:check` fails on drift. Never edit a generated copy. How to put a package on the contract: `kit/README.md`.
+`kit/` is the one source of what every package shares: the `koda.integration/1` contract (types, server routes for the manifest, record summaries and board counters), the guards (`writeGuard`, `reservedMetadataGuard`), the admin fetch (backend URL, session or JWT), the card registry (`hostable`, `WidgetFrame`), page slots and page tabs (one sidebar entry for a family of plugins: InPost hosts InPost Pay and InPost Von Halsky as tabs), the page kit (`<ns>-guide.tsx`), the community strings and the conformance tests. `npm run kit:sync` writes the copies into the packages, `npm run kit:check` fails on drift. Never edit a generated copy. How to put a package on the contract: `kit/README.md`.
 
 ## Commands
 

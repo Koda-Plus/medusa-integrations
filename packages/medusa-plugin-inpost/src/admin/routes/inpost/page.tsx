@@ -7,9 +7,10 @@ import { ArrowPath, MagnifyingGlass, TruckFast } from "@medusajs/icons"
 import { Badge, Container, InlineTip, toast, usePrompt } from "@medusajs/ui"
 import type { ParcelFilter, PanelGroup, StatusResponse } from "../../../modules/inpost/lib/contract"
 import { errorMessage, inpostKeys, useInpostDemoReset, useInpostDemoSeed, useInpostPickup, useInpostStatus, useInpostSync } from "../../lib/inpost-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpost-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabbedPage, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpost-guide"
 import { GuideView, usePromptSpec } from "../../lib/inpost-guide-view"
 import { InpostIcon } from "../../lib/inpost-icon"
+import { hostPageTabs } from "../../lib/inpost-kit"
 import { DemoDetails, ParcelsSection } from "../../lib/inpost-panel"
 import { LockerDrawer } from "../../lib/inpost-plan"
 import { AccountSection, HistorySection, ShippingSection, WritersSection } from "../../lib/inpost-settings"
@@ -27,7 +28,15 @@ import { StatTile, fmtNumber, fmtRating, kitReferences, modeOf } from "../../lib
  *   sender, the default parcel and the label, the writers, the history.
  *
  * The demo note and the stores running the integration sit in header badges.
+ *
+ * One menu entry for InPost: this page hosts the tabs of the other InPost
+ * plugins of Koda Plus (InPost Pay, InPost Von Halsky) when they are
+ * installed in the same app. Each adds its own page with the kit's
+ * addPageTab; this page is the first tab ("Shipping") and the tab lives in
+ * `?service=`. Without them the page is drawn as before, without a tab bar.
  */
+hostPageTabs({ id: "inpost", path: "/inpost", name: "InPost" })
+
 const SETTINGS_TABS = ["account", "shipping", "writers", "history"] as const
 const FILTERS = ["all", "to_create", "waiting", "in_transit", "in_locker", "delivered", "problems", "canceled", "skipped"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
@@ -273,10 +282,20 @@ function Warnings({ status }: { status: StatusResponse }) {
   )
 }
 
+/** The route: the shipping page, and next to it the tabs other InPost plugins added. */
+const InpostRoute = () => {
+  const { t } = useTranslation("inpost")
+  return (
+    <KitTabbedPage host="inpost" label={t("tabs.label")} own={{ id: "shipping", label: t("tabs.shipping"), Icon: InpostIcon }}>
+      <InpostPage />
+    </KitTabbedPage>
+  )
+}
+
 export const config = defineRouteConfig({
   label: "InPost",
   rank: 3,
   icon: InpostIcon,
 })
 
-export default InpostPage
+export default InpostRoute
