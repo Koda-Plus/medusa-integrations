@@ -1,11 +1,12 @@
 # CLAUDE.md: medusa-integrations
 
-Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Eighteen npm packages, each published on its own. Eleven integrate an outside service and belong in the medusajs.com/integrations catalog; Compliance, Trade Credit, Packaging, Loyalty, Negotiations, Tasks and Coupons are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
+Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Nineteen npm packages, each published on its own. Twelve integrate an outside service and belong in the medusajs.com/integrations catalog; Compliance, Trade Credit, Packaging, Loyalty, Negotiations, Tasks and Coupons are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
 
 | Package | Namespace | Module (container key) | Catalog |
 | --- | --- | --- | --- |
 | `packages/medusa-plugin-olx` | `olx` | `olx` | Other |
 | `packages/medusa-plugin-allegro` | `allegro` | `allegro` | Other |
+| `packages/medusa-plugin-inpost-marketplace` | `vonhalsky` | `vonhalsky` (InPost Von Halsky, the InPost marketplace; the live seller API client is pending) | Other |
 | `packages/medusa-plugin-baselinker` | `baselinker` | `baselinker` | ERP |
 | `packages/medusa-plugin-subiekt-nexo` | `subiekt` | `subiekt_nexo` | ERP |
 | `packages/medusa-plugin-fakturownia` | `fakturownia` | `fakturownia` | Other |
