@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-packaging",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Packaging by Koda Plus: the wholesale packaging ladder of every product (piece, box, pallet), the minimum order quantity and the order step, EAN codes, SSCC labels for pallets and the GS1 check digit, with a store API for the product page.",
   "author": {
     "name": "Koda Plus",

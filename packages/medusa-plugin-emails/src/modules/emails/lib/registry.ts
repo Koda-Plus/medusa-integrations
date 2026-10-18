@@ -101,12 +101,18 @@ export function sensitiveFields(template: Pick<ResolvedTemplate, "key" | "def" |
   return [...new Set([...own, ...builtIn].filter((f): f is string => typeof f === "string" && f.length > 0))]
 }
 
-/** Every template: the built-in keys first, in their order, then the others by key. */
+/**
+ * Every template: the built-in keys first, in their order, then the ones of
+ * the options in the order the store gave them (so a store can group its
+ * own: orders first, then accounts), then the ones registered by code, by key.
+ */
 export function listTemplates(options: { definitions: Record<string, EmailTemplateDefinition<any>> }): ResolvedTemplate[] {
   const keys = [...BUILT_IN.keys()]
-  const extra = new Set<string>([...Object.keys(options.definitions), ...registry().keys()])
-  for (const k of keys) extra.delete(k)
-  return [...keys, ...[...extra].sort()].map((k) => resolveTemplate(k, options)).filter((t): t is ResolvedTemplate => t !== null)
+  const builtIn = new Set(keys)
+  const fromOptions = Object.keys(options.definitions).filter((k) => !builtIn.has(k))
+  const taken = new Set([...keys, ...fromOptions])
+  const fromRegistry = [...registry().keys()].filter((k) => !taken.has(k)).sort()
+  return [...keys, ...fromOptions, ...fromRegistry].map((k) => resolveTemplate(k, options)).filter((t): t is ResolvedTemplate => t !== null)
 }
 
 /** The sample data of a template in a language; an empty object when it has none or it throws. */

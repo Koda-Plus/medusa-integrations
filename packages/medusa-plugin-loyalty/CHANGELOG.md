@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+- The panel has a setup guide.
+- Demo data uses merchandise examples.
+- README screenshots.
+- Shared kit 1.0.9: white label support (a store can hide the Koda Plus byline, prompt, community links and references), the order products cell (thumbnails, a dialog with the order lines, products of carts without an order) and the amount breakdown component are available to the admin pages, and loaders, skeleton rows and the guide got small fixes.
+
 ## 0.1.0 (2026-10-08)
 
 ### Added

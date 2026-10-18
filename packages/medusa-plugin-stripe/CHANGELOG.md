@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Added
+
+- A Products column in the payments list: the thumbnails of the order's line items (one large picture, or a stack of overlapping cards for several) under a "View" link that opens a dialog with every line (thumbnail, title, variant, SKU, barcode, quantity, unit price, value). Lines priced at 0.05 or less (bundle components, add-ons) fold into one group. The items come from Medusa's `GET /admin/orders`, one request per page of the list, never from Stripe.
+- The products of the cart behind a payment that never became an order (abandoned, declined, waiting for the customer), marked "cart, no order was placed". New route `GET /admin/stripe/carts?ids=cart_1,cart_2`: the line items of up to 100 carts through Medusa's Query, read only, ids that are not cart ids skipped, a cart that is gone simply missing from the answer.
+- An amount breakdown under the amount of a payment with an order: the products before discount, the shipping (or "free"), the discount and its promotion codes, from Medusa's order totals.
+- The official payment method logos: card, BLIK, Przelewy24, Apple Pay and Google Pay from [@exisia/medusa-payment-icons](https://gitlab.com/exisia/medusajs/packages/medusa-payment-icons) (MIT), Link as the Stripe mark from Simple Icons (CC0). Each on a white chip of one size next to the method name, never instead of it: in the methods table, the payments list and its method filter, the disputes and the order widget. The logos ship inside the package as data URIs, no CDN.
+- The tiles open what they count: volume the succeeded payments, the success rate the declined ones, fees and net the balance, refunds the recent refunds, disputes the open disputes (or the disputed filter when there are none).
+- Where to refund a payment: "Refund in the order" opens the Medusa order of a succeeded payment with something left to refund, so the order, the stock and the documents follow; "Refund in Stripe" opens the Dashboard for a payment without an order. The plugin itself still never refunds.
+- A hint on every payment status, and the payment id labelled "Stripe ID" with a hint where to find it.
+- Loaders: a loading line and placeholder tiles while the first read runs, placeholder rows in the payments list, and a thin bar while newer data arrives behind the shown one.
+- A host slot `stripe.panel.before` above the payments, where a host app adds sections of its own through the kit's page slots (an empty slot renders nothing).
+
+### Changed
+
+- PaymentIntents are read in four time slices of the 30 days in parallel instead of page after page: the same rows in a fraction of the wait (7.5 s down to 3.1 s on 320 payments). Each slice gets its share of `maxPages`, at least one page, so a small store now sends four PaymentIntent requests instead of one.
+- Cached data first: once a read is older than `cacheSeconds`, the panel and the payments list answer at once with it and one read of Stripe refreshes it in the background (stale while revalidate). This happens only when someone opens the page, never on a timer; Refresh still waits for a fresh read, and a failed read is never served this way.
+- The payment status Stripe calls `canceled` reads "Abandoned": the customer started paying and did not finish, no money was taken.
+- The health checks live under Settings, Checks; the panel shows them first only while the plugin is not set up. The health strip and the deep link `?filter=checks` open Settings, Checks.
+- The methods table sits next to the balance, after the payments, disputes and refunds: both read the period's money, fees and net.
+- The "Read only" badge is orange. Links to the Stripe Dashboard carry the Stripe mark and the new window icon.
+- The admin kit is 1.0.9 (white label for host apps with `window.__KODA_KIT__ = { whiteLabel: true }`, loaders, page slots, the Products column).
+
 ## 0.2.0 (2026-10-07)
 
 First npm release. 0.1.0 was never published: it ran only as vendored code on medusa.koda.plus.

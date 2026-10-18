@@ -139,7 +139,7 @@ export async function stripePaymentsOf(
 /** The demo payment of one order (null when Stripe would not have paid it). */
 export async function demoPaymentOf(scope: Scope, order: DemoOrder, args: { origin: string | null; now: Date }): Promise<OrderPaymentDto | null> {
   const svc = stripeService(scope)
-  const { snapshot, at: readAt } = await loadSnapshot(scope, { origin: args.origin, now: () => args.now })
+  const { snapshot, at: readAt } = await loadSnapshot(scope, { origin: args.origin, now: () => args.now, staleWhileRevalidate: true })
   const data = snapshot.demo
   if (!data) return null
   const built = demoPaymentForOrder(data, order, args.now)

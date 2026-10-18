@@ -6,6 +6,39 @@ import { communityPl } from "../lib/emails-kit-community"
 const pl: typeof en = {
   "E-mails": "E-maile",
   title: "E-maile",
+  delivery: {
+    campaignHint: "Wysyłka spoza sklepu, przez to samo konto Resend (np. zawiadomienie do wszystkich klientów).",
+    tile: "Odrzucone adresy",
+    title: "Odrzucone adresy",
+    subtitle: "Adresy, na które Resend już nie wysyła (lista tłumienia): serwer adresata odrzucił wiadomość albo adresat zgłosił spam. Popraw adres u klienta (często to literówka w domenie) i usuń go z listy w Resend.",
+    readAt: "Odczyt z Resend: {{at}}",
+    back: "Wróć do dziennika",
+    notConfigured: "Wtyczka nie czyta dostarczeń: ustaw opcję deliveryKey (klucz Resend z dostępem do odczytu).",
+    empty: "Resend nie blokuje żadnego adresu.",
+    noLast: "brak wiadomości w tym sklepie",
+    typo: "Literówka w domenie? Pewnie {{fixed}}",
+    hint: "Co stało się po wysłaniu, według Resend",
+    col: { address: "Adres", reason: "Powód", subject: "Temat", since: "Od", last: "Ostatnia wiadomość" },
+    origin: { bounce: "odbity", complaint: "zgłoszony jako spam", manual: "dodany ręcznie" },
+    event: {
+      sent: "wysłany",
+      delivered: "dostarczony",
+      opened: "otwarty",
+      clicked: "kliknięty",
+      delivery_delayed: "opóźniony",
+      bounced: "odbity",
+      complained: "spam",
+      suppressed: "zablokowany",
+      failed: "nieudany",
+      queued: "w kolejce",
+      scheduled: "zaplanowany",
+      canceled: "anulowany",
+    },
+  },
+  loading: {
+    page: "Wczytuję e-maile…",
+    message: "Wczytuję wiadomość…",
+  },
   by: "by Koda Plus",
   subtitle:
     "E-maile transakcyjne sklepu wysyłane przez Resend: potwierdzenie zamówienia, wysyłka z numerem przesyłki, anulowanie, powitanie i reset hasła, po polsku i po angielsku, w wyglądzie Twojego sklepu i z trybem ciemnym. Każdy szablon zobaczysz na żywo, wyślesz sobie test i wiesz, co wyszło.",
@@ -18,8 +51,9 @@ const pl: typeof en = {
     title: "Ustawienia",
     subtitle: "Wygląd wiadomości, które szablony wysyłają, oraz dostawca z opcjami w użyciu.",
     tab: {
+      gallery: "Podgląd szablonów",
       branding: "Wygląd",
-      templates: "Szablony",
+      templates: "Włączanie szablonów",
       provider: "Dostawca",
     },
   },
@@ -30,6 +64,8 @@ const pl: typeof en = {
     notConfigured: "Nieskonfigurowane",
     unknown: "Sprawdzam",
     mismatch: "Tryby się różnią",
+    app: "Wysyła dostawca sklepu",
+    appMissing: "Dostawca sklepu wyłączony",
   },
   demo: {
     label: "Tryb demo",
@@ -48,12 +84,14 @@ const pl: typeof en = {
   actions: {
     moreActions: "Więcej akcji",
     sendTest: "Wyślij test",
+    templates: "Podgląd szablonów",
     refresh: "Odśwież",
     cancel: "Anuluj",
     close: "Zamknij",
     save: "Zapisz",
   },
   stats: {
+    all: "Wszystkie e-maile",
     sent24h: "Wysłane w 24 h",
     sent30d: "Wysłane w 30 dni",
     simulated24h: "Symulowane w 24 h",
@@ -120,6 +158,11 @@ const pl: typeof en = {
     turnedOff: "{{name}}: wyłączony",
   },
   log: {
+    group: {
+      all: "Wszystkie szablony",
+    },
+    openOrder: "Otwórz zamówienie",
+    openResend: "Otwórz w Resend",
     title: "Wysłane e-maile",
     demoTitle: "Symulowana skrzynka nadawcza",
     simulated: "Symulacja",
@@ -134,11 +177,13 @@ const pl: typeof en = {
       bounced: "Odrzucony adres",
     },
     search: "Szukaj w temacie, szablonie, zamówieniu albo po pełnym adresie",
+    searchAddresses: "Szukaj po e-mailu (też fragmencie), temacie, szablonie albo numerze zamówienia",
     empty: "Jeszcze nic nie wyszło. Wiadomości pojawią się tu razem z zamówieniami, wysyłkami i kontami albo po wysyłce testowej.",
     demoEmpty: "Skrzynka jest pusta. Złóż zamówienie w sklepie albo wyślij test.",
     details: "Szczegóły",
     col: {
       when: "Kiedy",
+      order: "Zamówienie",
       template: "Szablon",
       recipient: "Do",
       subject: "Temat",
@@ -157,6 +202,7 @@ const pl: typeof en = {
       seed: "Demo",
       job: "Zadanie",
       app: "Twój kod",
+      medusa: "Historia Medusy",
     },
     scope: {
       order: "Zamówienie {{id}}",
@@ -170,6 +216,8 @@ const pl: typeof en = {
     },
     notReadyLabel: "Log wysyłek",
     notReady: "Brakuje tabeli logu wysyłek albo jest starsza niż ta wersja: uruchom npx medusa db:migrate. Wiadomości dalej wychodzą, ale nie trafiają do logu.",
+    historyOnly: "Log wtyczki ruszy po migracji (npx medusa db:migrate). Do tego czasu lista pokazuje historię wysyłek Twojego dostawcy z tabeli powiadomień Medusy.",
+    historySince: "Razem z historią wysyłek Twojego dostawcy z Medusy, od {{date}}.",
   },
   byTemplate: {
     title: "Według szablonów",
@@ -203,6 +251,8 @@ const pl: typeof en = {
     body: "Wiadomość",
     noBody: "Wiadomości produkcyjne nie są przechowywane: otwórz szablon w galerii, żeby zobaczyć, jak wygląda.",
     noBodyDemo: "Ta wiadomość nie została wyrenderowana (wcześniej się nie udała).",
+    medusaHistory: "Wiadomość z historii Medusy: Twój dostawca ją wysłał, a Medusa zapisała adresata, szablon i wynik. Treści log nie pokazuje.",
+    medusaFailed: "Wiadomość z historii Medusy: dostawca jej nie wysłał. Medusa nie zapisuje treści błędu, szczegóły są w logach serwera z tej chwili.",
     retry: "Wyślij ponownie",
     retryTitle: "Wysłać ten e-mail ponownie?",
     retryText: "Dane zostaną odczytane jeszcze raz z zamówienia, przesyłki, klienta albo koszyka, a wiadomość wyjdzie pod nowym kluczem.",
@@ -225,6 +275,7 @@ const pl: typeof en = {
       live: { label: "Prawdziwy e-mail", text: "Resend wyśle go na adres, który wpiszesz. Nigdy nie zawiera imienia ani adresu klienta: dane przykładowe albo Twoje najnowsze zamówienie z podmienioną osobą." },
       dev: { label: "Brak klucza API", text: "Wiadomość zostanie wyrenderowana i zapisana w logu, ale nie wysłana." },
       demo: { label: "Tryb demo", text: "Wiadomość trafi do symulowanej skrzynki. Nic nie wychodzi z serwera." },
+      app: { label: "Prawdziwy e-mail", text: "Wyśle go własny dostawca sklepu, na adres, który wpiszesz, z danymi przykładowymi szablonu." },
     },
     done: {
       sent: "Wysłano na {{to}}",
@@ -302,6 +353,16 @@ const pl: typeof en = {
       negotiation: "Negocjacja",
     },
     problems: "Pominięte wartości opcji",
+    app: {
+      label: "Własny dostawca sklepu",
+      text: "E-maile wysyła dostawca sklepu {{id}}, tak jak dotąd. Wtyczka pokazuje jego szablony, robi podgląd i testy, a w dzienniku zapisuje to, co dostawca zgłosi. Wbudowane szablony wtyczki są wyłączone, żeby nic nie przyszło dwa razy.",
+      subtitle: "Kto wysyła e-maile sklepu i czy Medusa kieruje do niego kanał email.",
+      missingLabel: "Dostawca sklepu",
+      missingText: "Dostawca {{id}} nie obsługuje teraz kanału email w Medusie, więc e-maile nie wychodzą. Sprawdź jego rejestrację w medusa-config.ts (kanał email) i klucz w zmiennych środowiska.",
+      sender: "Wysyła",
+      serving: "Obsługuje kanał email",
+      recorded: "Zapisane w 30 dni",
+    },
     notLoaded: {
       label: "Dostawca",
       text: "Dostawca powiadomień tej wtyczki nie jest zarejestrowany, więc Medusa nie ma czym wysyłać e-maili. Dodaj go do modułu powiadomień w medusa-config.ts, z tymi samymi opcjami co wtyczka i kanałem email, i uruchom sklep ponownie.",
@@ -374,6 +435,7 @@ const pl: typeof en = {
   },
   integration: integrationPl,
   guide: {
+    app: "E-maile wysyła własny dostawca sklepu ({{id}}). Kroki z kontem, domeną i kluczem Resend dotyczą jego konfiguracji i są już zrobione; wtyczka dokłada podgląd, testy i dziennik.",
     intro: {
       title: "Uruchom e-maile w prawdziwym sklepie",
       text:

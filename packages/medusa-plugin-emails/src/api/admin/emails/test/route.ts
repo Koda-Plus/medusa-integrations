@@ -94,7 +94,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     return
   }
   if (outcome.status !== "queued") {
-    res.status(409).json({ message: "The provider of this plugin is not registered: register it in Medusa's notification module (see the Setup guide)." })
+    res.status(409).json({
+      message:
+        o.mode === "app"
+          ? "In app mode the store's own provider sends, and it cannot render the plugin's built-in templates: test one of the store's templates."
+          : "The provider of this plugin is not registered: register it in Medusa's notification module (see the Setup guide).",
+    })
     return
   }
   const notification = outcome.notification ?? {}

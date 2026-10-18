@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowUpRightMini, PaperPlane } from "@medusajs/icons"
+import { Link } from "react-router-dom"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
+import { OrderLink, ResendLink } from "./emails-links"
+import { CampaignBadge, DeliveryBadge } from "./emails-delivery"
+import { KitFetchingBar, KitLoading, KitSkeletonRows } from "./emails-kit"
 import { errorMessage, useEmailsMessage, useEmailsMessages, useEmailsPreview, useEmailsRetry, useEmailsTest } from "./emails-api"
 import {
   EmailFrame,
@@ -89,7 +92,7 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr]">
         <div className="flex flex-col gap-y-2 border-b border-ui-border-base p-4 lg:border-b-0 lg:border-r">
           {templates.map((x) => (
-            <TemplateCard key={x.key} template={x} lang={lang} active={x.key === active} onClick={() => setActive(x.key)} />
+            <TemplateCard key={x.key} template={x} lang={lang} active={x.key === active} showSource={status.mode !== "app"} onClick={() => setActive(x.key)} />
           ))}
         </div>
         <div className="flex min-w-0 flex-col gap-y-4 p-4">
@@ -199,7 +202,8 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
   )
 }
 
-function TemplateCard({ template, lang, active, onClick }: { template: TemplateDto; lang: string; active: boolean; onClick: () => void }) {
+/* showSource: "Your template" next to the built-in ones; in app mode every template is the store's, so it says nothing. */
+function TemplateCard({ template, lang, active, showSource, onClick }: { template: TemplateDto; lang: string; active: boolean; showSource: boolean; onClick: () => void }) {
   const { t } = useTranslation("emails")
   return (
     <button
@@ -223,8 +227,8 @@ function TemplateCard({ template, lang, active, onClick }: { template: TemplateD
         <Text size="xsmall" leading="compact" className="font-mono text-ui-fg-muted">
           {template.key}
         </Text>
-        {template.source === "app" ? (
-          <Badge size="2xsmall" color="orange">
+        {showSource && template.source === "app" ? (
+          <Badge size="2xsmall" color="grey">
             {t("templates.app")}
           </Badge>
         ) : null}
@@ -255,10 +259,39 @@ function filterCount(status: StatusResponse, f: MessageFilter): number | undefin
 }
 
 /** The log narrowed by a deep link: one order, one customer, a window of time. */
+/** The admin page that acts on a message of a template group (option templateGroups link), with its order or customer filled in. */
+function GroupLink({ group, message }: { group: { link: { label: string; path: string } | null } | null; message: MessageDto }) {
+  if (!group?.link) return null
+  let path = group.link.path
+  if (path.includes(":order_id")) {
+    if (!message.orderId) return null
+    path = path.split(":order_id").join(encodeURIComponent(message.orderId))
+  }
+  if (path.includes(":customer_id")) {
+    if (!message.customerId) return null
+    path = path.split(":customer_id").join(encodeURIComponent(message.customerId))
+  }
+  return (
+    <Link to={path} className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:underline">
+      {group.link.label}
+      <ArrowUpRightMini />
+    </Link>
+  )
+}
+
 export interface MessagesScope {
   orderId: string
   customerId: string
   since: MessageWindow | ""
+  /** A template group of the log (option templateGroups), "" for all templates. */
+  group?: string
+}
+
+/** The message in Resend's dashboard, when Resend sent it (the plugin's provider, or the store's own Resend provider in app mode). */
+export function resendLink(status: StatusResponse | undefined, m: Pick<MessageDto, "externalId" | "demo">): string | null {
+  if (!status || !m.externalId || m.demo) return null
+  const viaResend = status.mode === "live" || (status.mode === "app" && /resend/i.test(status.provider.app?.id ?? ""))
+  return viaResend && /^[0-9a-f-]{20,}$/i.test(m.externalId) ? `https://resend.com/emails/${encodeURIComponent(m.externalId)}` : null
 }
 
 export function MessagesSection({
@@ -270,6 +303,7 @@ export function MessagesSection({
   scope,
   initialQuery = "",
   onClearScope,
+  onGroup,
 }: {
   status: StatusResponse
   lang: string
@@ -279,23 +313,27 @@ export function MessagesSection({
   scope?: MessagesScope
   initialQuery?: string
   onClearScope?: () => void
+  onGroup?: (key: string) => void
 }) {
   const { t } = useTranslation("emails")
   const demo = status.mode === "demo"
+  const groups = status.templateGroups ?? []
+  const group = groups.find((g) => g.key === scope?.group) ?? null
+  const groupOf = (template: string) => groups.find((g) => g.templates.includes(template)) ?? null
   const [search, setSearch] = useState(initialQuery)
   useEffect(() => setSearch(initialQuery), [initialQuery])
   const q = useDebounced(search)
   const [page, setPage] = useState(0)
-  useEffect(() => setPage(0), [filter, q, scope?.orderId, scope?.customerId, scope?.since])
-  const messages = useEmailsMessages({ filter, q, orderId: scope?.orderId, customerId: scope?.customerId, since: scope?.since, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
-  const scoped = Boolean(scope && (scope.orderId || scope.customerId || scope.since))
+  useEffect(() => setPage(0), [filter, q, scope?.orderId, scope?.customerId, scope?.since, scope?.group])
+  const messages = useEmailsMessages({ filter, q, template: group ? group.templates.join(",") : "", orderId: scope?.orderId, customerId: scope?.customerId, since: scope?.since, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const scoped = Boolean(scope && (scope.orderId || scope.customerId || scope.since || group))
   const rows = messages.data?.messages ?? []
   const count = messages.data?.count ?? 0
   const byKey = useMemo(() => new Map(status.templates.map((x) => [x.key, x])), [status.templates])
   const errorText = useErrorText()
 
   return (
-    <Container className="divide-y p-0">
+    <Container id="emails-log" className="scroll-mt-4 divide-y p-0">
       <div className="flex flex-col gap-1 px-6 py-4">
         <span className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{demo ? t("log.demoTitle") : t("log.title")}</Heading>
@@ -307,6 +345,7 @@ export function MessagesSection({
         </span>
         <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
+          {status.mode === "app" && status.history?.firstAt ? ` ${t("log.historySince", { date: fmtDateTime(status.history.firstAt, lang) })}` : ""}
         </Text>
       </div>
       {scoped && scope ? (
@@ -326,6 +365,17 @@ export function MessagesSection({
               {t(`log.scope.since.${scope.since}`)}
             </Badge>
           ) : null}
+          {group ? (
+            <Badge size="2xsmall" color="purple">
+              {group.label}
+            </Badge>
+          ) : null}
+          {group?.link && !group.link.path.includes(":") ? (
+            <Link to={group.link.path} className="txt-compact-small-plus inline-flex items-center gap-x-1 text-ui-fg-interactive hover:underline">
+              {group.link.label}
+              <ArrowUpRightMini />
+            </Link>
+          ) : null}
           {onClearScope ? (
             <Button size="small" variant="transparent" onClick={onClearScope}>
               {t("log.scope.clear")}
@@ -334,9 +384,14 @@ export function MessagesSection({
         </div>
       ) : null}
       <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: scoped ? undefined : filterCount(status, f) }))} />
+        <div className="flex flex-col gap-2">
+          <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: scoped ? undefined : filterCount(status, f) }))} />
+          {groups.length && onGroup ? (
+            <FilterPills<string> value={group?.key ?? ""} onChange={onGroup} options={[{ value: "", label: t("log.group.all") }, ...groups.map((g) => ({ value: g.key, label: g.label }))]} />
+          ) : null}
+        </div>
         <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("log.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input size="small" type="search" placeholder={t(status?.showAddresses ? "log.searchAddresses" : "log.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
       {messages.isError ? (
@@ -346,6 +401,7 @@ export function MessagesSection({
           </InlineTip>
         </div>
       ) : null}
+      <KitFetchingBar active={messages.isFetching && !messages.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -353,14 +409,17 @@ export function MessagesSection({
               <Table.HeaderCell>{t("log.col.when")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.template")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.recipient")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("log.col.order")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.subject")}</Table.HeaderCell>
               <Table.HeaderCell>{t("log.col.status")}</Table.HeaderCell>
               <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={6} text={messages.isLoading ? "" : demo ? t("log.demoEmpty") : t("log.empty")} />
+            {rows.length === 0 && messages.isLoading ? (
+              <KitSkeletonRows cols={7} />
+            ) : rows.length === 0 ? (
+              <EmptyRow cols={7} text={demo ? t("log.demoEmpty") : t("log.empty")} />
             ) : (
               rows.map((m) => (
                 <Table.Row key={m.id} className="[&_td]:py-2.5 align-top">
@@ -372,6 +431,11 @@ export function MessagesSection({
                           {templateLabel(byKey.get(m.template), lang, m.template)}
                         </Text>
                         <KindBadge kind={m.kind} />
+                        {m.variant && groupOf(m.template)?.variantLabels?.[m.variant] ? (
+                          <Badge size="2xsmall" color={m.variant === "overdue" ? "red" : "blue"}>
+                            {groupOf(m.template)!.variantLabels![m.variant]}
+                          </Badge>
+                        ) : null}
                       </span>
                       <Text size="xsmall" className="font-mono text-ui-fg-muted">
                         {m.template}
@@ -380,6 +444,19 @@ export function MessagesSection({
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap font-mono txt-compact-small">{m.recipient ?? ""}</Table.Cell>
+                  <Table.Cell>
+                    <div className="flex flex-col items-start gap-y-1">
+                      {m.orderId ? <OrderLink id={m.orderId} open={t("log.openOrder")} /> : null}
+                      {m.orderState ? (
+                        <span title={m.orderState.hint ?? undefined}>
+                          <Badge size="2xsmall" color={m.orderState.color} className="whitespace-nowrap">
+                            {m.orderState.label}
+                          </Badge>
+                        </span>
+                      ) : null}
+                      <GroupLink group={groupOf(m.template)} message={m} />
+                    </div>
+                  </Table.Cell>
                   <Table.Cell className="max-w-md">
                     <Text size="small" className="line-clamp-2 break-words">
                       {m.subject ?? ""}
@@ -388,6 +465,13 @@ export function MessagesSection({
                   <Table.Cell className="max-w-xs">
                     <div className="flex flex-col items-start gap-y-1">
                       <MessageStatusBadge message={m} demo={demo} />
+                      <DeliveryBadge event={m.delivery} />
+                      <CampaignBadge message={m} campaigns={status?.campaigns} />
+                      {resendLink(status, m) ? (
+                        <ResendLink href={resendLink(status, m)!} className="txt-compact-xsmall">
+                          {t("log.openResend")}
+                        </ResendLink>
+                      ) : null}
                       {m.errorCode ? (
                         <Text size="xsmall" className={m.status === "skipped" ? "text-ui-fg-muted" : "text-ui-tag-red-text"} title={m.error ?? undefined}>
                           {errorText(m.errorCode) || m.errorCode}
@@ -520,10 +604,13 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
               {errorMessage(q.error)}
             </InlineTip>
           ) : null}
+          {!m && q.isLoading ? <KitLoading label={t("loading.message")} /> : null}
           {m ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <MessageStatusBadge message={m} demo={demo} />
+                <DeliveryBadge event={m.delivery} />
+                <CampaignBadge message={m} campaigns={status?.campaigns} />
                 <KindBadge kind={m.kind} />
                 {m.rotation > 0 ? (
                   <Badge size="2xsmall" color="grey">
@@ -534,6 +621,11 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
               {m.error ? (
                 <InlineTip variant={m.status === "skipped" ? "info" : "error"} label={errorText(m.errorCode) || m.errorCode || t("drawer.error")}>
                   {m.error}
+                </InlineTip>
+              ) : null}
+              {m.source === "medusa" ? (
+                <InlineTip variant="info" label={t("log.kinds.medusa")}>
+                  {m.status === "failed" ? t("drawer.medusaFailed") : t("drawer.medusaHistory")}
                 </InlineTip>
               ) : null}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -552,15 +644,16 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
                 <Fact label={t("drawer.sentAt")}>{m.sentAt ? fmtDateTime(m.sentAt, lang) : "-"}</Fact>
                 {m.orderId ? (
                   <Fact label={t("drawer.order")}>
-                    <Link to={`/orders/${m.orderId}`} className="inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                      <span className="font-mono">{m.orderId}</span>
-                      <ArrowUpRightMini />
-                    </Link>
+                    <OrderLink id={m.orderId} label={m.orderId} open={t("log.openOrder")} />
                   </Fact>
                 ) : null}
                 {m.externalId ? (
                   <Fact label={demo ? t("drawer.simulatedId") : t("drawer.externalId")} mono>
-                    {m.externalId}
+                    {resendLink(status, m) ? (
+                      <ResendLink href={resendLink(status, m)!}>{m.externalId}</ResendLink>
+                    ) : (
+                      m.externalId
+                    )}
                   </Fact>
                 ) : null}
                 <Fact label={t("drawer.attempts")}>{fmtNumber(m.attempts, lang)}</Fact>

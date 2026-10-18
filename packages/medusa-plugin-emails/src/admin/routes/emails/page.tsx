@@ -2,16 +2,18 @@
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, PaperPlane } from "@medusajs/icons"
+import { ArrowPath, EyeMini, PaperPlane } from "@medusajs/icons"
 import { Container, InlineTip } from "@medusajs/ui"
 import { MESSAGE_FILTERS, MESSAGE_WINDOWS, type MessageFilter, type MessageWindow, type StatusResponse } from "../../../modules/emails/lib/contract"
-import { errorMessage, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
+import { errorMessage, useEmailsMessages, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/emails-guide"
 import { GuideView, usePromptSpec } from "../../lib/emails-guide-view"
 import { EmailsIcon } from "../../lib/emails-icon"
 import { ByTemplateSection, DemoDetails, GallerySection, MessageDrawer, MessagesSection, TestDrawer, type TestInitial } from "../../lib/emails-panels"
 import { BrandingSection, ProviderSection, TemplatesSection } from "../../lib/emails-settings"
 import { StatTile, fmtNumber, fmtRating, modeState, referencesFor } from "../../lib/emails-ui"
+import { KitLoading } from "../../lib/emails-kit"
+import { BouncesSection } from "../../lib/emails-delivery"
 
 /**
  * E-mails by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -25,7 +27,7 @@ import { StatTile, fmtNumber, fmtRating, modeState, referencesFor } from "../../
  * - Settings (`?view=settings&tab=`): the branding, the template switches, the
  *   provider and the options in use.
  */
-const SETTINGS_TABS = ["branding", "templates", "provider"] as const
+const SETTINGS_TABS = ["gallery", "templates", "branding", "provider"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
 const EmailsPage = () => {
@@ -36,6 +38,7 @@ const EmailsPage = () => {
   const s = status.data
   const [params, setParams] = useSearchParams()
   const askedFilter = params.get("filter")
+  const [bounces, setBounces] = useState(false)
   const [filter, setFilter] = useState<MessageFilter>(() => (MESSAGE_FILTERS.includes(askedFilter as MessageFilter) ? (askedFilter as MessageFilter) : "all"))
   useEffect(() => {
     if (askedFilter && MESSAGE_FILTERS.includes(askedFilter as MessageFilter)) setFilter(askedFilter as MessageFilter)
@@ -45,13 +48,38 @@ const EmailsPage = () => {
     orderId: (params.get("order_id") ?? "").slice(0, 80),
     customerId: (params.get("customer_id") ?? "").slice(0, 80),
     since: (MESSAGE_WINDOWS.includes(askedSince as MessageWindow) ? askedSince : "") as MessageWindow | "",
+    group: (params.get("group") ?? "").slice(0, 64),
+  }
+  /* A template group (option templateGroups) is kept in the URL: other pages link to ?group=. */
+  const setGroup = (key: string) => {
+    const next = new URLSearchParams(params)
+    if (key) next.set("group", key)
+    else next.delete("group")
+    setParams(next, { replace: true })
   }
   const initialQuery = (params.get("q") ?? "").slice(0, 254)
   const clearScope = () => {
     const next = new URLSearchParams(params)
-    for (const k of ["order_id", "customer_id", "since", "q", "filter"]) next.delete(k)
+    for (const k of ["order_id", "customer_id", "since", "q", "filter", "group"]) next.delete(k)
     setParams(next, { replace: true })
     setFilter("all")
+  }
+  /* A tile shows what it counts: the log narrowed to its filter and window, scrolled into view (it sits under the gallery). */
+  const showLog = (f: MessageFilter, since: MessageWindow) => {
+    const next = new URLSearchParams(params)
+    for (const k of ["order_id", "customer_id", "q"]) next.delete(k)
+    next.set("since", since)
+    setParams(next, { replace: true })
+    setFilter(f)
+    requestAnimationFrame(() => document.getElementById("emails-log")?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
+  const everything = useEmailsMessages({ filter: "all", offset: 0, limit: 1, enabled: Boolean(s) })
+  const showAll = () => {
+    const next = new URLSearchParams(params)
+    for (const k of ["order_id", "customer_id", "q", "since", "filter"]) next.delete(k)
+    setParams(next, { replace: true })
+    setFilter("all")
+    requestAnimationFrame(() => document.getElementById("emails-log")?.scrollIntoView({ behavior: "smooth", block: "start" }))
   }
   const [openMessage, setOpenMessage] = useState<string | null>(null)
   const [test, setTest] = useState<TestInitial | null | "open">(null)
@@ -76,6 +104,7 @@ const EmailsPage = () => {
             </InlineTip>
           </div>
         ) : null}
+        {!s && status.isLoading ? <KitLoading label={t("loading.page")} /> : null}
         {s ? <Warnings status={s} /> : null}
         {seed.isPending ? (
           <div className="px-6 py-4">
@@ -85,16 +114,32 @@ const EmailsPage = () => {
           </div>
         ) : null}
         {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
-            <StatTile label={s.mode === "demo" ? t("stats.simulated24h") : t("stats.sent24h")} value={fmtNumber(s.counts.sent24h, lang)} tone="green" />
-            <StatTile label={s.mode === "demo" ? t("stats.simulated30d") : t("stats.sent30d")} value={fmtNumber(s.counts.sent30d, lang)} tone="green" active={filter === "sent"} onClick={() => setFilter("sent")} />
+          <div className={clxGrid(Boolean(s.delivery))}>
+            <StatTile
+              label={t("stats.all")}
+              value={fmtNumber(everything.data?.count ?? 0, lang)}
+              tone="blue"
+              active={filter === "all" && !scope.since && !scope.orderId && !scope.customerId}
+              onClick={showAll}
+            />
+            <StatTile label={s.mode === "demo" ? t("stats.simulated24h") : t("stats.sent24h")} value={fmtNumber(s.counts.sent24h, lang)} tone="green" active={filter === "sent" && scope.since === "24h"} onClick={() => showLog("sent", "24h")} />
+            <StatTile label={s.mode === "demo" ? t("stats.simulated30d") : t("stats.sent30d")} value={fmtNumber(s.counts.sent30d, lang)} tone="green" active={filter === "sent" && scope.since === "30d"} onClick={() => showLog("sent", "30d")} />
             <StatTile
               label={t("stats.attention")}
               value={fmtNumber(s.counts.attention30d, lang)}
               tone={s.counts.attention30d > 0 ? "red" : "default"}
-              active={filter === "attention"}
-              onClick={() => setFilter("attention")}
+              active={filter === "attention" && scope.since === "30d"}
+              onClick={() => showLog("attention", "30d")}
             />
+            {s.delivery ? (
+              <StatTile
+                label={t("delivery.tile")}
+                value={fmtNumber(s.delivery.suppressed, lang)}
+                tone={s.delivery.suppressed > 0 ? "red" : "default"}
+                active={bounces}
+                onClick={() => setBounces((v) => !v)}
+              />
+            ) : null}
             <StatTile
               label={t("stats.templatesOn")}
               value={`${fmtNumber(s.templates.filter((x) => x.enabled).length, lang)}/${fmtNumber(s.templates.length, lang)}`}
@@ -109,8 +154,8 @@ const EmailsPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          <GallerySection status={s} lang={lang} onSendTest={(initial) => setTest(initial)} />
-          <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} scope={scope} initialQuery={initialQuery} onClearScope={clearScope} />
+          {bounces ? <BouncesSection lang={lang} onClose={() => setBounces(false)} /> : null}
+          <MessagesSection status={s} lang={lang} filter={filter} onFilter={setFilter} onOpen={setOpenMessage} scope={scope} initialQuery={initialQuery} onClearScope={clearScope} onGroup={setGroup} />
           <ByTemplateSection status={s} lang={lang} />
         </>
       ) : null}
@@ -122,11 +167,13 @@ const EmailsPage = () => {
           value={nav.tab}
           onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
           tabs={[
-            { id: "branding", label: t("settings.tab.branding"), badge: s.brandOverridden.length || null, tone: "blue" },
+            { id: "gallery", label: t("settings.tab.gallery") },
             { id: "templates", label: t("settings.tab.templates"), badge: s.templates.filter((x) => x.enabled).length, tone: "green" },
+            { id: "branding", label: t("settings.tab.branding"), badge: s.brandOverridden.length || null, tone: "blue" },
             { id: "provider", label: t("settings.tab.provider"), badge: s.provider.loaded ? null : "!", tone: "red" },
           ]}
         >
+          {nav.tab === "gallery" ? <GallerySection status={s} lang={lang} onSendTest={(initial) => setTest(initial)} /> : null}
           {nav.tab === "branding" ? <BrandingSection status={s} lang={lang} /> : null}
           {nav.tab === "templates" ? <TemplatesSection status={s} lang={lang} /> : null}
           {nav.tab === "provider" ? <ProviderSection status={s} lang={lang} /> : null}
@@ -171,7 +218,7 @@ function Header({
       by={t("by")}
       badges={
         status ? (
-          <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={status.mode === "dev" ? t("devNote.label") : t("demo.label")}>
+          <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={status.mode === "dev" ? t("devNote.label") : status.mode === "app" ? t("provider.app.label") : t("demo.label")}>
             {note}
           </ModeBadge>
         ) : null
@@ -207,7 +254,14 @@ function Header({
       onView={(v) => nav.go(v)}
       labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
       primary={panel && status ? { key: "test", label: t("actions.sendTest"), icon: <PaperPlane />, onClick: onTest } : null}
-      actions={panel ? [{ key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, loading: refreshing, onClick: onRefresh }] : []}
+      actions={
+        panel
+          ? [
+              { key: "templates", label: t("actions.templates"), icon: <EyeMini />, onClick: () => nav.go("settings", "gallery") },
+              { key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, loading: refreshing, onClick: onRefresh },
+            ]
+          : []
+      }
     />
   )
 }
@@ -215,9 +269,14 @@ function Header({
 /** Only what needs a person now: missing options, a provider that is not wired, a log that is not there. */
 function Warnings({ status }: { status: StatusResponse }) {
   const { t } = useTranslation("emails")
-  const tips: Array<{ key: string; variant: "warning" | "error"; label: string; text: string }> = []
+  const tips: Array<{ key: string; variant: "info" | "warning" | "error"; label: string; text: string }> = []
   if (status.mode === "live" && status.missing.length > 0) tips.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }) })
-  if (!status.provider.loaded) tips.push({ key: "provider", variant: "error", label: t("provider.notLoaded.label"), text: t("provider.notLoaded.text") })
+  if (status.mode === "app") {
+    /* The store's own provider sends: only its absence from the email channel needs a person. */
+    if (status.provider.app?.serving === false) {
+      tips.push({ key: "appProvider", variant: "error", label: t("provider.app.missingLabel"), text: t("provider.app.missingText", { id: status.provider.app.id }) })
+    }
+  } else if (!status.provider.loaded) tips.push({ key: "provider", variant: "error", label: t("provider.notLoaded.label"), text: t("provider.notLoaded.text") })
   else if (status.provider.mode && status.provider.mode !== status.mode) {
     tips.push({
       key: "modes",
@@ -234,7 +293,9 @@ function Warnings({ status }: { status: StatusResponse }) {
   if (status.provider.emailProviders && status.provider.emailProviders.length > 1) {
     tips.push({ key: "several", variant: "warning", label: t("provider.severalLabel"), text: t("provider.severalText", { list: status.provider.emailProviders.join(", ") }) })
   }
-  if (!status.logReady) tips.push({ key: "log", variant: "error", label: t("log.notReadyLabel"), text: t("log.notReady") })
+  /* App mode reads Medusa's history even before the migrations: then the missing log is a note, not an error. */
+  if (!status.logReady && status.mode === "app" && status.history) tips.push({ key: "log", variant: "info", label: t("log.notReadyLabel"), text: t("log.historyOnly") })
+  else if (!status.logReady) tips.push({ key: "log", variant: "error", label: t("log.notReadyLabel"), text: t("log.notReady") })
   if (tips.length === 0) return null
   return (
     <div className="flex flex-col gap-y-2 px-6 py-4">
@@ -245,6 +306,11 @@ function Warnings({ status }: { status: StatusResponse }) {
       ))}
     </div>
   )
+}
+
+/* Six tiles when delivery is read from Resend (the suppressed addresses tile), five without. */
+function clxGrid(withDelivery: boolean): string {
+  return `grid grid-cols-2 gap-3 px-6 py-4 ${withDelivery ? "md:grid-cols-3 xl:grid-cols-6" : "md:grid-cols-5"}`
 }
 
 export const config = defineRouteConfig({

@@ -2,6 +2,7 @@ import { integrationEn } from "../../modules/stripe/lib/integration-texts"
 import { communityEn } from "../lib/stripe-kit-community"
 
 const en = {
+  loading: "Reading Stripe: payments, refunds, disputes and the balance of 30 days. The first read takes a few seconds; after that the data shows at once and new data arrives behind.",
   title: "Stripe",
   by: "by Koda Plus",
   subtitle:
@@ -311,6 +312,12 @@ const en = {
     },
   },
   payments: {
+    stripeId: "Stripe ID:",
+    stripeIdHint: "The payment's id in Stripe (PaymentIntent): find it with this in Stripe's dashboard and in the payout report.",
+    refundInOrder: "Refund in the order",
+    refundInOrderHint: "Refund in the Medusa order, so the order, the stock and the documents follow. A refund made in Stripe alone leaves the order paid in Medusa.",
+    refundInStripe: "Refund in Stripe",
+    refundInStripeHint: "This payment has no order in this store, so the refund is made in Stripe's dashboard.",
     title: "Payments",
     subtitle: "The last 30 days, newest first, each next to its Medusa order and with a link to the Stripe Dashboard.",
     filter: {
@@ -332,6 +339,7 @@ const en = {
       status: "Status",
       fee: "Fee and net",
       order: "Order",
+      products: "Products",
     },
     status: {
       succeeded: "Succeeded",
@@ -339,13 +347,23 @@ const en = {
       authorized: "Authorized",
       requires_action: "Waiting for the customer",
       failed: "Declined",
-      canceled: "Canceled",
+      canceled: "Abandoned",
       incomplete: "Not paid",
+    },
+    statusHint: {
+      succeeded: "The money was taken.",
+      processing: "The bank is still confirming the payment.",
+      authorized: "The money is held on the card, waiting to be captured.",
+      requires_action: "The customer still has to confirm the payment (for example in the bank app).",
+      failed: "The bank or Stripe declined the payment; no money was taken.",
+      canceled: "The customer started paying and did not finish (an abandoned cart or a new attempt), so Stripe canceled this payment. No money was taken.",
+      incomplete: "The payment was created, the customer has not chosen a method yet; no money was taken.",
     },
     ending: "ending {{last4}}",
     noOrder: "No order",
     paidNoOrder: "Paid, no order",
     cart: "Cart {{id}}",
+    cartOnly: "cart, no order was placed",
     outside: "Not from Medusa",
     foreign: "Another Medusa",
     refundFailed: "Refund failed",

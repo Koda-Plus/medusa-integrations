@@ -45,6 +45,10 @@ export interface StatusResponse {
     tags: number[]
     form_id: number | null
     double_opt_in: boolean
+    source_tags: Record<string, number[]>
+    buyer_tags: number[]
+    product_tags: boolean
+    product_tag_prefix: string
   }
   counts: {
     subscribed: number

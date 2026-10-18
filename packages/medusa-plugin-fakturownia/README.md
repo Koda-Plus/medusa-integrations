@@ -424,7 +424,11 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 ## Changelog
 
-### 0.3.0 (unreleased)
+### 0.3.1 (unreleased)
+
+The shared admin kit 1.0.9, with no change to the documents, the writers or the tables: white label for host apps (`window.__KODA_KIT__ = { whiteLabel: true }`), and the order products cell, loaders and page slots available to the admin. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/CHANGELOG.md).
+
+### 0.3.0 (2026-10-07)
 
 Exactly once under a slow Fakturownia (the claim is proven right before the create request; the grace of a lost answer counts from that request); the automatic e-mail, reminders and "Send to KSeF again" taken atomically; demo mode only with `demo: true`; reads never write; writes only from the admin or a server, with RBAC policies; one definition of unpaid and honest filters; safe file names; correction invoices wait for KSeF; the koda.integration/1 contract for Koda Plus hosts with an embeddable order card; type declarations. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-fakturownia/CHANGELOG.md).
 

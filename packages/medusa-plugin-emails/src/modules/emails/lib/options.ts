@@ -130,6 +130,68 @@ export interface EmailsPluginOptions {
   references?: ReferenceOption[]
   /** Provider registration only: the channels it serves. Must include "email". */
   channels?: string[]
+  /**
+   * The id of YOUR OWN notification provider on the email channel (for
+   * example "resend"), when the store already sends its e-mails and keeps
+   * doing so. The plugin then does not register a provider and sends none of
+   * its built-in templates (they would duplicate the store's): the page shows
+   * the store's templates (from `templates`), previews them, sends tests
+   * through that provider, and lists what the provider records with
+   * `recordAppEmail()`. Leave it out to let the plugin send.
+   */
+  appProvider?: string
+  /**
+   * Show full recipient addresses in the log and search them by any part
+   * ("anna", "@example.com"). Default false: the log masks addresses and finds
+   * one only by the full address. Turn it on when the people using the admin
+   * already see customers' addresses on orders (most stores): the log then
+   * identifies a message the way support looks for it, by the e-mail.
+   */
+  showAddresses?: boolean
+  /**
+   * A Resend API key with read access (full access), used ONLY to read what
+   * happened after sending (GET /emails, GET /suppressions): delivered,
+   * delayed, bounced, and the addresses Resend no longer sends to. In live
+   * mode the plugin's own key is used when this is left out; in app mode (the
+   * store's provider sends) set it to show bounces in the log.
+   */
+  deliveryKey?: string
+  /**
+   * Mailings the store sent through the same Resend account outside the shop
+   * (a notice to all customers, a newsletter): each with the Resend tag it was
+   * sent with and a label. The log marks their messages (rows of kind
+   * "campaign", template "campaign:<key>") and the list of rejected addresses
+   * says which mailing caused a block.
+   */
+  campaigns?: Array<{ key: string; label: string; tag?: { name: string; value: string } }>
+  /**
+   * Named sets of templates the log can be narrowed to (a pill above the log,
+   * `?group=<key>` in the URL), for example the store's payment reminders.
+   * `variant` names a field of the message data that tells its stage (shown
+   * as a badge, e.g. kind: upcoming / overdue); `link` points to the admin
+   * page that acts on such a message (`:order_id` and `:customer_id` are
+   * filled from the message).
+   */
+  templateGroups?: Array<{
+    key: string
+    label: string
+    templates: string[]
+    variant?: { field: string; labels: Record<string, string> }
+    link?: { label: string; path: string }
+    /**
+     * The state of the order each message is about, now (for example paid or
+     * still unpaid for a payment reminder): a short label and a colour, read by
+     * the store when the log is shown.
+     */
+    orderState?: (scope: unknown, orderIds: string[]) => Promise<Record<string, OrderStateBadge>>
+  }>
+}
+
+export interface OrderStateBadge {
+  label: string
+  color: "green" | "red" | "orange" | "grey" | "blue"
+  /** A longer line for the tooltip. */
+  hint?: string
 }
 
 export interface ResolvedBrand {
@@ -148,15 +210,28 @@ export type LinkKey = keyof EmailsLinksOptions
 
 export const LINK_KEYS: readonly LinkKey[] = ["store", "account", "order", "cart", "passwordReset", "adminPasswordReset", "negotiation"]
 
-export type EmailsMode = "demo" | "dev" | "live"
+export type EmailsMode = "demo" | "dev" | "live" | "app"
 
 export interface ResolvedEmailsOptions {
   apiKey: string
   sender: Sender | null
   replyTo: string[]
   demo: boolean
-  /** demo: the simulated outbox; dev: no API key, the provider logs; live: sends through Resend. */
+  /**
+   * demo: the simulated outbox; dev: no API key, the provider logs; live:
+   * sends through Resend; app: the store's own provider (`appProvider`) sends.
+   */
   mode: EmailsMode
+  /** The store's own email provider id in app mode, else null. */
+  appProvider: string | null
+  /** Full addresses in the log and search by part of an address (option showAddresses). */
+  showAddresses: boolean
+  /** Resend key for reading delivery (option deliveryKey, or the live key). Never logged. */
+  deliveryKey: string | null
+  /** Mailings outside the shop (option campaigns). */
+  campaigns: Array<{ key: string; label: string; tag: { name: string; value: string } | null }>
+  /** Named sets of templates for the log (option templateGroups). */
+  templateGroups: TemplateGroup[]
   defaultLocale: EmailLocale
   timeZone: string
   storefrontUrl: string | null
@@ -348,12 +423,23 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
   const channels = Array.isArray(o.channels) ? o.channels.filter((c): c is string => typeof c === "string") : []
   const rps = Number(o.requestsPerSecond)
 
+  const appProviderRaw = str(o.appProvider)
+  const appProvider = /^[A-Za-z0-9_.-]{1,64}$/.test(appProviderRaw) ? appProviderRaw : null
+  if (appProviderRaw && !appProvider) problems.push('appProvider (the id of a notification provider, like "resend")')
+
   return {
     apiKey,
     sender,
     replyTo,
     demo,
-    mode: demo ? "demo" : apiKey ? "live" : "dev",
+    mode: demo ? "demo" : appProvider ? "app" : apiKey ? "live" : "dev",
+    appProvider: demo ? null : appProvider,
+    showAddresses: o.showAddresses === true,
+    deliveryKey: str(o.deliveryKey) || (!demo && !appProvider && apiKey ? apiKey : null),
+    campaigns: (Array.isArray(o.campaigns) ? o.campaigns : [])
+      .filter((c) => c && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(String(c.key ?? "")) && str(c.label))
+      .map((c) => ({ key: String(c.key), label: str(c.label).slice(0, 80), tag: c.tag && str(c.tag.name) && str(c.tag.value) ? { name: str(c.tag.name), value: str(c.tag.value) } : null })),
+    templateGroups: resolveTemplateGroups(o.templateGroups),
     defaultLocale,
     timeZone,
     storefrontUrl,
@@ -378,9 +464,9 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
   }
 }
 
-/** Options live mode still needs; empty in demo mode and when the provider can send. */
+/** Options live mode still needs; empty in demo mode, in app mode (the store's provider has its own key) and when the provider can send. */
 export function missingOptions(o: ResolvedEmailsOptions): string[] {
-  if (o.demo) return []
+  if (o.demo || o.mode === "app") return []
   const missing: string[] = []
   if (!o.apiKey) missing.push("apiKey")
   if (!o.sender) missing.push("from")
@@ -411,6 +497,7 @@ export function optionsFingerprint(o: ResolvedEmailsOptions): Record<string, str
   const brand = { ...o.brand, footer: o.brand.footer }
   return {
     mode: o.mode,
+    appProvider: o.appProvider ?? "",
     apiKey: o.apiKey ? sha256(o.apiKey).slice(0, 12) : "",
     from: o.sender?.value ?? "",
     replyTo: o.replyTo.join(","),
@@ -431,4 +518,39 @@ export function optionsFingerprint(o: ResolvedEmailsOptions): Record<string, str
 export function fingerprintDifferences(a: Record<string, string>, b: Record<string, string>): string[] {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)])
   return [...keys].filter((k) => a[k] !== b[k]).sort()
+}
+
+export interface TemplateGroup {
+  key: string
+  label: string
+  templates: string[]
+  variant: { field: string; labels: Record<string, string> } | null
+  link: { label: string; path: string } | null
+  orderState: ((scope: unknown, orderIds: string[]) => Promise<Record<string, OrderStateBadge>>) | null
+}
+
+/** Option templateGroups: keys, templates and an admin path (relative, no scheme) that pass the checks. */
+function resolveTemplateGroups(v: unknown): TemplateGroup[] {
+  const KEY = /^[a-z0-9][a-z0-9._:-]{0,63}$/i
+  const text = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "")
+  return (Array.isArray(v) ? v : [])
+    .map((g: any) => {
+      const key = text(g?.key, 64)
+      const label = text(g?.label, 80)
+      const templates = (Array.isArray(g?.templates) ? g.templates : []).map((t: unknown) => text(t, 64)).filter((t: string) => KEY.test(t)).slice(0, 20)
+      if (!KEY.test(key) || !label || templates.length === 0) return null
+      const field = text(g?.variant?.field, 40)
+      const labels: Record<string, string> = {}
+      for (const [k, l] of Object.entries((g?.variant?.labels ?? {}) as Record<string, unknown>)) if (text(l, 60)) labels[text(k, 40)] = text(l, 60)
+      const path = text(g?.link?.path, 200)
+      return {
+        key,
+        label,
+        templates,
+        variant: /^[a-z0-9_]{1,40}$/i.test(field) ? { field, labels } : null,
+        link: text(g?.link?.label, 60) && path.startsWith("/") && !path.startsWith("//") ? { label: text(g.link.label, 60), path } : null,
+        orderState: typeof g?.orderState === "function" ? g.orderState : null,
+      }
+    })
+    .filter((g): g is TemplateGroup => g !== null)
 }

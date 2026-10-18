@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-compliance",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "EU Compliance by Koda Plus: GPSR product safety (responsible person, warnings, distance-sales info), RODO / GDPR consent records and data subject requests, and Omnibus price transparency (lowest price of the last 30 days). One panel, three sections, demo mode with sample data.",
   "author": {
     "name": "Koda Plus",

@@ -67,7 +67,7 @@ function sample() {
   const blik = pi({ amount: 24_900, method: { type: "blik" }, fee: 498, sessionId: "payses_IntB", disputed: true })
   const p24 = pi({ amount: 9_900, method: { type: "p24", bank: "mbank_mtransfer" }, fee: 258, sessionId: "payses_IntC" })
   ;(p24.latest_charge as Record<string, unknown>).refunds = { data: [{ id: "re_FixtureFailed", amount: 9_900, currency: "pln", created: Math.floor(Date.now() / 1000) - 3600, status: "failed" }] }
-  const orphan = pi({ amount: 5_000, method: { type: "blik" }, fee: 180, sessionId: "payses_IntLost", created: hoursAgo(3) })
+  const orphan = pi({ amount: 5_000, method: { type: "blik" }, fee: 180, sessionId: "payses_IntLost", created: new Date(Date.now() - 3 * 3_600_000) }) /* the real clock: the orphan window counts from now */
   const disputes = [dispute(blik, { dueInHours: 24 * 9 })]
   const refunds = [refund(p24, 9_900, { status: "failed", failure_reason: "expired_or_canceled_card", created: Math.floor(Date.now() / 1000) - 3600 })]
   const stripe = stripeFor([card, blik, p24, orphan], { disputes, refunds })

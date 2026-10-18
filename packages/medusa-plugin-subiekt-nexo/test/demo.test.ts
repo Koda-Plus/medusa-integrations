@@ -203,20 +203,20 @@ test("demo sales documents: numbered per kind, one per order, KSeF two minutes l
   const updated = later.events.filter((e) => e.type === "document.updated")
   assert.equal(updated.length, 1)
   assert.equal(updated[0].data.document?.ksef_number, demoKsefFor(store.rows[1]).ksef)
-  assert.match(updated[0].data.document?.ksef_number ?? "", /^5265877635-20261004-[0-9A-F]{12}-[0-9A-F]{2}$/)
+  assert.match(updated[0].data.document?.ksef_number ?? "", /^9990000008-20261004-[0-9A-F]{12}-[0-9A-F]{2}$/)
 })
 
 test("demo buyers: some NIPs exist, others are created only when asked", async () => {
   const bridge = new DemoBridge(memoryStore(), async () => [])
   const results = await Promise.all(
-    ["1234563218", "5265877635", "7740001454", "5213017228", "9542751368"].map((nip) =>
+    ["1234563218", "9990000008", "9990000014", "9990000020", "9990000037"].map((nip) =>
       bridge.createOrder({ ...order, order_id: `order_${nip}`, buyer: { nip, company_name: "Firma", address: null, email: null, phone: null, create_if_missing: false } }),
     ),
   )
   const sources = new Set(results.map((r) => r.buyer?.source))
   assert.ok(sources.has("retail"))
   for (const r of results.filter((x) => x.buyer?.source === "retail")) assert.match(r.warnings?.[0] ?? "", /retail buyer/)
-  const created = await bridge.createOrder({ ...order, order_id: "order_new", buyer: { nip: "5265877635", company_name: "X", address: null, email: null, phone: null, create_if_missing: true } })
+  const created = await bridge.createOrder({ ...order, order_id: "order_new", buyer: { nip: "9990000008", company_name: "X", address: null, email: null, phone: null, create_if_missing: true } })
   assert.ok(["created", "existing"].includes(created.buyer?.source ?? ""))
   assert.equal((await bridge.createOrder({ ...order, order_id: "order_plain" })).buyer?.source, "retail")
 })

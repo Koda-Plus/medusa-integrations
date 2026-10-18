@@ -7,7 +7,7 @@
 
 import type { EmailLocale } from "./constants"
 
-export type EmailsModeDto = "demo" | "dev" | "live"
+export type EmailsModeDto = "demo" | "dev" | "live" | "app"
 
 export interface LocalizedTextDto {
   en: string | null
@@ -82,6 +82,12 @@ export interface ProviderDto {
   /** The provider got the same options as the plugin; null when it is not loaded. */
   sameOptions: boolean | null
   differences: string[]
+  /**
+   * App mode: the store's own provider that sends (`appProvider`), and whether
+   * it serves the email channel in Medusa's database (null when that could
+   * not be read). Null outside app mode.
+   */
+  app: { id: string; serving: boolean | null } | null
 }
 
 export interface StatusResponse {
@@ -115,6 +121,20 @@ export interface StatusResponse {
   references: ReferenceDto[]
   /** The send log could be read (the migrations ran). */
   logReady: boolean
+  /**
+   * App mode: Medusa's own history of the store's provider (its notification
+   * table), listed in the log next to the plugin's rows. Null in the other
+   * modes or when it cannot be read.
+   */
+  history?: { total: number; firstAt: string | null } | null
+  /** Full addresses in the log, searched by part (option showAddresses). */
+  showAddresses?: boolean
+  /** Delivery read from Resend (option deliveryKey): suppressed addresses. Null when not configured. */
+  delivery?: { suppressed: number; error: string | null; readAt: string | null } | null
+  /** Mailings outside the shop (option campaigns): their messages are rows of kind "campaign". */
+  campaigns?: Array<{ key: string; label: string }>
+  /** Named sets of templates for the log (option templateGroups). */
+  templateGroups?: Array<{ key: string; label: string; templates: string[]; variantLabels: Record<string, string> | null; link: { label: string; path: string } | null }>
 }
 
 export type MessageStatusDto = "sending" | "sent" | "failed" | "unknown" | "skipped"
@@ -148,9 +168,38 @@ export interface MessageDto {
   createdAt: string
   requestedBy: string | null
   hasBody: boolean
+  /** The stage of the message in its template group (option templateGroups variant), e.g. "overdue". */
+  variant?: string | null
+  /** The state of the order now, for a template group with orderState (e.g. paid / unpaid for a payment reminder). */
+  orderState?: { label: string; color: "green" | "red" | "orange" | "grey" | "blue"; hint?: string } | null
+  /** App mode: "medusa" for a message read from Medusa's history, "plugin" for the plugin's own row. */
+  source?: "plugin" | "medusa"
+  /** What happened after the provider took it (Resend last_event), when the plugin can read it (option deliveryKey). */
+  delivery?: string | null
 }
 
-/** `bounced`: refused for the recipient's address (`INVALID_RECIPIENT`); the plugin reads no bounce webhooks. */
+/** GET /admin/emails/delivery: the addresses Resend no longer sends to, each with its last message here. */
+export interface BouncesResponse {
+  configured: boolean
+  readAt: string | null
+  error: string | null
+  addresses: Array<{
+    email: string
+    origin: string
+    since: string | null
+    /** The address with a known domain typo corrected (gmial.com -> gmail.com), else null. */
+    typo: string | null
+    /** The subject of the message that caused the block (this store's, else read from Resend). */
+    subject: string | null
+    /** The mailing outside the shop that caused it (option campaigns), matched by its Resend tag. */
+    campaign: { key: string; label: string } | null
+    sourceId: string | null
+    resendUrl: string | null
+    lastMessage: MessageDto | null
+  }>
+}
+
+/** `bounced`: refused for the recipient's address (`INVALID_RECIPIENT`), and with option deliveryKey also bounced or suppressed in Resend. */
 export type MessageFilter = "all" | "sent" | "attention" | "skipped" | "test" | "bounced"
 
 export const MESSAGE_FILTERS: readonly MessageFilter[] = ["all", "sent", "attention", "skipped", "test", "bounced"]

@@ -5,6 +5,39 @@ const en = {
   /* The sidebar label: the key is the English name, so it reads right even where the admin cannot translate route labels. */
   "E-mails": "E-mails",
   title: "E-mails",
+  delivery: {
+    campaignHint: "A mailing outside the shop, through the same Resend account (for example a notice to all customers).",
+    tile: "Rejected addresses",
+    title: "Rejected addresses",
+    subtitle: "Addresses Resend no longer sends to (its suppression list): the recipient's server rejected a message or the recipient reported spam. Fix the address with the customer (often a typo in the domain) and remove it from the list in Resend.",
+    readAt: "Read from Resend: {{at}}",
+    back: "Back to the log",
+    notConfigured: "The plugin does not read delivery: set the option deliveryKey (a Resend key with read access).",
+    empty: "Resend blocks no address.",
+    noLast: "no message in this store",
+    typo: "A typo in the domain? Probably {{fixed}}",
+    hint: "What happened after sending, according to Resend",
+    col: { address: "Address", reason: "Reason", subject: "Subject", since: "Since", last: "Last message" },
+    origin: { bounce: "bounced", complaint: "reported as spam", manual: "added by hand" },
+    event: {
+      sent: "sent",
+      delivered: "delivered",
+      opened: "opened",
+      clicked: "clicked",
+      delivery_delayed: "delayed",
+      bounced: "bounced",
+      complained: "spam",
+      suppressed: "blocked",
+      failed: "failed",
+      queued: "queued",
+      scheduled: "scheduled",
+      canceled: "canceled",
+    },
+  },
+  loading: {
+    page: "Reading the e-mails…",
+    message: "Reading the message…",
+  },
   by: "by Koda Plus",
   subtitle:
     "Transactional e-mails of the store, sent through Resend: order confirmation, shipping with tracking, cancellation, welcome and password reset, in English and Polish, in your store's look and with a dark mode. See every template live, send yourself a test, and know what went out.",
@@ -17,6 +50,7 @@ const en = {
     title: "Settings",
     subtitle: "The look of the messages, which templates send, and the provider with the options in use.",
     tab: {
+      gallery: "Template previews",
       branding: "Branding",
       templates: "Templates",
       provider: "Provider",
@@ -29,6 +63,8 @@ const en = {
     notConfigured: "Not configured",
     unknown: "Checking",
     mismatch: "Modes differ",
+    app: "Sent by your provider",
+    appMissing: "Your provider is off",
   },
   demo: {
     label: "Demo mode",
@@ -47,12 +83,14 @@ const en = {
   actions: {
     moreActions: "More actions",
     sendTest: "Send a test",
+    templates: "Template previews",
     refresh: "Refresh",
     cancel: "Cancel",
     close: "Close",
     save: "Save",
   },
   stats: {
+    all: "All e-mails",
     sent24h: "Sent in 24 h",
     sent30d: "Sent in 30 days",
     simulated24h: "Simulated in 24 h",
@@ -119,6 +157,11 @@ const en = {
     turnedOff: "{{name}} is off",
   },
   log: {
+    group: {
+      all: "All templates",
+    },
+    openOrder: "Open the order",
+    openResend: "Open in Resend",
     title: "Sent e-mails",
     demoTitle: "Simulated outbox",
     simulated: "Simulated",
@@ -133,11 +176,13 @@ const en = {
       bounced: "Address refused",
     },
     search: "Search subject, template, order, or a full address",
+    searchAddresses: "Search by e-mail (or part of it), subject, template or order number",
     empty: "No e-mails yet. They appear here as orders, shipments and accounts come in, or after a test send.",
     demoEmpty: "The outbox is empty. Place an order in the storefront or send a test.",
     details: "Details",
     col: {
       when: "When",
+      order: "Order",
       template: "Template",
       recipient: "To",
       subject: "Subject",
@@ -156,6 +201,7 @@ const en = {
       seed: "Demo",
       job: "Job",
       app: "Your code",
+      medusa: "Medusa history",
     },
     scope: {
       order: "Order {{id}}",
@@ -169,6 +215,8 @@ const en = {
     },
     notReadyLabel: "Send log",
     notReady: "The send log table is missing or older than this version: run npx medusa db:migrate. Messages are still sent, but not logged.",
+    historyOnly: "The plugin log starts after the migrations (npx medusa db:migrate). Until then the list shows your provider's history from Medusa's notification table.",
+    historySince: "Together with your provider's history from Medusa, since {{date}}.",
   },
   byTemplate: {
     title: "By template",
@@ -202,6 +250,8 @@ const en = {
     body: "The message",
     noBody: "Live messages are not kept: open the template in the gallery to see how it looks.",
     noBodyDemo: "This message was not rendered (it failed before).",
+    medusaHistory: "A message from Medusa's history: your provider sent it, and Medusa kept the recipient, the template and the outcome. The log does not show the body.",
+    medusaFailed: "A message from Medusa's history: the provider did not send it. Medusa keeps no error text; the server logs of that moment have the details.",
     retry: "Send again",
     retryTitle: "Send this e-mail again?",
     retryText: "The data is read again from the order, the parcel, the customer or the cart, and the message goes out under a new key.",
@@ -224,6 +274,7 @@ const en = {
       live: { label: "A real e-mail", text: "Resend sends it to the address you type. It never carries a customer's name or address: sample data, or your newest order with the person replaced." },
       dev: { label: "No API key", text: "The message is rendered and logged, not sent." },
       demo: { label: "Demo mode", text: "The message lands in the simulated outbox. Nothing leaves the server." },
+      app: { label: "A real e-mail", text: "Your store's own provider sends it to the address you type, with the template's sample data." },
     },
     done: {
       sent: "Sent to {{to}}",
@@ -301,6 +352,16 @@ const en = {
       negotiation: "Negotiation",
     },
     problems: "Ignored option values",
+    app: {
+      label: "Your own provider",
+      text: "Your store's provider {{id}} sends the e-mails, as before. The plugin shows its templates, previews and tests them, and lists what the provider reports. The plugin's built-in templates are off, so nothing arrives twice.",
+      subtitle: "Who sends the store's e-mails and whether Medusa routes the email channel to it.",
+      missingLabel: "Your provider",
+      missingText: "The provider {{id}} does not serve the email channel in Medusa right now, so no e-mail goes out. Check its registration in medusa-config.ts (the email channel) and its key in the environment.",
+      sender: "Sends",
+      serving: "Serves the email channel",
+      recorded: "Recorded in 30 days",
+    },
     notLoaded: {
       label: "Provider",
       text: "The notification provider of this plugin is not registered, so Medusa has nothing to send e-mails with. Add it to the notification module in medusa-config.ts with the same options as the plugin and the email channel, then restart.",
@@ -373,6 +434,7 @@ const en = {
   },
   integration: integrationEn,
   guide: {
+    app: "Your store's own provider ({{id}}) sends the e-mails. The Resend account, domain and key steps are its setup and are done already; the plugin adds the preview, the tests and the log.",
     intro: {
       title: "Set up e-mails for a real store",
       text:

@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-trade-credit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Trade Credit by Koda Plus: per-customer credit limits and payment terms (net 14/30/60) for B2B stores. The used amount from the customer's unpaid orders, due dates per order, an overdue check, a blocking toggle and the customer's own limit in the storefront.",
   "author": {
     "name": "Koda Plus",

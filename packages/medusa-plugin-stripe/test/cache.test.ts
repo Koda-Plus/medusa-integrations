@@ -108,3 +108,24 @@ test("a failed reload keeps the last good value next to it; entries long past th
   assert.equal(cache.good("order:old"), null)
   assert.equal(cache.size, 1)
 })
+
+test("stale while revalidate: an old value answers at once and one read refreshes it behind", async () => {
+  const c = clock()
+  const cache = new TtlCache(c)
+  let loads = 0
+  let release: () => void = () => undefined
+  const load = async () => {
+    loads += 1
+    if (loads > 1) await new Promise<void>((r) => (release = r))
+    return loads
+  }
+  await cache.get("k", load, { ttlMs: 1000 })
+  c.advance(5000)
+  const stale = await cache.get("k", load, { ttlMs: 1000, staleWhileRevalidate: true })
+  assert.deepEqual(stale, { value: 1, at: 0, fresh: false }, "the old value, without waiting for Stripe")
+  await cache.get("k", load, { ttlMs: 1000, staleWhileRevalidate: true })
+  assert.equal(loads, 2, "one refresh behind, not one per caller")
+  release()
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal((await cache.get("k", load, { ttlMs: 1000, staleWhileRevalidate: true })).value, 2)
+})

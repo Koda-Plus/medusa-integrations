@@ -37,7 +37,7 @@ const COPY = {
     s2Title: "Zarejestruj w medusa-config.ts",
     s2Text: "Dodaj wpis do listy plugins, nie ruszając tego, co już tam jest. Każda opcja ma wartość domyślną, więc wtyczka startuje bez żadnej:",
     s3Title: "Uzbrój wymuszanie (dopiero po próbach)",
-    s3Text: "Opcja enforce: true sprawia, że kasa odmawia dokończenia zamówienia klientowi nad limitem albo zablokowanemu (403 credit_hold). Włącz ją dopiero wtedy, gdy limity działają tak, jak chcesz. Ustaw CREDIT_DEMO=true w .env, żeby najpierw poćwiczyć na danych przykładowych.",
+    s3Text: "Opcja enforce: true sprawia, że kasa odmawia dokończenia zamówienia klientowi zablokowanemu, wstrzymanemu albo takiemu, który tym zamówieniem przekroczyłby limit (403 credit_hold). Włącz ją dopiero wtedy, gdy limity działają tak, jak chcesz. Ćwicz najpierw na koncie testowym klienta z małym limitem.",
     s4Title: "Uruchom i otwórz panel",
     s4Text: "Migracje tworzą tabele modułu: credit_limit i credit_order. Potem otwórz Kredyt w bocznym menu admina: nadaj pierwszy limit z terminem net 14, 30 albo 60 dni. Codzienne zadanie zaznacza zaległe faktury jako overdue.",
     s5Title: "Podepnij sklep",
@@ -54,7 +54,7 @@ const COPY = {
     faq: [
       { q: "Kiedy zamówienie staje się zamówieniem kredytowym?", a: "Gdy kontrahent ma limit i wybierze płatność z terminem, w momencie złożenia zamówienia. Subskrybent order.placed zapisuje je w credit_order z datą wymagalności." },
       { q: "Czy kasa blokuje zamówienia nad limitem od razu?", a: "Nie. Domyślnie enforce: false, więc limity są widoczne, ale niczego nie blokują. Włączenie enforce: true to decyzja sklepu, po próbach." },
-      { q: "Czy tryb demo coś wysyła na zewnątrz?", a: "Nie. Demo to wyłącznie przykładowe limity i zamówienia kredytowe w bazie, nic nie opuszcza serwera." },
+      { q: "Czy tryb demo coś wysyła na zewnątrz?", a: "Nie. Tryb demo tylko oznacza nowe limity i zamówienia kredytowe jako demo; przykładowe dane wgrywa skrypt seed Twojej aplikacji. Nic nie opuszcza serwera." },
     ],
   }),
   en: typeset({
@@ -69,7 +69,7 @@ const COPY = {
     s2Title: "Register it in medusa-config.ts",
     s2Text: "Add an entry to the plugins list without touching what is already there. Every option has a default, so the plugin starts without any:",
     s3Title: "Arm enforcement (only after dry runs)",
-    s3Text: "The enforce: true option makes the checkout refuse to complete an order for a customer over their limit or blocked (403 credit_hold). Turn it on only once the limits behave the way you want. Set CREDIT_DEMO=true in .env to practice on sample data first.",
+    s3Text: "The enforce: true option makes the checkout refuse to complete an order for a customer who is blocked, paused or would pass the limit with that order (403 credit_hold). Turn it on only once the limits behave the way you want. Practice first on a test customer with a small limit.",
     s4Title: "Start it and open the panel",
     s4Text: "The migrations create the module's tables: credit_limit and credit_order. Then open Credit in the admin sidebar: grant the first limit with net 14, 30 or 60 days terms. A daily job flags overdue orders.",
     s5Title: "Wire the storefront",
@@ -86,7 +86,7 @@ const COPY = {
     faq: [
       { q: "When does an order become a credit order?", a: "When the counterparty has a limit and picks a payment method with terms, at the moment the order is placed. The order.placed subscriber saves it to credit_order with a due date." },
       { q: "Does the checkout block over-limit orders right away?", a: "No. By default enforce: false, so limits are visible but block nothing. Turning enforce: true on is the store's decision, after dry runs." },
-      { q: "Does demo mode call anything outside?", a: "No. Demo mode is only sample limits and credit orders in the database: nothing leaves the server." },
+      { q: "Does demo mode call anything outside?", a: "No. Demo mode only flags new limits and credit orders as demo; sample data comes from your app's seed script. Nothing leaves the server." },
     ],
   }),
 }

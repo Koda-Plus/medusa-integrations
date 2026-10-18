@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-loyalty",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Loyalty by Koda Plus: points for every order, a reward ladder (points to discounts and gifts), redemption with a recorded history, manual adjustments, an admin panel and the customer's own points in the storefront.",
   "author": {
     "name": "Koda Plus",

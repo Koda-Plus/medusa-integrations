@@ -143,6 +143,7 @@ for (const p of packages) {
 
   /* 7. Example data: RFC 2606 domains, synthetic NIPs (warnings). */
   const NIP_OK = new Set(["1234563218", "0123456789", "1111111111"])
+  const SERVICE_DOMAINS = ["olx.com", "olx.pl", "allegro.pl", "allegro.com", "inpost.pl", "inpost.eu", "fakturownia.pl", "stripe.com", "resend.com", "kit.com", "convertkit.com", "baselinker.com", "insert.com.pl", "medusajs.com"]
   const nipValid = (s) => {
     const w = [6, 5, 7, 2, 3, 4, 5, 6, 7]
     const d = s.split("").map(Number)
@@ -158,11 +159,16 @@ for (const p of packages) {
       const domain = m[1].toLowerCase()
       if (/(^|\.)example\.(com|org|net)$|\.example$|\.test$|\.invalid$|(^|\.)koda\.plus$|^users\.noreply\.github\.com$/.test(domain)) continue
       if (/\.(ts|tsx|js|mjs|json|md|png|svg)$/.test(domain)) continue
+      /* Mailbox providers in tests of address handling (typos like gmial.com) with an obviously fake name. */
+      if (/\/test\//.test(r) && /^(gmail|gmial|wp|onet|o2|interia|yahoo|outlook|hotmail)\.(com|pl)$/.test(domain) && /^(a|b|c|anna|anna\.nowak|jan|jan\.kowalski|test|demo)$/i.test(m[0].split("@")[0])) continue
+      /* The service's own support or API address in its plugin docs is real on purpose. */
+      if (/\/docs\/|README\.md$/.test(r) && SERVICE_DOMAINS.some((d) => domain === d || domain.endsWith("." + d))) continue
       warn(`${r}: example e-mail on a real domain (${domain}); use example.com or .test`)
       break
     }
     for (const m of text.matchAll(/(?<![\d-])(\d{10})(?![\d-])/g)) {
-      if (!NIP_OK.has(m[1]) && nipValid(m[1]) && !/^0+$/.test(m[1])) {
+      /* Prefix 999 is no tax office code: synthetic NIPs that still pass the checksum (demo data). */
+      if (!NIP_OK.has(m[1]) && !m[1].startsWith("999") && nipValid(m[1]) && !/^0+$/.test(m[1])) {
         warn(`${r}: ${m[1].slice(0, 3)}******* passes the NIP checksum; use 1234563218 or a number outside the registry`)
         break
       }
