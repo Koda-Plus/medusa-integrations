@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1 (unreleased)
+## 0.3.1 (2026-10-18)
 
 - The admin menu entry has a rank (2), so host apps can order their own extensions around it.
 - Demo data uses merchandise examples.

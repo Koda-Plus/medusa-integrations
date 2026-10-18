@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2 (unreleased)
+## 0.2.2 (2026-10-18)
 
 No change to the sync, the bridge contract or the tables: the shared admin kit moves from 1.0.1 to 1.0.9.
 

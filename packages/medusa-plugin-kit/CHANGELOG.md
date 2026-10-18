@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-18)
 
 The first release on npm: the newsletter of a Medusa v2 store on the Kit list (kit.com, formerly ConvertKit). Version 0.1.0 lived only in the repository and was never published. Run `npx medusa db:migrate` after installing: one migration (`Migration20261011100000`) adds the subscription log and the settings tables.
 

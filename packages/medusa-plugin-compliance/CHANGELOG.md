@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 (unreleased)
+## 0.1.1 (2026-10-18)
 
 - The panel has a setup guide.
 - The admin menu entry has a rank (5).
