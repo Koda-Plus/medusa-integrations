@@ -18,7 +18,7 @@ const CONFIG = `module.exports = defineConfig({
       options: {
         // Everything is optional.
         apiKey: process.env.KIT_API_KEY,
-        source: "StonerChef",
+        source: "Mój Sklep",
       },
     },
   ],
@@ -27,7 +27,7 @@ const CONFIG = `module.exports = defineConfig({
 const COPY = {
   pl: typeset({
     introTitle: "Wdrożenie krok po kroku",
-    introText: "Zarejestrujesz wtyczkę, podasz klucz API Kita i ustawisz listę w panelu. Formularz sklepu (Klub Stonerów) zapisuje adresy wprost do Kita - z tagami i podwójnym potwierdzeniem, dokładnie tak, jak klient prowadzi listę do tej pory.",
+    introText: "Zarejestrujesz wtyczkę, podasz klucz API Kita i ustawisz listę w panelu. Formularz newslettera w sklepie zapisuje adresy wprost do Kita - z tagami i podwójnym potwierdzeniem, dokładnie tak, jak klient prowadzi listę do tej pory.",
     time: "ok. 10 minut",
     needs: "Medusa 2.12 lub nowsza; konto Kit (dawniej ConvertKit) z kluczem API V4",
     stepsTitle: "Kroki",
@@ -39,9 +39,9 @@ const COPY = {
     s3Title: "Utwórz klucz API w Kicie",
     s3Text: "W Kicie: Ustawienia, Developer, klucze API, dodaj nowy klucz V4. Wstaw go do KIT_API_KEY na backendzie. Klucz zostaje na serwerze - w logach i w panelu widać tylko jego końcówkę.",
     s4Title: "Ustaw listę w panelu",
-    s4Text: "Otwórz Kit w menu admina: wybierz tagi dla nowych subskrybentów (np. sklep, klub-stonerow) i, przy podwójnym potwierdzeniu, formularz Kita, który wyśle maila z potwierdzeniem.",
+    s4Text: "Otwórz Kit w menu admina: wybierz tagi dla nowych subskrybentów (np. sklep, newsletter) i, przy podwójnym potwierdzeniu, formularz Kita, który wyśle maila z potwierdzeniem.",
     s5Title: "Podepnij formularz sklepu",
-    s5Text: "Formularz Klub Stonerów wysyła POST /store/kit/subscribe (e-mail, opcjonalnie imię). Trasa jest publiczna z limitem 5 zapisów na 10 minut na adres IP i grzecznie odpowiada, gdy klucz jeszcze nie wisi.",
+    s5Text: "Formularz newslettera wysyła POST /store/kit/subscribe (e-mail, opcjonalnie imię). Trasa jest publiczna z limitem 5 zapisów na 10 minut na adres IP i grzecznie odpowiada, gdy klucz jeszcze nie wisi.",
     checkTitle: "Lista przed startem",
     checkSub: "Wszystko odhaczone znaczy, że newsletter sklepu chodzi na Kicie od formularza do listy.",
     checklist: [
@@ -59,7 +59,7 @@ const COPY = {
   }),
   en: typeset({
     introTitle: "Setup step by step",
-    introText: "Register the plugin, put in the Kit API key and pick the list settings in the panel. The storefront form (Klub Stonerów) signs addresses up straight into Kit - with tags and double opt-in, exactly how the client runs the list today.",
+    introText: "Register the plugin, put in the Kit API key and pick the list settings in the panel. The storefront newsletter form signs addresses up straight into Kit - with tags and double opt-in, exactly how the client runs the list today.",
     time: "about 10 minutes",
     needs: "Medusa 2.12 or newer; a Kit account (formerly ConvertKit) with a V4 API key",
     stepsTitle: "Steps",
@@ -71,9 +71,9 @@ const COPY = {
     s3Title: "Create the API key in Kit",
     s3Text: "In Kit: Settings, Developer, API keys, add a new V4 key. Put it in KIT_API_KEY on the backend. The key stays on the server - logs and the admin show only its ending.",
     s4Title: "Pick the list settings in the panel",
-    s4Text: "Open Kit in the admin menu: choose the tags for new subscribers (for example: sklep, klub-stonerow) and, for double opt-in, the Kit form that sends the confirmation email.",
+    s4Text: "Open Kit in the admin menu: choose the tags for new subscribers (for example: shop, newsletter) and, for double opt-in, the Kit form that sends the confirmation email.",
     s5Title: "Wire the storefront form",
-    s5Text: "The Klub Stonerów form posts to /store/kit/subscribe (e-mail, optionally a first name). The route is public with a limit of 5 sign-ups per 10 minutes per address and answers politely while the key is missing.",
+    s5Text: "The newsletter form posts to /store/kit/subscribe (e-mail, optionally a first name). The route is public with a limit of 5 sign-ups per 10 minutes per address and answers politely while the key is missing.",
     checkTitle: "The go-live checklist",
     checkSub: "All ticked means the store's newsletter runs on Kit from the form to the list.",
     checklist: [

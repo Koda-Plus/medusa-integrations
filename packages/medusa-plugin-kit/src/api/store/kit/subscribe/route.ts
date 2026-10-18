@@ -4,7 +4,7 @@ import { clientOf, EMAIL_RE, optionsOf, settingsOf } from "../../../kit/helpers"
 import type { KitApiError } from "../../../../modules/kit/lib/client"
 
 /**
- * POST /store/kit/subscribe - the newsletter form ("Klub Stonerow").
+ * POST /store/kit/subscribe - the storefront newsletter form.
  * Public: Medusa only requires the publishable key header. The route answers
  * politely when the integration is not configured yet, so the form never
  * shows a red error for a missing key.

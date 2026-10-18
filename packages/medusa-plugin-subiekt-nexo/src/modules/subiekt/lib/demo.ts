@@ -64,7 +64,7 @@ export interface DemoCatalogItem {
 
 export const DEMO_WAREHOUSE = "MAG"
 /** The demo company that "sells": its NIP starts every demo KSeF number. */
-export const DEMO_COMPANY_NIP = "5265877635"
+export const DEMO_COMPANY_NIP = "9990000008"
 /** An FS gets its KSeF number this long after it was issued. */
 export const DEMO_KSEF_AFTER_MS = 2 * 60 * 1000
 /** The demo bridge clock runs this far ahead of Medusa: a skew the admin shows as fine. */

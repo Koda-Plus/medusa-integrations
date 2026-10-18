@@ -89,6 +89,12 @@ export interface EmailTemplateDefinition<D = Record<string, unknown>> {
    */
   sensitive?: readonly string[]
   /**
+   * App mode: the subject of a message from Medusa's history, from the data
+   * Medusa kept (without links and secrets). Cheap and pure; leave it out and
+   * history rows of the template show no subject.
+   */
+  subjectOf?: (data: Partial<D> & Record<string, unknown>, locale: EmailLocale) => string | null
+  /**
    * Renders the message. Keep it pure (the same input, the same output): a
    * retry must produce the same message, or Resend refuses the idempotency key.
    * Return a document built with the kit (recommended: the look, dark mode and

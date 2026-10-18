@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/guide.tsx (kit 1.0.1) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/guide.tsx (kit 1.0.9) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
@@ -183,6 +183,20 @@ function OtherActions({ items, label }: { items: HeaderAction[]; label: string }
 }
 
 /**
+ * A store that ships the integrations as its own (an agency's client) turns
+ * the Koda Plus marks off for its team with `window.__KODA_KIT__ = { whiteLabel: true }`
+ * in the admin's HTML. The header then shows no "by Koda Plus", no setup
+ * prompt and Discord help and no store references; everything else stays.
+ */
+export function isWhiteLabel(): boolean {
+  try {
+    return Boolean((globalThis as { __KODA_KIT__?: { whiteLabel?: boolean } }).__KODA_KIT__?.whiteLabel)
+  } catch {
+    return false
+  }
+}
+
+/**
  * The header of an integration page, the same in all five. Three places, each
  * with one job:
  *   who      icon, name, "by Koda Plus", the state badges; on the right the help
@@ -218,6 +232,7 @@ export function IntegrationHeader({
   primary?: HeaderAction | null
   actions?: HeaderAction[]
 }) {
+  const plain = isWhiteLabel()
   return (
     <div className="flex flex-col">
       <div className="flex flex-col gap-y-3 px-6 pb-5 pt-5">
@@ -225,17 +240,19 @@ export function IntegrationHeader({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <span className="flex shrink-0">{icon}</span>
             <Heading level="h1">{title}</Heading>
-            <Text size="small" className="text-ui-fg-muted">
-              {by}
-            </Text>
+            {plain ? null : (
+              <Text size="small" className="text-ui-fg-muted">
+                {by}
+              </Text>
+            )}
             {badges ? <span className="flex flex-wrap items-center gap-1.5">{badges}</span> : null}
           </div>
-          {help ? <div className="flex shrink-0">{help}</div> : null}
+          {help && !plain ? <div className="flex shrink-0">{help}</div> : null}
         </div>
         <Text size="small" className="max-w-3xl text-ui-fg-subtle">
           {description}
         </Text>
-        {social ? <div className="flex flex-wrap items-center gap-2 pt-0.5">{social}</div> : null}
+        {social && !plain ? <div className="flex flex-wrap items-center gap-2 pt-0.5">{social}</div> : null}
       </div>
       <div className="flex flex-col gap-3 border-t border-ui-border-base bg-ui-bg-subtle px-6 py-2.5 md:flex-row md:items-center md:justify-between">
         <PageTabs value={view} onChange={onView} labels={labels} />

@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { Link } from "react-router-dom"
+import { ArrowUturnLeft } from "@medusajs/icons"
 import { Badge, Container, Heading, InlineTip, Input, Table, Text } from "@medusajs/ui"
-import type { MethodKey, MoneyDto, PaymentFilter, PeriodStatsDto, StripeOverviewResponse } from "../../modules/stripe/lib/contract"
+import { KitSkeletonRows } from "./stripe-kit"
+import { KitOrderAmountLines, KitOrderProductsCell, useKitCartProducts, useKitOrderProducts } from "./stripe-order-products"
+import type { MethodKey, MoneyDto, PaymentFilter, PaymentRowDto, PeriodStatsDto, StripeOverviewResponse } from "../../modules/stripe/lib/contract"
 import { useStripePayments } from "./stripe-api"
 import {
   DisputeDue,
@@ -23,6 +27,7 @@ import {
   fmtPercent,
   refundFailureText,
 } from "./stripe-ui"
+import { MethodIcon, MethodName } from "./stripe-method-icon"
 
 /*
  * The Panel: the figures of a period, the methods, the payments next to
@@ -102,7 +107,10 @@ export function feeRate(p: PeriodStatsDto): number | null {
   return v.currency === f.currency && v.amount > 0 ? f.amount / v.amount : null
 }
 
-export function PeriodTiles({ overview, days, lang, onDisputes }: { overview: StripeOverviewResponse; days: PeriodDays; lang: string; onDisputes: () => void }) {
+/** Where a tile leads: the payments list with a filter, or a section of the panel. */
+export type TileTarget = { payments: PaymentFilter } | { section: "stripe-balance" | "stripe-refunds" | "stripe-disputes" }
+
+export function PeriodTiles({ overview, days, lang, onOpen }: { overview: StripeOverviewResponse; days: PeriodDays; lang: string; onOpen: (target: TileTarget) => void }) {
   const { t } = useTranslation("stripe")
   const p = overview.periods.find((x) => x.days === days) ?? overview.periods[0]
   if (!p) return null
@@ -112,26 +120,28 @@ export function PeriodTiles({ overview, days, lang, onDisputes }: { overview: St
   return (
     <div className="flex flex-col gap-y-3">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile label={t("stats.volume")} value={<MoneyValue values={p.volume} lang={lang} />} hint={t("stats.volumeHint", { n: fmtNumber(p.succeeded, lang) })} tone="green" />
+        <StatTile label={t("stats.volume")} value={<MoneyValue values={p.volume} lang={lang} />} hint={t("stats.volumeHint", { n: fmtNumber(p.succeeded, lang) })} tone="green" onClick={() => onOpen({ payments: "succeeded" })} />
         <StatTile
           label={t("stats.fees")}
           value={<MoneyValue values={p.fees} lang={lang} />}
           hint={p.feesPending > 0 ? t("stats.feesPending", { count: p.feesPending }) : rate !== null ? t("stats.feesHint", { rate: fmtPercent(rate, lang, 2) }) : undefined}
+          onClick={() => onOpen({ section: "stripe-balance" })}
         />
-        <StatTile label={t("stats.net")} value={<MoneyValue values={p.net} lang={lang} />} hint={t("stats.netHint")} tone="green" />
+        <StatTile label={t("stats.net")} value={<MoneyValue values={p.net} lang={lang} />} hint={t("stats.netHint")} tone="green" onClick={() => onOpen({ section: "stripe-balance" })} />
         <StatTile
           label={t("stats.success")}
           value={p.successRate === null ? "0" : fmtPercent(p.successRate, lang, 1)}
           hint={p.successRate === null ? t("stats.successNone") : t("stats.successHint", { failed: p.failed, attempts: p.failed + p.succeeded })}
           tone={p.successRate === null ? "default" : p.successRate >= 0.9 ? "green" : p.successRate >= 0.75 ? "orange" : "red"}
+          onClick={() => onOpen({ payments: "failed" })}
         />
-        <StatTile label={t("stats.refunds")} value={<MoneyValue values={p.refunded} lang={lang} />} hint={t("stats.refundsHint", { count: p.refunds })} tone={p.refunds > 0 ? "orange" : "default"} />
+        <StatTile label={t("stats.refunds")} value={<MoneyValue values={p.refunded} lang={lang} />} hint={t("stats.refundsHint", { count: p.refunds })} tone={p.refunds > 0 ? "orange" : "default"} onClick={() => onOpen({ section: "stripe-refunds" })} />
         <StatTile
           label={t("stats.disputes")}
           value={overview.disputes.length}
           hint={respond > 0 ? t("stats.disputesHint", { count: respond }) : t("stats.disputesNone")}
           tone={urgent ? "red" : overview.disputes.length > 0 ? "orange" : "default"}
-          onClick={overview.disputes.length > 0 ? onDisputes : undefined}
+          onClick={() => onOpen(overview.disputes.length > 0 ? { section: "stripe-disputes" } : { payments: "disputed" })}
         />
       </div>
       {p.processing + p.authorized > 0 ? (
@@ -234,7 +244,7 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
                 <Table.Row key={m.method} className="[&_td]:py-2.5">
                   <Table.Cell>
                     <Text size="small" weight="plus">
-                      {t(`methods.${m.method}`)}
+                      <MethodName method={m.method} label={t(`methods.${m.method}`)} />
                     </Text>
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmtNumber(m.count, lang)}</Table.Cell>
@@ -258,20 +268,52 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
 /* Payments                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Where a refund of this payment is made. With an order: in the order, so
+ * Medusa, the stock and the invoices follow it (a refund made in Stripe alone
+ * leaves the order paid in Medusa). Without one: in Stripe's dashboard. The
+ * plugin itself never refunds; it only reads.
+ */
+function RefundLink({ payment: p }: { payment: PaymentRowDto }) {
+  const { t } = useTranslation("stripe")
+  const left = p.amount.amount - (p.refunded?.amount ?? 0)
+  if (p.status !== "succeeded" || left <= 0) return null
+  if (p.order) {
+    return (
+      <Link to={`/orders/${p.order.id}`} className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-subtle hover:text-ui-fg-interactive" title={t("payments.refundInOrderHint")}>
+        <ArrowUturnLeft className="shrink-0" />
+        {t("payments.refundInOrder")}
+      </Link>
+    )
+  }
+  return (
+    <a href={p.dashboardUrl} target="_blank" rel="noreferrer" className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-subtle hover:text-ui-fg-interactive" title={t("payments.refundInStripeHint")}>
+      <ArrowUturnLeft className="shrink-0" />
+      {t("payments.refundInStripe")}
+    </a>
+  )
+}
+
 export function PaymentsSection({
   overview,
   lang,
   initialFilter = "all",
   initialQuery = "",
+  focus,
 }: {
   overview: StripeOverviewResponse
   lang: string
   /** From the page URL (?filter=, ?q=): the list a board counter or a host links to. */
   initialFilter?: PaymentFilter
   initialQuery?: string
+  /** A tile asked for this list (at: when, so the same tile twice still applies). */
+  focus?: { filter: PaymentFilter; at: number } | null
 }) {
   const { t } = useTranslation("stripe")
   const [filter, setFilter] = useState<PaymentFilter>(initialFilter)
+  useEffect(() => {
+    if (focus) setFilter(focus.filter)
+  }, [focus])
   const [method, setMethod] = useState<MethodKey | "all">("all")
   const [search, setSearch] = useState(initialQuery)
   const q = useDebounced(search)
@@ -280,12 +322,15 @@ export function PaymentsSection({
   const payments = useStripePayments(filter, method, q, page * PAGE_SIZE, PAGE_SIZE, overview.fetchedAt)
   const data = payments.data
   const rows = data?.payments ?? []
+  const products = useKitOrderProducts(rows.map((p) => p.order?.id))
+  /* No order (abandoned, failed, waiting): what was in the cart. */
+  const carts = useKitCartProducts(rows.map((p) => (p.order ? null : p.cartId)), "/admin/stripe/carts")
   const count = data?.count ?? 0
   const pageCount = Math.max(1, Math.ceil(count / PAGE_SIZE))
   const methods = useMemo(() => METHOD_ORDER.filter((m) => (data?.methods?.[m] ?? 0) > 0), [data?.methods])
 
   return (
-    <Container className="divide-y p-0" id="stripe-payments">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-payments">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("payments.title")}</Heading>
@@ -310,7 +355,7 @@ export function PaymentsSection({
           <FilterPills<MethodKey | "all">
             value={method}
             onChange={setMethod}
-            options={[{ value: "all", label: t("payments.methodAll") }, ...methods.map((m) => ({ value: m, label: t(`methods.${m}`), count: data?.methods?.[m] }))]}
+            options={[{ value: "all", label: t("payments.methodAll") }, ...methods.map((m) => ({ value: m, label: t(`methods.${m}`), count: data?.methods?.[m], icon: <MethodIcon method={m} title={t(`methods.${m}`)} /> }))]}
           />
         ) : null}
       </div>
@@ -324,24 +369,30 @@ export function PaymentsSection({
               <Table.HeaderCell>{t("payments.col.status")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("payments.col.fee")}</Table.HeaderCell>
               <Table.HeaderCell>{t("payments.col.order")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("payments.col.products")}</Table.HeaderCell>
               <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={7} text={payments.isLoading ? "" : overview.paymentsTotal === 0 ? t("payments.emptyRead") : t("payments.empty")} />
+            {rows.length === 0 && payments.isLoading ? (
+              <KitSkeletonRows cols={8} rows={8} />
+            ) : rows.length === 0 ? (
+              <EmptyRow cols={8} text={overview.paymentsTotal === 0 ? t("payments.emptyRead") : t("payments.empty")} />
             ) : (
               rows.map((p) => (
                 <Table.Row key={p.id} className="align-top [&_td]:py-2.5">
                   <Table.Cell className="whitespace-nowrap">
                     <div className="flex flex-col">
                       <span className="txt-compact-small">{fmtDateTime(p.created, lang)}</span>
-                      <span className="txt-compact-xsmall font-mono text-ui-fg-muted">{p.id}</span>
+                      <span className="txt-compact-xsmall text-ui-fg-muted" title={t("payments.stripeIdHint")}>
+                        {t("payments.stripeId")} <span className="font-mono">{p.id}</span>
+                      </span>
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap text-right">
                     <div className="flex flex-col items-end gap-y-1">
                       <span className="txt-compact-small-plus tabular-nums">{fmtMoney(p.amount, lang)}</span>
+                      {p.order ? <KitOrderAmountLines data={products.data?.[p.order.id]} /> : null}
                       {p.refunded ? (
                         <Badge size="2xsmall" color="orange">
                           {t("payments.refunded", { amount: fmtMoney(p.refunded, lang) })}
@@ -392,8 +443,21 @@ export function PaymentsSection({
                   <Table.Cell className="max-w-[220px]">
                     <OrderCell order={p.order} payment={p} />
                   </Table.Cell>
+                  <Table.Cell>
+                    {p.order ? (
+                      <KitOrderProductsCell data={products.data?.[p.order.id]} loading={products.isLoading} displayId={p.order.displayId} />
+                    ) : p.cartId ? (
+                      <div className="flex flex-col items-start gap-y-1">
+                        <KitOrderProductsCell data={carts.data?.[p.cartId]} loading={carts.isLoading} />
+                        {carts.data?.[p.cartId] ? <span className="txt-compact-xsmall text-ui-fg-muted">{t("payments.cartOnly")}</span> : null}
+                      </div>
+                    ) : null}
+                  </Table.Cell>
                   <Table.Cell className="whitespace-nowrap text-right">
-                    <ExternalLink href={p.dashboardUrl}>{t("actions.openStripe")}</ExternalLink>
+                    <div className="flex flex-col items-end gap-y-1.5">
+                      <ExternalLink href={p.dashboardUrl}>{t("actions.openStripe")}</ExternalLink>
+                      <RefundLink payment={p} />
+                    </div>
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -425,7 +489,7 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
   const rows = overview.disputes
   const closed = overview.disputesClosed
   return (
-    <Container className="divide-y p-0" id="stripe-disputes">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-disputes">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("disputes.title")}</Heading>
@@ -467,7 +531,7 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
                   <Table.Cell className="whitespace-nowrap text-right">
                     <div className="flex flex-col items-end">
                       <span className="txt-compact-small-plus tabular-nums">{fmtMoney(d.amount, lang)}</span>
-                      {d.method ? <span className="txt-compact-xsmall text-ui-fg-muted">{t(`methods.${d.method}`)}</span> : null}
+                      {d.method ? <span className="txt-compact-xsmall text-ui-fg-muted"><MethodName method={d.method} label={t(`methods.${d.method}`)} /></span> : null}
                     </div>
                   </Table.Cell>
                   <Table.Cell>{d.reason ? t(`disputes.reason.${d.reason}`, { defaultValue: d.reason }) : ""}</Table.Cell>
@@ -508,7 +572,7 @@ export function RefundsSection({ overview, lang }: { overview: StripeOverviewRes
   const { t } = useTranslation("stripe")
   const rows = overview.refunds
   return (
-    <Container className="divide-y p-0">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-refunds">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("refunds.title")}</Heading>
@@ -626,7 +690,7 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
     </Table.Header>
   )
   return (
-    <Container className="divide-y p-0">
+    <Container className="scroll-mt-4 divide-y p-0" id="stripe-balance">
       <div className="flex flex-col gap-1 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading level="h2">{t("balance.title")}</Heading>

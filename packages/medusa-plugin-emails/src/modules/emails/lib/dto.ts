@@ -15,12 +15,14 @@ export function localized(v: LocalizedText | undefined): LocalizedTextDto | null
 }
 
 /** The names of every template the options know, by key, for the rows of the log. */
-export function templateLabels(o: { definitions: Record<string, EmailTemplateDefinition<any>> }): Record<string, LocalizedTextDto> {
+export function templateLabels(o: { definitions: Record<string, EmailTemplateDefinition<any>>; campaigns?: Array<{ key: string; label: string }> }): Record<string, LocalizedTextDto> {
   const out: Record<string, LocalizedTextDto> = {}
   for (const t of listTemplates(o)) {
     const label = localized(t.def.label)
     if (label) out[t.key] = label
   }
+  /* A mailing outside the shop (option campaigns) is named by its label. */
+  for (const c of o.campaigns ?? []) out[`campaign:${c.key}`] = { pl: c.label, en: c.label } as LocalizedTextDto
   return out
 }
 

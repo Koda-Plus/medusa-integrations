@@ -85,8 +85,10 @@ export function referencesFor(items: readonly ReferenceDto[], lang: string): Ref
  * so when the provider of this process runs in another mode than the plugin
  * options say, the badge says so in red instead of "Demo mode".
  */
-export function modeState(s: StatusResponse | undefined): { key: "demo" | "live" | "dev" | "notConfigured" | "unknown" | "mismatch"; tone: Tone } {
+export function modeState(s: StatusResponse | undefined): { key: "demo" | "live" | "dev" | "app" | "appMissing" | "notConfigured" | "unknown" | "mismatch"; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
+  /* App mode: the store's own provider sends; red only when Medusa has it off the email channel. */
+  if (s.mode === "app") return s.provider.app?.serving === false ? { key: "appMissing", tone: "red" } : { key: "app", tone: "green" }
   if (s.provider.loaded && s.provider.mode && s.provider.mode !== s.mode) return { key: "mismatch", tone: "red" }
   if (s.mode === "demo") return { key: "demo", tone: "purple" }
   if (s.mode === "dev") return { key: "dev", tone: "orange" }
@@ -108,8 +110,9 @@ export function MessageStatusBadge({ message, demo }: { message: Pick<MessageDto
 
 export function KindBadge({ kind }: { kind: string }) {
   const { t } = useTranslation("emails")
-  if (kind === "event") return null
-  const tone: Record<string, "blue" | "purple" | "grey" | "orange"> = { test: "blue", seed: "purple", job: "grey", app: "orange" }
+  /* Where a message came from (the store's provider, Medusa's history) says nothing to the office: only test and demo sends are marked. */
+  if (kind === "event" || kind === "app" || kind === "medusa") return null
+  const tone: Record<string, "blue" | "purple" | "grey" | "orange"> = { test: "blue", seed: "purple", job: "grey", app: "orange", medusa: "grey" }
   return (
     <Badge size="2xsmall" color={tone[kind] ?? "grey"}>
       {t(`log.kinds.${kind}`, { defaultValue: kind })}

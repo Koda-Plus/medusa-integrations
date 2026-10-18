@@ -2,17 +2,18 @@
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Container, InlineTip, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, Spinner } from "@medusajs/icons"
+import { Badge, Container, InlineTip, toast, Text } from "@medusajs/ui"
 import type { PaymentFilter, StripeMode, StripeOverviewResponse, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
 import { errorMessage, useStripeChecks, useStripeOverview, useStripeRefresh, useStripeStatus } from "../../lib/stripe-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/stripe-guide"
 import { GuideView, usePromptSpec } from "../../lib/stripe-guide-view"
 import { HealthSection, HealthStrip } from "../../lib/stripe-health"
 import { StripeIcon } from "../../lib/stripe-icon"
-import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays } from "../../lib/stripe-panel"
+import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays, type TileTarget } from "../../lib/stripe-panel"
 import { AccessTab, ChecksTab, OptionsTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/stripe-settings"
 import { fmtRating, referencesFor } from "../../lib/stripe-ui"
+import { KitFetchingBar, KitHostSlot, KitLoading } from "../../lib/stripe-kit"
 
 /**
  * Stripe by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -67,13 +68,20 @@ const StripePage = () => {
       scrollToSection("stripe-disputes")
     } else if (focus === "checks" && checks.data) {
       scrolled.current = true
-      scrollToSection("stripe-health")
+      nav.go("settings", "checks")
     }
   }, [o, checks.data, focus])
   const summary = checks.data?.summary
-  const healthFirst = Boolean(summary && (summary.fail > 0 || summary.warn > 0 || !configured))
 
   const health = <HealthSection checks={checks.data} loading={checks.isLoading} lang={lang} />
+  /* A tile shows what it counts: the payments with its filter, or its section of the panel. */
+  const [paymentsFocus, setPaymentsFocus] = useState<{ filter: PaymentFilter; at: number } | null>(null)
+  const openTile = (target: TileTarget) => {
+    if ("payments" in target) {
+      setPaymentsFocus({ filter: target.payments, at: Date.now() })
+      requestAnimationFrame(() => scrollToSection("stripe-payments"))
+    } else scrollToSection(target.section)
+  }
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -93,8 +101,23 @@ const StripePage = () => {
               <PeriodSwitch value={days} onChange={setDays} />
               <Freshness overview={o} lang={lang} />
             </div>
-            <PeriodTiles overview={o} days={days} lang={lang} onDisputes={() => scrollToSection("stripe-disputes")} />
-            <HealthStrip checks={checks.data} onOpen={() => scrollToSection("stripe-health")} />
+            <PeriodTiles overview={o} days={days} lang={lang} onOpen={openTile} />
+            <HealthStrip checks={checks.data} onOpen={() => nav.go("settings", "checks")} />
+          </div>
+        ) : null}
+        {s && nav.view === "panel" && configured && !o && overview.isLoading ? (
+          <div className="flex flex-col gap-3 px-6 py-5">
+            <div className="flex items-center gap-x-2">
+              <Spinner className="animate-spin text-ui-fg-muted" />
+              <Text size="small" className="text-ui-fg-subtle">
+                {t("loading")}
+              </Text>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {Array.from({ length: 6 }, (_, i) => (
+                <div key={i} className="h-[84px] animate-pulse rounded-lg bg-ui-bg-component" />
+              ))}
+            </div>
           </div>
         ) : null}
         {nav.view === "panel" && overview.isError ? (
@@ -105,23 +128,27 @@ const StripePage = () => {
           </div>
         ) : null}
         {nav.view === "panel" ? <ReadErrors overview={o} /> : null}
+        {!s && status.isLoading ? <KitLoading label={t("loading")} /> : null}
+        {nav.view === "panel" && o ? <KitFetchingBar active={overview.isFetching} /> : null}
       </Container>
 
       {s && nav.view === "guide" ? <GuideView status={s} checks={checks.data} lang={lang} /> : null}
 
       {s && nav.view === "panel" ? (
         <>
-          {healthFirst ? health : null}
+          {!configured ? health : null}
           {configured && o ? (
             <>
-              <MethodsSection overview={o} days={days} lang={lang} />
-              <PaymentsSection overview={o} lang={lang} initialFilter={initialFilter} initialQuery={initialQuery} />
+              {/* Sections the store adds (kit host slot), e.g. its own error log. */}
+              <KitHostSlot id="stripe.panel.before" />
+              <PaymentsSection overview={o} lang={lang} initialFilter={initialFilter} initialQuery={initialQuery} focus={paymentsFocus} />
               <DisputesSection overview={o} lang={lang} />
               <RefundsSection overview={o} lang={lang} />
+              {/* Methods next to the balance: both read the period's money, fees and net. */}
+              <MethodsSection overview={o} days={days} lang={lang} />
               <BalanceSection overview={o} lang={lang} />
             </>
           ) : null}
-          {healthFirst ? null : health}
         </>
       ) : null}
 
@@ -138,7 +165,12 @@ const StripePage = () => {
           ]}
         >
           {nav.tab === "options" ? <OptionsTab status={s} /> : null}
-          {nav.tab === "checks" ? <ChecksTab status={s} checks={checks.data} /> : null}
+          {nav.tab === "checks" ? (
+            <div className="flex flex-col gap-y-3">
+              {health}
+              <ChecksTab status={s} checks={checks.data} />
+            </div>
+          ) : null}
           {nav.tab === "access" ? <AccessTab status={s} /> : null}
         </SettingsView>
       ) : null}
@@ -178,7 +210,7 @@ function Header({ status, overview, lang, nav }: { status: StripeStatusResponse 
             <ModeBadge color={MODE_COLOR[status.mode]} label={t(`mode.${status.mode}`)} title={t("demo.label")}>
               {status.mode === "demo" ? <DemoDetails /> : null}
             </ModeBadge>
-            <Badge size="2xsmall" color="grey">
+            <Badge size="2xsmall" color="orange">
               {t("mode.readOnly")}
             </Badge>
           </>

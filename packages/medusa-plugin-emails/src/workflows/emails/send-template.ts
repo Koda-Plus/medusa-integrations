@@ -125,6 +125,13 @@ export async function sendTemplate(scope: Scope, input: SendTemplateInput): Prom
   const svc = emailsService(scope)
   const customerId = input.customerId ?? customerIdOf(input.receiverId)
   try {
+    /* App mode: the store's own provider sends its own e-mails, and it cannot
+       render the plugin's built-in templates. A built-in never goes out then,
+       not even as a test: it would only duplicate what the store already sends. */
+    if (svc.getOptions().mode === "app") {
+      const own = resolveTemplate(input.template, svc.getOptions())
+      if (!own || own.source === "builtin") return { status: "disabled" }
+    }
     if (!input.ignoreSwitch) {
       const state = await templateStateOf(scope, input.template)
       if (!state || !state.enabled) return { status: "disabled" }

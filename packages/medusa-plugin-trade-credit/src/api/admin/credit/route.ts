@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { creditSvc, toCreditOrder, toLimit } from "../../../modules/credit/lib/store"
 import type { StatusResponse } from "../../../modules/credit/lib/contract"
+import { storeStatus } from "../../../modules/credit/lib/store-mode"
 
 /**
  * GET /admin/credit
@@ -11,6 +12,12 @@ import type { StatusResponse } from "../../../modules/credit/lib/contract"
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = creditSvc(req.scope)
   const options = svc.getOptions()
+  /* Store mode: the page over the credit the store keeps. */
+  if (options.store) {
+    res.setHeader("Cache-Control", "no-store")
+    res.json(await storeStatus(req.scope, options.store))
+    return
+  }
   const [limits, orders] = await Promise.all([
     svc.listCreditLimits({}, { take: 500, order: { used_amount: "DESC" } }),
     svc.listCreditOrders({ state: ["open", "overdue"] }, { take: 100, order: { due_at: "ASC" } }),
@@ -21,6 +28,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const status: StatusResponse = {
     demo: options.demo,
     enforce: options.enforce,
+    mode: "own",
+    capabilities: { block: true, pause: true },
     counts: {
       limits: limitDtos.length,
       blocked: limitDtos.filter((l) => l.blocked).length,

@@ -208,15 +208,15 @@ test("demo writes are replayed onto the simulated account by the next read", () 
 
 test("simulated statistics and threads go through the real parsers", () => {
   const now = new Date("2026-10-06T12:00:00Z")
-  const young = parseStatistics(demoStatisticsRaw("1511400468", "2026-10-05T00:00:00Z", now))
-  const old = parseStatistics(demoStatisticsRaw("1511400468", "2026-09-01T00:00:00Z", now))
+  const young = parseStatistics(demoStatisticsRaw("1511400469", "2026-10-05T00:00:00Z", now))
+  const old = parseStatistics(demoStatisticsRaw("1511400469", "2026-09-01T00:00:00Z", now))
   assert.ok(young && old && (old.views ?? 0) > (young.views ?? 0), "views grow with the age of the advert")
   assert.deepEqual(demoStatisticsRaw("1", null, now), demoStatisticsRaw("1", null, now), "deterministic")
 
   const threads = parseThreads(
     demoThreadsRaw(
       [
-        { olxId: "1511400468", status: "active", createdAt: null },
+        { olxId: "1511400469", status: "active", createdAt: null },
         { olxId: "1280194011", status: "active", createdAt: null },
         { olxId: "1871382414", status: "limited", createdAt: null },
       ],

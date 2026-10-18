@@ -109,6 +109,35 @@ export function buildRows(args: {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * The payment intents of the window, read as PI_SLICES time slices in
+ * parallel instead of page after page: the same rows (Stripe lists newest
+ * first, the slices are newest first too), a fraction of the wait. Each slice
+ * gets its share of maxPages; the result is complete only when every slice is.
+ */
+const PI_SLICES = 4
+
+async function listSliced<T extends { id?: string }>(
+  client: ReturnType<typeof clientFor>,
+  path: string,
+  params: Record<string, unknown>,
+  since: number,
+  until: number,
+  options: { maxPages: number; deadline: number },
+): Promise<{ data: T[]; complete: boolean; pages: number }> {
+  const step = Math.ceil((until - since) / PI_SLICES)
+  const slices = Array.from({ length: PI_SLICES }, (_, i) => {
+    const hi = until - i * step
+    return { gte: Math.max(since, hi - step), lt: hi + (i === 0 ? 1 : 0) }
+  }).filter((s) => s.lt > s.gte)
+  const perSlice = Math.max(1, Math.ceil(options.maxPages / slices.length))
+  const parts = await Promise.all(slices.map((c) => client.list<T>(path, { ...params, created: c } as never, { maxPages: perSlice, deadline: options.deadline })))
+  const seen = new Set<string>()
+  const data: T[] = []
+  for (const p of parts) for (const row of p.data) if (!row.id || !seen.has(row.id)) (row.id && seen.add(row.id), data.push(row))
+  return { data, complete: parts.every((p) => p.complete), pages: parts.reduce((a, p) => a + p.pages, 0) }
+}
+
 async function readLive(scope: Scope, now: Date): Promise<Snapshot> {
   const svc = stripeService(scope)
   const o = svc.getOptions()
@@ -121,7 +150,7 @@ async function readLive(scope: Scope, now: Date): Promise<Snapshot> {
   const deadline = Date.now() + READ_BUDGET_MS
 
   const [pis, refunds, disputes, balance, payouts] = await Promise.allSettled([
-    client.list<RawPaymentIntent>("/payment_intents", { created: { gte: since }, expand: ["data.latest_charge.balance_transaction"] }, { maxPages: o.maxPages, deadline }),
+    listSliced<RawPaymentIntent>(client, "/payment_intents", { expand: ["data.latest_charge.balance_transaction"] }, since, Math.ceil(now.getTime() / 1000), { maxPages: o.maxPages, deadline }),
     client.list<RawRefund>("/refunds", { created: { gte: since }, expand: ["data.payment_intent"] }, { maxPages: Math.min(5, o.maxPages), deadline }),
     /* Open disputes of older payments too: a dispute may come months after its payment. */
     client.list<RawDispute>("/disputes", { created: { gte: disputesSince }, expand: ["data.payment_intent"] }, { maxPages: Math.min(DISPUTES_MAX_PAGES, o.maxPages), limit: DISPUTES_LIMIT, deadline }),
@@ -240,7 +269,7 @@ function snapshotKey(scope: Scope, origin: string | null | undefined): string {
  * served from the cache. A read that failed for the key is kept for a minute.
  * `maxAgeMs` lets a caller reuse an older read (the board counters).
  */
-export async function loadSnapshot(scope: Scope, args: { force?: boolean; origin?: string | null; now?: () => Date; maxAgeMs?: number } = {}): Promise<SnapshotHit> {
+export async function loadSnapshot(scope: Scope, args: { force?: boolean; origin?: string | null; now?: () => Date; maxAgeMs?: number; staleWhileRevalidate?: boolean } = {}): Promise<SnapshotHit> {
   const svc = stripeService(scope)
   const o = svc.getOptions()
   const now = args.now ?? (() => new Date())
@@ -251,6 +280,7 @@ export async function loadSnapshot(scope: Scope, args: { force?: boolean; origin
     forceMinMs: FORCE_REFRESH_MIN_MS,
     errorTtlMs: ERROR_CACHE_MS,
     isFailure: (s) => s.paymentsFailure !== null,
+    staleWhileRevalidate: args.staleWhileRevalidate,
   })
   return { snapshot: hit.value, fresh: hit.fresh, at: hit.at }
 }

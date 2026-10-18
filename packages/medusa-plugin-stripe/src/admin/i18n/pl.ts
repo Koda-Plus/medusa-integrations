@@ -4,6 +4,7 @@ import { integrationPl } from "../../modules/stripe/lib/integration-texts"
 import { communityPl } from "../lib/stripe-kit-community"
 
 const pl: typeof en = {
+  loading: "Czytam Stripe: płatności, zwroty, spory i saldo z 30 dni. Pierwsze wczytanie trwa kilka sekund, potem dane są od razu, a nowe dochodzą w tle.",
   title: "Stripe",
   by: "by Koda Plus",
   subtitle:
@@ -313,6 +314,12 @@ const pl: typeof en = {
     },
   },
   payments: {
+    stripeId: "ID w Stripe:",
+    stripeIdHint: "Identyfikator płatności w Stripe (PaymentIntent): po nim znajdziesz ją w panelu Stripe i w wyciągu.",
+    refundInOrder: "Zwrot w zamówieniu",
+    refundInOrderHint: "Zwrot robisz w zamówieniu w Medusie: wtedy zamówienie, stany i dokumenty idą za nim. Zwrot zrobiony tylko w Stripe zostawia zamówienie opłacone w Medusie.",
+    refundInStripe: "Zwrot w Stripe",
+    refundInStripeHint: "Ta płatność nie ma zamówienia w tym sklepie, więc zwrot robisz w panelu Stripe.",
     title: "Płatności",
     subtitle: "Ostatnie 30 dni, od najnowszych, każda przy swoim zamówieniu w Medusie i z linkiem do panelu Stripe.",
     filter: {
@@ -334,6 +341,7 @@ const pl: typeof en = {
       status: "Status",
       fee: "Prowizja i netto",
       order: "Zamówienie",
+      products: "Produkty",
     },
     status: {
       succeeded: "Udana",
@@ -341,13 +349,23 @@ const pl: typeof en = {
       authorized: "Autoryzowana",
       requires_action: "Czeka na klienta",
       failed: "Odrzucona",
-      canceled: "Anulowana",
+      canceled: "Porzucona",
       incomplete: "Nieopłacona",
+    },
+    statusHint: {
+      succeeded: "Pieniądze pobrane.",
+      processing: "Bank jeszcze potwierdza płatność.",
+      authorized: "Środki zablokowane na karcie, czekają na pobranie.",
+      requires_action: "Klient musi jeszcze potwierdzić płatność (np. w aplikacji banku).",
+      failed: "Bank albo Stripe odrzucił płatność; pieniądze nie zostały pobrane.",
+      canceled: "Klient zaczął płacić i nie dokończył (porzucony koszyk albo nowa próba płatności), więc Stripe anulował tę płatność. Pieniądze nie zostały pobrane.",
+      incomplete: "Płatność założona, klient nie wybrał jeszcze metody; pieniądze nie zostały pobrane.",
     },
     ending: "końcówka {{last4}}",
     noOrder: "Bez zamówienia",
     paidNoOrder: "Opłacona, bez zamówienia",
     cart: "Koszyk {{id}}",
+    cartOnly: "koszyk, zamówienie nie powstało",
     outside: "Spoza Medusy",
     foreign: "Inna Medusa",
     refundFailed: "Zwrot nieudany",

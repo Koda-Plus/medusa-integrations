@@ -151,6 +151,12 @@ export interface MessageStore {
   /** Inserts a finished row (simulated, logged, skipped); null when the key already has one. */
   record(m: NewMessage & MessagePatch & { status: MessageStatus }): Promise<MessageRow | null>
   /**
+   * App mode: what the store's own provider reports about one message. A new
+   * key is inserted; the same key again updates the outcome of an app or test
+   * row (Medusa retried it) and leaves any other row as it is.
+   */
+  recordApp(m: NewMessage & MessagePatch & { status: MessageStatus }): Promise<MessageRow | null>
+  /**
    * Swaps the seeded rows of the demo outbox for a new set, in one
    * transaction: each row is written, or refreshed under its key when a
    * seeded row holds it; a row of a real event or a test send under the same
@@ -260,6 +266,24 @@ const ROW_MARKS = `(${NEW_COLUMNS.map((c) => (c === "created_at" ? "coalesce(?, 
 
 function insertSql(): string {
   return `insert into "${MESSAGE_TABLE}" (${INSERT_COLUMNS}) values ${ROW_MARKS} on conflict do nothing returning *`
+}
+
+/** What a second report of the same app message updates: its outcome, never who or what it is. */
+const APP_REFRESHED = ["status", "subject", "locale", "external_id", "error_code", "error", "sent_at", "notification_id"] as const
+
+/**
+ * A message the store's own provider sent (app mode): inserted, or, when the
+ * provider reports the same key again (Medusa retried a failed notification),
+ * the outcome is updated and the attempt counted. Only rows of kind app and
+ * test change this way; a row of the plugin's own flows is left alone.
+ */
+function appUpsertSql(): string {
+  const set = [...APP_REFRESHED.map((c) => `"${c}" = coalesce(excluded."${c}", "${MESSAGE_TABLE}"."${c}")`), `"attempts" = "${MESSAGE_TABLE}"."attempts" + 1`, `"updated_at" = now()`].join(", ")
+  return `insert into "${MESSAGE_TABLE}" (${INSERT_COLUMNS}) values ${ROW_MARKS}
+     on conflict ("key", "demo") where "deleted_at" is null
+     do update set ${set}
+     where "${MESSAGE_TABLE}"."kind" in ('app', 'test')
+     returning *`
 }
 
 /** What a refreshed seed row takes over from the new one: everything but its id, key, mode and kind. */
@@ -396,6 +420,11 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       return rowsOf<MessageRow>(result)[0] ?? null
     },
 
+    async recordApp(m) {
+      const result = await sql.raw(appUpsertSql(), insertBindings(newId("emmsg"), m, finishedColumns(m)))
+      return rowsOf<MessageRow>(result)[0] ?? null
+    },
+
     async replaceSeed(input) {
       const keys = new Set<string>()
       const rows = input.filter((m) => m.demo && m.kind === "seed" && !keys.has(m.key) && Boolean(keys.add(m.key)))
@@ -464,8 +493,8 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       const month = new Date(now.getTime() - 30 * 24 * 3600 * 1000)
       const result = await sql.raw(
         `select
-           count(*) filter (where "status" = 'sent' and "created_at" >= ?)::int as "sent24h",
-           count(*) filter (where "status" = 'sent')::int as "sent30d",
+           count(*) filter (where "status" = 'sent' and "kind" <> 'campaign' and "created_at" >= ?)::int as "sent24h",
+           count(*) filter (where "status" = 'sent' and "kind" <> 'campaign')::int as "sent30d",
            count(*) filter (where "status" in ('failed', 'unknown'))::int as "attention30d",
            count(*) filter (where "kind" = 'test')::int as "tests30d",
            count(*) filter (where "kind" = 'test' and "status" = 'sent')::int as "testsSent30d",

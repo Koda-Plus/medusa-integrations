@@ -715,7 +715,7 @@ components:
           type: [string, "null"]
           description: |
             Since 1.1. The number KSeF assigned to the e-invoice of a sales
-            document (FS), for example `5265877635-20261005-0A1B2C3D4E5F-7A`.
+            document (FS), for example `9990000008-20261005-0A1B2C3D4E5F-7A`.
             Opaque to the reader. Null while KSeF has not assigned one, and
             always null for documents that never go to KSeF (ZK, WZ, PA).
         related:

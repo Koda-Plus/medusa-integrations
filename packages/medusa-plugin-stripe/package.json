@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-stripe",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Stripe by Koda Plus: Stripe in the Medusa admin, next to the official Stripe payment provider. Volume, fees and net by payment method (cards, BLIK, Przelewy24, Apple Pay, Google Pay), payments linked to their orders, disputes with evidence deadlines, refunds, balance and payouts, health checks of the setup and an order widget. Read only, it never moves money. Demo mode.",
   "author": {
     "name": "Koda Plus",

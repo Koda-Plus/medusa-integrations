@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/kit.tsx (kit 1.0.1) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/kit.tsx (kit 1.0.9) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useSyncExternalStore, type ComponentType, type ReactNode } from "react"
 import { Container, clx } from "@medusajs/ui"
 import type { HostZone } from "../../modules/tasks/lib/kit-contract"
@@ -247,6 +247,78 @@ export function hostable<P extends { data: any }>(
   return Hosted
 }
 
+/* ------------------------------------------------------------------ */
+/* Host slots: sections the store adds to a plugin page                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A plugin page marks places with <KitHostSlot id="stripe.panel.after" />;
+ * the store adds its own sections there with addToSlot(...) from any admin
+ * file Medusa loads (a widget file runs at dashboard start). The plugin knows
+ * nothing about the store: an empty slot renders nothing.
+ */
+export const SLOTS_KEY = Symbol.for("koda.page.slots/1")
+
+type SlotEntry = { id: string; slot: string; order: number; Component: ComponentType }
+interface SlotRegistry {
+  readonly version: 1
+  add(e: SlotEntry): void
+  list(slot: string): SlotEntry[]
+  subscribe(listener: () => void): () => void
+  revision(): number
+}
+
+function slots(): SlotRegistry {
+  const g = globalThis as unknown as Record<symbol, SlotRegistry | undefined>
+  const existing = g[SLOTS_KEY]
+  if (existing && existing.version === 1) return existing
+  const entries = new Map<string, SlotEntry>()
+  const listeners = new Set<() => void>()
+  let rev = 0
+  const created: SlotRegistry = {
+    version: 1,
+    add(e) {
+      entries.set(e.id, e)
+      rev += 1
+      for (const l of [...listeners]) {
+        try {
+          l()
+        } catch {
+          /* a listener never breaks the others */
+        }
+      }
+    },
+    list: (slot) => [...entries.values()].filter((e) => e.slot === slot).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)),
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    revision: () => rev,
+  }
+  g[SLOTS_KEY] = created
+  return created
+}
+
+/** Adds a store section to a plugin page slot (same id again replaces it). */
+export function addToSlot(slot: string, id: string, Component: ComponentType, order = 100): void {
+  slots().add({ id, slot, order, Component })
+}
+
+/** The place in a plugin page where the store's sections go. */
+export function KitHostSlot({ id }: { id: string }) {
+  const r = slots()
+  useSyncExternalStore(r.subscribe, r.revision, r.revision)
+  const list = r.list(id)
+  if (!list.length) return null
+  return (
+    <>
+      {list.map((e) => (
+        <e.Component key={e.id} />
+      ))}
+    </>
+  )
+}
+
 /** A plugin page without cards says it is installed, so a host can list it. */
 export function announce(entry: IntegrationEntry): void {
   registry().announce(entry)
@@ -268,5 +340,52 @@ export function WidgetFrame({ embedded, header, children, className }: { embedde
       {header}
       {children}
     </Container>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Loading                                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * What a page shows while it reads, the same in every plugin: never an empty
+ * table that says "nothing here" before the data came. The labels come from
+ * the plugin (its own language); the kit only draws.
+ */
+
+/** A section that is still reading: a spinner and what it reads, in the space the content will take. */
+export function KitLoading({ label, className }: { label?: string; className?: string }) {
+  return (
+    <div role="status" aria-live="polite" className={clx("flex min-h-[8rem] flex-col items-center justify-center gap-y-2 px-6 py-8", className)}>
+      <span className="size-5 animate-spin rounded-full border-2 border-ui-border-base border-t-ui-fg-interactive" />
+      {label ? <span className="txt-compact-small text-ui-fg-subtle">{label}</span> : null}
+    </div>
+  )
+}
+
+/** Placeholder rows of a table body while its first page reads (the header stays). */
+export function KitSkeletonRows({ cols, rows = 6 }: { cols: number; rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, r) => (
+        <tr key={r} aria-hidden className="border-b border-ui-border-base last:border-b-0">
+          {Array.from({ length: cols }, (_, c) => (
+            <td key={c} className="px-6 py-3.5">
+              <span className="block h-3 animate-pulse rounded bg-ui-bg-component" style={{ width: `${45 + ((r * 7 + c * 13) % 45)}%` }} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
+}
+
+/** A thin bar on top of a section that is reading again with its old data still shown. */
+export function KitFetchingBar({ active }: { active: boolean }) {
+  return (
+    <div aria-hidden className={clx("relative h-0.5 overflow-hidden", active ? "opacity-100" : "opacity-0")}>
+      <span className="absolute inset-y-0 left-0 w-1/3 animate-[kit-fetching_1.1s_ease-in-out_infinite] bg-ui-fg-interactive" />
+      <style>{`@keyframes kit-fetching{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}`}</style>
+    </div>
   )
 }

@@ -14,12 +14,12 @@ test("every new writer is off by default, and an option set to false wins", () =
 
   const on = resolveOptions({ priceWriter: true, createMissingProducts: true, salesDocument: "auto", createContractors: true })
   const rows = [
-    { key: "prices", armed: true, changed_by: "anna@shop.pl", changed_at: "2026-10-05T10:00:00.000Z" },
+    { key: "prices", armed: true, changed_by: "anna@example.com", changed_at: "2026-10-05T10:00:00.000Z" },
     { key: "documents", armed: false, changed_by: null, changed_at: null },
   ]
   const writers = describeWriters(on, rows, ALL)
   const prices = writers.find((w) => w.key === "prices")!
-  assert.deepEqual([prices.allowed, prices.armed, prices.active, prices.changedBy], [true, true, true, "anna@shop.pl"])
+  assert.deepEqual([prices.allowed, prices.armed, prices.active, prices.changedBy], [true, true, true, "anna@example.com"])
   assert.equal(writers.find((w) => w.key === "documents")!.active, false)
 
   const off = resolveOptions({ priceWriter: false, demo: true })

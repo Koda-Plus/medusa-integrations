@@ -167,6 +167,33 @@ export function memoryStore(): MemoryStore {
       rows.push(row)
       return { ...row }
     },
+    async recordApp(m) {
+      writes.push("recordApp")
+      if (store.failWith) throw store.failWith
+      const existing = byKey(m.key, m.demo)
+      if (existing) {
+        if (existing.kind !== "app" && existing.kind !== "test") return null
+        for (const c of ["status", "subject", "locale", "external_id", "error_code", "error", "sent_at", "notification_id"] as const) {
+          const v = (m as Record<string, unknown>)[c]
+          if (v !== undefined && v !== null) (existing as Record<string, unknown>)[c] = v
+        }
+        existing.attempts += 1
+        return { ...existing }
+      }
+      const row = make(m, {
+        status: m.status,
+        external_id: m.external_id ?? null,
+        error_code: m.error_code ?? null,
+        error: m.error ?? null,
+        retryable: m.retryable ?? false,
+        sent_at: m.sent_at ?? null,
+        body_html: null,
+        body_text: null,
+        attempts: m.status === "skipped" ? 0 : 1,
+      })
+      rows.push(row)
+      return { ...row }
+    },
     async replaceSeed(input) {
       writes.push("replaceSeed")
       if (store.failWith) throw store.failWith

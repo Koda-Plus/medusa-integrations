@@ -15,7 +15,7 @@ import {
 import { planRow } from "./helpers.ts"
 
 test("switches: the option wins, live mode needs a connected account with the write scope", () => {
-  const armed = { armed: true, changedBy: "anna@shop.pl", changedAt: "2026-10-06T10:00:00Z" }
+  const armed = { armed: true, changedBy: "anna@example.com", changedAt: "2026-10-06T10:00:00Z" }
   assert.deepEqual(writerSwitchState({ allowedByConfig: true, toggle: armed, demo: false, connected: true, writeScope: true }), {
     allowedByConfig: true,
     armed: true,

@@ -102,10 +102,11 @@ test("live: one read of Stripe, payments matched to their orders by the payment 
 
   const again = await loadStripeOverview(c)
   assert.equal(again.fresh, false)
-  assert.equal(stripe.count("/payment_intents"), 1, "served from the cache")
+  /* One read is PI_SLICES parallel lists of the window (snapshot.ts). */
+  assert.equal(stripe.count("/payment_intents"), 4, "served from the cache")
   const forced = await loadStripeOverview(c, { force: true })
   assert.equal(forced.fresh, false, "a forced refresh within 30 seconds is the same read")
-  assert.equal(stripe.count("/payment_intents"), 1)
+  assert.equal(stripe.count("/payment_intents"), 4)
 })
 
 test("live: a section Stripe refuses stays empty with the permission it asked for; the rest still shows", async () => {
@@ -135,7 +136,8 @@ test("the payments page: filters, methods and search from the cached read, no ex
   assert.equal(paymentsPage(snapshot, { filter: "all", method: "all", q: "#1002", offset: 0, limit: 20 }).payments[0]?.id, payments.apple.id)
   assert.equal(paymentsPage(snapshot, { filter: "all", method: "all", q: String(payments.link.id).toUpperCase(), offset: 0, limit: 20 }).count, 1)
   assert.equal(paymentsPage(snapshot, { filter: "outside", method: "all", q: "", offset: 0, limit: 20 }).payments[0]?.id, payments.link.id)
-  assert.equal(stripe.count("/payment_intents"), 1)
+  /* One read: its PI_SLICES slices, nothing more for the filters. */
+  assert.equal(stripe.count("/payment_intents"), 4)
 })
 
 test("the checks: Stripe and Medusa read once, the webhook judged against this admin's address", async () => {

@@ -18,6 +18,8 @@ import { bankName, brandName } from "../../modules/stripe/lib/methods"
 import { formatMoney } from "../../modules/stripe/lib/money"
 import { pickText } from "../../modules/stripe/lib/references"
 import type { Reference } from "./stripe-guide"
+import { MethodName } from "./stripe-method-icon"
+import { StripeIcon } from "./stripe-icon"
 
 type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
@@ -190,7 +192,7 @@ export function StatTile({
 }
 
 /** Pills with counts, the same look as the other Koda Plus integrations. */
-export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number }>; onChange: (v: T) => void }) {
+export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number; icon?: ReactNode }>; onChange: (v: T) => void }) {
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((o) => (
@@ -203,7 +205,7 @@ export function FilterPills<T extends string>({ value, options, onChange }: { va
             value === o.value ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color" : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
           )}
         >
-          {o.label}
+          {o.icon ? <span className="mr-1.5 inline-flex align-middle">{o.icon}</span> : null}{o.label}
           {typeof o.count === "number" ? <span className="tabular-nums opacity-80">{o.count}</span> : null}
         </button>
       ))}
@@ -223,9 +225,12 @@ export function Fact({ label, children, mono = false }: { label: string; childre
 }
 
 /** An external link to the Stripe Dashboard (or any https page), opening in a new tab. */
+/** A page outside the admin, in a new tab: the Stripe mark when it is Stripe's dashboard, the text, the new-window icon. */
 export function ExternalLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
+  const stripe = /^https:\/\/([a-z0-9-]+\.)*stripe\.com\//i.test(href)
   return (
-    <a href={href} target="_blank" rel="noreferrer" className={clx("txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover", className)}>
+    <a href={href} target="_blank" rel="noreferrer" className={clx("txt-compact-small inline-flex items-center gap-x-1.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover", className)}>
+      {stripe ? <StripeIcon width={14} height={14} className="shrink-0" /> : null}
       {children}
       <ArrowUpRightOnBox className="shrink-0" />
     </a>
@@ -258,9 +263,11 @@ const STATUS_TONE: Record<PaymentStatus, Tone> = {
 export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const { t } = useTranslation("stripe")
   return (
-    <StatusBadge color={STATUS_TONE[status] ?? "grey"} className="whitespace-nowrap">
-      {t(`payments.status.${status}`)}
-    </StatusBadge>
+    <span title={t(`payments.statusHint.${status}`, { defaultValue: "" }) || undefined}>
+      <StatusBadge color={STATUS_TONE[status] ?? "grey"} className="whitespace-nowrap">
+        {t(`payments.status.${status}`)}
+      </StatusBadge>
+    </span>
   )
 }
 
@@ -297,7 +304,7 @@ export function MethodCell({ method, detail }: { method: MethodKey | null; detai
   return (
     <div className="flex min-w-0 flex-col">
       <Text size="small" weight="plus" className={clx("truncate", method ? "text-ui-fg-base" : "text-ui-fg-muted")}>
-        {methodLabel(t, method)}
+        {method ? <MethodName method={method} label={methodLabel(t, method)} /> : methodLabel(t, method)}
       </Text>
       {sub ? (
         <Text size="xsmall" className="truncate text-ui-fg-muted" title={sub}>

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.2 (unreleased)
+
+No change to the sync, the bridge contract or the tables: the shared admin kit moves from 1.0.1 to 1.0.9.
+
+### Changed
+
+- White label for host apps: with `window.__KODA_KIT__ = { whiteLabel: true }` in the admin's HTML, the page header shows no "by Koda Plus", no setup prompt and Discord help, and no references or "Add your store"; everything else stays.
+- The kit's order products cell is available to the admin (`src/admin/lib/subiekt-order-products.tsx`): the thumbnails of an order's line items under a "View" link that opens a dialog with every line, and an amount breakdown (products, shipping, discount with codes), read from Medusa's `GET /admin/orders`, one request per list page. The page does not use it yet.
+- The kit's loaders (a loading line, placeholder rows, a thin bar while newer data arrives) and page slots (`addToSlot` and `KitHostSlot`, where a host app adds its own sections) are available to the admin.
+- README: Uninstall, Compatibility, Development, Commercial support and a separate Trademarks section.
+
 ## 0.2.1 (2026-10-07)
 
 ### Fixed

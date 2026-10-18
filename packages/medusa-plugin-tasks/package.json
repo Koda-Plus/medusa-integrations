@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-tasks",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tasks by Koda Plus: a task board in the Medusa admin for the store team and the agency or developers who work with it. Board columns with drag and drop, comments, an activity log, tasks linked to orders, products and customers, secret API keys for scripts and AI agents, stable events and a sandbox board for public demo accounts.",
   "author": {
     "name": "Koda Plus",

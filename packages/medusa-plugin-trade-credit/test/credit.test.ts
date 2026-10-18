@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { dueAt, limitView, normalizeNetDays, remaining } from "../src/modules/credit/lib/credit.ts"
+import { creditHold, dueAt, limitView, normalizeNetDays, remaining } from "../src/modules/credit/lib/credit.ts"
 
 test("credit: the due date adds the terms, 0 means today", () => {
   const created = new Date("2026-01-10T10:00:00Z")
@@ -29,4 +29,15 @@ test("credit: the net days normalize into 0 to 365", () => {
   assert.equal(normalizeNetDays(-3), 0)
   assert.equal(normalizeNetDays(999), 365)
   assert.equal(normalizeNetDays("soon"), 0)
+})
+
+test("credit hold: blocked and paused stop every order, an active limit stops only what would pass it", () => {
+  const base = { limit_amount: 1000, used_amount: 400, status: "active" as const, blocked: false }
+  assert.equal(creditHold(base, 600), null)
+  assert.equal(creditHold(base, 600.004), null)
+  assert.equal(creditHold(base, 601)?.reason, "over_limit")
+  assert.equal(creditHold({ ...base, blocked: true }, 1)?.reason, "blocked")
+  assert.equal(creditHold({ ...base, status: "paused" }, 1)?.reason, "paused")
+  assert.equal(creditHold({ ...base, limit_amount: 0, used_amount: 99999 }, 5000), null)
+  assert.equal(creditHold(base, 601)?.remaining_amount, 600)
 })

@@ -1,5 +1,6 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { recordOrder } from "../workflows/credit/orders"
+import { creditSvc } from "../modules/credit/lib/store"
 
 /**
  * An order placed by a customer with credit terms becomes a credit order:
@@ -8,6 +9,8 @@ import { recordOrder } from "../workflows/credit/orders"
  */
 export default async function creditOrderPlaced({ event, container }: { event: { data?: Record<string, unknown> }; container: MedusaContainer }): Promise<void> {
   try {
+    /* Store mode: the store keeps its credit orders itself. */
+    if (creditSvc(container).getOptions?.()?.store) return
     const data = event.data ?? {}
     await recordOrder(container, {
       id: typeof data.id === "string" ? data.id : "",

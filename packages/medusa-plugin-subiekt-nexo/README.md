@@ -254,13 +254,48 @@ Subscribe to `subiekt.document_issued` (`{ order_id, kind, number, status, sourc
 - Payments on sales documents (settlement of online payments).
 - Customer group prices from further Subiekt price levels.
 
+## Development
+
+```bash
+npm install
+npm test
+npm run typecheck
+npm run build
+```
+
+`npm test` covers the backoff, the bridge client, the contract and its examples, the HMAC signatures and their cross-language test vectors, the order payload, the payment routing, the NIP sources and checksum, the stock match and plan, the products and prices plan, the writers and the sales documents, the setup guide, the references option, the demo bridge and the `koda.integration/1` contract, without a network, a bridge or a build. Running the tests needs Node.js 22.6+ (they load the TypeScript sources directly). The contract in [`contract/`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract) is the source of truth for the bridge: change it there first, and keep it additive within a major version.
+
+## Uninstall
+
+1. Disarm the writers in the admin and set `stockDryRun: true`, so nothing new is written while you remove the plugin.
+2. Stop the bridge service on the Windows machine, or remove the Medusa webhook address from its settings: once the plugin is gone, `POST /hooks/subiekt` answers 404 to every nudge of the bridge.
+3. Remove the plugin from `medusa-config.ts` and the package from `package.json`.
+4. The tables `subiekt_connection`, `subiekt_task`, `subiekt_document`, `subiekt_sync_run`, `subiekt_writer`, `subiekt_catalog_change` and `subiekt_catalog_quarantine` stay with your data, and so do the `subiekt_*` keys in the order metadata (ZK, WZ, sales document and KSeF numbers). They are the record of which order got which document in Subiekt: keep them as long as you need that link, then drop the tables by hand.
+5. Do not run the `down` of the migrations unless you want that record gone: they drop the tables.
+
+Every document already in Subiekt (ZK, WZ, FS, PA) stays there: the plugin never deletes one.
+
+## Compatibility
+
+Medusa 2.12 to 2.21 (peer range `^2.12.0`) and Node.js 20+. Developed and unit tested on Medusa 2.15.3; the release of each version runs the smoke test on a fresh Medusa 2.12.6 and 2.21.2 app: migrations, build, start and the admin pages. The admin libraries (`@medusajs/ui`, `@medusajs/icons`, `@tanstack/react-query`, `react`, `react-i18next`, `react-router-dom`) are optional peers: the plugin uses the copies of Medusa's dashboard. On the Subiekt side: Subiekt nexo PRO with the nexo SDK of the same version as the database, and a bridge speaking contract 1.0 or 1.1 (the 1.1 features need bridge 0.2.0 or newer and are detected from its `capabilities`).
+
+## Commercial support
+
+Built and maintained by [Koda Plus](https://koda.plus), a Medusa agency from Poland. The order lifecycle and the bridge come from the Subiekt nexo integration we run in production for a Polish cosmetics wholesaler, next to our Fakturownia, BaseLinker, Allegro and OLX integrations. The production bridge, its installation or a custom flow: write to kontakt@koda.plus.
+
+## Trademarks
+
+Subiekt nexo, nexo PRO and Sfera are trademarks of InsERT S.A., used here only to identify the software this plugin connects to. This project is independent and not affiliated with or endorsed by InsERT.
+
 ## License
 
-MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/LICENSE). Built and maintained by [Koda Plus](https://koda.plus).
-
-Subiekt nexo, nexo PRO and Sfera are trademarks of InsERT S.A. This project is independent and not affiliated with InsERT.
+MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/LICENSE).
 
 ## Changelog
+
+### 0.2.2 (unreleased)
+
+The shared admin kit 1.0.9, with no change to the sync, the bridge contract or the tables: white label for host apps (`window.__KODA_KIT__ = { whiteLabel: true }`), and the order products cell, loaders and page slots available to the admin. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/CHANGELOG.md).
 
 ### 0.2.1 (2026-10-07)
 

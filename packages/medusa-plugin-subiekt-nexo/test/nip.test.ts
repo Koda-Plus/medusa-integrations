@@ -9,7 +9,7 @@ test("the NIP checksum: weights 6 5 7 2 3 4 5 6 7, a remainder of 10 is never va
   assert.equal(isValidNip("123.456.32.18"), true)
   assert.equal(isValidNip("1234563219"), false)
   assert.equal(isValidNip("0000000000"), false)
-  assert.equal(isValidNip("5265877635"), true)
+  assert.equal(isValidNip("9990000008"), true)
   // 1..9 weighted gives 230, 230 mod 11 = 10: no tenth digit makes it valid.
   for (let d = 0; d <= 9; d++) assert.equal(isValidNip(`123456789${d}`), false)
   assert.equal(isValidNip("DE123456789"), false)
@@ -26,7 +26,7 @@ test("normalizing keeps digits only when the rest is separators", () => {
 
 test("a NIP is found inside free text, and only where digits stand on their own", () => {
   assert.deepEqual(nipsInText("Salon Ania sp. z o.o., NIP 123-456-32-18"), ["1234563218"])
-  assert.deepEqual(nipsInText("NIP: PL5265877635 / tel. 600 000 000"), ["5265877635"])
+  assert.deepEqual(nipsInText("NIP: PL9990000008 / tel. 600 000 000"), ["9990000008"])
   assert.deepEqual(nipsInText("konto 12345678901234567890"), [])
   assert.deepEqual(nipsInText(null), [])
   assert.equal(companyWithoutNip("Salon Ania sp. z o.o., NIP 123-456-32-18"), "Salon Ania sp. z o.o.")
@@ -37,7 +37,7 @@ test("a NIP is found inside free text, and only where digits stand on their own"
 test("nipSources: metadata first, a wrong NIP in a NIP field decides, free text needs the checksum", () => {
   const sources = DEFAULT_NIP_SOURCES
   assert.deepEqual(findNip({ metadata: { nip: "123-456-32-18" } }, sources), { nip: "1234563218", source: "metadata.nip", invalid: null })
-  assert.deepEqual(findNip({ metadata: { nip: "123-456-32-19" }, billing_address: { company: "X, NIP 5265877635" } }, sources), {
+  assert.deepEqual(findNip({ metadata: { nip: "123-456-32-19" }, billing_address: { company: "X, NIP 9990000008" } }, sources), {
     nip: null,
     source: "metadata.nip",
     invalid: { source: "metadata.nip", value: "123-456-32-19" },

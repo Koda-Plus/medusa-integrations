@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-allegro",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Allegro for Medusa v2 by Koda Plus: offers linked to products by signature, orders imported exactly once, quantities, parcels, invoices, prices and draft offers sent back by writers you allow and arm. Device login, encrypted tokens, sandbox and demo mode.",
   "author": {
     "name": "Koda Plus",

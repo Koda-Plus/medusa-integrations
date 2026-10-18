@@ -16,7 +16,7 @@ export async function loadStripeOverview(scope: Scope, options: { force?: boolea
   const svc = stripeService(scope)
   const o = svc.getOptions()
   if (!svc.isConfigured()) return emptyOverview({ cacheSeconds: o.cacheSeconds, mode: "unconfigured" })
-  const { snapshot, fresh } = await loadSnapshot(scope, { force: options.force, origin: options.origin ?? null })
+  const { snapshot, fresh } = await loadSnapshot(scope, { force: options.force, origin: options.origin ?? null, staleWhileRevalidate: !options.force })
   return overviewOf(snapshot, { now: new Date(), cacheSeconds: o.cacheSeconds, fresh, configured: true })
 }
 

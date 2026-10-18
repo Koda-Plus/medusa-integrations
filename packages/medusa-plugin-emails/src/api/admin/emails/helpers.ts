@@ -4,13 +4,16 @@ import { TEST_LIMIT_PER_HOUR, TEST_LIMIT_PER_USER, TEST_WINDOW_MS } from "../../
 import type { MessageFilter, MessageWindow, ProviderDto, StatusResponse, TemplateDto } from "../../../modules/emails/lib/contract"
 import { localized, toBrandDto } from "../../../modules/emails/lib/dto"
 import { KIT_META } from "../../../modules/emails/lib/kit-meta"
-import { fingerprintDifferences, missingOptions, optionsFingerprint, recommendedOptions } from "../../../modules/emails/lib/options"
+import { normalizeLocale } from "../../../modules/emails/lib/locale"
+import { historyCounts, ownTableExists, type HistoryCounts, type SqlRaw } from "../../../modules/emails/lib/medusa-history"
+import { fingerprintDifferences, missingOptions, optionsFingerprint, recommendedOptions, type ResolvedEmailsOptions } from "../../../modules/emails/lib/options"
 import { providerNote } from "../../../modules/emails/lib/provider-status"
-import { listTemplates } from "../../../modules/emails/lib/registry"
+import { listTemplates, resolveTemplate } from "../../../modules/emails/lib/registry"
 import { applyBrandOverrides, BRAND_FIELDS, templateState } from "../../../modules/emails/lib/settings"
 import type { Counts, StatRow } from "../../../modules/emails/lib/store"
 import { demoSeedState } from "../../../workflows/emails/demo"
 import { LATEST_TEMPLATES } from "../../../workflows/emails/preview"
+import { deliveryReader } from "../../../modules/emails/lib/delivery"
 import { actorNames, adminResetLink, emailsService, resolveOptional, settingsForDisplay, storeFor, type Scope } from "../../../workflows/emails/runtime"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
@@ -51,6 +54,23 @@ export function serverError(req: MedusaRequest, res: MedusaResponse, err: unknow
     /* no logger in tests */
   }
   res.status(status).json({ code: "emails_unavailable", message: publicMessage })
+}
+
+/**
+ * App mode: the subject of a history message, from the template's
+ * `subjectOf` (null when the template has none or it throws).
+ */
+export function historySubject(o: ResolvedEmailsOptions): (template: string, data: Record<string, unknown>, locale: string | null) => string | null {
+  return (template, data, locale) => {
+    const fn = resolveTemplate(template, o)?.def.subjectOf
+    if (typeof fn !== "function") return null
+    try {
+      const s = fn(data, normalizeLocale(locale) ?? o.defaultLocale)
+      return typeof s === "string" && s.trim() ? s.trim() : null
+    } catch {
+      return null
+    }
+  }
 }
 
 /** The table filter as service filters, in the current mode. */
@@ -97,6 +117,17 @@ async function channelProviders(scope: Scope, channel: "email" | "feed"): Promis
   }
 }
 
+/**
+ * Whether the store's own provider is among the email providers in Medusa's
+ * table. Medusa keeps a module provider under its registration id
+ * ("resend") or, in some versions, with the module's prefix
+ * ("notification_resend"); both count. Null when the table could not be read.
+ */
+export function appProviderServes(emailProviders: string[] | null, id: string): boolean | null {
+  if (!emailProviders) return null
+  return emailProviders.some((p) => p === id || p.endsWith(`_${id}`))
+}
+
 function emptyStats(): TemplateDto["stats"] {
   return { sent: 0, failed: 0, skipped: 0, lastAt: null }
 }
@@ -127,18 +158,38 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
 
   let logReady = true
   let counts: Counts = { sent24h: 0, sent30d: 0, attention30d: 0, tests30d: 0, testsSent30d: 0, skipped30d: 0, refused30d: 0 }
-  let stats: Record<string, TemplateDto["stats"]> = {}
+  let ownStats: StatRow[] = []
   try {
     counts = await store.counts(o.demo, now)
-    stats = statsByTemplate(await store.stats(o.demo, new Date(now.getTime() - 30 * 24 * 3600 * 1000)))
+    ownStats = await store.stats(o.demo, new Date(now.getTime() - 30 * 24 * 3600 * 1000))
     /* A log older than this version (the migrations of 0.2.0 did not run) is "not ready" too: the page asks for db:migrate. */
     logReady = await store.schemaReady()
   } catch {
     logReady = false
   }
 
+  /* App mode: Medusa's history of the store's provider joins the numbers (lib/medusa-history.ts). */
+  let history: HistoryCounts | null = null
+  if (o.mode === "app") {
+    const pg = resolveOptional<SqlRaw>(scope, ContainerRegistrationKeys.PG_CONNECTION)
+    if (pg) {
+      try {
+        history = await historyCounts(pg, now, await ownTableExists(pg))
+        counts = { ...counts, sent24h: counts.sent24h + history.sent24h, sent30d: counts.sent30d + history.sent30d, attention30d: counts.attention30d + history.failed30d }
+      } catch {
+        history = null
+      }
+    }
+  }
+  const stats: Record<string, TemplateDto["stats"]> = statsByTemplate([
+    ...ownStats,
+    ...(history?.byTemplate ?? []).map((r) => ({ template: r.template, status: r.status, count: r.count, last_at: r.last_at }) as StatRow),
+  ])
+
   const names = await actorNames(scope, [settings.brandUpdatedBy, ...Object.values(settings.templates).map((t) => t.updatedBy)])
-  const templates: TemplateDto[] = listTemplates(o).map((t) => {
+  /* App mode: the store's own provider cannot send the plugin's built-in templates, so the gallery shows only the store's. */
+  const listed = o.mode === "app" ? listTemplates(o).filter((t) => t.source !== "builtin") : listTemplates(o)
+  const templates: TemplateDto[] = listed.map((t) => {
     const state = templateState(t.key, t.def.enabledByDefault !== false, o, settings)
     return {
       key: t.key,
@@ -158,15 +209,17 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   })
 
   const note = providerNote()
+  const emailProviders = await channelProviders(scope, "email")
   const provider: ProviderDto = {
     loaded: Boolean(note),
     loadedAt: note?.loadedAt ?? null,
     channels: note?.channels ?? [],
     mode: note?.mode ?? null,
-    emailProviders: await channelProviders(scope, "email"),
+    emailProviders,
     feedProviders: await channelProviders(scope, "feed"),
     sameOptions: note ? fingerprintDifferences(note.fingerprint, optionsFingerprint(o)).length === 0 : null,
     differences: note ? fingerprintDifferences(note.fingerprint, optionsFingerprint(o)) : [],
+    app: o.mode === "app" && o.appProvider ? { id: o.appProvider, serving: appProviderServes(emailProviders, o.appProvider) } : null,
   }
 
   const overrides = settings.brand ?? {}
@@ -196,5 +249,22 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     retentionDays: o.logRetentionDays,
     references: o.references,
     logReady,
+    history: history ? { total: history.total, firstAt: history.firstAt } : null,
+    showAddresses: o.showAddresses,
+    delivery: await deliverySummary(o.deliveryKey),
+    campaigns: o.campaigns.map((c) => ({ key: c.key, label: c.label })),
+    templateGroups: o.templateGroups.map((g) => ({ key: g.key, label: g.label, templates: g.templates, variantLabels: g.variant ? g.variant.labels : null, link: g.link })),
+  }
+}
+
+/** Suppressed addresses in Resend (option deliveryKey), for the board; null when not configured. */
+async function deliverySummary(key: string | null): Promise<{ suppressed: number; error: string | null; readAt: string | null } | null> {
+  const reader = deliveryReader(key)
+  if (!reader) return null
+  try {
+    const s = await reader.suppressions()
+    return { suppressed: s.list.length, error: s.error, readAt: s.readAt }
+  } catch (e) {
+    return { suppressed: 0, error: (e as Error).message, readAt: null }
   }
 }

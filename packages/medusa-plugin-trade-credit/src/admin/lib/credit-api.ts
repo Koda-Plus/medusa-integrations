@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { LimitDto, StatusResponse } from "../../modules/credit/lib/contract"
+import type { LimitDto, ReminderPreviewResponse, StatusResponse } from "../../modules/credit/lib/contract"
+import { kitRequestInit } from "./credit-kit"
 
 declare const __BACKEND_URL__: string | undefined
 
@@ -25,13 +26,8 @@ export class CreditRequestError extends Error {
 }
 
 export async function creditFetch<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
-  const hasBody = init?.body !== undefined
-  const res = await fetch(`${backendUrl()}${path}`, {
-    method: init?.method ?? "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...(hasBody ? { "Content-Type": "application/json" } : {}) },
-    body: hasBody ? JSON.stringify(init?.body) : undefined,
-  })
+  /* The kit's request: the dashboard's auth and the header the write guard asks for. */
+  const res = await fetch(`${backendUrl()}${path}`, kitRequestInit({ method: init?.method ?? "GET", body: init?.body }))
   const text = await res.text()
   let json: unknown = null
   try {
@@ -73,6 +69,34 @@ export function useSetLimit() {
   const refresh = useRefresh()
   return useMutation<{ limit: LimitDto }, Error, Record<string, unknown>>({
     mutationFn: (body) => creditFetch("/admin/credit/limits", { method: "POST", body }),
+    onSuccess: refresh,
+  })
+}
+
+/** Store mode: the payment reminder of an order before it is sent. */
+export function useReminderPreview(orderId: string | null) {
+  return useQuery<ReminderPreviewResponse>({
+    queryKey: ["credit", "reminder", orderId],
+    queryFn: () => creditFetch<ReminderPreviewResponse>(`/admin/credit/orders/${encodeURIComponent(orderId ?? "")}/reminder`),
+    enabled: Boolean(orderId),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  })
+}
+
+export function useSendReminder() {
+  const refresh = useRefresh()
+  return useMutation<{ sent: boolean; stage: string }, Error, string>({
+    mutationFn: (orderId) => creditFetch(`/admin/credit/orders/${encodeURIComponent(orderId)}/reminder`, { method: "POST", body: {} }),
+    onSuccess: refresh,
+  })
+}
+
+export function useHideOrder() {
+  const refresh = useRefresh()
+  return useMutation<{ hidden: boolean }, Error, string>({
+    mutationFn: (orderId) => creditFetch(`/admin/credit/orders/${encodeURIComponent(orderId)}/hide`, { method: "POST", body: {} }),
     onSuccess: refresh,
   })
 }
