@@ -11,6 +11,7 @@ import { GuideView, usePromptSpec } from "../../lib/credit-guide-view"
 import { OptionsTab, SETTINGS_TABS, StoreTab, type SettingsTabId } from "../../lib/credit-settings"
 import { errorMessage, useCreditStatus, useCustomerSearch, useHideOrder, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
+import { StoreRule } from "../../lib/credit-rule"
 import { EmptyLine, SampleBadge, fmtMoney } from "../../lib/credit-ui"
 import type { CreditOrderDto, LimitDto, StatusResponse } from "../../../modules/credit/lib/contract"
 
@@ -197,11 +198,9 @@ const CreditPage = () => {
             <Tile label={t("ui.tiles.exhausted")} value={String(s.counts.exhausted)} hint={t("ui.tiles.exhaustedHint")} tone={s.counts.exhausted > 0 ? "orange" : "default"} active={tab === "accounts" && accountFilter === "exhausted"} onClick={() => showAccounts("exhausted")} />
           </div>
         ) : null}
-        {view === "panel" && s?.ruleText ? (
+        {view === "panel" && (s?.ruleText || s?.rulePoints?.length) ? (
           <div className="px-6 py-3">
-            <InlineTip variant="info" label={t("ui.rule")}>
-              {s.ruleText}
-            </InlineTip>
+            <StoreRule status={s} />
           </div>
         ) : null}
       </Container>

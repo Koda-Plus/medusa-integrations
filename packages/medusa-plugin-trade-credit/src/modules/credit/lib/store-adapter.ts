@@ -9,6 +9,8 @@
  * plugin never gates a checkout (the store's own gate stays the only one).
  */
 
+import type { RulePoint } from "./contract"
+
 export interface StoreCreditAccount {
   customer_id: string
   email: string | null
@@ -99,6 +101,8 @@ export interface CreditStoreAdapter {
   maxNetDays?: number
   /** The store's own words on the page: how its rule works (one or two sentences). */
   ruleText?: string
+  /** The same rule as short phrases with an icon; the page shows these and keeps ruleText as their tooltip. */
+  rulePoints?: RulePoint[]
   /** Where an order is marked paid in this store (an admin path with :id), for a link on the page. */
   markPaidPath?: string
   /** Payment reminders sent from the page: preview first, then send (the store renders and sends its own e-mail). */

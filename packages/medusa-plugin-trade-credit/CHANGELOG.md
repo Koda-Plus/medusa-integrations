@@ -2,6 +2,10 @@
 
 ## 0.2.1 (unreleased)
 
+### Added
+
+- Store mode: `rulePoints` on the store adapter, the store's rule as short phrases with an icon instead of one sentence (on the Panel and in Settings; `ruleText` stays as their tooltip).
+
 ### Fixed
 
 - A white-label store (`window.__KODA_KIT__ = { whiteLabel: true }`) no longer sees "by Koda Plus" under the page title; the page built its own header and skipped the check.

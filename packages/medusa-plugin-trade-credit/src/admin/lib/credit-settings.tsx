@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge, Container, Heading, InlineTip, Text } from "@medusajs/ui"
 import type { StatusResponse } from "../../modules/credit/lib/contract"
+import { StoreRule } from "./credit-rule"
 
 /**
  * Settings of the Credit page (`?view=settings&tab=`), read only: what the
@@ -81,11 +82,9 @@ export function OptionsTab({ status }: { status: StatusResponse }) {
           <OnOff on={status.capabilities?.pause ?? true} onLabel={t("settings.options.pause")} offLabel={t("settings.options.noPause")} />
         </Fact>
       </div>
-      {status.ruleText ? (
+      {status.ruleText || status.rulePoints?.length ? (
         <div className="px-6 py-4">
-          <InlineTip variant="info" label={t("ui.rule")}>
-            {status.ruleText}
-          </InlineTip>
+          <StoreRule status={status} />
         </div>
       ) : null}
     </Section>

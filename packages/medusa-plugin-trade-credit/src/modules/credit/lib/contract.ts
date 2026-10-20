@@ -67,6 +67,11 @@ export interface ReminderPreviewResponse {
 }
 
 /** The whole status the Credit page renders in one call. */
+/** Icons a store can name for its rule phrases (mapped to @medusajs/icons on the page). */
+export const RULE_ICONS = ["debt", "calendar", "warning", "lock", "cash", "salon", "info", "check"] as const
+export type RuleIcon = (typeof RULE_ICONS)[number]
+export type RulePoint = { icon: RuleIcon; text: string; tone?: "green" | "orange" | "red" | "blue" | "grey" }
+
 export interface StatusResponse {
   demo: boolean
   enforce: boolean
@@ -76,6 +81,8 @@ export interface StatusResponse {
   netDayChoices?: number[]
   maxNetDays?: number
   ruleText?: string | null
+  /** Store mode: the rule as short phrases with an icon (shown instead of ruleText, which stays as their tooltip). */
+  rulePoints?: RulePoint[] | null
   markPaidPath?: string | null
   /** Store mode: payment reminders can be sent from the page, and where the e-mail log of an order is. */
   reminders?: { send: boolean; emailsLogPath: string | null }
