@@ -1,7 +1,9 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { CheckCircleSolid, ChevronDownMini } from "@medusajs/icons"
 import { Badge, Container, Heading, Text, clx } from "@medusajs/ui"
+import type { SetupPromptSpec } from "./credit-guide"
+import { KIT_META } from "./credit-kit-meta"
 import { typeset } from "./credit-typeset"
 
 /**
@@ -89,6 +91,24 @@ const COPY = {
       { q: "Does demo mode call anything outside?", a: "No. Demo mode only flags new limits and credit orders as demo; sample data comes from your app's seed script. Nothing leaves the server." },
     ],
   }),
+}
+
+/** The setup behind "Copy prompt" in the header: the same steps and config the guide shows. */
+export function usePromptSpec(): SetupPromptSpec {
+  const { t, i18n } = useTranslation("credit")
+  const C = i18n.language?.startsWith("pl") ? COPY.pl : COPY.en
+  return useMemo(
+    () => ({
+      service: "Trade Credit",
+      pkg: KIT_META.pkg,
+      route: "/app/credit",
+      summary: t("subtitle"),
+      needs: [C.needs],
+      config: CONFIG,
+      demo: 'demo: process.env.CREDIT_DEMO === "true",',
+    }),
+    [t, C],
+  )
 }
 
 function Step({ n, title, text, code }: { n: number; title: string; text: string; code?: string }) {
