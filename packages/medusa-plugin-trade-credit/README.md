@@ -119,6 +119,7 @@ Optional:
 - **netDayChoices**: the terms the page offers, in days (default 0, 14, 30 and 60).
 - **maxNetDays**: the longest term the store accepts (default 365).
 - **ruleText**: one or two sentences on the page, in the store's words, on how its rule works.
+- **rulePoints**: the same rule as short phrases with an icon (`{ icon, text, tone? }`, icon one of `debt`, `calendar`, `warning`, `lock`, `cash`, `salon`, `info`, `check`). The page shows them instead of `ruleText`, which stays as their tooltip.
 - **markPaidPath**: an admin path with `:id` where an order is marked paid, shown as a link next to each order.
 - **reminder**: `{ preview(scope, orderId), send(scope, orderId, actor) }`. `preview` returns `{ to, subject, html, stage, warning? }`, shown before anything is sent; `send` renders and sends the store's own e-mail, records it so the store's schedule does not send the same stage again, and returns `{ stage }`. Without it the page sends no reminders.
 - **emailsLogPath**: an admin path with `:order_id` to the e-mail log of an order, linked from the reminders.

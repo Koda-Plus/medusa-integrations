@@ -1,4 +1,5 @@
 import { NET_DAYS } from "./constants"
+import { RULE_ICONS } from "./contract"
 import type { CreditOrderDto, LimitDto, StatusResponse } from "./contract"
 import type { CreditStoreAdapter, StoreCreditAccount, StoreCreditOrder } from "./store-adapter"
 
@@ -76,6 +77,7 @@ export async function storeStatus(scope: unknown, store: CreditStoreAdapter): Pr
     netDayChoices: store.netDayChoices?.length ? store.netDayChoices : [...NET_DAYS],
     maxNetDays: store.maxNetDays ?? 365,
     ruleText: store.ruleText ?? null,
+    rulePoints: store.rulePoints?.length ? store.rulePoints.filter((p) => RULE_ICONS.includes(p.icon) && typeof p.text === "string" && p.text.trim()) : null,
     markPaidPath: store.markPaidPath ?? null,
     reminders: { send: Boolean(store.reminder), emailsLogPath: store.emailsLogPath ?? null },
     documentSource: store.documentSource ? { name: store.documentSource.name, icon: store.documentSource.icon ?? null } : null,
