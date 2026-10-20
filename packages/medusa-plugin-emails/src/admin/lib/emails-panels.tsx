@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightMini, PaperPlane } from "@medusajs/icons"
+import { ArrowUpRightMini, BarsArrowDown, ChartBar, CircleStack, Clock, Eye, EyeSlash, PaperPlane } from "@medusajs/icons"
 import { Link } from "react-router-dom"
 import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { OrderLink, ResendLink } from "./emails-links"
 import { CampaignBadge, DeliveryBadge } from "./emails-delivery"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "./emails-kit"
+import { KeyPoints } from "./emails-guide"
 import { errorMessage, useEmailsMessage, useEmailsMessages, useEmailsPreview, useEmailsRetry, useEmailsTest } from "./emails-api"
 import {
   EmailFrame,
@@ -343,10 +344,25 @@ export function MessagesSection({
             </Badge>
           ) : null}
         </span>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
-          {status.mode === "app" && status.history?.firstAt ? ` ${t("log.historySince", { date: fmtDateTime(status.history.firstAt, lang) })}` : ""}
-        </Text>
+        <KeyPoints
+          className="max-w-3xl"
+          label={demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
+          items={
+            demo
+              ? [
+                  { icon: <PaperPlane />, text: t("log.points.nothingSent"), tone: "orange" },
+                  { icon: <Eye />, text: t("log.points.open") },
+                ]
+              : [
+                  { icon: <BarsArrowDown />, text: t("log.points.newest") },
+                  { icon: <EyeSlash />, text: t("log.points.masked") },
+                  { icon: <Clock />, text: t("log.points.kept", { days: status.retentionDays }) },
+                  ...(status.mode === "app" && status.history?.firstAt
+                    ? [{ icon: <CircleStack />, text: t("log.points.history", { date: fmtDateTime(status.history.firstAt, lang) }), tone: "blue" as const }]
+                    : []),
+                ]
+          }
+        />
       </div>
       {scoped && scope ? (
         <div className="flex flex-wrap items-center gap-2 px-6 py-3">
@@ -512,9 +528,13 @@ export function ByTemplateSection({ status, lang }: { status: StatusResponse; la
     <Container className="divide-y p-0">
       <div className="flex flex-col gap-1 px-6 py-4">
         <Heading level="h2">{t("byTemplate.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("byTemplate.subtitle")}
-        </Text>
+        <KeyPoints
+          label={t("byTemplate.subtitle")}
+          items={[
+            { icon: <Clock />, text: t("byTemplate.points.days") },
+            { icon: <ChartBar />, text: t("byTemplate.points.each") },
+          ]}
+        />
       </div>
       <div className="overflow-x-auto">
         <Table>

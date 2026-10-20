@@ -11,6 +11,14 @@ const en = {
   by: "by Koda Plus",
   subtitle:
     "Coupons on top of Medusa promotions: a creator in three steps, every coupon in one plain sentence, warnings before saving and what each coupon brought: uses, discount, revenue and new customers. Each coupon is an ordinary Medusa promotion, so the cart, invoices and every other module see it as usual.",
+  points: {
+    creator: "Creator in three steps",
+    sentence: "Each coupon in one sentence",
+    warnings: "Warnings before saving",
+    results: "Uses, discount, revenue",
+    customers: "New customers per coupon",
+    usual: "Cart and invoices as usual",
+  },
   view: { panel: "Panel", guide: "Setup guide" },
   settings: { title: "Settings" },
   actions: { create: "New coupon", refresh: "Refresh", moreActions: "More actions", promotions: "Medusa promotions" },
@@ -32,6 +40,7 @@ const en = {
     automaticUsesHint: "Medusa does not count the uses of a promotion that applies by itself; the Orders column shows how many orders used it.",
     title: "Coupons",
     subtitle: "Newest first. Click a coupon to see its orders, pause it or open it in Medusa.",
+    points: { newest: "Newest first", orders: "Click for its orders", pause: "Pause or open in Medusa" },
     search: "Code",
     empty: "No coupons for these filters.",
     automatic: "automatic",

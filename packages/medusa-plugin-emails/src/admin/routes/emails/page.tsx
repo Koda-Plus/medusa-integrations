@@ -2,7 +2,7 @@
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, EyeMini, PaperPlane } from "@medusajs/icons"
+import { ArrowPath, Envelope, Eye, EyeMini, Language, ListBullet, PaperPlane, Swatch } from "@medusajs/icons"
 import { Container, InlineTip } from "@medusajs/ui"
 import { MESSAGE_FILTERS, MESSAGE_WINDOWS, type MessageFilter, type MessageWindow, type StatusResponse } from "../../../modules/emails/lib/contract"
 import { errorMessage, useEmailsMessages, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
@@ -224,6 +224,14 @@ function Header({
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <Envelope />, text: t("points.transactional") },
+        { icon: <PaperPlane />, text: t("points.resend") },
+        { icon: <Language />, text: t("points.languages") },
+        { icon: <Swatch />, text: t("points.look") },
+        { icon: <Eye />, text: t("points.preview") },
+        { icon: <ListBullet />, text: t("points.log") },
+      ]}
       social={
         <>
           <ReferencesBadge

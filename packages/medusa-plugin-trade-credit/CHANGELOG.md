@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 (unreleased)
+
+### Changed
+
+- The header and the Set credit terms intro say it in short phrases with icons (credit limits for B2B, net 14, 30 or 60 days, overdue check), in store mode too, instead of long sentences.
+- Kit 1.2.0: the page header takes `points`, short phrases with an icon shown as pills instead of the long description (which stays as their tooltip and accessible label); `KeyPoints` draws the same pills under a section heading.
+
 ## 0.2.0 (2026-10-18)
 
 ### Fixed

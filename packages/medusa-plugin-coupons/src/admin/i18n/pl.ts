@@ -13,6 +13,14 @@ const pl: typeof en = {
   by: "by Koda Plus",
   subtitle:
     "Kupony na promocjach Medusy: kreator w trzech krokach, każdy kupon opisany jednym zwykłym zdaniem, ostrzeżenia przed zapisem i to, co każdy kupon dał: użycia, rabat, obrót i nowi klienci. Każdy kupon to zwykła promocja Medusy, więc koszyk, faktury i każdy inny moduł widzą go jak zawsze.",
+  points: {
+    creator: "Kreator w trzech krokach",
+    sentence: "Każdy kupon jednym zdaniem",
+    warnings: "Ostrzeżenia przed zapisem",
+    results: "Użycia, rabat, obrót",
+    customers: "Nowi klienci z kuponu",
+    usual: "Koszyk i faktury jak zawsze",
+  },
   view: { panel: "Panel", guide: "Przewodnik" },
   settings: { title: "Ustawienia" },
   actions: { create: "Nowy kupon", refresh: "Odśwież", moreActions: "Więcej akcji", promotions: "Promocje Medusy" },
@@ -34,6 +42,7 @@ const pl: typeof en = {
     automaticUsesHint: "Medusa nie liczy użyć promocji, która nalicza się sama; ile zamówień z niej skorzystało, pokazuje kolumna Zamówienia.",
     title: "Kupony",
     subtitle: "Od najnowszych. Kliknij kupon, żeby zobaczyć jego zamówienia, wstrzymać go albo otworzyć w Medusie.",
+    points: { newest: "Od najnowszych", orders: "Kliknij, by zobaczyć zamówienia", pause: "Wstrzymaj lub otwórz w Medusie" },
     search: "Kod",
     empty: "Brak kuponów dla tych filtrów.",
     automatic: "automatyczny",

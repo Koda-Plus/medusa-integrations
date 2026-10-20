@@ -7,6 +7,14 @@ const en = {
   by: "by Koda Plus",
   subtitle:
     "Stripe in the Medusa admin, next to the official Stripe provider: volume, fees and net by payment method (cards, BLIK, Przelewy24, Apple Pay, Google Pay), payments next to their orders, disputes with their deadlines, refunds, balance and payouts, and health checks of the whole setup. Read only: it never moves money.",
+  points: {
+    volume: "Volume, fees, net per method",
+    payments: "Payments next to orders",
+    disputes: "Disputes with deadlines",
+    refunds: "Refunds, balance, payouts",
+    checks: "Health checks of the setup",
+    money: "Never moves money",
+  },
   view: {
     panel: "Panel",
     guide: "Setup guide",
@@ -107,6 +115,11 @@ const en = {
     other: "Other",
     title: "Payment methods",
     subtitle: "How customers paid in the period. Fees and net come from Stripe's balance transactions, in the currency Stripe settles in.",
+    points: {
+      how: "How customers paid",
+      fees: "Fees from balance transactions",
+      currency: "In the settlement currency",
+    },
     col: {
       method: "Method",
       payments: "Payments",
@@ -320,6 +333,12 @@ const en = {
     refundInStripeHint: "This payment has no order in this store, so the refund is made in Stripe's dashboard.",
     title: "Payments",
     subtitle: "The last 30 days, newest first, each next to its Medusa order and with a link to the Stripe Dashboard.",
+    points: {
+      days: "Last 30 days",
+      newest: "Newest first",
+      order: "Next to its Medusa order",
+      dashboard: "Link to the Stripe Dashboard",
+    },
     filter: {
       all: "All",
       succeeded: "Succeeded",
@@ -385,6 +404,11 @@ const en = {
   disputes: {
     title: "Open disputes",
     subtitle: "Disputes waiting for your evidence or for the bank. Answer in the Stripe Dashboard before the deadline: a missed deadline loses the money.",
+    points: {
+      waiting: "Waiting for evidence or bank",
+      answer: "Answer in the Stripe Dashboard",
+      deadline: "A missed deadline loses money",
+    },
     col: {
       created: "Opened",
       amount: "Amount",
@@ -450,6 +474,11 @@ const en = {
   refunds: {
     title: "Recent refunds",
     subtitle: "Refunds of the last 30 days. To refund, use the Medusa order: the official provider sends the refund to Stripe.",
+    points: {
+      days: "Last 30 days",
+      order: "Refund from the Medusa order",
+      provider: "The provider sends it",
+    },
     col: {
       created: "Date",
       amount: "Amount",
@@ -484,6 +513,10 @@ const en = {
   balance: {
     title: "Balance and payouts",
     subtitle: "What Stripe holds for you and what is on its way to the bank.",
+    points: {
+      held: "What Stripe holds",
+      bank: "On its way to the bank",
+    },
     available: "Available",
     pending: "Pending",
     none: "The balance was not read.",

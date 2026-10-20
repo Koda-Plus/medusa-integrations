@@ -4,6 +4,11 @@
 
 The coupon's whole build in one form, copies, a pause from the list, and the store's own terms.
 
+### The page
+
+- The header and the list intro say it in short phrases with icons (creator in three steps, each coupon in one sentence, warnings before saving, uses, discount and revenue) instead of long sentences.
+- Kit 1.2.0: the page header takes `points`, short phrases with an icon shown as pills instead of the long description (which stays as their tooltip and accessible label); `KeyPoints` draws the same pills under a section heading.
+
 ### The creator
 
 - Two more types: buy X get Y (Medusa's own buyget on chosen categories, or counted by the store when it keeps buy X get Y in `storeTerms`) and percent off the store's product groups (option `storeTerms`, feature `pools`), whose target rules the store names (for example a product tag per group).

@@ -15,6 +15,13 @@ const pl = {
   },
   by: "by Koda Plus",
   subtitle: "Limity kredytowe i terminy płatności dla klientów B2B: net 14, 30 albo 60 dni, wykorzystana kwota z niezapłaconych zamówień, kontrola przeterminowania i przełącznik blokady.",
+  points: {
+    limits: "Limity kredytowe dla B2B",
+    terms: "Net 14, 30 albo 60 dni",
+    used: "Wykorzystanie z niezapłaconych zamówień",
+    overdue: "Kontrola przeterminowania",
+    block: "Blokada jednym przełącznikiem",
+  },
   mode: {
     demo: "Demo",
   },
@@ -28,6 +35,11 @@ const pl = {
   set: {
     title: "Ustaw warunki kredytu",
     subtitle: "Wybierz klienta, ustaw limit i termin płatności. Klient bez warunków płaci od razu.",
+    points: {
+      pick: "Wybierz klienta",
+      terms: "Ustaw limit i termin",
+      none: "Bez warunków: płaci od razu",
+    },
     customer: "Klient",
     customerPlaceholder: "Szukaj po nazwie albo e-mailu",
     amount: "Kwota limitu",
@@ -77,7 +89,18 @@ const pl = {
     storeMode: "Kredyt sklepu",
     storeModeHint: "Strona pokazuje kredyt kupiecki, który sklep już prowadzi: te same limity, zadłużenie i terminy, które sprawdza kasa.",
     subtitleStore: "Kredyt kupiecki klientów B2B: limit, ile wykorzystane i ile zostało, co po terminie oraz otwarte zamówienia z terminem płatności.",
+    pointsStore: {
+      store: "Kredyt prowadzony przez sklep",
+      limit: "Limit, wykorzystane, zostało",
+      overdue: "Co jest po terminie",
+      orders: "Otwarte zamówienia z terminami",
+    },
     setSubtitleStore: "Wybierz klienta i ustaw limit oraz termin płatności. Sklep zapisuje je na karcie klienta, więc kasa stosuje je od razu.",
+    setPointsStore: {
+      pick: "Wybierz klienta",
+      terms: "Ustaw limit i termin",
+      checkout: "Kasa stosuje je od razu",
+    },
     rule: "Jak sklep to liczy",
     tiles: {
       accounts: "Klienci z kredytem",

@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/guide.tsx (kit 1.1.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/guide.tsx (kit 1.2.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useMemo, useState, type ReactNode } from "react"
 import { Navigate, useSearchParams } from "react-router-dom"
 import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
@@ -15,8 +15,9 @@ import { KIT_META } from "./baselinker-kit-meta"
  * Header
  *   usePageNav       Panel, Setup guide or Settings, and the settings tab, kept in ?view= and ?tab=
  *   IntegrationHeader the whole header in three places: who (name, badges, help), why
- *                    (description, stores), toolbar (view tabs, one main action, the others)
- *   PageTabs         Panel | Setup guide | Settings, every tab with its name
+ *                    (description or key points, stores), toolbar (view tabs, one main action, the others)
+ *   KeyPoints        short phrases with an icon, as pills: the header and section intros
+ *   PageTabs        Panel | Setup guide | Settings, every tab with its name
  *   ModeBadge        the mode of the module; in demo mode it opens a note on what is simulated
  *   ReferencesBadge  "Running in N stores", with the rating and its source; opens the list
  *   AddStoreButton   "Add your store" next to it: a request to Koda Plus, by mail
@@ -212,6 +213,46 @@ export function KitTabRoute({ host, tab, children }: { host: string; tab: string
   return <Navigate to={`${target.path}?${next.toString()}`} replace />
 }
 
+/** The colour of a key point: grey by default, the tag colours for a state or a rule. */
+export type KeyPointTone = "green" | "orange" | "red" | "blue" | "grey"
+
+/** One short phrase (2 to 6 words) with its icon, e.g. "Read only" or "On Medusa promotions". */
+export type KeyPoint = {
+  icon: ReactNode
+  text: ReactNode
+  tone?: KeyPointTone
+}
+
+const POINT_TONE: Record<KeyPointTone, string> = {
+  grey: "border-ui-border-base bg-ui-bg-subtle text-ui-fg-subtle",
+  green: "border-ui-tag-green-border bg-ui-tag-green-bg text-ui-tag-green-text",
+  orange: "border-ui-tag-orange-border bg-ui-tag-orange-bg text-ui-tag-orange-text",
+  red: "border-ui-tag-red-border bg-ui-tag-red-bg text-ui-tag-red-text",
+  blue: "border-ui-tag-blue-border bg-ui-tag-blue-bg text-ui-tag-blue-text",
+}
+
+/**
+ * Short phrases with icons instead of a sentence: what the page does, where
+ * its data comes from, the rule that matters ("Read only"). Used by the page
+ * header (`points`) and under section headings. `label` is the full sentence
+ * the phrases stand for: read by screen readers and shown as the tooltip.
+ */
+export function KeyPoints({ items, label, className }: { items: KeyPoint[]; label?: string; className?: string }) {
+  if (!items.length) return null
+  return (
+    <ul aria-label={label} title={label} className={clx("flex flex-wrap items-center gap-1.5", className)}>
+      {items.map((p, i) => (
+        <li key={i} className={clx("txt-compact-xsmall-plus inline-flex items-center gap-1 rounded-full border px-2 py-0.5", POINT_TONE[p.tone ?? "grey"])}>
+          <span aria-hidden className="flex shrink-0 [&_svg]:size-3.5">
+            {p.icon}
+          </span>
+          <span>{p.text}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** One action of the page: the main one gets the dark button, the others sit next to it or under "More actions". */
 export type HeaderAction = {
   key: string
@@ -277,7 +318,8 @@ export function isWhiteLabel(): boolean {
  * with one job:
  *   who      icon, name, "by Koda Plus", the state badges; on the right the help
  *            about the integration itself (Copy prompt, Discord)
- *   why      the description, then the stores running it and "Add your store"
+ *   why      the description (with `points`: short phrases with icons, the description
+ *            as their tooltip), then the stores running it and "Add your store"
  *   toolbar  the views as tabs (Panel, Setup guide, Settings) and the page's
  *            actions: one main button, the others beside it or in "More actions"
  */
@@ -287,6 +329,7 @@ export function IntegrationHeader({
   by,
   badges,
   description,
+  points,
   social,
   help,
   view,
@@ -300,6 +343,8 @@ export function IntegrationHeader({
   by: string
   badges?: ReactNode
   description: string
+  /** Short phrases with icons shown instead of the description; the description stays as their tooltip and accessible label. */
+  points?: KeyPoint[]
   social?: ReactNode
   help?: ReactNode
   view: PageView
@@ -325,9 +370,13 @@ export function IntegrationHeader({
           </div>
           {help && !plain ? <div className="flex shrink-0">{help}</div> : null}
         </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {description}
-        </Text>
+        {points && points.length ? (
+          <KeyPoints items={points} label={description} className="max-w-3xl" />
+        ) : (
+          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
+            {description}
+          </Text>
+        )}
         {social && !plain ? <div className="flex flex-wrap items-center gap-2 pt-0.5">{social}</div> : null}
       </div>
       <div className="flex flex-col gap-3 border-t border-ui-border-base bg-ui-bg-subtle px-6 py-2.5 md:flex-row md:items-center md:justify-between">
