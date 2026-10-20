@@ -109,7 +109,8 @@ const posInt = (v: unknown): number | null => {
   const n = Math.floor(Number(v))
   return Number.isFinite(n) && n >= 1 ? n : null
 }
-const codes = (v: unknown): string[] => [...new Set((Array.isArray(v) ? v : []).map(cleanCode).filter((c) => CODE.test(c)))]
+/* Codes of other coupons exactly as Medusa keeps them (a code may hold a space). */
+const codes = (v: unknown): string[] => [...new Set((Array.isArray(v) ? v : []).map((c) => String(c ?? "").trim()).filter((c) => c.length > 0 && c.length <= 60))]
 
 /** The store's terms of the form, only the features the store keeps; invalid ones as error keys. */
 export function cleanTerms(raw: Partial<StoreTerms> | null | undefined, features: readonly StoreFeature[], errors: string[]): StoreTerms {
@@ -129,7 +130,8 @@ export function cleanTerms(raw: Partial<StoreTerms> | null | undefined, features
   }
   if (has("combines") && t.combines !== undefined) {
     const w = codes(t.combines?.with)
-    const n = codes(t.combines?.never).filter((c) => !w.includes(c))
+    /* A code in both lists stays so until someone picks one: saving never decides it silently. */
+    const n = codes(t.combines?.never)
     out.combines = w.length || n.length ? { with: w, never: n } : null
   }
   if (has("perCustomerOrders") && t.perCustomerOrders !== undefined) {
