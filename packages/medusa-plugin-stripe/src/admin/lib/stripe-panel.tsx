@@ -220,7 +220,6 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
         <KeyPoints
-          className="max-w-3xl"
           label={t("methods.subtitle")}
           items={[
             { icon: <ChartBar />, text: t("methods.points.how") },
@@ -344,7 +343,6 @@ export function PaymentsSection({
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
         <KeyPoints
-          className="max-w-3xl"
           label={t("payments.subtitle")}
           items={[
             { icon: <Clock />, text: t("payments.points.days") },
@@ -510,7 +508,6 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
         <KeyPoints
-          className="max-w-3xl"
           label={t("disputes.subtitle")}
           items={[
             { icon: <ExclamationCircle />, text: t("disputes.points.waiting"), tone: "orange" },
@@ -599,7 +596,6 @@ export function RefundsSection({ overview, lang }: { overview: StripeOverviewRes
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
         <KeyPoints
-          className="max-w-3xl"
           label={t("refunds.subtitle")}
           items={[
             { icon: <Clock />, text: t("refunds.points.days") },
@@ -723,7 +719,6 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
         <KeyPoints
-          className="max-w-3xl"
           label={t("balance.subtitle")}
           items={[
             { icon: <Cash />, text: t("balance.points.held") },

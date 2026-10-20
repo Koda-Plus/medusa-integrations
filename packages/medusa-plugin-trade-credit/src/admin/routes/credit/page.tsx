@@ -129,7 +129,7 @@ const CreditPage = () => {
                 {t("by")}
               </Text>
               <KeyPoints
-                className="mt-1.5 max-w-3xl"
+                className="mt-1.5"
                 label={store ? t("ui.subtitleStore") : t("subtitle")}
                 items={
                   store

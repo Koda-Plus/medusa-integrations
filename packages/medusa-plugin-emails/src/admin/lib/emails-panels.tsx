@@ -345,7 +345,6 @@ export function MessagesSection({
           ) : null}
         </span>
         <KeyPoints
-          className="max-w-3xl"
           label={demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
           items={
             demo
