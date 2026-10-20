@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, ChartBar, ChatBubbleLeftRight, CheckCircle, CursorArrowRays, EllipsisHorizontal, ExclamationCircle, PauseSolid, PencilSquare, PlaySolid, Plus, Sparkles, SquareTwoStack, Users } from "@medusajs/icons"
-import { Badge, Button, Container, Drawer, DropdownMenu, Heading, IconButton, InlineTip, Input, Table, Text, clx, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, ChartBar, ChatBubbleLeftRight, CheckCircle, CursorArrowRays, ExclamationCircle, PauseSolid, PencilSquare, PlaySolid, Plus, Sparkles, SquareTwoStack, Users } from "@medusajs/icons"
+import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Table, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, ListResponse, NameMaps } from "../../../modules/coupons/lib/contract"
 import { errorMessage, useCoupon, useCoupons, useSetStatus } from "../../lib/coupons-api"
 import { CodeBlock, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, communityLabels, usePageNav } from "../../lib/coupons-guide"
@@ -239,30 +239,17 @@ const CouponsPage = () => {
                         <PencilSquare />
                         {t("edit.action")}
                       </Button>
-                      <DropdownMenu>
-                        <DropdownMenu.Trigger asChild>
-                          <IconButton size="small" variant="transparent" aria-label={t("actions.moreActions")}>
-                            <EllipsisHorizontal />
-                          </IconButton>
-                        </DropdownMenu.Trigger>
-                        <DropdownMenu.Content align="end">
-                          {c.status !== "expired" ? (
-                            <DropdownMenu.Item className="gap-x-2" onClick={() => void toggle(c)}>
-                              {c.medusaStatus === "active" ? <PauseSolid className="text-ui-fg-subtle" /> : <PlaySolid className="text-ui-fg-subtle" />}
-                              {c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")}
-                            </DropdownMenu.Item>
-                          ) : null}
-                          <DropdownMenu.Item className="gap-x-2" onClick={() => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps, mode: "copy" })}>
-                            <SquareTwoStack className="text-ui-fg-subtle" />
-                            {t("copy.action")}
-                          </DropdownMenu.Item>
-                          <DropdownMenu.Separator />
-                          <DropdownMenu.Item className="gap-x-2" onClick={() => window.location.assign(`/app/promotions/${c.id}`)}>
-                            <ArrowUpRightOnBox className="text-ui-fg-subtle" />
-                            {t("detail.openInMedusa")}
-                          </DropdownMenu.Item>
-                        </DropdownMenu.Content>
-                      </DropdownMenu>
+                      {c.status !== "expired" ? (
+                        <IconButton size="small" variant="transparent" title={c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")} aria-label={c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")} onClick={() => void toggle(c)}>
+                          {c.medusaStatus === "active" ? <PauseSolid /> : <PlaySolid />}
+                        </IconButton>
+                      ) : null}
+                      <IconButton size="small" variant="transparent" title={t("copy.action")} aria-label={t("copy.action")} onClick={() => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps, mode: "copy" })}>
+                        <SquareTwoStack />
+                      </IconButton>
+                      <IconButton size="small" variant="transparent" title={t("detail.openInMedusa")} aria-label={t("detail.openInMedusa")} onClick={() => window.location.assign(`/app/promotions/${c.id}`)}>
+                        <ArrowUpRightOnBox />
+                      </IconButton>
                     </div>
                   </Table.Cell>
                 </Table.Row>
