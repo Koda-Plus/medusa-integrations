@@ -2,7 +2,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { Navigate, useSearchParams } from "react-router-dom"
 import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
-import { Badge, Button, Container, DropdownMenu, Heading, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
+import { Badge, Button, Container, Heading, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
 import { PAGE_TAB_PARAM, usePageTabHost, usePageTabs, type IconComponent } from "./credit-kit"
 import { KIT_META } from "./credit-kit-meta"
 
@@ -268,34 +268,18 @@ export type HeaderLabels = Record<PageView, string> & {
   more: string
 }
 
-/** The other actions: a plain button when there is one, a menu when there are more. */
-function OtherActions({ items, label }: { items: HeaderAction[]; label: string }) {
-  if (items.length === 1) {
-    const a = items[0]
-    return (
-      <Button size="small" variant="secondary" isLoading={a.loading} disabled={a.disabled} onClick={a.onClick}>
-        {a.icon}
-        {a.label}
-      </Button>
-    )
-  }
+/** The other actions, each as its own button next to the main one. */
+function OtherActions({ items }: { items: HeaderAction[]; label: string }) {
+  /* Every action stays visible as a button: a menu hid them behind one more click. */
   return (
-    <DropdownMenu>
-      <DropdownMenu.Trigger asChild>
-        <Button size="small" variant="secondary">
-          {label}
-          <ChevronDownMini />
+    <>
+      {items.map((a) => (
+        <Button key={a.key} size="small" variant="secondary" isLoading={a.loading} disabled={a.disabled} onClick={a.onClick} className="whitespace-nowrap">
+          {a.icon}
+          {a.label}
         </Button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end">
-        {items.map((a) => (
-          <DropdownMenu.Item key={a.key} disabled={a.disabled || a.loading} onClick={a.onClick} className="gap-x-2">
-            {a.icon}
-            {a.label}
-          </DropdownMenu.Item>
-        ))}
-      </DropdownMenu.Content>
-    </DropdownMenu>
+      ))}
+    </>
   )
 }
 
@@ -321,7 +305,7 @@ export function isWhiteLabel(): boolean {
  *   why      the description (with `points`: short phrases with icons, the description
  *            as their tooltip), then the stores running it and "Add your store"
  *   toolbar  the views as tabs (Panel, Setup guide, Settings) and the page's
- *            actions: one main button, the others beside it or in "More actions"
+ *            actions: one main button, the others as buttons beside it
  */
 export function IntegrationHeader({
   icon,
