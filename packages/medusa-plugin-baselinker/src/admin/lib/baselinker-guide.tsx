@@ -240,9 +240,9 @@ const POINT_TONE: Record<KeyPointTone, string> = {
 export function KeyPoints({ items, label, className }: { items: KeyPoint[]; label?: string; className?: string }) {
   if (!items.length) return null
   return (
-    <ul aria-label={label} title={label} className={clx("flex flex-wrap items-center gap-1.5", className)}>
+    <ul aria-label={label} title={label} className={clx("flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)}>
       {items.map((p, i) => (
-        <li key={i} className={clx("txt-compact-xsmall-plus inline-flex items-center gap-1 rounded-full border px-2 py-0.5", POINT_TONE[p.tone ?? "grey"])}>
+        <li key={i} className={clx("txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5", POINT_TONE[p.tone ?? "grey"])}>
           <span aria-hidden className="flex shrink-0 [&_svg]:size-3.5">
             {p.icon}
           </span>
@@ -371,7 +371,7 @@ export function IntegrationHeader({
           {help && !plain ? <div className="flex shrink-0">{help}</div> : null}
         </div>
         {points && points.length ? (
-          <KeyPoints items={points} label={description} className="max-w-3xl" />
+          <KeyPoints items={points} label={description} />
         ) : (
           <Text size="small" className="max-w-3xl text-ui-fg-subtle">
             {description}
