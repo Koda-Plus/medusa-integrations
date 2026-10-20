@@ -6,7 +6,7 @@ import { ArrowUpRightMini, ArrowUpRightOnBox, Buildings, Calendar, Cash, CheckCi
 import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/credit-kit"
 import { KitOrderProductsCell, useKitOrderProducts } from "../../lib/credit-order-products"
-import { KeyPoints, usePageView } from "../../lib/credit-guide"
+import { KeyPoints, isWhiteLabel, usePageView } from "../../lib/credit-guide"
 import { GuideView } from "../../lib/credit-guide-view"
 import { errorMessage, useCreditStatus, useCustomerSearch, useHideOrder, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
@@ -125,9 +125,11 @@ const CreditPage = () => {
                   </Badge>
                 ) : null}
               </div>
-              <Text size="small" className="text-ui-fg-muted">
-                {t("by")}
-              </Text>
+              {isWhiteLabel() ? null : (
+                <Text size="small" className="text-ui-fg-muted">
+                  {t("by")}
+                </Text>
+              )}
               <KeyPoints
                 className="mt-1.5"
                 label={store ? t("ui.subtitleStore") : t("subtitle")}
