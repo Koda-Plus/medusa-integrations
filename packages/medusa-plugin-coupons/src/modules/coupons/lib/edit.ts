@@ -100,7 +100,9 @@ export function checkPatch(patch: CouponPatch, current: CouponDto, ctx: PatchCon
   const out: NormalizedPatch = {}
   const features = ctx.features ?? []
 
-  if (patch.code !== undefined) {
+  /* A code as it is kept (also one Medusa took with a space, like "SUMMER 15") is no change. */
+  const sameCode = patch.code !== undefined && String(patch.code).trim().toUpperCase() === (current.code ?? "").trim().toUpperCase()
+  if (patch.code !== undefined && !sameCode) {
     const code = cleanCode(patch.code)
     if (!CODE.test(code)) errors.push("code")
     else if (code !== (current.code ?? "").toUpperCase()) out.code = code

@@ -200,3 +200,11 @@ test("options: a store adapter without read and write is a problem, features fil
   assert.deepEqual(o.storeTerms!.features, ["pools"])
   assert.equal(o.storeTerms!.buyGetMarker, 0.001)
 })
+
+test("a code Medusa keeps with a space is no change, and stays as it is in the combines", () => {
+  const c = dto({ code: "SUMMER 15", terms: { combines: { with: ["SUMMER 15"], never: ["WINTER 10"] } } })
+  const r = checkPatch({ code: "SUMMER 15", terms: { combines: { with: ["SUMMER 15"], never: ["WINTER 10"] } } }, c, { features: ALL })
+  assert.deepEqual(r.value, {})
+  const both = checkPatch({ terms: { combines: { with: ["A1B"], never: ["A1B"] } } }, dto({ terms: { combines: { with: ["A1B"], never: ["A1B"] } } }), { features: ALL })
+  assert.deepEqual(both.value, {})
+})
