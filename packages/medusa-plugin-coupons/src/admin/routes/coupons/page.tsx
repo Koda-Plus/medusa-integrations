@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, EllipsisHorizontal, PauseSolid, PencilSquare, PlaySolid, Plus, SquareTwoStack } from "@medusajs/icons"
+import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, ChartBar, ChatBubbleLeftRight, CheckCircle, CursorArrowRays, EllipsisHorizontal, ExclamationCircle, PauseSolid, PencilSquare, PlaySolid, Plus, Sparkles, SquareTwoStack, Users } from "@medusajs/icons"
 import { Badge, Button, Container, Drawer, DropdownMenu, Heading, IconButton, InlineTip, Input, Table, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, ListResponse, NameMaps } from "../../../modules/coupons/lib/contract"
 import { errorMessage, useCoupon, useCoupons, useSetStatus } from "../../lib/coupons-api"
-import { CodeBlock, HelpButtons, IntegrationHeader, ModeBadge, communityLabels, usePageNav } from "../../lib/coupons-guide"
+import { CodeBlock, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, communityLabels, usePageNav } from "../../lib/coupons-guide"
 import { CouponsIcon } from "../../lib/coupons-icon"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/coupons-kit"
 import { couponSentence } from "../../lib/coupons-sentence"
@@ -124,6 +124,14 @@ const CouponsPage = () => {
             </ModeBadge>
           }
           description={t("subtitle")}
+          points={[
+            { icon: <Sparkles />, text: t("points.creator") },
+            { icon: <ChatBubbleLeftRight />, text: t("points.sentence") },
+            { icon: <ExclamationCircle />, text: t("points.warnings"), tone: "orange" },
+            { icon: <ChartBar />, text: t("points.results") },
+            { icon: <Users />, text: t("points.customers") },
+            { icon: <CheckCircle />, text: t("points.usual"), tone: "green" },
+          ]}
           help={<HelpButtons spec={promptSpec} lang={fmt.lang} labels={community} />}
           view={nav.view}
           onView={(v) => nav.go(v)}
@@ -155,9 +163,15 @@ const CouponsPage = () => {
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
             <div>
               <Heading level="h2">{t("list.title")}</Heading>
-              <Text size="small" className="text-ui-fg-subtle">
-                {t("list.subtitle")}
-              </Text>
+              <KeyPoints
+                className="mt-1"
+                label={t("list.subtitle")}
+                items={[
+                  { icon: <BarsArrowDown />, text: t("list.points.newest") },
+                  { icon: <CursorArrowRays />, text: t("list.points.orders") },
+                  { icon: <PauseSolid />, text: t("list.points.pause") },
+                ]}
+              />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Segment value={filter} options={FILTERS.map((f) => ({ value: f, label: t(`list.filter.${f}`) }))} onChange={setFilter} />

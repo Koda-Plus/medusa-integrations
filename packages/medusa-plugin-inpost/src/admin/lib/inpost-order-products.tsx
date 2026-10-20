@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/order-products.tsx (kit 1.1.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/order-products.tsx (kit 1.2.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useEffect, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { useQuery } from "@tanstack/react-query"

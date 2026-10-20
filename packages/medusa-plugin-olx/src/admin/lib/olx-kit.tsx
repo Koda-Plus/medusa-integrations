@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/kit.tsx (kit 1.1.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/kit.tsx (kit 1.2.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useLayoutEffect, useMemo, useSyncExternalStore, type ComponentType, type ReactNode } from "react"
 import { Container, clx } from "@medusajs/ui"
 import type { HostZone } from "../../modules/olx/lib/kit-contract"

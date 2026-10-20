@@ -42,6 +42,14 @@ const pl: typeof en = {
   by: "by Koda Plus",
   subtitle:
     "E-maile transakcyjne sklepu wysyłane przez Resend: potwierdzenie zamówienia, wysyłka z numerem przesyłki, anulowanie, powitanie i reset hasła, po polsku i po angielsku, w wyglądzie Twojego sklepu i z trybem ciemnym. Każdy szablon zobaczysz na żywo, wyślesz sobie test i wiesz, co wyszło.",
+  points: {
+    transactional: "E-maile transakcyjne sklepu",
+    resend: "Wysyłka przez Resend",
+    languages: "Po polsku i po angielsku",
+    look: "Wygląd sklepu, tryb ciemny",
+    preview: "Podgląd na żywo i test",
+    log: "Historia tego, co wyszło",
+  },
   error: "Nie udało się wczytać e-maili: {{message}}",
   view: {
     panel: "Panel",
@@ -168,6 +176,14 @@ const pl: typeof en = {
     simulated: "Symulacja",
     subtitle: "Każda wiadomość wyrenderowana przez wtyczkę, od najnowszej, z zamaskowanym adresem. Log trzyma {{days}} dni.",
     demoSubtitle: "To, co sklep by wysłał. Nic nie wyszło z serwera: otwórz wiadomość, żeby ją zobaczyć.",
+    points: {
+      newest: "Od najnowszych",
+      masked: "Adres zamaskowany",
+      kept: "Log trzyma {{days}} dni",
+      history: "Historia z Medusy od {{date}}",
+      nothingSent: "Nic nie wyszło z serwera",
+      open: "Otwórz wiadomość, by ją zobaczyć",
+    },
     filter: {
       all: "Wszystkie",
       sent: "Wysłane",
@@ -222,6 +238,7 @@ const pl: typeof en = {
   byTemplate: {
     title: "Według szablonów",
     subtitle: "Ostatnie 30 dni każdego szablonu.",
+    points: { days: "Ostatnie 30 dni", each: "Każdy szablon osobno" },
     never: "Nigdy",
     col: {
       template: "Szablon",

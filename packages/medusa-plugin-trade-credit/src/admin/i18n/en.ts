@@ -12,6 +12,13 @@ const en = {
   },
   by: "by Koda Plus",
   subtitle: "Credit limits and payment terms for B2B customers: net 14, 30 or 60 days, the used amount from their unpaid orders, the overdue check and a blocking toggle.",
+  points: {
+    limits: "Credit limits for B2B",
+    terms: "Net 14, 30 or 60 days",
+    used: "Used from unpaid orders",
+    overdue: "Overdue check",
+    block: "Block with one toggle",
+  },
   mode: {
     demo: "Demo",
   },
@@ -25,6 +32,11 @@ const en = {
   set: {
     title: "Set credit terms",
     subtitle: "Pick a customer, set the limit and the payment terms. A customer without terms pays immediately.",
+    points: {
+      pick: "Pick a customer",
+      terms: "Set the limit and terms",
+      none: "No terms: pays immediately",
+    },
     customer: "Customer",
     customerPlaceholder: "Search by name or e-mail",
     amount: "Limit amount",
@@ -74,7 +86,18 @@ const en = {
     storeMode: "Store credit",
     storeModeHint: "The page is over the trade credit the store already keeps: the same limits, debt and due dates its checkout checks.",
     subtitleStore: "Trade credit of the store's B2B customers: the limit, what is used and left, what is overdue and the open orders on terms with their due dates.",
+    pointsStore: {
+      store: "Credit the store keeps",
+      limit: "Limit, used, left",
+      overdue: "What is overdue",
+      orders: "Open orders with due dates",
+    },
     setSubtitleStore: "Pick a customer and set the limit and the payment term. The store saves it on the customer, so the checkout uses it at once.",
+    setPointsStore: {
+      pick: "Pick a customer",
+      terms: "Set the limit and term",
+      checkout: "The checkout uses it at once",
+    },
     rule: "How the store counts it",
     tiles: {
       accounts: "Customers on credit",

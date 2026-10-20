@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-emails",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "E-mails by Koda Plus: transactional e-mails for Medusa sent through Resend, with ready Polish and English templates (order confirmation, shipment with tracking, cancellation, welcome, password reset, abandoned cart), dark mode, live previews and test sends in the admin, a send log with exactly-once delivery, your own templates in the same look, and a demo mode.",
   "author": {
     "name": "Koda Plus",

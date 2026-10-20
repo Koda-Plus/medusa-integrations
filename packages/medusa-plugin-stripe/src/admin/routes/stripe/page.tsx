@@ -2,7 +2,7 @@
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, Spinner } from "@medusajs/icons"
+import { ArrowPath, ArrowUpRightOnBox, ArrowUturnLeft, ChartBar, ExclamationCircle, LockClosedSolid, Receipt, ShieldCheck, Spinner } from "@medusajs/icons"
 import { Badge, Container, InlineTip, toast, Text } from "@medusajs/ui"
 import type { PaymentFilter, StripeMode, StripeOverviewResponse, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
 import { errorMessage, useStripeChecks, useStripeOverview, useStripeRefresh, useStripeStatus } from "../../lib/stripe-api"
@@ -217,6 +217,14 @@ function Header({ status, overview, lang, nav }: { status: StripeStatusResponse 
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <ChartBar />, text: t("points.volume") },
+        { icon: <Receipt />, text: t("points.payments") },
+        { icon: <ExclamationCircle />, text: t("points.disputes") },
+        { icon: <ArrowUturnLeft />, text: t("points.refunds") },
+        { icon: <ShieldCheck />, text: t("points.checks") },
+        { icon: <LockClosedSolid />, text: t("points.money"), tone: "green" },
+      ]}
       social={
         <>
           <ReferencesBadge

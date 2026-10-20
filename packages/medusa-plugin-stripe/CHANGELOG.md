@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 (unreleased)
+
+### Changed
+
+- The header and the intros of Payment methods, Payments, Open disputes, Recent refunds and Balance and payouts say it in short phrases with icons (payments next to orders, disputes with deadlines, never moves money) instead of long sentences.
+- Kit 1.2.0: the page header takes `points`, short phrases with an icon shown as pills instead of the long description (which stays as their tooltip and accessible label); `KeyPoints` draws the same pills under a section heading.
+
 ## 0.3.0 (2026-10-18)
 
 ### Added

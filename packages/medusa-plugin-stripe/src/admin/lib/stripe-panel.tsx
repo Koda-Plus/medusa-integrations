@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
-import { ArrowUturnLeft } from "@medusajs/icons"
+import { ArrowUpRightOnBox, ArrowUturnLeft, BarsArrowDown, Buildings, Cash, ChartBar, CheckCircle, Clock, CurrencyDollar, ExclamationCircle, Receipt, ShoppingBag } from "@medusajs/icons"
 import { Badge, Container, Heading, InlineTip, Input, Table, Text } from "@medusajs/ui"
 import { KitSkeletonRows } from "./stripe-kit"
+import { KeyPoints } from "./stripe-guide"
 import { KitOrderAmountLines, KitOrderProductsCell, useKitCartProducts, useKitOrderProducts } from "./stripe-order-products"
 import type { MethodKey, MoneyDto, PaymentFilter, PaymentRowDto, PeriodStatsDto, StripeOverviewResponse } from "../../modules/stripe/lib/contract"
 import { useStripePayments } from "./stripe-api"
@@ -218,9 +219,15 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
           </Badge>
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("methods.subtitle")}
-        </Text>
+        <KeyPoints
+          className="max-w-3xl"
+          label={t("methods.subtitle")}
+          items={[
+            { icon: <ChartBar />, text: t("methods.points.how") },
+            { icon: <Receipt />, text: t("methods.points.fees") },
+            { icon: <CurrencyDollar />, text: t("methods.points.currency") },
+          ]}
+        />
       </div>
       <div className="overflow-x-auto">
         <Table>
@@ -336,9 +343,16 @@ export function PaymentsSection({
           <Heading level="h2">{t("payments.title")}</Heading>
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("payments.subtitle")}
-        </Text>
+        <KeyPoints
+          className="max-w-3xl"
+          label={t("payments.subtitle")}
+          items={[
+            { icon: <Clock />, text: t("payments.points.days") },
+            { icon: <BarsArrowDown />, text: t("payments.points.newest") },
+            { icon: <ShoppingBag />, text: t("payments.points.order") },
+            { icon: <ArrowUpRightOnBox />, text: t("payments.points.dashboard") },
+          ]}
+        />
       </div>
       <div className="flex flex-col gap-3 px-6 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -495,9 +509,15 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
           <Heading level="h2">{t("disputes.title")}</Heading>
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("disputes.subtitle")}
-        </Text>
+        <KeyPoints
+          className="max-w-3xl"
+          label={t("disputes.subtitle")}
+          items={[
+            { icon: <ExclamationCircle />, text: t("disputes.points.waiting"), tone: "orange" },
+            { icon: <ArrowUpRightOnBox />, text: t("disputes.points.answer") },
+            { icon: <Clock />, text: t("disputes.points.deadline"), tone: "red" },
+          ]}
+        />
         {closed.won + closed.lost > 0 ? (
           <Text size="xsmall" className="text-ui-fg-muted">
             {t("disputes.closed", closed)}
@@ -578,9 +598,15 @@ export function RefundsSection({ overview, lang }: { overview: StripeOverviewRes
           <Heading level="h2">{t("refunds.title")}</Heading>
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("refunds.subtitle")}
-        </Text>
+        <KeyPoints
+          className="max-w-3xl"
+          label={t("refunds.subtitle")}
+          items={[
+            { icon: <Clock />, text: t("refunds.points.days") },
+            { icon: <ArrowUturnLeft />, text: t("refunds.points.order") },
+            { icon: <CheckCircle />, text: t("refunds.points.provider") },
+          ]}
+        />
       </div>
       {rows.length === 0 ? (
         <div className="px-6 py-4">
@@ -696,9 +722,14 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
           <Heading level="h2">{t("balance.title")}</Heading>
           {overview.mode === "demo" ? <SampleBadge /> : null}
         </div>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("balance.subtitle")}
-        </Text>
+        <KeyPoints
+          className="max-w-3xl"
+          label={t("balance.subtitle")}
+          items={[
+            { icon: <Cash />, text: t("balance.points.held") },
+            { icon: <Buildings />, text: t("balance.points.bank") },
+          ]}
+        />
       </div>
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2">
         {b ? (

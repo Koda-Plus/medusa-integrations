@@ -9,6 +9,14 @@ const pl: typeof en = {
   by: "by Koda Plus",
   subtitle:
     "Stripe w panelu Medusy, obok oficjalnego dostawcy Stripe: obroty, prowizje i kwoty netto według metod płatności (karty, BLIK, Przelewy24, Apple Pay, Google Pay), płatności przy swoich zamówieniach, spory z terminami, zwroty, saldo i wypłaty oraz kontrola całej konfiguracji. Tylko odczyt: wtyczka nigdy nie rusza pieniędzy.",
+  points: {
+    volume: "Obroty, prowizje, netto według metody",
+    payments: "Płatności przy zamówieniach",
+    disputes: "Spory z terminami",
+    refunds: "Zwroty, saldo, wypłaty",
+    checks: "Kontrola całej konfiguracji",
+    money: "Nigdy nie rusza pieniędzy",
+  },
   view: {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
@@ -109,6 +117,11 @@ const pl: typeof en = {
     other: "Inne",
     title: "Metody płatności",
     subtitle: "Jak płacili klienci w tym okresie. Prowizje i netto pochodzą z transakcji salda Stripe, w walucie, w której Stripe rozlicza.",
+    points: {
+      how: "Jak płacili klienci",
+      fees: "Prowizje z transakcji salda",
+      currency: "W walucie rozliczenia",
+    },
     col: {
       method: "Metoda",
       payments: "Płatności",
@@ -322,6 +335,12 @@ const pl: typeof en = {
     refundInStripeHint: "Ta płatność nie ma zamówienia w tym sklepie, więc zwrot robisz w panelu Stripe.",
     title: "Płatności",
     subtitle: "Ostatnie 30 dni, od najnowszych, każda przy swoim zamówieniu w Medusie i z linkiem do panelu Stripe.",
+    points: {
+      days: "Ostatnie 30 dni",
+      newest: "Od najnowszych",
+      order: "Przy zamówieniu w Medusie",
+      dashboard: "Link do panelu Stripe",
+    },
     filter: {
       all: "Wszystkie",
       succeeded: "Udane",
@@ -387,6 +406,11 @@ const pl: typeof en = {
   disputes: {
     title: "Otwarte spory",
     subtitle: "Spory, które czekają na Twoje dowody albo na decyzję banku. Odpowiedz w panelu Stripe przed terminem: przegapiony termin oznacza utratę pieniędzy.",
+    points: {
+      waiting: "Czekają na dowody lub bank",
+      answer: "Odpowiedź w panelu Stripe",
+      deadline: "Po terminie pieniądze przepadają",
+    },
     col: {
       created: "Otwarty",
       amount: "Kwota",
@@ -452,6 +476,11 @@ const pl: typeof en = {
   refunds: {
     title: "Ostatnie zwroty",
     subtitle: "Zwroty z ostatnich 30 dni. Zwrot robisz z zamówienia w Medusie: oficjalny dostawca wysyła go do Stripe.",
+    points: {
+      days: "Ostatnie 30 dni",
+      order: "Zwrot z zamówienia w Medusie",
+      provider: "Dostawca wysyła go do Stripe",
+    },
     col: {
       created: "Data",
       amount: "Kwota",
@@ -486,6 +515,10 @@ const pl: typeof en = {
   balance: {
     title: "Saldo i wypłaty",
     subtitle: "Co Stripe trzyma dla Ciebie i co jest w drodze na konto bankowe.",
+    points: {
+      held: "Co Stripe trzyma dla Ciebie",
+      bank: "W drodze na konto bankowe",
+    },
     available: "Dostępne",
     pending: "Oczekujące",
     none: "Nie odczytano salda.",

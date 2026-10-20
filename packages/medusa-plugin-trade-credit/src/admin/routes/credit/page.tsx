@@ -2,11 +2,11 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useSearchParams } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowUpRightMini, ArrowUpRightOnBox, EnvelopeSolid, EyeSlash, MagnifyingGlass, PauseSolid, PlaySolid, Plus, XMark } from "@medusajs/icons"
+import { ArrowUpRightMini, ArrowUpRightOnBox, Buildings, Calendar, Cash, CheckCircle, Clock, CreditCard, EnvelopeSolid, EyeSlash, LockClosedSolid, MagnifyingGlass, PauseSolid, PlaySolid, Plus, Receipt, XMark } from "@medusajs/icons"
 import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/credit-kit"
 import { KitOrderProductsCell, useKitOrderProducts } from "../../lib/credit-order-products"
-import { usePageView } from "../../lib/credit-guide"
+import { KeyPoints, usePageView } from "../../lib/credit-guide"
 import { GuideView } from "../../lib/credit-guide-view"
 import { errorMessage, useCreditStatus, useCustomerSearch, useHideOrder, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
@@ -125,9 +125,29 @@ const CreditPage = () => {
                   </Badge>
                 ) : null}
               </div>
-              <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-                {t("by")} / {store ? t("ui.subtitleStore") : t("subtitle")}
+              <Text size="small" className="text-ui-fg-muted">
+                {t("by")}
               </Text>
+              <KeyPoints
+                className="mt-1.5 max-w-3xl"
+                label={store ? t("ui.subtitleStore") : t("subtitle")}
+                items={
+                  store
+                    ? [
+                        { icon: <Buildings />, text: t("ui.pointsStore.store"), tone: "blue" },
+                        { icon: <CreditCard />, text: t("ui.pointsStore.limit") },
+                        { icon: <Clock />, text: t("ui.pointsStore.overdue"), tone: "orange" },
+                        { icon: <Calendar />, text: t("ui.pointsStore.orders") },
+                      ]
+                    : [
+                        { icon: <CreditCard />, text: t("points.limits") },
+                        { icon: <Calendar />, text: t("points.terms") },
+                        { icon: <Receipt />, text: t("points.used") },
+                        { icon: <Clock />, text: t("points.overdue"), tone: "orange" },
+                        { icon: <LockClosedSolid />, text: t("points.block") },
+                      ]
+                }
+              />
             </div>
           </div>
           <div role="tablist" className="flex flex-wrap items-center gap-1">
@@ -270,9 +290,23 @@ function SetTermsCard({ status, choices }: { status: StatusResponse; choices: nu
     <Container className="divide-y p-0">
       <div className="px-6 py-4">
         <Heading level="h2">{t("set.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {status.mode === "store" ? t("ui.setSubtitleStore") : t("set.subtitle")}
-        </Text>
+        <KeyPoints
+          className="mt-1"
+          label={status.mode === "store" ? t("ui.setSubtitleStore") : t("set.subtitle")}
+          items={
+            status.mode === "store"
+              ? [
+                  { icon: <MagnifyingGlass />, text: t("ui.setPointsStore.pick") },
+                  { icon: <CreditCard />, text: t("ui.setPointsStore.terms") },
+                  { icon: <CheckCircle />, text: t("ui.setPointsStore.checkout"), tone: "green" },
+                ]
+              : [
+                  { icon: <MagnifyingGlass />, text: t("set.points.pick") },
+                  { icon: <CreditCard />, text: t("set.points.terms") },
+                  { icon: <Cash />, text: t("set.points.none") },
+                ]
+          }
+        />
       </div>
       <div className="grid grid-cols-1 gap-3 px-6 py-4 md:grid-cols-[minmax(0,1.4fr)_10rem_10rem_auto] md:items-end">
         <div className="flex flex-col gap-y-1">

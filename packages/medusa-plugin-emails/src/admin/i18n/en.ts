@@ -41,6 +41,14 @@ const en = {
   by: "by Koda Plus",
   subtitle:
     "Transactional e-mails of the store, sent through Resend: order confirmation, shipping with tracking, cancellation, welcome and password reset, in English and Polish, in your store's look and with a dark mode. See every template live, send yourself a test, and know what went out.",
+  points: {
+    transactional: "Transactional store e-mails",
+    resend: "Sent through Resend",
+    languages: "English and Polish",
+    look: "Your store's look, dark mode",
+    preview: "Live preview and test",
+    log: "Log of what went out",
+  },
   error: "Could not load the e-mails: {{message}}",
   view: {
     panel: "Panel",
@@ -167,6 +175,14 @@ const en = {
     simulated: "Simulated",
     subtitle: "Every message the plugin rendered, newest first, with the address masked. The log keeps {{days}} days.",
     demoSubtitle: "What the store would have sent. Nothing left the server: open a message to see it.",
+    points: {
+      newest: "Newest first",
+      masked: "Address masked",
+      kept: "Kept {{days}} days",
+      history: "Medusa history since {{date}}",
+      nothingSent: "Nothing left the server",
+      open: "Open a message to see it",
+    },
     filter: {
       all: "All",
       sent: "Sent",
@@ -221,6 +237,7 @@ const en = {
   byTemplate: {
     title: "By template",
     subtitle: "The last 30 days of each template.",
+    points: { days: "Last 30 days", each: "Each template apart" },
     never: "Never",
     col: {
       template: "Template",
