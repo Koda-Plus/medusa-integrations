@@ -2,12 +2,13 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useSearchParams } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowUpRightMini, ArrowUpRightOnBox, Buildings, Calendar, Cash, CheckCircle, Clock, CreditCard, EnvelopeSolid, EyeSlash, LockClosedSolid, MagnifyingGlass, PauseSolid, PlaySolid, Plus, Receipt, XMark } from "@medusajs/icons"
+import { ArrowPath, ArrowUpRightMini, ArrowUpRightOnBox, Buildings, Calendar, Cash, CheckCircle, Clock, CreditCard, EnvelopeSolid, EyeSlash, LockClosedSolid, MagnifyingGlass, PauseSolid, PlaySolid, Plus, Receipt, XMark } from "@medusajs/icons"
 import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/credit-kit"
 import { KitOrderProductsCell, useKitOrderProducts } from "../../lib/credit-order-products"
-import { KeyPoints, isWhiteLabel, usePageView } from "../../lib/credit-guide"
-import { GuideView } from "../../lib/credit-guide-view"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/credit-guide"
+import { GuideView, usePromptSpec } from "../../lib/credit-guide-view"
+import { OptionsTab, SETTINGS_TABS, StoreTab, type SettingsTabId } from "../../lib/credit-settings"
 import { errorMessage, useCreditStatus, useCustomerSearch, useHideOrder, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
 import { EmptyLine, SampleBadge, fmtMoney } from "../../lib/credit-ui"
@@ -71,8 +72,16 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
 const CreditPage = () => {
   const { t, i18n } = useTranslation("credit")
   const lang = i18n.language || "en"
-  const [view, setView] = usePageView()
+  const nav = usePageNav(SETTINGS_TABS)
+  const view = nav.view
   const status = useCreditStatus()
+  const promptSpec = usePromptSpec()
+  const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
+  const onRefresh = async () => {
+    const r = await status.refetch()
+    if (r.isError) toast.error(t("toast.error", { error: errorMessage(r.error) }))
+    else toast.success(t("toast.refreshed"))
+  }
   const s = status.data
   const store = s?.mode === "store"
   const choices = s?.netDayChoices?.length ? s.netDayChoices : DEFAULT_CHOICES
@@ -110,66 +119,60 @@ const CreditPage = () => {
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
-          <div className="flex items-center gap-x-3">
-            <span className="flex items-center">
-              <CreditIcon width={28} height={28} />
-            </span>
-            <div>
-              <div className="flex items-center gap-x-2">
-                <Heading>{t("title")}</Heading>
+        <IntegrationHeader
+          icon={<CreditIcon width={28} height={28} />}
+          title={t("title")}
+          by={t("by")}
+          badges={
+            s?.demo || store ? (
+              <>
                 {s?.demo ? <SampleBadge /> : null}
                 {store ? (
-                  <Badge size="2xsmall" className="whitespace-nowrap" color="blue" title={t("ui.storeModeHint")}>
-                    {t("ui.storeMode")}
-                  </Badge>
+                  <ModeBadge color="blue" label={t("ui.storeMode")} title={t("ui.storeMode")}>
+                    <Text size="small">{t("ui.storeModeHint")}</Text>
+                  </ModeBadge>
                 ) : null}
-              </div>
-              {isWhiteLabel() ? null : (
-                <Text size="small" className="text-ui-fg-muted">
-                  {t("by")}
-                </Text>
-              )}
-              <KeyPoints
-                className="mt-1.5"
-                label={store ? t("ui.subtitleStore") : t("subtitle")}
-                items={
-                  store
-                    ? [
-                        { icon: <Buildings />, text: t("ui.pointsStore.store"), tone: "blue" },
-                        { icon: <CreditCard />, text: t("ui.pointsStore.limit") },
-                        { icon: <Clock />, text: t("ui.pointsStore.overdue"), tone: "orange" },
-                        { icon: <Calendar />, text: t("ui.pointsStore.orders") },
-                      ]
-                    : [
-                        { icon: <CreditCard />, text: t("points.limits") },
-                        { icon: <Calendar />, text: t("points.terms") },
-                        { icon: <Receipt />, text: t("points.used") },
-                        { icon: <Clock />, text: t("points.overdue"), tone: "orange" },
-                        { icon: <LockClosedSolid />, text: t("points.block") },
-                      ]
-                }
-              />
-            </div>
-          </div>
-          <div role="tablist" className="flex flex-wrap items-center gap-1">
-            {(["panel", "guide"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={view === v}
-                onClick={() => setView(v)}
-                className={clx(
-                  "rounded-md px-2.5 py-1.5 transition-fg",
-                  view === v ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover",
-                )}
-              >
-                {t(`view.${v}`)}
-              </button>
-            ))}
-          </div>
-        </div>
+              </>
+            ) : null
+          }
+          description={store ? t("ui.subtitleStore") : t("subtitle")}
+          points={
+            store
+              ? [
+                  { icon: <Buildings />, text: t("ui.pointsStore.store"), tone: "blue" },
+                  { icon: <CreditCard />, text: t("ui.pointsStore.limit") },
+                  { icon: <Clock />, text: t("ui.pointsStore.overdue"), tone: "orange" },
+                  { icon: <Calendar />, text: t("ui.pointsStore.orders") },
+                ]
+              : [
+                  { icon: <CreditCard />, text: t("points.limits") },
+                  { icon: <Calendar />, text: t("points.terms") },
+                  { icon: <Receipt />, text: t("points.used") },
+                  { icon: <Clock />, text: t("points.overdue"), tone: "orange" },
+                  { icon: <LockClosedSolid />, text: t("points.block") },
+                ]
+          }
+          social={<AddStoreButton labels={community.addStore} />}
+          help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
+          view={view}
+          onView={(v) => nav.go(v)}
+          labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
+          primary={
+            view === "panel" && s
+              ? { key: "set", label: t("actions.setTerms"), icon: <Plus />, onClick: () => document.getElementById("credit-set")?.scrollIntoView({ behavior: "smooth", block: "start" }) }
+              : view === "settings"
+                ? { key: "refresh", label: status.isFetching ? t("actions.refreshing") : t("actions.refresh"), icon: <ArrowPath />, loading: status.isFetching, onClick: () => void onRefresh() }
+                : null
+          }
+          actions={
+            view === "panel"
+              ? [
+                  { key: "refresh", label: status.isFetching ? t("actions.refreshing") : t("actions.refresh"), icon: <ArrowPath />, loading: status.isFetching, onClick: () => void onRefresh() },
+                  { key: "customers", label: t("actions.customers"), icon: <ArrowUpRightOnBox />, onClick: () => window.location.assign("/app/customers") },
+                ]
+              : []
+          }
+        />
         <KitFetchingBar active={status.isFetching && !status.isLoading} />
         {status.isError ? (
           <div className="px-6 py-4">
@@ -204,6 +207,23 @@ const CreditPage = () => {
       </Container>
 
       {view === "guide" ? <GuideView /> : null}
+
+      {view === "settings" && s ? (
+        <SettingsView
+          title={t("settings.title")}
+          subtitle={t("settings.subtitle")}
+          value={nav.tab}
+          onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
+          tabs={[
+            { id: "options", label: t("settings.tab.options") },
+            { id: "store", label: t("settings.tab.store") },
+          ]}
+        >
+          {nav.tab === "options" ? <OptionsTab status={s} /> : null}
+          {nav.tab === "store" ? <StoreTab status={s} /> : null}
+        </SettingsView>
+      ) : null}
+      {view === "settings" && !s && status.isLoading ? <KitLoading label={t("ui.loading")} /> : null}
 
       {view === "panel" && s ? (
         <>
@@ -289,7 +309,7 @@ function SetTermsCard({ status, choices }: { status: StatusResponse; choices: nu
     }
   }
   return (
-    <Container className="divide-y p-0">
+    <Container id="credit-set" className="scroll-mt-4 divide-y p-0">
       <div className="px-6 py-4">
         <Heading level="h2">{t("set.title")}</Heading>
         <KeyPoints

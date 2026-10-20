@@ -8,6 +8,8 @@
 
 ### Changed
 
+- The page uses the kit's `IntegrationHeader`, like Stripe, Coupons and E-mails: icon, title, "by Koda Plus" (hidden in white label), the demo and store-credit badges (the store-credit note opens from its badge), the key points, "Add your store", Copy prompt and Discord help, and the Panel / Setup guide / Settings tabs kept in `?view=` and `?tab=`. The main action is Set terms (scrolls to the form); Refresh and Open customers sit under More actions.
+- New Settings view, read only, from the status the page already loads: Options (mode, enforce, demo, payment terms to pick, longest term, block and pause) and Reminders and documents (reminders, e-mail log link, documents service, settle link, hiding a test order). Nothing new is written.
 - The header and the Set credit terms intro say it in short phrases with icons (credit limits for B2B, net 14, 30 or 60 days, overdue check), in store mode too, instead of long sentences.
 - Kit 1.2.0: the page header takes `points`, short phrases with an icon shown as pills instead of the long description (which stays as their tooltip and accessible label); `KeyPoints` draws the same pills under a section heading.
 
