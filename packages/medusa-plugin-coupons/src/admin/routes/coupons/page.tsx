@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, PencilSquare, Plus } from "@medusajs/icons"
-import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Table, Text, clx, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, EllipsisHorizontal, PauseSolid, PencilSquare, PlaySolid, Plus, SquareTwoStack } from "@medusajs/icons"
+import { Badge, Button, Container, Drawer, DropdownMenu, Heading, IconButton, InlineTip, Input, Table, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, ListResponse, NameMaps } from "../../../modules/coupons/lib/contract"
 import { errorMessage, useCoupon, useCoupons, useSetStatus } from "../../lib/coupons-api"
 import { CodeBlock, HelpButtons, IntegrationHeader, ModeBadge, communityLabels, usePageNav } from "../../lib/coupons-guide"
@@ -60,7 +60,17 @@ const CouponsPage = () => {
   const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   /* The edit form: from a row of the list or from the detail (which knows the names of its own customers). */
-  const [editing, setEditing] = useState<{ coupon: CouponDto; names: NameMaps; back?: boolean } | null>(null)
+  const [editing, setEditing] = useState<{ coupon: CouponDto; names: NameMaps; back?: boolean; mode?: "edit" | "copy" } | null>(null)
+  const setStatus = useSetStatus()
+  const toggle = async (c: CouponDto) => {
+    const next = c.medusaStatus === "inactive" || c.medusaStatus === "draft" ? "active" : "inactive"
+    try {
+      await setStatus.mutateAsync({ id: c.id, status: next })
+      toast.success(next === "active" ? t("detail.activatedCode", { code: c.code }) : t("detail.pausedCode", { code: c.code }))
+    } catch (err) {
+      toast.error(errorMessage(err))
+    }
+  }
   const filter = (FILTERS as string[]).includes(params.get("status") ?? "") ? (params.get("status") as Filter) : "all"
   const [q, setQ] = useState(params.get("q") ?? "")
 
@@ -210,18 +220,36 @@ const CouponsPage = () => {
                     </div>
                   </Table.Cell>
                   <Table.Cell className="text-right">
-                    <Button
-                      size="small"
-                      variant="secondary"
-                      title={t("edit.title")}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps })
-                      }}
-                    >
-                      <PencilSquare />
-                      {t("edit.action")}
-                    </Button>
+                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                      <Button size="small" variant="secondary" title={t("edit.title")} onClick={() => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps })}>
+                        <PencilSquare />
+                        {t("edit.action")}
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenu.Trigger asChild>
+                          <IconButton size="small" variant="transparent" aria-label={t("actions.moreActions")}>
+                            <EllipsisHorizontal />
+                          </IconButton>
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Content align="end">
+                          {c.status !== "expired" ? (
+                            <DropdownMenu.Item className="gap-x-2" onClick={() => void toggle(c)}>
+                              {c.medusaStatus === "active" ? <PauseSolid className="text-ui-fg-subtle" /> : <PlaySolid className="text-ui-fg-subtle" />}
+                              {c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")}
+                            </DropdownMenu.Item>
+                          ) : null}
+                          <DropdownMenu.Item className="gap-x-2" onClick={() => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps, mode: "copy" })}>
+                            <SquareTwoStack className="text-ui-fg-subtle" />
+                            {t("copy.action")}
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Separator />
+                          <DropdownMenu.Item className="gap-x-2" onClick={() => window.location.assign(`/app/promotions/${c.id}`)}>
+                            <ArrowUpRightOnBox className="text-ui-fg-subtle" />
+                            {t("detail.openInMedusa")}
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu>
+                    </div>
                   </Table.Cell>
                 </Table.Row>
               ))}
@@ -254,18 +282,22 @@ const CouponsPage = () => {
         id={openId}
         onClose={() => setOpenId(null)}
         currency={currency}
-        onEdit={(coupon, names) => {
+        onEdit={(coupon, names, mode) => {
           /* One window at a time: the drawer closes, and opens again on the saved coupon. */
           setOpenId(null)
-          setEditing({ coupon, names, back: true })
+          setEditing({ coupon, names, back: true, mode })
         }}
       />
       <EditCouponModal
         coupon={editing?.coupon ?? null}
         names={editing?.names ?? ((data?.names ?? {}) as NameMaps)}
         currency={currency}
+        existing={data?.coupons ?? []}
+        memberGroupIds={data?.memberGroupIds ?? []}
+        mode={editing?.mode ?? "edit"}
         onOpenChange={(v) => (!v ? setEditing(null) : null)}
-        onSaved={(c) => (editing?.back ? setOpenId(c.id) : null)}
+        onSaved={(c) => (editing?.back || editing?.mode === "copy" ? setOpenId(c.id) : null)}
+        onDuplicate={(c) => setEditing((e) => (e ? { ...e, coupon: c, mode: "copy" } : e))}
       />
     </div>
   )
@@ -287,7 +319,7 @@ function Tiles({ data, filter, onFilter }: { data: ListResponse; filter: Filter;
   )
 }
 
-function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; onClose: () => void; currency: string; onEdit: (c: CouponDto, names: NameMaps) => void }) {
+function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; onClose: () => void; currency: string; onEdit: (c: CouponDto, names: NameMaps, mode?: "edit" | "copy") => void }) {
   const { t } = useTranslation("coupons")
   const fmt = useFormat()
   const detail = useCoupon(id)
@@ -318,6 +350,11 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
           {c && detail.data ? (
             <>
               <Text weight="plus">{couponSentence(c, detail.data.names, t, fmt, currency)}</Text>
+              {c.terms?.note ? (
+                <InlineTip variant="info" label={t("fields.note")}>
+                  {c.terms.note}
+                </InlineTip>
+              ) : null}
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                 <StatTile label={t("detail.uses")} value={c.automatic && !c.limit ? t("list.automaticUses") : c.limit ? t("detail.usesOf", { used: c.used, limit: c.limit }) : fmt.number(c.used)} />
                 <StatTile label={t("detail.orders")} value={fmt.number(c.stats.orders)} />
@@ -376,6 +413,10 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
                 </Button>
               </a>
               <div className="flex items-center gap-2">
+                <Button size="small" variant="secondary" onClick={() => onEdit(c, detail.data?.names ?? ({} as NameMaps), "copy")}>
+                  <SquareTwoStack />
+                  {t("copy.action")}
+                </Button>
                 <Button size="small" variant="secondary" onClick={() => onEdit(c, detail.data?.names ?? ({} as NameMaps))}>
                   <PencilSquare />
                   {t("edit.action")}

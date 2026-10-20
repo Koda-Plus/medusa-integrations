@@ -5,7 +5,7 @@
  */
 
 import { MINIMUM_ATTRIBUTES, RULE } from "./constants"
-import type { CouponDto, CouponKind, CouponRuleDto, CouponShape, CouponStats, CouponStatus } from "./contract"
+import type { CouponDto, CouponKind, CouponRuleDto, CouponShape, CouponStats, CouponStatus, StoreTerms } from "./contract"
 
 /** The fields of a promotion the plugin reads (Query or the promotion module). */
 export interface PromotionLike {
@@ -30,7 +30,11 @@ export interface PromotionLike {
     allocation?: string | null
     value?: number | string | null
     currency_code?: string | null
+    max_quantity?: number | string | null
+    apply_to_quantity?: number | string | null
+    buy_rules_min_quantity?: number | string | null
     target_rules?: RuleLike[] | null
+    buy_rules?: RuleLike[] | null
   } | null
   rules?: RuleLike[] | null
 }
@@ -77,6 +81,7 @@ export function shapeOf(p: PromotionLike): CouponShape {
   const rules = p.rules ?? []
   const targets = am.target_rules ?? []
   const groupIds: string[] = []
+  const excludedGroupIds: string[] = []
   const customerIds: string[] = []
   let minimum: number | null = null
   const salesChannelIds: string[] = []
@@ -87,6 +92,7 @@ export function shapeOf(p: PromotionLike): CouponShape {
   for (const r of rules) {
     const attr = r.attribute ?? ""
     if (attr === RULE.groups && isIn(r)) groupIds.push(...ruleValues(r))
+    else if (attr === RULE.groups && r.operator === "ne") excludedGroupIds.push(...ruleValues(r))
     else if ((attr === RULE.customer || attr === RULE.customerAlt) && isIn(r)) customerIds.push(...ruleValues(r))
     else if (MINIMUM_ATTRIBUTES.includes(attr) && (r.operator === "gte" || r.operator === "gt")) minimum = num(ruleValues(r)[0])
     else if (attr === RULE.currency) continue
@@ -99,16 +105,20 @@ export function shapeOf(p: PromotionLike): CouponShape {
   const collectionIds: string[] = []
   const shippingTypeIds: string[] = []
   const shippingOptionIds: string[] = []
+  const tagIds: string[] = []
   for (const r of targets) {
     const attr = r.attribute ?? ""
     if (attr === RULE.category && isIn(r)) categoryIds.push(...ruleValues(r))
     else if (attr === RULE.product && isIn(r)) productIds.push(...ruleValues(r))
     else if (attr === RULE.collection && isIn(r)) collectionIds.push(...ruleValues(r))
+    else if (attr === RULE.tag && isIn(r)) tagIds.push(...ruleValues(r))
     else if (attr === RULE.shippingType && isIn(r)) shippingTypeIds.push(...ruleValues(r))
     else if (attr === RULE.shippingOption && isIn(r)) shippingOptionIds.push(...ruleValues(r))
     else keep("target", r)
   }
   const kind = kindOf(p)
+  const buy = num(am.buy_rules_min_quantity)
+  const free = num(am.apply_to_quantity)
   return {
     kind,
     value: kind === "free_shipping" ? 100 : num(am.value),
@@ -118,9 +128,12 @@ export function shapeOf(p: PromotionLike): CouponShape {
     collectionIds: [...new Set(collectionIds)],
     shippingTypeIds: [...new Set(shippingTypeIds)],
     shippingOptionIds: [...new Set(shippingOptionIds)],
+    tagIds: [...new Set(tagIds)],
     salesChannelIds: [...new Set(salesChannelIds)],
     regionIds: [...new Set(regionIds)],
     groupIds: [...new Set(groupIds)],
+    excludedGroupIds: [...new Set(excludedGroupIds)],
+    buyGet: kind === "buy_get" && buy !== null && free !== null ? { buy, free } : null,
     customerIds: [...new Set(customerIds)],
     minimum,
     rules: extra,
@@ -154,7 +167,7 @@ export function statusOf(p: PromotionLike, now: Date = new Date()): CouponStatus
 
 export const NO_STATS: CouponStats = { orders: 0, discount: 0, revenue: 0, newCustomers: 0, lastUsedAt: null }
 
-export function toCouponDto(p: PromotionLike, stats: CouponStats | undefined, now: Date = new Date()): CouponDto {
+export function toCouponDto(p: PromotionLike, stats: CouponStats | undefined, now: Date = new Date(), terms: StoreTerms | null = null): CouponDto {
   const usage = usageOf(p)
   const limit = usage.limit
   /* Medusa counts a use only for its own adjustments; orders found by the reads (also the
@@ -174,14 +187,28 @@ export function toCouponDto(p: PromotionLike, stats: CouponStats | undefined, no
     campaign: p.campaign?.id ? { id: p.campaign.id, name: p.campaign.name ?? "" } : null,
     stats: stats ?? NO_STATS,
     createdAt: iso(p.created_at),
+    terms,
   }
+}
+
+/**
+ * The store's terms on the coupon: a buy X get Y the store counts itself
+ * reads as buy X get Y (Medusa keeps only a marker percent), with the
+ * store's numbers.
+ */
+export function withTerms(c: CouponDto, terms: StoreTerms | null | undefined): CouponDto {
+  if (!terms) return { ...c, terms: null }
+  if (terms.buyGet && c.shape.kind !== "buy_get") {
+    return { ...c, terms, shape: { ...c.shape, kind: "buy_get", value: null, buyGet: { buy: terms.buyGet.buy, free: terms.buyGet.free } } }
+  }
+  return { ...c, terms }
 }
 
 /** A coupon reaches a product: no item target at all, or the product, one of its categories or its collection is targeted. */
 export function reachesProduct(shape: CouponShape, productId: string, categoryIds: readonly string[], collectionId: string | null = null): boolean {
   if (["free_shipping", "percent_shipping", "fixed_shipping", "other", "buy_get"].includes(shape.kind)) return false
   const collections = shape.collectionIds ?? []
-  if (shape.productIds.length === 0 && shape.categoryIds.length === 0 && collections.length === 0) return true
+  if (shape.productIds.length === 0 && shape.categoryIds.length === 0 && collections.length === 0 && (shape.tagIds ?? []).length === 0) return true
   if (shape.productIds.includes(productId)) return true
   if (collectionId && collections.includes(collectionId)) return true
   return shape.categoryIds.some((c) => categoryIds.includes(c))
@@ -189,6 +216,9 @@ export function reachesProduct(shape: CouponShape, productId: string, categoryId
 
 /** A coupon is for a customer: no audience rule, or the customer, or one of their groups. */
 export function isForCustomer(shape: CouponShape, customerId: string, groupIds: readonly string[]): boolean {
+  const excluded = shape.excludedGroupIds ?? []
+  if (excluded.length && groupIds.some((g) => excluded.includes(g))) return false
+  if (excluded.length && shape.customerIds.length === 0 && shape.groupIds.length === 0) return true
   if (shape.customerIds.length === 0 && shape.groupIds.length === 0) return false
   if (shape.customerIds.includes(customerId)) return true
   return shape.groupIds.some((g) => groupIds.includes(g))

@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-coupons",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Coupons by Koda Plus: a three-step coupon creator on top of Medusa promotions (type, audience, rules), every coupon described in one plain sentence, warnings before saving (stacking, automatic coupons that reach logged-in groups), usage and revenue per coupon, and cards on the customer, order and product pages.",
   "author": {
     "name": "Koda Plus",

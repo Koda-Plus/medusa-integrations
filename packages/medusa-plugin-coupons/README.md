@@ -9,9 +9,11 @@ Coupons on top of **Medusa's own promotions**, for people who make discounts eve
 - **Coupons page** under Extensions, with a Panel, a Setup guide and Settings. Tiles: all coupons, active, scheduled, orders with a coupon and the discount given in the last 30 days, coupons ending within 7 days, automatic coupons for everyone. The list of the newest 300 promotions, each in one sentence with its status, uses, orders, discount and order value, filtered by status (active, scheduled, ended, paused, automatic, ending soon) and searchable by code.
 - **One plain sentence per coupon**: what it gives (percent or amount off the order, the items or the delivery, free delivery, buy X get Y), on what (categories, products, collections, delivery types and options by name), for whom (everyone, groups, customers), in which sales channels and regions, from which minimum and until when. A rule the plugin does not know is still named, with its values.
 - **A coupon's detail**: the sentence, uses, orders, discount, order value and new customers, the latest 25 orders (a customer's first order marked), a pause (and back on), Edit and a link to Medusa's promotion page.
-- **The creator**: percent off the order, an amount off the order, free delivery or percent off chosen categories; for everyone, for customer groups or for one customer; with a code or automatic; until the end of the month, 30 days, own dates or no end; single use, 100 uses, no limit or an own number; an order minimum. A preview shows the coupon as the customer sees it, with an example cart.
+- **The creator**: percent off the order, an amount off the order, free delivery, percent off chosen categories, buy X get Y, and percent off the store's own product groups; for everyone, every B2B group, retail (everyone outside them, guests included), chosen groups or chosen customers; with a code or automatic; until the end of the month, 30 days, own dates or no end; single use, 100 uses, no limit or an own number; an order minimum. A preview shows the coupon as the customer sees it, with an example cart.
 - **Warnings before saving**: an automatic coupon with no group reaches everyone, logged-in groups with their own prices included; an automatic coupon reaches a group named in `memberGroupIds`; another automatic coupon is active on the same part of the order; half price or more; an amount off with no minimum; open for everyone with no end and no limit; a code that is taken.
-- **Editing** from a row of the list or from the detail: the code, code or automatic, the value, the dates, the uses allowed, the order minimum and who it is for. Everything else of the promotion stays as it is.
+- **Editing** from a row of the list or from the detail, built like the creator (what it gives, for whom, how it works): the code, code or automatic, the value or buy X get Y, the categories or product groups it lands on, the dates, the uses allowed, the order minimum, who it is for and the store's own terms. A pause and a copy in its header. What the form has no field for stays as it is and is named.
+- **Copies**: Duplicate opens the same form with a new code (7GRATIS1 gives 8GRATIS1) and saves a new coupon with every rule of the original and the changes on top.
+- **The store's own terms** (option `storeTerms`): from N pieces, a price list as the base or the floor, buy X get Y counted by the store, orders per customer, which coupons add up, a note for the customer, kept by the store and edited in the same form.
 - **Cards** on the order (which coupons worked and what each gave), the customer (the codes used, the coupons made for them or their groups) and the product (active coupons that reach it).
 - **Works with Koda Plus hosts**: the koda.integration/1 routes, so a host shows the same lines and counters.
 
@@ -20,7 +22,7 @@ Coupons on top of **Medusa's own promotions**, for people who make discounts eve
 - **Plain Medusa promotions**: written only through Medusa's own workflows (`createPromotionsWorkflow`, `updatePromotionsWorkflow`, `createCampaignsWorkflow`, `updateCampaignsWorkflow`, `batchPromotionRulesWorkflow`), read through Query. Nothing to migrate, nothing to sync, nothing that can drift from what Medusa keeps.
 - **Use from orders**, not from the promotion's counter: the promotion adjustments on order lines and shipping methods of orders that were not canceled, so the discount, the order value, the first orders of new customers and the last use come with it.
 - **Built for B2B stores**: name the groups that have their own prices and the creator warns before an automatic coupon reaches them too.
-- **Stores with their own promotion logic**: `codeInDescription` counts the adjustments a store writes itself, and `storeRules` puts the store's own rule into the sentence.
+- **Stores with their own promotion logic**: `codeInDescription` counts the adjustments a store writes itself, `storeRules` puts the store's own rule into the sentence, and `storeTerms` lets the creator and the edit form build and change the store's own terms next to the promotion.
 - **The same checks twice**: the admin runs the creator's and the edit form's checks live, the server runs them again before it writes.
 - **Never breaks the boot**: every option has a default, a wrong value falls back to it and is listed in Settings and in the log.
 - **Admin in English and Polish**, with "Copy prompt" for an AI agent and help on the Koda Plus Discord.
@@ -81,6 +83,8 @@ The plugin's module registers in the container as `koda_coupons`, never `coupons
 - `memberGroupIds` (array of customer group ids, default none): the groups of logged-in members with their own prices (B2B, wholesale). The creator marks them "own prices" and warns when an automatic coupon would reach them; without the option the warning speaks of logged-in groups in general. Ids that are not ids are dropped.
 - `codePrefix` (string, default none): a prefix for the codes the creator suggests, letters and digits, at most 12, in capitals (`SHOP` gives `SHOP-AUTUMN15`).
 - `codeInDescription` (boolean, default `false`): `true` when the store writes its own adjustments for some promotions, without a promotion id (so Medusa does not remove them on its own refresh) and with a description that starts with the code and a colon (`SHOP7: 1 free`). Those count as the coupon's uses, discount and orders.
+- `storeTerms` (object, default none): the store's own terms of its coupons, for a cart that applies part of a promotion with logic of its own. `features` names what the store keeps (`note`, `pools`, `minQuantity`, `priceLists`, `buyGet`, `combines`, `perCustomerOrders`, `threshold`); the creator and the edit form show only those. `lookups(scope)` answers the store's pools (`{ id, name, target }`, where `target` is the Medusa target rule that limits a discount to the pool, for example `{ attribute: "items.product.tags.id", values: ["ptag_..."] }`) and price lists; `read(scope, promotionIds)` the terms per promotion; `write(scope, promotionId, terms, { code, kind })` saves them (`null`: forget them). `poolsLabel` is the store's word for its pools by language, `buyGetMarker` the percent Medusa keeps on a buy X get Y the store counts itself (default 0.001, because Medusa takes no zero). A failed read reads as no terms; a failed write answers `terms_not_saved`, and a new coupon whose terms failed is removed again.
+- `nobodyCustomerId` (string, default none): the value a store writes into a customer rule when nobody is left on it (Medusa takes no empty rule); the sentence says "for nobody right now" and a picked customer replaces it.
 - `storeRules` (function, default none): `(scope, promotionIds) => Promise<Record<string, { text: string; replacesDiscount?: boolean }>>`, for a store whose cart applies some promotions with logic of its own (a free item for every seven, a price list as the floor) while Medusa keeps only a marker of them. Given the promotion ids on the page, it answers a plain description per id; the text joins the coupon's sentence, and `replacesDiscount: true` says Medusa's value is only the marker (often 0.001%, because Medusa takes no zero), so the sentence shows the store's rule in its place. It is called with the request scope, so it can resolve the store's own modules. An error in it reads as no rules and never fails the page. Set it in code: a function cannot come from an environment variable.
 
 A wrong value falls back to its default, is written to the log at start ("Ignored option values") and is listed in Settings. Missing options never break the boot.
@@ -105,15 +109,16 @@ A wrong value falls back to its default, is written to the log at start ("Ignore
 
 ## Editing a coupon
 
-Edit, in a row of the list or in a coupon's detail, opens a form with what a person changes day to day: the code, code or automatic, the value (for percent and amount coupons), the dates, the uses allowed, the order minimum and who it is for (groups and single customers). The sentence after saving and the warnings update while you type: a used coupon gets a new code (customers who know the old one have to type the new one), an automatic coupon becomes one for everyone, the last group or customer is removed, the dates belong to a campaign other coupons share.
+Edit, in a row of the list or in a coupon's detail, opens the coupon the way the creator builds it: 1. what it gives (its type, the value or buy X get Y, the categories or the store's product groups it lands on, from N pieces and the price lists), 2. for whom (everyone, every B2B group, retail, chosen groups, chosen customers), 3. how it works (the code, code or automatic, the dates, the uses allowed, the order minimum, orders per customer, which coupons it adds up with, the note for the customer). The type stays: for another type duplicate it or make a new coupon. The header has a pause (and back on) and Duplicate. The sentence after saving and the warnings update while you type: a used coupon gets a new code (customers who know the old one have to type the new one), an automatic coupon becomes one for everyone, the last group or customer is removed, the dates belong to a campaign other coupons share.
 
 The form sends `POST /admin/coupons/:id` with `{ "patch": { ... } }`:
 
 - A key left out stays as it is; `null` clears the dates, the limit or the minimum; a value equal to the current one writes nothing (`changed: false`).
 - Dates are ISO strings, taken as the moment the person picked in the browser's time zone.
 - The dates go to the coupon's campaign, or to a new campaign when it had none. The uses allowed go where they live: the promotion's own limit, or the usage budget of its campaign. Uses allowed cannot go below the uses so far.
-- Only the audience and minimum rules the patch changes are replaced, in the form the plugin reads them (`in` or `eq`, `gte` or `gt` for the minimum); an exclusion (`ne`) stays.
-- Product, category and collection targets, buy X get Y, delivery methods, sales channels, regions and other rules are never written: the form lists them as kept, and they stay on Medusa's promotion page. So does deleting a coupon.
+- Only the rules the patch changes are replaced, in the form the plugin reads them: `in` or `eq` for groups and customers, `ne` for the groups retail leaves out (`excludedGroupIds`), `gte` or `gt` for the minimum.
+- `categoryIds` and `poolIds` replace the category targets and the targets of the store's pools (and, for Medusa's own buy X get Y, its buy rules too); `buyGet` changes its numbers; `terms` the store's own terms, merged key by key with what the store keeps.
+- Product and collection targets, delivery methods, sales channels, regions and other rules are never written: the form lists them as kept, and they stay on Medusa's promotion page. So does deleting a coupon.
 - The answer is `{ coupon, warnings, changed }`. 400 with the keys of what is wrong, 409 when the code is taken, 404 when the coupon is gone; Medusa's own refusals answer 400 in its words.
 
 ## Admin API
@@ -124,7 +129,8 @@ Every route is behind Medusa's admin authentication. Every `GET` only reads; the
 - `POST /admin/coupons` with the creator's input (`kind`, `value`, `categoryIds`, `audience`, `groupIds`, `customerId`, `mode`, `code`, `validity` of `month`, `30d`, `none` or `custom` with `startsAt` and `endsAt`, `limit`, `minimum`, `currencyCode`): creates the promotion and its campaign. 201 with `{ coupon, warnings }`, 400 with the keys of what is missing, 409 when the code is taken.
 - `GET /admin/coupons/:id`: the coupon, its names and its latest 25 orders.
 - `POST /admin/coupons/:id` with `{ "status": "active" | "inactive" }`: pause it or turn it back on. With `{ "patch": { ... } }`: the edit, see Editing a coupon.
-- `GET /admin/coupons/lookups`: customer groups (marked when named in `memberGroupIds`), categories and the store's currencies, for the creator.
+- `POST /admin/coupons/:id/duplicate` with `{ "code": "...", "patch": { ... } }`: a copy under a new code with every rule, target and buy rule of the original, its dates in a campaign of its own and the store's terms, the patch on top. 201 with `{ coupon, warnings }`, 409 when the code is taken.
+- `GET /admin/coupons/lookups`: customer groups (marked when named in `memberGroupIds`), categories, the store's currencies and, with `storeTerms`, its features, pools and price lists, for the creator.
 - `GET /admin/coupons/lookups/customers?q=`: up to 10 customers by name, company or e-mail (at least 2 characters), for "one customer".
 - `GET /admin/coupons/for/order/:id`, `/for/customer/:id`, `/for/product/:id`: the data of the cards.
 - `GET /admin/coupons/integration`, `/integration/summary`, `/integration/attention`: the koda.integration/1 contract, see Works with Koda Plus hosts.
@@ -170,7 +176,7 @@ What other code may import: `@koda-plus/medusa-plugin-coupons/workflows` (the re
 
 ## What this plugin does not do
 
-- It does not delete coupons, and it does not edit targets, buy X get Y, delivery methods, sales channels or regions: Medusa's promotion page does.
+- It does not delete coupons, and it does not edit product or collection targets, delivery methods, sales channels or regions: Medusa's promotion page does.
 - It does not change how the cart applies promotions: Medusa's promotion module does, exactly as for a promotion made by hand.
 - It does not send coupons to customers: put the code in your newsletter or your e-mails.
 - It does not keep a history of its own: what a coupon brought is read from the orders every time.
@@ -205,6 +211,10 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 ## Changelog
 
-### 0.1.0 (unreleased)
+### 0.2.0 (unreleased)
+
+The whole build of a coupon in one form (what it gives, for whom, how it works), buy X get Y and the store's product groups in the creator, B2B and retail audiences, copies, a pause from the list and the edit form, and the store's own terms (`storeTerms`, `nobodyCustomerId`).
+
+### 0.1.0
 
 First release: the coupons page with tiles, every promotion in one sentence and its use from orders, the creator in three steps with a preview and warnings, editing from the list and the detail (`POST /admin/coupons/:id` with `{ patch }`), the options `memberGroupIds`, `codePrefix`, `codeInDescription` and `storeRules`, cards on the order, customer and product pages, and the koda.integration/1 contract. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-coupons/CHANGELOG.md).

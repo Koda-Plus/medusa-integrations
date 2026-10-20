@@ -1,5 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { CouponInputError } from "../../../workflows/coupons/create"
+import { CouponInputError } from "../../../workflows/coupons/errors"
 import { couponsService } from "../../../workflows/coupons/runtime"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
