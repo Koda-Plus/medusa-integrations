@@ -269,10 +269,7 @@ const CreditPage = () => {
                     ))}
                   </div>
                 )}
-                <div className="relative">
-                  <MagnifyingGlass className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ui-fg-muted" />
-                  <Input size="small" className="w-60 pl-8" placeholder={t("ui.search")} value={q} onChange={(e) => setQ(e.target.value)} />
-                </div>
+                <Input size="small" type="search" className="w-60" placeholder={t("ui.search")} value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
             </div>
             {tab === "accounts" ? (
@@ -348,7 +345,7 @@ function SetTermsCard({ status, choices }: { status: StatusResponse; choices: nu
             </div>
           ) : (
             <div className="relative">
-              <Input size="small" placeholder={t("set.customerPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} />
+              <Input size="small" type="search" placeholder={t("set.customerPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} />
               {(search.data ?? []).length ? (
                 <div className="absolute z-10 mt-1 w-full rounded-md border border-ui-border-base bg-ui-bg-base shadow-elevation-flyout">
                   {(search.data ?? []).map((c) => (

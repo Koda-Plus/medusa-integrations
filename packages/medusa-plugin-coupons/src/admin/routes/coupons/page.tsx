@@ -175,7 +175,7 @@ const CouponsPage = () => {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Segment value={filter} options={FILTERS.map((f) => ({ value: f, label: t(`list.filter.${f}`) }))} onChange={setFilter} />
-              <Input size="small" className="w-40 font-mono uppercase" placeholder={t("list.search")} value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input size="small" type="search" className="w-48 font-mono uppercase" placeholder={t("list.search")} value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
           </div>
           <Table>
