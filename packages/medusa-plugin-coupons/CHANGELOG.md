@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+The coupon's whole build in one form, copies, a pause from the list, and the store's own terms.
+
+### The creator
+
+- Two more types: buy X get Y (Medusa's own buyget on chosen categories, or counted by the store when it keeps buy X get Y in `storeTerms`) and percent off the store's product groups (option `storeTerms`, feature `pools`), whose target rules the store names (for example a product tag per group).
+- Two more audiences: every B2B group (the groups in `memberGroupIds`) and retail, everyone outside those groups with guests included (a "customer group is not" rule). Chosen customers: one or more.
+- The store's own terms in the steps, only the features the store keeps: from N pieces (in one group or all together), the price list the percent is counted from and the floor below which the price never goes, the price of a free piece, orders per customer, which coupons it adds up with or never goes with, and a note the customer reads next to the code. They are saved through the store's adapter next to the promotion; when they fail, the promotion is removed again, so no half coupon stays.
+- New warnings: a code named in "adds up with" that no coupon has. A coupon it adds up with is no stacking warning.
+
+### Editing
+
+- The edit form is built like the creator: 1. what it gives (the type, the value or buy X get Y, the categories or product groups it lands on, how it counts), 2. for whom (the same five audiences, a customer condition kept with its groups), 3. how it works (code, dates, uses, minimum, orders per customer, adding up, the note). On the right the coupon as the customer sees it, the sentence after saving and the list of what changes.
+- Categories and product groups are edited too (`batchPromotionRulesWorkflow` on the target rules, and on the buy rules of Medusa's buy X get Y); buy X get Y numbers, retail ("is not" groups) and the store's terms as well. A rule the form has no field for is still kept and named.
+- Pause and turn on from the edit form's header and from a row's menu, not only from the detail.
+- A customer replaces the store's "nobody left" marker (option `nobodyCustomerId`), and the sentence says "for nobody right now" for it.
+
+### Copies
+
+- Duplicate from a row, the detail or the edit form: the same form with a new code (the first number goes up: 7GRATIS1 gives 8GRATIS1) and the changes on top, saved as a new coupon. `POST /admin/coupons/:id/duplicate` with `{ code, patch }` copies every rule, target and buy rule, the dates into a campaign of its own and the store's terms; the original stays as it is. `duplicateCoupon` in `@koda-plus/medusa-plugin-coupons/workflows`.
+
+### The sentence
+
+- Names the product groups, product tags, buy X get Y with its numbers, the price of a free piece, from N pieces, the price lists, retail ("for everyone except"), a customer within groups, orders per customer, the cart value, and which coupons it adds up with or never goes with.
+
 ## 0.1.0 (2026-10-18)
 
 First release: a coupon creator and a coupon overview on top of Medusa's own promotions. No tables of its own.

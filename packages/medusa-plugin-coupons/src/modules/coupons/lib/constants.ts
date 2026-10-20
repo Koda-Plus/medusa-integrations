@@ -26,11 +26,15 @@ export const RULE = {
   category: "items.product.categories.id",
   product: "items.product.id",
   collection: "items.product.collection_id",
+  tag: "items.product.tags.id",
   shippingType: "shipping_methods.shipping_option.shipping_option_type_id",
   shippingOption: "shipping_methods.shipping_option_id",
   salesChannel: "sales_channel_id",
   region: "region_id",
 } as const
+
+/** Allocation "each" needs a ceiling of pieces per line; this one never limits a real cart. */
+export const EACH_MAX_QUANTITY = 999
 
 /** Rule attributes that mean an order minimum (the creator writes item_total). */
 export const MINIMUM_ATTRIBUTES = ["item_total", "subtotal", "original_item_total", "item_subtotal"]

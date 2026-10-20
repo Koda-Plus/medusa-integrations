@@ -90,7 +90,7 @@ test("the creator builds an ordinary Medusa promotion and a campaign for its dat
   const { promotion, campaign } = promotionInput(w)
   assert.deepEqual(promotion.application_method, { type: "fixed", target_type: "order", allocation: "across", value: 50, currency_code: "pln" })
   assert.deepEqual(promotion.rules, [
-    { attribute: "customer.id", operator: "eq", values: ["cus_1"] },
+    { attribute: "customer.id", operator: "in", values: ["cus_1"] },
     { attribute: "item_total", operator: "gte", values: ["300"] },
     { attribute: "currency_code", operator: "eq", values: ["pln"] },
   ])
@@ -154,7 +154,7 @@ test("a store rule takes the place of a marker value, or follows the sentence", 
 })
 
 test("options: defaults, and bad values fall back with a problem named", () => {
-  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, codeInDescription: false, problems: [] })
+  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, codeInDescription: false, storeTerms: null, nobodyCustomerId: null, problems: [] })
   const o = resolveOptions({ currencyCode: "euro", codePrefix: "to long prefix!", memberGroupIds: ["ok_1", 5 as unknown as string] })
   assert.equal(o.currencyCode, "pln")
   assert.equal(o.codePrefix, null)

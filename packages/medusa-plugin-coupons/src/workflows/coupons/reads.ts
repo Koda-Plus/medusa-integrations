@@ -10,7 +10,9 @@
 
 import { DETAIL_ORDERS, EXPIRING_DAYS, LIST_LIMIT } from "../../modules/coupons/lib/constants"
 import type { CouponDto, CouponOrderDto, CouponStats, CouponTiles, CustomerHit, NameMaps } from "../../modules/coupons/lib/contract"
-import { isForCustomer, reachesProduct, toCouponDto, type PromotionLike } from "../../modules/coupons/lib/describe"
+import { isForCustomer, reachesProduct, toCouponDto, withTerms, type PromotionLike } from "../../modules/coupons/lib/describe"
+import type { StoreTerms } from "../../modules/coupons/lib/contract"
+import { readTerms, storeLookups } from "./terms"
 import { customerModule, num, queryOf, sqlOf, str, type Scope, couponsService } from "./runtime"
 
 export const PROMOTION_FIELDS = [
@@ -34,6 +36,12 @@ export const PROMOTION_FIELDS = [
   "application_method.allocation",
   "application_method.value",
   "application_method.currency_code",
+  "application_method.max_quantity",
+  "application_method.apply_to_quantity",
+  "application_method.buy_rules_min_quantity",
+  "application_method.buy_rules.attribute",
+  "application_method.buy_rules.operator",
+  "application_method.buy_rules.values.value",
   "application_method.target_rules.attribute",
   "application_method.target_rules.operator",
   "application_method.target_rules.values.value",
@@ -50,6 +58,12 @@ export async function readPromotions(scope: Scope, filters: Record<string, unkno
     pagination: { take, skip: 0, order: { created_at: "DESC" } },
   })
   return (data ?? []) as PromotionLike[]
+}
+
+/** Promotions as coupons, with the store's own terms on them. */
+export async function toCoupons(scope: Scope, promotions: PromotionLike[], stats?: Map<string, CouponStats>, now: Date = new Date()): Promise<CouponDto[]> {
+  const terms: Record<string, StoreTerms> = await readTerms(scope, promotions.map((p) => p.id))
+  return promotions.map((p) => withTerms(toCouponDto(p, stats?.get(p.id), now), terms[p.id]))
 }
 
 /* ------------------------------------------------------------------ */
@@ -168,12 +182,13 @@ export function customerLabel(row: Record<string, unknown>): string | null {
 }
 
 export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<NameMaps> {
-  const groups = coupons.flatMap((c) => c.shape.groupIds)
+  const groups = coupons.flatMap((c) => [...c.shape.groupIds, ...(c.shape.excludedGroupIds ?? [])])
   const categories = coupons.flatMap((c) => c.shape.categoryIds)
   const products = coupons.flatMap((c) => c.shape.productIds)
   const customers = coupons.flatMap((c) => c.shape.customerIds)
-  const ids = (k: "collectionIds" | "shippingTypeIds" | "shippingOptionIds" | "salesChannelIds" | "regionIds") => coupons.flatMap((c) => c.shape[k] ?? [])
-  const [g, cat, p, cus, col, st, so, sc, reg] = await Promise.all([
+  const ids = (k: "collectionIds" | "shippingTypeIds" | "shippingOptionIds" | "salesChannelIds" | "regionIds" | "tagIds") => coupons.flatMap((c) => c.shape[k] ?? [])
+  const needStore = coupons.some((c) => c.terms)
+  const [g, cat, p, cus, col, st, so, sc, reg, tags, store] = await Promise.all([
     nameMap(scope, "customer_group", groups, (r) => str(r.name), ["name"]),
     nameMap(scope, "product_category", categories, (r) => str(r.name), ["name"]),
     nameMap(scope, "product", products, (r) => str(r.title), ["title"]),
@@ -183,6 +198,8 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
     nameMap(scope, "shipping_option", ids("shippingOptionIds"), (r) => str(r.name), ["name"]),
     nameMap(scope, "sales_channel", ids("salesChannelIds"), (r) => str(r.name), ["name"]),
     nameMap(scope, "region", ids("regionIds"), (r) => str(r.name), ["name"]),
+    nameMap(scope, "product_tag", ids("tagIds"), (r) => str(r.value), ["value"]),
+    needStore ? storeLookups(scope).then((x) => x.lookups) : Promise.resolve(null),
   ])
   /* The store's own rules (option storeRules), never a reason for the page to fail. */
   let storeRules: NameMaps["storeRules"] = {}
@@ -194,7 +211,10 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
       storeRules = {}
     }
   }
-  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, storeRules }
+  const pools = Object.fromEntries((store?.pools ?? []).map((x) => [x.id, x.name]))
+  const priceLists = Object.fromEntries((store?.priceLists ?? []).map((x) => [x.id, x.name]))
+  const nobody = couponsService(scope).getOptions().nobodyCustomerId
+  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, tags, pools, priceLists, nobody, storeRules }
 }
 
 /* ------------------------------------------------------------------ */
@@ -204,7 +224,7 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
 export async function listCoupons(scope: Scope, now: Date = new Date()): Promise<{ coupons: CouponDto[]; names: NameMaps; tiles: CouponTiles }> {
   const promotions = await readPromotions(scope)
   const stats = await statsFor(scope, promotions.map((p) => p.id))
-  const coupons = promotions.map((p) => toCouponDto(p, stats.get(p.id), now))
+  const coupons = await toCoupons(scope, promotions, stats, now)
   const [names, recent] = await Promise.all([namesFor(scope, coupons), last30Days(scope)])
   const soon = now.getTime() + EXPIRING_DAYS * 24 * 3600 * 1000
   const tiles: CouponTiles = {
@@ -213,7 +233,7 @@ export async function listCoupons(scope: Scope, now: Date = new Date()): Promise
     orders30d: recent.orders,
     discount30d: recent.discount,
     expiringSoon: coupons.filter((c) => c.status === "active" && c.endsAt && new Date(c.endsAt).getTime() <= soon).length,
-    automaticForEveryone: coupons.filter((c) => c.status === "active" && c.automatic && c.shape.groupIds.length === 0 && c.shape.customerIds.length === 0).length,
+    automaticForEveryone: coupons.filter((c) => c.status === "active" && c.automatic && c.shape.groupIds.length === 0 && c.shape.customerIds.length === 0 && (c.shape.excludedGroupIds ?? []).length === 0).length,
   }
   return { coupons, names, tiles }
 }
@@ -222,7 +242,7 @@ export async function couponDetail(scope: Scope, id: string, now: Date = new Dat
   const [promotion] = await readPromotions(scope, { id }, 1)
   if (!promotion) return null
   const stats = await statsFor(scope, [promotion.id])
-  const coupon = toCouponDto(promotion, stats.get(promotion.id), now)
+  const [coupon] = await toCoupons(scope, [promotion], stats, now)
   const sql = `with ${adjustments(scope, (pid) => `${pid} = ?`)},
     per_order as (select order_id, sum(amount) as discount from adj group by order_id)
     select o.id, o.display_id, o.created_at, o.email, o.currency_code, po.discount::float as discount,
@@ -264,7 +284,9 @@ export async function lookups(scope: Scope, memberGroupIds: readonly string[], f
       if (c.is_default === true) defaultCurrency = code
     }
   }
+  const store = await storeLookups(scope)
   return {
+    store: store.lookups,
     groups: groups.map((g) => ({ id: String(g.id), name: str(g.name) ?? String(g.id), member: memberGroupIds.includes(String(g.id)) })).sort((a, b) => a.name.localeCompare(b.name)),
     categories: categories.map((c) => ({ id: String(c.id), name: str(c.name) ?? String(c.id) })).sort((a, b) => a.name.localeCompare(b.name)),
     currencies: currencies.size ? [...currencies] : [fallbackCurrency],
@@ -307,8 +329,7 @@ export async function customerCoupons(scope: Scope, customerId: string, now: Dat
     groupIds = []
   }
   const promotions = await readPromotions(scope)
-  const forThem = promotions
-    .map((p) => toCouponDto(p, undefined, now))
+  const forThem = (await toCoupons(scope, promotions, undefined, now))
     .filter((c) => (c.status === "active" || c.status === "scheduled") && isForCustomer(c.shape, customerId, groupIds))
     .slice(0, 10)
   return { used, forThem, names: await namesFor(scope, forThem), currency }
@@ -344,8 +365,7 @@ export async function productCoupons(scope: Scope, productId: string, now: Date 
     categoryIds = []
   }
   const promotions = await readPromotions(scope)
-  const coupons = promotions
-    .map((p) => toCouponDto(p, undefined, now))
+  const coupons = (await toCoupons(scope, promotions, undefined, now))
     .filter((c) => c.status === "active" && reachesProduct(c.shape, productId, categoryIds, collectionId))
     .slice(0, 15)
   return { coupons, names: await namesFor(scope, coupons) }

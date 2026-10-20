@@ -36,8 +36,14 @@ export interface CouponShape {
   /** Sales channels and regions the coupon works in; empty: all. */
   salesChannelIds: string[]
   regionIds: string[]
+  /** Product tag ids the discount is limited to. */
+  tagIds?: string[]
   /** Customer group ids the coupon is for; empty: every group. */
   groupIds: string[]
+  /** Customer group ids the coupon is NOT for (rule "is not"): retail only, when they are the member groups. */
+  excludedGroupIds?: string[]
+  /** Buy X get Y (Medusa's buyget): how many to buy, how many free. */
+  buyGet?: { buy: number; free: number } | null
   /** Customer ids the coupon is for; empty: anyone. */
   customerIds: string[]
   /** An order minimum (item total), null when there is none. */
@@ -60,6 +66,45 @@ export interface CouponStats {
   lastUsedAt: string | null
 }
 
+/**
+ * THE STORE'S OWN TERMS of a coupon, for stores whose cart applies part of a
+ * promotion with logic of its own (option `storeTerms`): the store keeps
+ * them where it likes, the plugin shows and edits them in the same form.
+ * Every key is optional; a key the store does not keep is never sent.
+ */
+export interface StoreTerms {
+  /** What the customer reads next to the code in the store. */
+  note?: string | null
+  /** The store's product groups (pools) the discount counts on, by id. */
+  pools?: string[]
+  /** From this many pieces. */
+  minQuantity?: number | null
+  /** The pieces counted in each pool on its own (true) or all together (false). */
+  perPool?: boolean
+  /** A percent counted from the price of this price list. */
+  basePriceList?: string | null
+  /** The price before the discount never lower than in this price list. */
+  floorPriceList?: string | null
+  /** For every `buy` pieces from one pool `free` pieces free, a free piece costs `freePrice` (null: nothing). */
+  buyGet?: { buy: number; free: number; freePrice: number | null } | null
+  /** Coupons it adds up with, and coupons it never goes with, by code. */
+  combines?: { with: string[]; never: string[] } | null
+  /** At most this many orders per customer named in the coupon. */
+  perCustomerOrders?: number | null
+  /** Works from this cart value, counted before discounts, net or gross. */
+  threshold?: { value: number; metric: "net" | "gross" } | null
+}
+
+export type StoreFeature = "note" | "pools" | "minQuantity" | "priceLists" | "buyGet" | "combines" | "perCustomerOrders" | "threshold"
+
+export interface StoreLookups {
+  features: StoreFeature[]
+  /** What the store calls its pools, by language ("Grupy rabatowe"); the admin falls back to its own word. */
+  poolsLabel: Record<string, string> | null
+  pools: Array<{ id: string; name: string }>
+  priceLists: Array<{ id: string; name: string }>
+}
+
 export interface CouponDto {
   id: string
   code: string
@@ -76,6 +121,8 @@ export interface CouponDto {
   campaign: { id: string; name: string } | null
   stats: CouponStats
   createdAt: string | null
+  /** The store's own terms (option storeTerms), null when the store keeps none for it. */
+  terms?: StoreTerms | null
 }
 
 /** Names of the ids the shapes point to, so the admin can say them in words. */
@@ -89,6 +136,11 @@ export interface NameMaps {
   shippingOptions?: Record<string, string>
   salesChannels?: Record<string, string>
   regions?: Record<string, string>
+  tags?: Record<string, string>
+  pools?: Record<string, string>
+  priceLists?: Record<string, string>
+  /** The value of a customer rule that matches nobody (option nobodyCustomerId). */
+  nobody?: string | null
   /** The store's own rules of its promotions, by promotion id (option storeRules). */
   storeRules?: Record<string, { text: string; replacesDiscount?: boolean }>
 }
@@ -138,6 +190,8 @@ export interface LookupsResponse {
   categories: Array<{ id: string; name: string }>
   currencies: string[]
   currencyCode: string
+  /** The store's own terms the creator and the edit form offer (option storeTerms), null without them. */
+  store: StoreLookups | null
 }
 
 export interface CustomerHit {
@@ -147,18 +201,31 @@ export interface CustomerHit {
 }
 
 /** The three steps of the creator, as the admin sends them. */
-export type WizardKind = "percent_order" | "fixed_order" | "free_shipping" | "percent_category"
-export type WizardAudience = "everyone" | "groups" | "customer"
+export type WizardKind = "percent_order" | "fixed_order" | "free_shipping" | "percent_category" | "percent_pools" | "buy_get"
+/**
+ * everyone; groups (picked); members: every group named in memberGroupIds
+ * (B2B); retail: everyone outside those groups, guests included; customer:
+ * one or more chosen customers.
+ */
+export type WizardAudience = "everyone" | "groups" | "members" | "retail" | "customer"
 export type WizardValidity = "month" | "30d" | "none" | "custom"
 
 export interface WizardInput {
   kind: WizardKind
-  /** The percent (1 to 100) or the amount; ignored for free shipping. */
+  /** The percent (1 to 100) or the amount; ignored for free shipping and buy X get Y. */
   value?: number | null
   categoryIds?: string[]
+  /** The store's pools (percent_pools, and buy_get when the store keeps it). */
+  poolIds?: string[]
+  /** Buy X get Y: how many to buy, how many free, the price of a free piece (store only). */
+  buyGet?: { buy: number; free: number; freePrice?: number | null } | null
   audience: WizardAudience
   groupIds?: string[]
   customerId?: string | null
+  /** More than one customer (audience customer); customerId is the first of them. */
+  customerIds?: string[]
+  /** The store's own terms besides pools and buy X get Y (option storeTerms). */
+  terms?: Pick<StoreTerms, "note" | "minQuantity" | "perPool" | "basePriceList" | "floorPriceList" | "combines" | "perCustomerOrders" | "threshold"> | null
   /** A code to type at checkout, or automatic (applied by itself to whoever matches). */
   mode: "code" | "automatic"
   code?: string | null
@@ -187,6 +254,21 @@ export interface CouponPatch {
   minimum?: number | null
   groupIds?: string[]
   customerIds?: string[]
+  /** Retail only: the coupon is not for these groups (rule "is not"); [] clears it. */
+  excludedGroupIds?: string[]
+  /** What the discount lands on, for coupons on items: categories, or the store's pools. */
+  categoryIds?: string[]
+  poolIds?: string[]
+  /** Buy X get Y kept by Medusa (buyget): how many to buy, how many free. */
+  buyGet?: { buy: number; free: number } | null
+  /** The store's own terms (option storeTerms): only the keys sent change. */
+  terms?: StoreTerms | null
+}
+
+/** POST /admin/coupons/:id/duplicate: a copy under a new code, the form's changes on top. */
+export interface DuplicateInput {
+  code: string
+  patch?: CouponPatch
 }
 
 export interface UpdateResponse {

@@ -9,6 +9,7 @@
  *     codePrefix: "SHOP",
  *   } }]
  */
+import type { StoreFeature, StoreTerms } from "./contract"
 
 export interface CouponsPluginOptions {
   /** The currency of amount coupons and order minimums. Default "pln". */
@@ -39,6 +40,43 @@ export interface CouponsPluginOptions {
    * Default false.
    */
   codeInDescription?: boolean
+  /**
+   * The store's own terms of its coupons (pools of products, from N pieces,
+   * a price list as the base, buy X get Y counted by the store, which codes
+   * add up, orders per customer, a note for the customer). The creator and
+   * the edit form show the features named here, the plugin reads and writes
+   * them only through this adapter. Never throws for the plugin: a failed
+   * read reads as no terms, a failed write is reported and nothing else of
+   * the coupon is lost. Default none.
+   */
+  storeTerms?: StoreTermsAdapter
+  /**
+   * The value a store writes into a customer rule when nobody is left on it
+   * (Medusa takes no empty rule). The sentence says "nobody" for it. Default none.
+   */
+  nobodyCustomerId?: string
+}
+
+export interface StorePool {
+  id: string
+  name: string
+  /** The target rule that limits the discount to this pool's products in Medusa (e.g. a product tag). */
+  target?: { attribute: string; values: string[] } | null
+}
+
+export interface StoreTermsAdapter {
+  features: StoreFeature[]
+  /** What the store calls its pools, by language: { pl: "Grupy rabatowe", en: "Discount groups" }. */
+  poolsLabel?: Record<string, string>
+  lookups: (scope: unknown) => Promise<{ pools?: StorePool[]; priceLists?: Array<{ id: string; name: string }> }>
+  read: (scope: unknown, promotionIds: string[]) => Promise<Record<string, StoreTerms>>
+  /** Saves the terms of one promotion (null: the store forgets them). `kind` is the coupon's kind after the save. */
+  write: (scope: unknown, promotionId: string, terms: StoreTerms | null, context: { code: string; kind: string }) => Promise<void>
+  /**
+   * Buy X get Y counted by the store: Medusa keeps a standard promotion with
+   * this percent on the items as a marker (Medusa takes no zero). Default 0.001.
+   */
+  buyGetMarker?: number
 }
 
 /** A promotion's rule as the store applies it, in one or two plain sentences. */
@@ -53,8 +91,16 @@ export interface ResolvedCouponsOptions {
   codePrefix: string | null
   storeRules: CouponsPluginOptions["storeRules"] | null
   codeInDescription: boolean
+  storeTerms: ResolvedStoreTerms | null
+  nobodyCustomerId: string | null
   problems: string[]
 }
+
+export interface ResolvedStoreTerms extends StoreTermsAdapter {
+  buyGetMarker: number
+}
+
+const FEATURES: readonly StoreFeature[] = ["note", "pools", "minQuantity", "priceLists", "buyGet", "combines", "perCustomerOrders", "threshold"]
 
 export function resolveOptions(input: CouponsPluginOptions | undefined | null): ResolvedCouponsOptions {
   const o = (input && typeof input === "object" ? input : {}) as CouponsPluginOptions
@@ -75,5 +121,18 @@ export function resolveOptions(input: CouponsPluginOptions | undefined | null): 
   if (o.storeRules !== undefined && !storeRules) problems.push("storeRules (a function)")
   const codeInDescription = o.codeInDescription === true
   if (o.codeInDescription !== undefined && typeof o.codeInDescription !== "boolean") problems.push("codeInDescription (true or false)")
-  return { currencyCode, memberGroupIds, codePrefix, storeRules, codeInDescription, problems }
+
+  let storeTerms: ResolvedStoreTerms | null = null
+  const st = o.storeTerms as StoreTermsAdapter | undefined
+  if (st !== undefined) {
+    const ok = st && typeof st === "object" && typeof st.read === "function" && typeof st.write === "function" && typeof st.lookups === "function"
+    if (!ok) problems.push("storeTerms (an object with lookups, read and write)")
+    else {
+      const features = (Array.isArray(st.features) ? st.features : []).filter((f): f is StoreFeature => FEATURES.includes(f))
+      const marker = Number(st.buyGetMarker ?? 0.001)
+      storeTerms = { ...st, features: [...new Set(features)], buyGetMarker: Number.isFinite(marker) && marker > 0 && marker < 1 ? marker : 0.001 }
+    }
+  }
+  const nobodyCustomerId = typeof o.nobodyCustomerId === "string" && o.nobodyCustomerId.trim() ? o.nobodyCustomerId.trim() : null
+  return { currencyCode, memberGroupIds, codePrefix, storeRules, codeInDescription, storeTerms, nobodyCustomerId, problems }
 }

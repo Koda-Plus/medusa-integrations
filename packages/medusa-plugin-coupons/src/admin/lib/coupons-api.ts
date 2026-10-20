@@ -10,6 +10,7 @@ import type {
   ProductCouponsResponse,
   CouponPatch,
   UpdateResponse,
+  DuplicateInput,
   WizardInput,
 } from "../../modules/coupons/lib/contract"
 import { kitFetch } from "./coupons-kit"
@@ -77,6 +78,14 @@ export function useUpdateCoupon() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (v: { id: string; patch: CouponPatch }) => call<UpdateResponse>(`/admin/coupons/${v.id}`, { method: "POST", body: { patch: v.patch } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+}
+
+export function useDuplicateCoupon() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id: string } & DuplicateInput) => call<CreateResponse>(`/admin/coupons/${v.id}/duplicate`, { method: "POST", body: { code: v.code, patch: v.patch } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   })
 }
