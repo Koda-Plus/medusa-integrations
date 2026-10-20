@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactElement } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowUpRightOnBox, Bolt, Buildings, BuildingStorefront, Cash, Gift, Key, PauseSolid, PlaySolid, ReceiptPercent, SquareTwoStack, SquaresPlus, Tag, TruckFast, User, Users, XMark } from "@medusajs/icons"
 import { Badge, Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
@@ -127,7 +127,7 @@ function preview(c: CouponDto, p: NormalizedPatch | null): CouponDto {
   }
 }
 
-const KIND_ICON: Record<CouponKind, JSX.Element> = {
+const KIND_ICON: Record<CouponKind, ReactElement> = {
   percent_order: <ReceiptPercent />,
   fixed_order: <Cash />,
   free_shipping: <TruckFast />,
@@ -243,7 +243,7 @@ export function EditCouponModal({
   const showPools = targetsEditable(coupon) && has("pools") && (form.poolIds.length > 0 || (s.categoryIds.length === 0 && (s.kind !== "buy_get" || storeBuyGet)))
   const showCategories = targetsEditable(coupon) && (s.categoryIds.length > 0 || !showPools)
   const audiences: Audience[] = ["everyone", ...(memberGroupIds.length ? (["members", "retail"] as Audience[]) : []), "groups", "customer"]
-  const AUDIENCE_ICON: Record<Audience, JSX.Element> = { everyone: <Users />, members: <Buildings />, retail: <BuildingStorefront />, groups: <Tag />, customer: <User /> }
+  const AUDIENCE_ICON: Record<Audience, ReactElement> = { everyone: <Users />, members: <Buildings />, retail: <BuildingStorefront />, groups: <Tag />, customer: <User /> }
   const paused = medusaStatus === "inactive" || medusaStatus === "draft"
   const changes = check?.ok && check.value ? Object.keys(check.value) : []
 

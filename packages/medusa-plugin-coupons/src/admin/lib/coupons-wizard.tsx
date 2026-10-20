@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react"
+import { Fragment, useMemo, useState, type ReactElement } from "react"
 import { useTranslation } from "react-i18next"
 import { Bolt, Buildings, BuildingStorefront, Cash, CheckCircleSolid, CheckMini, ChevronRight, ExclamationCircle, Gift, Key, ReceiptPercent, Sparkles, SquaresPlus, Tag, TruckFast, User, Users } from "@medusajs/icons"
 import { Badge, Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
@@ -116,9 +116,9 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
   }
 
   const KINDS: WizardKind[] = ["percent_order", "fixed_order", "free_shipping", "percent_category", ...(has("pools") ? (["percent_pools"] as WizardKind[]) : []), "buy_get"]
-  const KIND_ICON: Record<WizardKind, JSX.Element> = { percent_order: <ReceiptPercent />, fixed_order: <Cash />, free_shipping: <TruckFast />, percent_category: <Tag />, percent_pools: <SquaresPlus />, buy_get: <Gift /> }
+  const KIND_ICON: Record<WizardKind, ReactElement> = { percent_order: <ReceiptPercent />, fixed_order: <Cash />, free_shipping: <TruckFast />, percent_category: <Tag />, percent_pools: <SquaresPlus />, buy_get: <Gift /> }
   const AUDIENCES = (["everyone", ...(memberGroupIds.length ? ["members", "retail"] : []), "groups", "customer"] as const) as ReadonlyArray<WizardInput["audience"]>
-  const AUDIENCE_ICON: Record<WizardInput["audience"], JSX.Element> = { everyone: <Users />, members: <Buildings />, retail: <BuildingStorefront />, groups: <Tag />, customer: <User /> }
+  const AUDIENCE_ICON: Record<WizardInput["audience"], ReactElement> = { everyone: <Users />, members: <Buildings />, retail: <BuildingStorefront />, groups: <Tag />, customer: <User /> }
   const STEP_KEY = { 1: "kind", 2: "audience", 3: "rules" } as const
   const stepDone = (s: Step) => stepErrors(s).length === 0
   const isPercentKind = form.kind === "percent_order" || form.kind === "percent_category" || form.kind === "percent_pools"
