@@ -2,6 +2,10 @@
 
 ## 0.2.1 (unreleased)
 
+### Fixed
+
+- A white-label store (`window.__KODA_KIT__ = { whiteLabel: true }`) no longer sees "by Koda Plus" under the page title; the page built its own header and skipped the check.
+
 ### Changed
 
 - The header and the Set credit terms intro say it in short phrases with icons (credit limits for B2B, net 14, 30 or 60 days, overdue check), in store mode too, instead of long sentences.
