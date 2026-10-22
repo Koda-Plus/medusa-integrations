@@ -3,18 +3,19 @@ import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, MagnifyingGlass, TruckFast } from "@medusajs/icons"
-import { Badge, Container, InlineTip, toast, usePrompt } from "@medusajs/ui"
+import { ArchiveBox, ArrowPath, ArrowUpRightOnBox, Cash, DocumentText, MagnifyingGlass, ShieldCheck, Trash, TruckFast } from "@medusajs/icons"
+import { Container, InlineTip, toast, usePrompt } from "@medusajs/ui"
 import type { ParcelFilter, PanelGroup, StatusResponse } from "../../../modules/inpost/lib/contract"
 import { errorMessage, inpostKeys, useInpostDemoReset, useInpostDemoSeed, useInpostPickup, useInpostStatus, useInpostSync } from "../../lib/inpost-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabbedPage, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpost-guide"
 import { GuideView, usePromptSpec } from "../../lib/inpost-guide-view"
 import { InpostIcon } from "../../lib/inpost-icon"
 import { hostPageTabs } from "../../lib/inpost-kit"
-import { DemoDetails, ParcelsSection } from "../../lib/inpost-panel"
+import { StatTile, StatTiles, type Tone } from "../../lib/inpost-blocks"
+import { DemoDetails, FILTER_ICON, ParcelsSection } from "../../lib/inpost-panel"
 import { LockerDrawer } from "../../lib/inpost-plan"
 import { AccountSection, HistorySection, ShippingSection, WritersSection } from "../../lib/inpost-settings"
-import { StatTile, fmtNumber, fmtRating, kitReferences, modeOf } from "../../lib/inpost-ui"
+import { fmtNumber, fmtRating, kitReferences, modeOf } from "../../lib/inpost-ui"
 
 /**
  * InPost by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -41,11 +42,12 @@ const SETTINGS_TABS = ["account", "shipping", "writers", "history"] as const
 const FILTERS = ["all", "to_create", "waiting", "in_transit", "in_locker", "delivered", "problems", "canceled", "skipped"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
-const GROUPS: Array<{ key: PanelGroup; tone: "default" | "green" | "orange" | "red" | "blue" | "purple" }> = [
+/* The counters under the header; each one is a filter of the list. Orange and red only while there is something to do. */
+const GROUPS: Array<{ key: PanelGroup; tone: Tone }> = [
   { key: "to_create", tone: "orange" },
   { key: "waiting", tone: "blue" },
   { key: "in_transit", tone: "blue" },
-  { key: "in_locker", tone: "purple" },
+  { key: "in_locker", tone: "blue" },
   { key: "delivered", tone: "green" },
   { key: "problems", tone: "red" },
 ]
@@ -97,18 +99,19 @@ const InpostPage = () => {
         ) : null}
         {s ? <Warnings status={s} /> : null}
         {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-6">
+          <StatTiles columns={6}>
             {GROUPS.map((g) => (
               <StatTile
                 key={g.key}
+                icon={FILTER_ICON[g.key]}
                 label={t(`stats.${g.key}`)}
                 value={fmtNumber(s.counts[g.key], lang)}
-                tone={s.counts[g.key] > 0 ? g.tone : "default"}
+                tone={s.counts[g.key] > 0 ? g.tone : "grey"}
                 active={filter === g.key}
                 onClick={() => setFilter(filter === g.key ? "all" : g.key)}
               />
             ))}
-          </div>
+          </StatTiles>
         ) : null}
       </Container>
 
@@ -186,35 +189,44 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
     }
   }
 
-  const actions: HeaderAction[] = [{ key: "lockers", label: t("actions.findLocker"), icon: <MagnifyingGlass />, onClick: () => setLockers(true) }]
+  /* Refresh first, then the tools of the warehouse; InPost Manager is the main button. */
+  const actions: HeaderAction[] = [
+    {
+      key: "sync",
+      label: status?.running ? t("actions.syncing") : t("actions.sync"),
+      icon: <ArrowPath />,
+      loading: sync.isPending || Boolean(status?.running),
+      disabled: !status?.configured,
+      onClick: () => void onSync(),
+    },
+    { key: "lockers", label: t("actions.findLocker"), icon: <MagnifyingGlass />, onClick: () => setLockers(true) },
+  ]
   if (pickupUsed) actions.push({ key: "pickup", label: t("actions.pickup"), icon: <TruckFast />, loading: pickup.isPending, disabled: !status?.writers.shipment.armed, onClick: () => void onPickup() })
-  if (status?.mode === "demo") actions.push({ key: "reset", label: t("actions.resetDemo"), loading: reset.isPending, onClick: () => void onReset() })
+  if (status?.mode === "demo") actions.push({ key: "reset", label: t("actions.resetDemo"), icon: <Trash />, loading: reset.isPending, onClick: () => void onReset() })
 
   return (
     <>
       <IntegrationHeader
         icon={<InpostIcon width={28} height={28} />}
         title={t("title")}
-        by={t("by")}
         badges={
           status ? (
             <>
               <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
                 {status.mode === "demo" ? <DemoDetails status={status} /> : null}
               </ModeBadge>
-              {armed > 0 ? (
-                <Badge size="2xsmall" color="orange">
-                  {t("mode.writing", { count: armed })}
-                </Badge>
-              ) : (
-                <Badge size="2xsmall" color="grey">
-                  {t("mode.readOnly")}
-                </Badge>
-              )}
+              {armed > 0 ? <ModeBadge color="orange" label={t("mode.writing", { count: armed })} /> : <ModeBadge color="grey" label={t("mode.readOnly")} />}
             </>
           ) : null
         }
         description={t("subtitle")}
+        points={[
+          { icon: <ArchiveBox />, text: t("points.lockers") },
+          { icon: <Cash />, text: t("points.cod") },
+          { icon: <DocumentText />, text: t("points.plan") },
+          { icon: <ArrowPath />, text: t("points.statuses") },
+          { icon: <ShieldCheck />, text: t("points.armed"), tone: "green" },
+        ]}
         social={
           <>
             <ReferencesBadge
@@ -244,18 +256,7 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
         view={nav.view}
         onView={(v) => nav.go(v)}
         labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
-        primary={
-          nav.view !== "guide"
-            ? {
-                key: "sync",
-                label: status?.running ? t("actions.syncing") : t("actions.sync"),
-                icon: <ArrowPath />,
-                loading: sync.isPending || Boolean(status?.running),
-                disabled: !status?.configured,
-                onClick: () => void onSync(),
-              }
-            : null
-        }
+        primary={status ? { key: "manager", label: t("actions.openManager"), icon: <ArrowUpRightOnBox />, onClick: () => window.open(status.links.manager, "_blank", "noopener") } : null}
         actions={nav.view !== "guide" ? actions : []}
       />
       {lockers ? <LockerDrawer onClose={() => setLockers(false)} /> : null}

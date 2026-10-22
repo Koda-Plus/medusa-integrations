@@ -1,24 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { Link } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { Link, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightMini, ArrowUpRightOnBox } from "@medusajs/icons"
 import {
-  Badge,
-  Button,
-  Container,
-  Copy,
-  Heading,
-  InlineTip,
-  Input,
-  StatusBadge,
-  Table,
-  Text,
-  clx,
-  toast,
-  usePrompt,
-} from "@medusajs/ui"
+  ArrowPath,
+  ArrowRightOnRectangle,
+  ArrowUpRightMini,
+  ArrowUpRightOnBox,
+  BuildingStorefront,
+  ChartBar,
+  Clock,
+  ExclamationCircle,
+  Globe,
+  Hashtag,
+  Key,
+  ListBullet,
+  LockClosedSolid,
+  PencilSquare,
+  ShieldCheck,
+  Tag,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, Container, Copy, InlineTip, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { OlxAdvertDto, OlxAdvertFilter, OlxAlertKind, OlxRunDto, OlxStatusResponse } from "../../../modules/olx/lib/contract"
 import {
   errorMessage,
@@ -31,27 +35,17 @@ import {
   useOlxStatus,
   useOlxSync,
 } from "../../lib/olx-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/olx-guide"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue, type Tone } from "../../lib/olx-blocks"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/olx-guide"
 import { GuideView, usePromptSpec } from "../../lib/olx-guide-view"
 import { OlxIcon } from "../../lib/olx-icon"
-import { ActivityCounters, AlertsSection, DemoDetails, MessagesSection } from "../../lib/olx-panel"
-import {
-  AdvertStatus,
-  AlertBadge,
-  Chip,
-  MedusaMark,
-  StatTile,
-  fmtDateTime,
-  fmtDuration,
-  fmtNumber,
-  fmtPrice,
-  fmtRating,
-  kitReferences,
-} from "../../lib/olx-ui"
+import { KitFetchingBar, KitLoading, KitSkeletonRows } from "../../lib/olx-kit"
+import { ActivityCounters, AlertsSection, DemoDetails, MessagesSection, PAGE_SIZE, pagination } from "../../lib/olx-panel"
+import { AdvertStatus, AlertBadge, MedusaMark, fmtDateTime, fmtDuration, fmtNumber, fmtPrice, fmtRating, kitReferences } from "../../lib/olx-ui"
 import { PlansSection, WritersSection } from "../../lib/olx-writers"
 
 /**
- * OLX by Koda Plus. Three views, switched in the header and kept in the URL:
+ * OLX. Three views, switched in the header and kept in the URL:
  *
  * - Panel: the business side. Counters, the adverts next to the store products
  *   they sell (with a link to each product), then the buyers' messages.
@@ -59,18 +53,22 @@ import { PlansSection, WritersSection } from "../../lib/olx-writers"
  * - Settings (`?view=settings&tab=`), behind the cog: the technical side.
  *   The OLX account, alerts, writers, their plans and the sync history.
  *
+ * Deep links: `?filter=` picks the advert filter (`/olx?filter=unmatched`) and
+ * `?q=` searches the adverts (`/olx?q=SKU-1`, from the product card).
+ *
  * The demo note and the stores running the integration sit in header badges.
  */
-const PAGE_SIZE = 20
-
 const SETTINGS_TABS = ["account", "alerts", "writers", "plans", "runs"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
+
+const FILTERS: OlxAdvertFilter[] = ["all", "linked", "unmatched", "limited", "ended", "nokey"]
 
 const OlxPage = () => {
   const { t, i18n } = useTranslation("olx")
   const lang = i18n.language || "en"
   const client = useQueryClient()
   const nav = usePageNav(SETTINGS_TABS)
+  const [params] = useSearchParams()
   const [pollUntil, setPollUntil] = useState(0)
   const status = useOlxStatus(pollUntil)
   const s = status.data
@@ -96,13 +94,16 @@ const OlxPage = () => {
     }
   }, [s?.connecting, s?.connection.connected, t])
 
-  const [filter, setFilter] = useState<OlxAdvertFilter>("all")
+  const linkFilter = params.get("filter") ?? ""
+  const [filter, setFilter] = useState<OlxAdvertFilter>(() => ((FILTERS as string[]).includes(linkFilter) ? (linkFilter as OlxAdvertFilter) : "all"))
+  const toggle = (f: OlxAdvertFilter) => setFilter((cur) => (cur === f ? "all" : f))
   const [alertKind, setAlertKind] = useState<OlxAlertKind | "all">("all")
 
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
         <Header status={s} loading={status.isLoading} lang={lang} nav={nav} onSyncStarted={() => setPollUntil(Date.now() + 30_000)} />
+        {status.isLoading ? <KitLoading label={t("loading")} /> : null}
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label="OLX">
@@ -113,19 +114,37 @@ const OlxPage = () => {
         {s && nav.view !== "guide" ? <Warnings status={s} lang={lang} /> : null}
         {s && nav.view === "panel" ? (
           <>
-            <div className="flex flex-col gap-y-2 px-6 py-4">
-              <Text size="xsmall" className="text-ui-fg-muted">
+            <div className="flex flex-col">
+              <Text size="xsmall" className="px-6 pt-4 text-ui-fg-muted">
                 {t("stats.groupAdverts")}
               </Text>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-                <StatTile label={t("stats.adverts")} value={s.counts.adverts} active={filter === "all"} onClick={() => setFilter("all")} />
-                <StatTile label={t("stats.live")} value={s.counts.live} tone="green" />
-                <StatTile label={t("stats.linkedLive")} value={s.counts.linkedLive} tone="green" active={filter === "linked"} onClick={() => setFilter("linked")} />
-                <StatTile label={t("stats.unmatched")} value={s.counts.unmatchedLive} tone="red" active={filter === "unmatched"} onClick={() => setFilter("unmatched")} />
-                <StatTile label={t("stats.limited")} value={s.counts.limited} tone="orange" active={filter === "limited"} onClick={() => setFilter("limited")} />
-                <StatTile label={t("stats.ended")} value={s.counts.ended} active={filter === "ended"} onClick={() => setFilter("ended")} />
-                <StatTile label={t("stats.noKey")} value={s.counts.noKey} active={filter === "nokey"} onClick={() => setFilter("nokey")} />
-              </div>
+              <StatTiles columns={7}>
+                <StatTile label={t("stats.adverts")} value={fmtNumber(s.counts.adverts, lang)} active={filter === "all"} onClick={() => setFilter("all")} />
+                <StatTile label={t("stats.live")} value={fmtNumber(s.counts.live, lang)} tone="green" />
+                <StatTile label={t("stats.linkedLive")} value={fmtNumber(s.counts.linkedLive, lang)} tone="green" active={filter === "linked"} onClick={() => toggle("linked")} />
+                <StatTile
+                  label={t("stats.unmatched")}
+                  value={fmtNumber(s.counts.unmatchedLive, lang)}
+                  tone={s.counts.unmatchedLive > 0 ? "red" : "grey"}
+                  active={filter === "unmatched"}
+                  onClick={() => toggle("unmatched")}
+                />
+                <StatTile
+                  label={t("stats.limited")}
+                  value={fmtNumber(s.counts.limited, lang)}
+                  tone={s.counts.limited > 0 ? "orange" : "grey"}
+                  active={filter === "limited"}
+                  onClick={() => toggle("limited")}
+                />
+                <StatTile label={t("stats.ended")} value={fmtNumber(s.counts.ended, lang)} active={filter === "ended"} onClick={() => toggle("ended")} />
+                <StatTile
+                  label={t("stats.noKey")}
+                  value={fmtNumber(s.counts.noKey, lang)}
+                  tone={s.counts.noKey > 0 ? "orange" : "grey"}
+                  active={filter === "nokey"}
+                  onClick={() => toggle("nokey")}
+                />
+              </StatTiles>
             </div>
             <ActivityCounters
               status={s}
@@ -143,7 +162,7 @@ const OlxPage = () => {
 
       {s && nav.view === "panel" ? (
         <>
-          <AdvertsSection status={s} lang={lang} filter={filter} onFilter={setFilter} />
+          <AdvertsSection status={s} lang={lang} filter={filter} onFilter={setFilter} onToggle={toggle} initialQ={params.get("q") ?? ""} />
           <MessagesSection status={s} lang={lang} />
         </>
       ) : null}
@@ -221,7 +240,6 @@ function Header({
     <IntegrationHeader
       icon={<OlxIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         <>
           {!loading ? (
@@ -229,20 +247,17 @@ function Header({
               {status?.mode === "demo" ? <DemoDetails status={status} /> : null}
             </ModeBadge>
           ) : null}
-          {status ? (
-            armed > 0 ? (
-              <Badge size="2xsmall" color="orange">
-                {t("mode.writing", { count: armed })}
-              </Badge>
-            ) : (
-              <Badge size="2xsmall" color="grey">
-                {t("mode.readOnly")}
-              </Badge>
-            )
-          ) : null}
+          {status ? armed > 0 ? <ToneBadge tone="orange">{t("mode.writing", { count: armed })}</ToneBadge> : <ToneBadge tone="grey">{t("mode.readOnly")}</ToneBadge> : null}
         </>
       }
       description={t("subtitle")}
+      points={[
+        { icon: <Tag />, text: t("points.link") },
+        { icon: <ExclamationCircle />, text: t("points.alerts") },
+        { icon: <ChartBar />, text: t("points.stats") },
+        { icon: <PencilSquare />, text: t("points.writers"), tone: armed > 0 ? "orange" : "grey" },
+        { icon: <LockClosedSolid />, text: t("points.never"), tone: "green" },
+      ]}
       social={
         <>
           <ReferencesBadge
@@ -367,20 +382,34 @@ function ConnectionSection({ status, lang }: { status: OlxStatusResponse; lang: 
   }
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("connection.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("connection.subtitle", { host: status.marketHost, scope: status.scope.requested })}
-        </Text>
-      </div>
-
+    <Section
+      icon={<Key />}
+      title={t("connection.title")}
+      badges={demo ? <ToneBadge tone="purple">{t("mode.demo")}</ToneBadge> : null}
+      pointsLabel={t("connection.subtitle", { host: status.marketHost, scope: status.scope.requested })}
+      points={[
+        { icon: <Globe />, text: status.marketHost },
+        { icon: <ShieldCheck />, text: t("connection.points.oauth") },
+        { icon: <Key />, text: t("connection.points.scope", { scope: status.scope.requested }) },
+        demo && { icon: <XCircle />, text: t("connection.points.demo"), tone: "blue", title: t("connection.demoNote") },
+      ]}
+      actions={
+        !demo ? (
+          <>
+            <Button size="small" variant="secondary" isLoading={disconnect.isPending} disabled={!c.connected} onClick={() => void onDisconnect()}>
+              <XCircle />
+              {t("actions.disconnect")}
+            </Button>
+            <Button size="small" variant={c.connected ? "secondary" : "primary"} isLoading={connect.isPending} disabled={!status.configured} onClick={() => void onConnect()}>
+              <ArrowRightOnRectangle />
+              {c.connected ? t("actions.reconnect") : status.connecting ? t("actions.openConsent") : t("actions.connect")}
+            </Button>
+          </>
+        ) : null
+      }
+    >
       <div className="flex flex-col gap-4 px-6 py-4">
-        {demo ? (
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("connection.demoNote")}
-          </Text>
-        ) : (
+        {!demo ? (
           <>
             {status.connecting ? (
               <InlineTip variant="info" label={t("connection.waitingLabel")}>
@@ -414,7 +443,7 @@ function ConnectionSection({ status, lang }: { status: OlxStatusResponse; lang: 
               />
             </div>
           </>
-        )}
+        ) : null}
 
         {status.redirectUri ? (
           <div className="flex items-center gap-x-2">
@@ -422,29 +451,22 @@ function ConnectionSection({ status, lang }: { status: OlxStatusResponse; lang: 
             <Copy content={status.redirectUri} className="mt-4" />
           </div>
         ) : null}
-
-        {!demo ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button size="small" variant={c.connected ? "secondary" : "primary"} isLoading={connect.isPending} disabled={!status.configured} onClick={() => void onConnect()}>
-              {c.connected ? t("actions.reconnect") : status.connecting ? t("actions.openConsent") : t("actions.connect")}
-            </Button>
-            <Button size="small" variant="secondary" isLoading={disconnect.isPending} disabled={!c.connected} onClick={() => void onDisconnect()}>
-              {t("actions.disconnect")}
-            </Button>
-          </div>
-        ) : null}
-
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("connection.tokensNote")}
-        </Text>
       </div>
-    </Container>
+      <div className="px-6 py-3">
+        <KeyPoints
+          label={t("connection.tokensNote")}
+          items={[
+            { icon: <Clock />, text: t("connection.points.access") },
+            { icon: <ArrowPath />, text: t("connection.points.refresh") },
+            { icon: <LockClosedSolid />, text: t("connection.points.encrypted"), tone: "green" },
+          ]}
+        />
+      </div>
+    </Section>
   )
 }
 
 /* ------------------------------------------------------------------ */
-
-const FILTERS: OlxAdvertFilter[] = ["all", "linked", "unmatched", "limited", "ended", "nokey"]
 
 function filterCount(status: OlxStatusResponse, f: OlxAdvertFilter): number {
   const c = status.counts
@@ -464,27 +486,39 @@ function filterCount(status: OlxStatusResponse, f: OlxAdvertFilter): number {
   }
 }
 
+const FILTER_ICON: Record<OlxAdvertFilter, ReactNode> = {
+  all: <ListBullet />,
+  linked: <BuildingStorefront />,
+  unmatched: <ExclamationCircle />,
+  limited: <Clock />,
+  ended: <XCircle />,
+  nokey: <Hashtag />,
+}
+
+/** Filters with something to do get the orange count. */
+const FILTER_ATTENTION: Partial<Record<OlxAdvertFilter, true>> = { unmatched: true, limited: true, nokey: true }
+
 function AdvertsSection({
   status,
   lang,
   filter,
   onFilter,
+  onToggle,
+  initialQ,
 }: {
   status: OlxStatusResponse
   lang: string
   filter: OlxAdvertFilter
   onFilter: (f: OlxAdvertFilter) => void
+  onToggle: (f: OlxAdvertFilter) => void
+  initialQ: string
 }) {
   const { t } = useTranslation("olx")
-  const [search, setSearch] = useState("")
-  const [q, setQ] = useState("")
+  const [search, setSearch] = useState(initialQ)
+  const q = useDebouncedValue(search.trim())
   const [page, setPage] = useState(0)
   const refresh = useOlxStatsRefresh()
 
-  useEffect(() => {
-    const id = window.setTimeout(() => setQ(search.trim()), 300)
-    return () => window.clearTimeout(id)
-  }, [search])
   useEffect(() => setPage(0), [filter, q])
 
   const adverts = useOlxAdverts(filter, q, page * PAGE_SIZE, PAGE_SIZE)
@@ -503,35 +537,44 @@ function AdvertsSection({
   }
 
   return (
-    <Container className="divide-y p-0" id="olx-adverts">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex flex-col gap-1">
-          <Heading level="h2">{t("adverts.title")}</Heading>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {t("adverts.subtitle")}
-          </Text>
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {status.stats.withStats > 0
-              ? t("adverts.statsLine", { count: status.stats.withStats, when: fmtDateTime(status.stats.oldestAt, lang) })
-              : t("adverts.statsNone")}
-          </Text>
-        </div>
-        <Button size="small" variant="secondary" className="shrink-0" disabled={!canRefresh} isLoading={refresh.isPending || status.stats.running} onClick={() => void onRefresh()}>
-          <ArrowPath />
-          {t("actions.refreshStats")}
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <Chip key={f} active={filter === f} label={t(`adverts.filter.${f}`)} count={filterCount(status, f)} onClick={() => onFilter(f)} />
-          ))}
-        </div>
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("adverts.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+    <Section
+      id="olx-adverts"
+      icon={<Tag />}
+      title={t("adverts.title")}
+      pointsLabel={t("adverts.subtitle")}
+      points={[
+        { icon: <Clock />, text: t("adverts.points.hourly") },
+        { icon: <BuildingStorefront />, text: t("adverts.points.product") },
+        status.stats.withStats > 0
+          ? { icon: <ChartBar />, text: t("adverts.points.stats", { count: status.stats.withStats, when: fmtDateTime(status.stats.oldestAt, lang) }), title: t("adverts.statsLine", { count: status.stats.withStats, when: fmtDateTime(status.stats.oldestAt, lang) }) }
+          : { icon: <ChartBar />, text: t("adverts.statsNone") },
+      ]}
+      actions={
+        <>
+          <SearchInput value={search} onChange={setSearch} placeholder={t("adverts.search")} />
+          <Button size="small" variant="secondary" className="shrink-0" disabled={!canRefresh} isLoading={refresh.isPending || status.stats.running} onClick={() => void onRefresh()}>
+            <ArrowPath />
+            {t("actions.refreshStats")}
+          </Button>
+        </>
+      }
+    >
+      <FilterBar>
+        {FILTERS.map((f, i) => (
+          <span key={f} className="contents">
+            {i === 1 ? <FilterDivider /> : null}
+            <FilterButton
+              icon={FILTER_ICON[f]}
+              label={t(`adverts.filter.${f}`)}
+              count={filterCount(status, f)}
+              attention={FILTER_ATTENTION[f]}
+              active={filter === f}
+              onClick={() => (f === "all" ? onFilter("all") : onToggle(f))}
+            />
+          </span>
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={adverts.isFetching && !adverts.isLoading} />
 
       <div className="overflow-x-auto">
         <Table>
@@ -547,50 +590,28 @@ function AdvertsSection({
                   {t("adverts.col.product")}
                 </span>
               </Table.HeaderCell>
+              <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={5} className="py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {adverts.isLoading ? "" : t("adverts.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {adverts.isLoading ? (
+              <KitSkeletonRows cols={6} rows={5} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={6} icon={<Tag />} title={t("adverts.empty")} />
             ) : (
               rows.map((a) => (
                 <Table.Row key={a.id} className="[&_td]:py-2.5">
                   <Table.Cell className="max-w-[340px]">
                     <div className="flex flex-col gap-y-1">
-                      <a
-                        href={a.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="txt-compact-small-plus inline-flex items-center gap-x-1 text-ui-fg-base hover:text-ui-fg-interactive"
-                        title={t("actions.openOlx")}
-                      >
-                        <span className="truncate">{a.title}</span>
-                        <ArrowUpRightOnBox className="shrink-0 text-ui-fg-muted" />
-                      </a>
+                      <span className="txt-compact-small-plus truncate text-ui-fg-base" title={a.title}>
+                        {a.title}
+                      </span>
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono text-ui-fg-muted txt-compact-xsmall">#{a.olxId}</span>
-                        {a.isPrimary ? (
-                          <Badge size="2xsmall" color="green">
-                            {t("adverts.primary")}
-                          </Badge>
-                        ) : null}
+                        {a.isPrimary ? <ToneBadge tone="green">{t("adverts.primary")}</ToneBadge> : null}
                         {a.alert ? <AlertBadge kind={a.alert} /> : null}
-                        {a.unread > 0 ? (
-                          <Badge size="2xsmall" color="blue">
-                            {t("adverts.unread", { count: a.unread })}
-                          </Badge>
-                        ) : null}
-                        {a.demo ? (
-                          <Badge size="2xsmall" color="purple">
-                            {t("adverts.sample")}
-                          </Badge>
-                        ) : null}
+                        {a.unread > 0 ? <ToneBadge tone="blue">{t("adverts.unread", { count: a.unread })}</ToneBadge> : null}
+                        {a.demo ? <ToneBadge tone="purple">{t("adverts.sample")}</ToneBadge> : null}
                       </span>
                     </div>
                   </Table.Cell>
@@ -612,12 +633,18 @@ function AdvertsSection({
                         {fmtNumber(a.stats.views ?? 0, lang)}
                         <span className="text-ui-fg-muted"> / {a.stats.phoneViews ?? 0} / {a.stats.observers ?? 0}</span>
                       </span>
-                    ) : (
-                      <span className="text-ui-fg-muted">&nbsp;</span>
-                    )}
+                    ) : null}
                   </Table.Cell>
                   <Table.Cell className="max-w-[300px]">
                     <StoreProductCell advert={a} />
+                  </Table.Cell>
+                  <Table.Cell className="text-right">
+                    <RowActions
+                      actions={[
+                        { key: "product", label: t("adverts.openProduct"), icon: <BuildingStorefront />, href: `/app/products/${a.productId}`, hidden: !a.productId },
+                        { key: "olx", label: t("actions.openOlx"), icon: <ArrowUpRightOnBox />, href: a.url, external: true },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -634,15 +661,9 @@ function AdvertsSection({
         canNextPage={page + 1 < pageCount}
         previousPage={() => setPage((p) => Math.max(0, p - 1))}
         nextPage={() => setPage((p) => p + 1)}
-        translations={{
-          of: t("pagination.of"),
-          results: t("pagination.results"),
-          pages: t("pagination.pages"),
-          prev: t("pagination.prev"),
-          next: t("pagination.next"),
-        }}
+        translations={pagination(t)}
       />
-    </Container>
+    </Section>
   )
 }
 
@@ -662,10 +683,7 @@ function StoreProductCell({ advert: a }: { advert: OlxAdvertDto }) {
             <span className="truncate font-mono text-ui-fg-muted txt-compact-xsmall" title={keyTitle}>
               {a.sku ?? a.matchKey}
             </span>
-            <span className="txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-x-0.5 whitespace-nowrap text-ui-fg-interactive">
-              {t("adverts.openProduct")}
-              <ArrowUpRightMini />
-            </span>
+            <ArrowUpRightMini className="shrink-0 text-ui-fg-interactive" />
           </span>
         </span>
       </Link>
@@ -674,25 +692,19 @@ function StoreProductCell({ advert: a }: { advert: OlxAdvertDto }) {
   if (a.matchKey) {
     return (
       <div className="flex flex-col items-start gap-y-1">
-        <Badge size="2xsmall" color="orange">
-          {t("adverts.noProduct")}
-        </Badge>
+        <ToneBadge tone="orange">{t("adverts.noProduct")}</ToneBadge>
         <span className="font-mono text-ui-fg-muted txt-compact-xsmall" title={keyTitle}>
           {a.matchKey}
         </span>
       </div>
     )
   }
-  return (
-    <Text size="small" className="text-ui-fg-muted">
-      {t("adverts.noKey")}
-    </Text>
-  )
+  return <ToneBadge tone="grey">{t("adverts.noKey")}</ToneBadge>
 }
 
 /* ------------------------------------------------------------------ */
 
-const RUN_COLOR: Record<OlxRunDto["status"], "green" | "orange" | "red"> = {
+const RUN_TONE: Record<OlxRunDto["status"], Tone> = {
   ok: "green",
   partial: "orange",
   error: "red",
@@ -704,13 +716,16 @@ function RunsSection({ lang }: { lang: string }) {
   const list = useMemo(() => runs.data?.runs ?? [], [runs.data])
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("runs.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("runs.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<ArrowPath />}
+      title={t("runs.title")}
+      pointsLabel={t("runs.subtitle")}
+      points={[
+        { icon: <Clock />, text: t("runs.points.hourly") },
+        { icon: <ArrowPath />, text: t("runs.points.manual") },
+      ]}
+    >
+      <KitFetchingBar active={runs.isFetching && !runs.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -725,14 +740,10 @@ function RunsSection({ lang }: { lang: string }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {list.length === 0 ? (
-              <Table.Row>
-                <td colSpan={7} className="py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {runs.isLoading ? "" : t("runs.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {runs.isLoading ? (
+              <KitSkeletonRows cols={7} rows={4} />
+            ) : list.length === 0 ? (
+              <EmptyTableRow cols={7} icon={<ArrowPath />} title={t("runs.empty")} />
             ) : (
               list.map((r) => (
                 <Table.Row key={r.id} title={r.message ?? undefined}>
@@ -742,7 +753,7 @@ function RunsSection({ lang }: { lang: string }) {
                     <span className="text-ui-fg-muted"> / {t(`runs.trigger.${r.trigger}`)}</span>
                   </Table.Cell>
                   <Table.Cell>
-                    <StatusBadge color={RUN_COLOR[r.status]}>{t(`runs.${r.status}`)}</StatusBadge>
+                    <ToneBadge tone={RUN_TONE[r.status]}>{t(`runs.${r.status}`)}</ToneBadge>
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{r.adverts}</Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{r.linkedLive}</Table.Cell>
@@ -754,7 +765,7 @@ function RunsSection({ lang }: { lang: string }) {
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 

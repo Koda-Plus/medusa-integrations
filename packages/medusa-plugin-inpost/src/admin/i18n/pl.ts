@@ -4,6 +4,13 @@ import { communityPl } from "../lib/inpost-kit-community"
 import { integrationPl } from "../../modules/inpost/lib/integration-texts"
 
 const pl: typeof en = {
+  points: {
+    lockers: "Paczkomaty i kurier",
+    cod: "Pobranie",
+    plan: "Przesyłka z przeczytanego planu",
+    statuses: "Statusy z webhooka",
+    armed: "Zapis tylko po uzbrojeniu",
+  },
   title: "InPost",
   by: "by Koda Plus",
   subtitle:
@@ -18,7 +25,7 @@ const pl: typeof en = {
   },
   settings: {
     title: "Ustawienia",
-    subtitle: "Techniczna strona integracji: konto InPost i webhook, nadawca z domyślną paczką i etykietą, zapisy oraz historia.",
+    subtitle: "Konto InPost i to, co wtyczka może zmieniać.",
     tab: {
       account: "Konto InPost",
       shipping: "Nadawca i paczka",
@@ -47,6 +54,9 @@ const pl: typeof en = {
     resetConfirm: "Zacznij od nowa",
   },
   actions: {
+    openManager: "InPost Manager",
+    create: "Utwórz",
+    buyNotArmed: "Opłać ofertę (najpierw uzbrój zapis)",
     moreActions: "Więcej akcji",
     sync: "Odśwież statusy",
     syncing: "Odświeżanie...",
@@ -116,13 +126,20 @@ const pl: typeof en = {
     problems: "Problemy i zwroty",
   },
   parcels: {
+    points: {
+      plan: "Tworzona z planu",
+      statuses: "Statusy z webhooka i co 15 min",
+      row: "Akcje w każdym wierszu",
+    },
+    emptyHint: "Pojawią się po realizacji",
+    emptyDemoHint: "Budowane z zamówień sklepu",
     title: "Przesyłki",
     subtitle:
       "Każda realizacja InPost w sklepie, obok swojego zamówienia. Przesyłkę tworzysz z jej planu; potem statusy InPost przychodzą webhookiem i z cyklicznego odczytu, a etykieta jest o jedno kliknięcie.",
     search: "Numer zamówienia, numer przesyłki, Paczkomat",
-    empty: "Nie ma tu przesyłek.",
-    emptyAll: "Nie ma jeszcze przesyłek InPost. Pojawią się, gdy zamówienie z opcją dostawy InPost zostanie zrealizowane w Medusie.",
-    emptyDemo: "Nie ma jeszcze przykładowych przesyłek: demo buduje je z zamówień sklepu. Złóż zamówienie i wróć tutaj.",
+    empty: "Brak przesyłek",
+    emptyAll: "Jeszcze bez przesyłek InPost",
+    emptyDemo: "Jeszcze bez przykładowych przesyłek",
     filter: {
       all: "Wszystkie",
       to_create: "Do utworzenia",
@@ -318,7 +335,7 @@ const pl: typeof en = {
     title: "Przesyłka zamówienia #{{order}}",
     loading: "Wczytywanie...",
     history: "Historia",
-    noHistory: "Jeszcze nic.",
+    noHistory: "Jeszcze nic",
     locker: "Paczkomat",
     tracking: "Śledzenie",
     shipmentId: "Przesyłka ShipX",
@@ -371,7 +388,7 @@ const pl: typeof en = {
     placeholder: "KRA01M, 30-415 albo Kraków",
     hint: "Kod pocztowy pokazuje najpierw najbliższe Paczkomaty.",
     demoNote: "Demo: przykładowe Paczkomaty symulacji.",
-    empty: "Nie znaleziono Paczkomatów.",
+    empty: "Brak Paczkomatów",
     payment: "Płatność kartą",
     distance: "{{m}} m",
     current: "Obecny",
@@ -397,6 +414,12 @@ const pl: typeof en = {
     back: "Wróć",
   },
   account: {
+    points: {
+      demo: "Demo, bez konta",
+      api: "API ShipX",
+      token: "Token tylko na serwerze",
+      schedule: "Odczyt statusów co 15 min",
+    },
     title: "Konto InPost",
     subtitle: "API ShipX Twojej organizacji w InPost Managerze. Token zostaje na serwerze: panel wie tylko, czy jest ustawiony.",
     demoNote: "Tryb demo: żadne konto InPost nie jest używane. Sprawdzenie odpowiada w imieniu symulacji.",
@@ -428,6 +451,11 @@ const pl: typeof en = {
     none: "Jeszcze nic nie przyszło. Wklej adres w InPost Managerze: Moje konto, API, webhook.",
   },
   shipping: {
+    points: {
+      demo: "Tylko ustawienia demo",
+      wins: "Zapis tutaj wygrywa z opcjami",
+      perShipment: "Zmiana przy każdej przesyłce",
+    },
     title: "Nadawca i paczka",
     subtitle: "Zapisywane tutaj dla trybu produkcyjnego; zapisana wartość wygrywa z opcją wtyczki.",
     subtitleDemo: "Zapisywane tylko dla trybu demo; ustawienia produkcyjne zostają bez zmian.",
@@ -458,6 +486,13 @@ const pl: typeof en = {
     clearSender: "Wróć do opcji",
   },
   writers: {
+    points: {
+      demo: "Demo: tylko symulacja",
+      off: "Wyłączone do zgody i uzbrojenia",
+      who: "Kto i kiedy, zapisane",
+    },
+    autoOnBadge: "Włączone",
+    autoOffBadge: "Wyłączone",
     title: "Zapisy",
     subtitle: "Co wtyczka może zmieniać poza własnymi tabelami. Każdy zapis jest wyłączony, dopóki nie pozwolisz na niego w opcjach i nie uzbroisz go tutaj; zostaje informacja, kto i kiedy go uzbroił.",
     demo: "Tryb demo: zapisy działają wyłącznie na symulacji, nigdy na InPost ani na zamówieniach w Medusie. Przełączniki demo są osobne od produkcyjnych.",
@@ -483,9 +518,13 @@ const pl: typeof en = {
     autoOff: "autoCreate jest wyłączone: każdą przesyłkę tworzy człowiek, z jej planu (domyślnie).",
   },
   history: {
+    points: {
+      newest: "Od najnowszych",
+      kept: "Przez 120 dni",
+    },
     title: "Historia",
     subtitle: "Odczyty statusów, webhooki, akcje i statusy w tym trybie, od najnowszych. Przechowywane przez 120 dni.",
-    empty: "Jeszcze nic.",
+    empty: "Jeszcze nic",
     kinds: {
       all: "Wszystko",
       run: "Odczyty statusów",
@@ -531,19 +570,20 @@ const pl: typeof en = {
     },
   },
   widget: {
+    noneHint: "Zrealizuj, potem utwórz z planu",
     title: "InPost",
     more: "Wszystkie przesyłki",
     chosen: "Wybór klienta",
     courier: "Kurier na adres dostawy.",
-    none: "Jeszcze bez przesyłki: zrealizuj pozycje opcją dostawy InPost, a potem utwórz przesyłkę z jej planu.",
-    notConfigured: "InPost nie jest skonfigurowany; wybór zostaje zapisany przy zamówieniu.",
+    none: "Jeszcze bez przesyłki",
+    notConfigured: "InPost bez konfiguracji",
     statusAt: "Status od",
-    waitingForArm: "Czeka na człowieka: przeczytaj plan i utwórz przesyłkę, gdy zapis przesyłek będzie uzbrojony.",
+    waitingForArm: "Czeka: zapis nieuzbrojony",
     showHistory: "Historia ({{count}})",
     hideHistory: "Ukryj historię",
     loading: "Czytam przesyłki InPost tego zamówienia",
     failed: "Nie udało się odczytać przesyłek InPost tego zamówienia",
-    notInpost: "To zamówienie nie idzie przez InPost.",
+    notInpost: "Wysyłka nie przez InPost",
   },
   references: {
     title: "Działa w sklepach wdrożonych przez Koda Plus",

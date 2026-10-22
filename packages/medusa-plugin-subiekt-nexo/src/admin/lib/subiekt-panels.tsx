@@ -1,14 +1,35 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowPath, LockClosedSolid } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Input, Switch, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import {
+  ArrowPath,
+  ArrowUturnLeft,
+  Beaker,
+  CheckCircle,
+  Clock,
+  ComputerDesktop,
+  ExclamationCircle,
+  ListBullet,
+  LockClosedSolid,
+  MagnifyingGlass,
+  PencilSquare,
+  Plus,
+  ShieldCheck,
+  Tag,
+  User,
+  XCircle,
+  ArrowLongRight,
+} from "@medusajs/icons"
+import { Button, InlineTip, Switch, Table, Text, toast, usePrompt } from "@medusajs/ui"
+import type { ReactNode } from "react"
 import type { CatalogChangeDto, CatalogChangeStatus, SubiektStatusResponse, WriterDto, WriterKey } from "../../modules/subiekt/lib/contract"
 import { skewLevel } from "../../modules/subiekt/lib/diagnostics"
 import { errorMessage, useSubiektProducts, useSubiektRelease, useSubiektSync, useSubiektWriter } from "./subiekt-api"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue } from "./subiekt-blocks"
+import { KeyPoints } from "./subiekt-guide"
+import { KitSkeletonRows } from "./subiekt-kit"
 import {
   CatalogStatusBadge,
   Field,
-  FilterPills,
   Pager,
   RunStatusBadge,
   SampleList,
@@ -31,22 +52,6 @@ import {
  */
 
 const PAGE_SIZE = 15
-
-function SectionHeader({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-      <div className="flex flex-col gap-y-1">
-        <Heading level="h2">{title}</Heading>
-        {subtitle ? (
-          <Text size="small" className="max-w-2xl text-ui-fg-subtle">
-            {subtitle}
-          </Text>
-        ) : null}
-      </div>
-      {children ? <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div> : null}
-    </div>
-  )
-}
 
 /* ------------------------------------------------------------------ */
 /* Bridge diagnostics                                                  */
@@ -74,8 +79,15 @@ export function BridgeSection({ status, lang }: { status: SubiektStatusResponse;
   const rejectedLater = Boolean(d.webhook.rejectedAt && (!d.webhook.lastAt || d.webhook.rejectedAt > d.webhook.lastAt))
 
   return (
-    <Container className="divide-y p-0">
-      <SectionHeader title={t("bridge.title")} subtitle={t("bridge.subtitle")} />
+    <Section
+      icon={<ComputerDesktop />}
+      title={t("bridge.title")}
+      points={[
+        { icon: <Clock />, text: t("bridge.points.last") },
+        { icon: <ShieldCheck />, text: t("bridge.points.fresh") },
+      ]}
+      pointsLabel={t("bridge.subtitle")}
+    >
       {d.legacy ? (
         <div className="px-6 py-4">
           <InlineTip variant="warning" label={t("bridge.title")}>
@@ -137,9 +149,9 @@ export function BridgeSection({ status, lang }: { status: SubiektStatusResponse;
               </Text>
             ) : (
               d.capabilities.map((c) => (
-                <Badge key={c} size="2xsmall" color="green">
+                <ToneBadge key={c} tone="green">
                   {t(`bridge.capabilityNames.${c}`, { defaultValue: c })}
-                </Badge>
+                </ToneBadge>
               ))
             )}
           </div>
@@ -164,7 +176,7 @@ export function BridgeSection({ status, lang }: { status: SubiektStatusResponse;
           </div>
         ) : null}
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -211,26 +223,17 @@ function WriterRow({ writer, status, lang }: { writer: WriterDto; status: Subiek
             {name}
           </Text>
           {writer.active ? (
-            <Badge size="2xsmall" color="green">
-              {t("writers.active")}
-            </Badge>
+            <ToneBadge tone="green">{t("writers.active")}</ToneBadge>
           ) : writer.armed ? (
-            <Badge size="2xsmall" color="orange">
-              {t("writers.blocked")}
-            </Badge>
+            <ToneBadge tone="orange">{t("writers.blocked")}</ToneBadge>
           ) : (
-            <Badge size="2xsmall" color="grey">
-              {t("writers.disarmed")}
-            </Badge>
+            <ToneBadge>{t("writers.disarmed")}</ToneBadge>
           )}
-          <Badge size="2xsmall" color="grey">
-            <span className="inline-flex items-center gap-x-1">
-              {writer.allowed ? null : <LockClosedSolid />}
-              {t("writers.option", { option: writer.option })} {writer.allowed ? t("writers.allowed") : t("writers.forbidden")}
-            </span>
-          </Badge>
+          <ToneBadge icon={writer.allowed ? undefined : <LockClosedSolid />}>
+            {t("writers.option", { option: writer.option })} {writer.allowed ? t("writers.allowed") : t("writers.forbidden")}
+          </ToneBadge>
         </div>
-        <Text size="small" className="max-w-2xl text-ui-fg-subtle">
+        <Text size="small" className="text-ui-fg-subtle">
           {description}
         </Text>
         {writer.unsupported ? (
@@ -255,21 +258,21 @@ export function WritersSection({ status, lang }: { status: SubiektStatusResponse
   const { t } = useTranslation("subiekt")
   const writers = WRITER_ORDER.map((k) => status.writers.find((w) => w.key === k)).filter((w): w is WriterDto => Boolean(w))
   return (
-    <Container className="divide-y p-0">
-      <SectionHeader title={t("writers.title")} subtitle={t("writers.subtitle")} />
-      {status.mode === "demo" ? (
-        <div className="px-6 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("writers.demoNote")}
-          </Text>
-        </div>
-      ) : null}
-      <div className="divide-y">
-        {writers.map((w) => (
-          <WriterRow key={w.key} writer={w} status={status} lang={lang} />
-        ))}
-      </div>
-    </Container>
+    <Section
+      icon={<LockClosedSolid />}
+      title={t("writers.title")}
+      badges={status.mode === "demo" ? <ToneBadge tone="blue" title={t("writers.demoNote")}>{t("widget.demo")}</ToneBadge> : null}
+      points={[
+        { icon: <PencilSquare />, text: t("writers.points.option") },
+        { icon: <User />, text: t("writers.points.person") },
+        { icon: <LockClosedSolid />, text: t("writers.points.falseWins") },
+      ]}
+      pointsLabel={t("writers.subtitle")}
+    >
+      {writers.map((w) => (
+        <WriterRow key={w.key} writer={w} status={status} lang={lang} />
+      ))}
+    </Section>
   )
 }
 
@@ -277,9 +280,22 @@ export function WritersSection({ status, lang }: { status: SubiektStatusResponse
 /* Products and prices from Subiekt                                    */
 
 type ProductKind = "all" | "price" | "create"
-type ProductStatusFilter = "all" | CatalogChangeStatus
 
 const STATUS_FILTERS: CatalogChangeStatus[] = ["planned", "applied", "simulated", "over_cap", "stale", "failed", "quarantined", "skipped"]
+
+const STATUS_ICON: Record<CatalogChangeStatus, ReactNode> = {
+  planned: <Clock />,
+  applied: <CheckCircle />,
+  simulated: <Beaker />,
+  over_cap: <ArrowLongRight />,
+  stale: <ArrowPath />,
+  failed: <XCircle />,
+  quarantined: <ExclamationCircle />,
+  skipped: <ArrowUturnLeft />,
+}
+
+/** Statuses a person should look at: their count is orange while above zero. */
+const STATUS_ATTENTION = new Set<CatalogChangeStatus>(["failed", "quarantined", "stale"])
 
 interface ProductStats {
   subiektProducts?: number
@@ -353,10 +369,10 @@ function StoreProductCell({ change: c }: { change: CatalogChangeDto }) {
 export function ProductsSection({ status, lang, poll, onAction }: { status: SubiektStatusResponse; lang: string; poll: boolean; onAction: () => void }) {
   const { t } = useTranslation("subiekt")
   const [kind, setKind] = useState<ProductKind>("all")
-  const [filter, setFilter] = useState<ProductStatusFilter>("all")
+  const [filter, setFilter] = useState<CatalogChangeStatus | "all">("all")
   const [search, setSearch] = useState("")
   const [offset, setOffset] = useState(0)
-  const q = search.trim()
+  const q = useDebouncedValue(search).trim()
   const running = status.running.includes("products")
   const products = useSubiektProducts(kind, filter, q, offset, PAGE_SIZE, poll || running)
   const sync = useSubiektSync()
@@ -414,31 +430,37 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
     : []
 
   return (
-    <Container className="divide-y p-0">
-      <SectionHeader title={t("products.title")} subtitle={t("products.subtitle")}>
-        {run?.dryRun ? (
-          <Badge size="2xsmall" color="purple">
-            {t("stock.dryRun")}
-          </Badge>
-        ) : null}
-        {run ? <RunStatusBadge status={run.status} /> : null}
-        <Button size="small" variant="secondary" disabled={!ready || !supported || !o.productSyncEnabled || running} isLoading={sync.isPending} onClick={onRead}>
-          <ArrowPath />
-          {running ? t("actions.running") : t("actions.products")}
-        </Button>
-      </SectionHeader>
-
+    <Section
+      id="subiekt-products"
+      icon={<Tag />}
+      title={t("products.title")}
+      badges={
+        <>
+          {run?.dryRun ? <ToneBadge tone="blue">{t("stock.dryRun")}</ToneBadge> : null}
+          {run ? <RunStatusBadge status={run.status} /> : null}
+        </>
+      }
+      points={[
+        { icon: <ListBullet />, text: t("products.points.plan") },
+        { icon: <MagnifyingGlass />, text: t("products.points.match"), title: t("products.matching") },
+        { icon: <LockClosedSolid />, text: t("products.points.writer") },
+      ]}
+      pointsLabel={t("products.subtitle")}
+      actions={
+        <>
+          <SearchInput value={search} onChange={setSearch} placeholder={t("products.search")} />
+          <Button size="small" variant="secondary" disabled={!ready || !supported || !o.productSyncEnabled || running} isLoading={sync.isPending} onClick={onRead}>
+            <ArrowPath />
+            {running ? t("actions.running") : t("actions.products")}
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-y-1 px-6 py-3">
         <Text size="small">{settings}</Text>
-        {run ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {runSummary(run, t)} {fmtDateTime(run.startedAt, lang)}, {fmtDuration(run.durationMs)}
-          </Text>
-        ) : (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("products.never")}
-          </Text>
-        )}
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {run ? `${runSummary(run, t)} ${fmtDateTime(run.startedAt, lang)}, ${fmtDuration(run.durationMs)}` : t("products.never")}
+        </Text>
       </div>
 
       {!o.productSyncEnabled ? (
@@ -463,18 +485,11 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
       ) : null}
 
       {counters.length > 0 ? (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 px-6 py-4 sm:grid-cols-4">
+        <StatTiles columns={4}>
           {counters.map(([key, value, warn]) => (
-            <div key={key} className="flex flex-col">
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                {t(`products.counters.${key}`)}
-              </Text>
-              <Text size="small" weight="plus" className={clx("tabular-nums", warn && value ? "text-ui-tag-orange-text" : undefined)}>
-                {fmtNumber(value ?? 0, lang)}
-              </Text>
-            </div>
+            <StatTile key={key} label={t(`products.counters.${key}`)} value={fmtNumber(value ?? 0, lang)} tone={warn && value ? "orange" : "grey"} />
           ))}
-        </div>
+        </StatTiles>
       ) : null}
 
       {stats?.samples && (stats.samples.conflicts?.length || stats.samples.unmatchedVariants?.length || stats.samples.noPrice?.length) ? (
@@ -485,30 +500,23 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 px-6 py-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <FilterPills<ProductKind>
-            value={kind}
-            onChange={setKind}
-            options={[
-              { value: "all", label: t("products.statuses.all") },
-              { value: "price", label: t("products.kinds.price") },
-              { value: "create", label: t("products.kinds.create") },
-            ]}
+      <FilterBar>
+        <FilterButton icon={<ListBullet />} label={t("products.statuses.all")} count={summary?.total} active={kind === "all" && filter === "all"} onClick={() => (setKind("all"), setFilter("all"))} />
+        <FilterButton icon={<Tag />} label={t("products.kinds.price")} active={kind === "price"} onClick={() => setKind(kind === "price" ? "all" : "price")} />
+        <FilterButton icon={<Plus />} label={t("products.kinds.create")} active={kind === "create"} onClick={() => setKind(kind === "create" ? "all" : "create")} />
+        {STATUS_FILTERS.some((st) => (summary?.[st] ?? 0) > 0 || st === filter) ? <FilterDivider /> : null}
+        {STATUS_FILTERS.filter((st) => (summary?.[st] ?? 0) > 0 || st === filter).map((st) => (
+          <FilterButton
+            key={st}
+            icon={STATUS_ICON[st]}
+            label={t(`products.statuses.${st}`)}
+            count={summary?.[st]}
+            attention={STATUS_ATTENTION.has(st)}
+            active={filter === st}
+            onClick={() => setFilter(filter === st ? "all" : st)}
           />
-          <div className="w-full md:w-56">
-            <Input size="small" type="search" placeholder={t("products.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        </div>
-        <FilterPills<ProductStatusFilter>
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: "all", label: t("products.statuses.all"), count: summary?.total },
-            ...STATUS_FILTERS.filter((s) => (summary?.[s] ?? 0) > 0 || s === filter).map((s) => ({ value: s, label: t(`products.statuses.${s}`), count: summary?.[s] })),
-          ]}
-        />
-      </div>
+        ))}
+      </FilterBar>
 
       <div className="overflow-x-auto">
         <Table>
@@ -524,14 +532,10 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={5} className="px-6 py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {products.isLoading ? "" : t("products.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {products.isLoading ? (
+              <KitSkeletonRows cols={5} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={5} icon={<Tag />} title={t("products.empty")} />
             ) : (
               rows.map((c) => (
                 <Table.Row key={c.id} className="[&_td]:py-2.5">
@@ -545,7 +549,7 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
                     <StoreProductCell change={c} />
                   </Table.Cell>
                   <Table.Cell>
-                    <CatalogStatusBadge status={c.status} />
+                    <CatalogStatusBadge status={c.status} dot />
                   </Table.Cell>
                   <Table.Cell className="max-w-md">
                     {c.lastError ? (
@@ -569,12 +573,18 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
 
       {data && data.quarantined.length > 0 ? (
         <div className="flex flex-col gap-y-2 px-6 py-4">
-          <Text size="small" weight="plus">
-            {t("products.quarantine")}
-          </Text>
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("products.quarantineHint")}
-          </Text>
+          <span className="flex flex-wrap items-center gap-2">
+            <Text size="small" weight="plus">
+              {t("products.quarantine")}
+            </Text>
+            <KeyPoints
+              items={[
+                { icon: <ExclamationCircle />, text: t("products.quarantinePoints.skipped"), tone: "orange" },
+                { icon: <PencilSquare />, text: t("products.quarantinePoints.fix") },
+              ]}
+              label={t("products.quarantineHint")}
+            />
+          </span>
           <ul className="flex flex-col divide-y">
             {data.quarantined.map((item) => (
               <li key={item.id} className="flex items-start justify-between gap-x-4 py-2">
@@ -588,14 +598,22 @@ export function ProductsSection({ status, lang, poll, onAction }: { status: Subi
                     </Text>
                   ) : null}
                 </div>
-                <Button size="small" variant="secondary" isLoading={release.isPending && release.variables === item.id} onClick={() => onRelease(item.id)}>
-                  {t("actions.release")}
-                </Button>
+                <RowActions
+                  actions={[
+                    {
+                      key: "release",
+                      label: t("actions.release"),
+                      icon: <ArrowUturnLeft />,
+                      loading: release.isPending && release.variables === item.id,
+                      onClick: () => void onRelease(item.id),
+                    },
+                  ]}
+                />
               </li>
             ))}
           </ul>
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }

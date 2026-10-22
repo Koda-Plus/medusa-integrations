@@ -1,10 +1,18 @@
 import { communityEn } from "../lib/olx-kit-community"
 
 const en = {
+  loading: "Reading OLX",
   title: "OLX",
   by: "by Koda Plus",
   subtitle:
     "Links OLX adverts to products by SKU, shows where OLX and the store disagree, reads advert statistics and unread messages. Writers, off until you arm them, end and bring back adverts, keep prices in line and publish products.",
+  points: {
+    link: "Adverts linked by SKU",
+    alerts: "Alerts every 15 minutes",
+    stats: "Statistics and messages",
+    writers: "Writers off until armed",
+    never: "Never buys packages",
+  },
   view: {
     panel: "Panel",
     guide: "Setup guide",
@@ -104,6 +112,14 @@ const en = {
     lastError: "Last error",
     ipBlocked: "OLX refused requests from this server after too many of them (4 500 in 5 minutes per IP). Everything waits until {{time}}.",
     tokensNote: "The access token lives 24 hours, the refresh token one month. Both are renewed by the hourly sync and stored encrypted (AES-256-GCM).",
+    points: {
+      oauth: "OAuth 2.0",
+      scope: "Scope: {{scope}}",
+      demo: "Demo, no OLX connection",
+      access: "Access token 24 h",
+      refresh: "Refresh token 1 month",
+      encrypted: "Stored encrypted",
+    },
     demoNote: "In demo mode the plugin does not connect to OLX. Register an app in the OLX developer portal and set the plugin options to switch to a real account.",
   },
   disconnect: {
@@ -125,8 +141,13 @@ const en = {
     title: "Alerts",
     subtitle: "Where OLX and the store disagree. Recomputed every 15 minutes from the last OLX read and the current Medusa stock, prices and product status.",
     planned: "Last plan {{time}}.",
+    points: {
+      every: "Every 15 minutes",
+      compare: "OLX against stock, price, status",
+      planned: "Plan {{time}}",
+    },
     stockStale: "Medusa stock could not be read in the last plan, so these alerts are from an earlier one.",
-    search: "Search product, SKU or advert",
+    search: "Product, SKU, advert",
     all: "All",
     kind: {
       live_sold_out: "Live, sold out",
@@ -148,11 +169,33 @@ const en = {
     },
     untracked: "not tracked",
     noAdvert: "no advert",
-    empty: "No alerts in this view.",
+    empty: "No alerts",
   },
   writers: {
     title: "Writers",
     subtitle: "Off by default. A writer acts only when the plugin option allows it and the switch here is on; in live mode the OLX token also needs the write scope. Plan first: a dry run shows exactly what would be sent, and nothing goes out without a lookup on OLX.",
+    sectionPoints: {
+      off: "Off by default",
+      two: "Option and switch",
+      dry: "Dry run first",
+      lookup: "Lookup on OLX before a write",
+    },
+    points: {
+      lifecycle: {
+        soldOut: "Ends sold out adverts",
+        overLimit: "Finishes over the limit",
+        back: "Brings back its own",
+      },
+      price: {
+        base: "Base price in {{currency}}",
+        approval: "Above {{percent}} % waits for you",
+      },
+      publish: {
+        perVariant: "One advert per variant",
+        sku: "SKU in external_id",
+        never: "Never published twice",
+      },
+    },
     name: {
       lifecycle: "Advert lifecycle",
       price: "Prices",
@@ -272,6 +315,11 @@ const en = {
   plan: {
     title: "Plans",
     subtitle: "What each writer would change, from what to what, and how the last attempt went. Recomputed every 15 minutes; a writer that is off only plans.",
+    points: {
+      what: "From what to what",
+      every: "Every 15 minutes",
+      off: "A writer that is off only plans",
+    },
     view: {
       open: "Open",
       held: "Waiting for approval",
@@ -324,9 +372,15 @@ const en = {
       no_target: "No target price.",
       status: "The advert is {{status}} on OLX now.",
     },
-    empty: "Nothing in this view.",
+    empty: "Nothing here",
   },
   publish: {
+    search: "Product title or SKU",
+    points: {
+      candidates: "Candidates: {{count}}",
+      ready: "Ready: {{count}}",
+      blocked: "Blocked: {{count}}",
+    },
     view: {
       plan: "Plan",
       ready: "Ready",
@@ -363,7 +417,7 @@ const en = {
       error: "The publish plan failed. See the server log.",
     },
     summary: "{{candidates}} candidates: {{ready}} ready, {{blocked}} blocked.",
-    empty: "Nothing in this view.",
+    empty: "Nothing here",
   },
   problem: {
     category: "No OLX category for this product: map one of its categories in publish.categories, or set olx_category_id in the product metadata.",
@@ -400,8 +454,13 @@ const en = {
     matching: "Matching key: external_id first, then the SKU line in the description. One primary advert per variant: live beats over the limit beats ended.",
     openProduct: "Open product",
     statsLine: "Statistics of {{count}} live adverts, refreshed every hour, each advert at most every 6 hours. Oldest: {{when}}.",
-    statsNone: "Statistics have not been read yet.",
-    search: "Search title, SKU or advert id",
+    statsNone: "No statistics yet",
+    search: "Title, SKU, advert id",
+    points: {
+      hourly: "Read every hour",
+      product: "Store product one click away",
+      stats: "Statistics of {{count}}, oldest {{when}}",
+    },
     filter: {
       all: "All",
       linked: "Linked",
@@ -418,7 +477,7 @@ const en = {
       product: "Product in the store",
       stats: "Views, phone, observers",
     },
-    empty: "No adverts in this view.",
+    empty: "No adverts",
     primary: "Primary",
     sample: "Sample",
     keyExternal: "external_id",
@@ -447,18 +506,27 @@ const en = {
       total: "Messages",
       started: "Started",
     },
-    lastRead: "Read {{when}}, every 15 minutes.",
-    notRead: "Not read yet.",
+    points: {
+      counts: "Counts only",
+      noText: "No message text kept",
+      answer: "Answer on OLX",
+      lastRead: "Read {{when}}",
+    },
+    notRead: "Not read yet",
     incomplete: "The last read was incomplete: {{message}}",
-    empty: "No unread conversations.",
-    emptyAll: "No conversations.",
-    disabled: "Messages are turned off in the plugin options (messagesEnabled: false).",
+    empty: "No unread conversations",
+    emptyAll: "No conversations",
+    disabledTitle: "Messages turned off",
     favourite: "Favourite",
     unknownAdvert: "Advert {{id}}",
   },
   runs: {
     title: "Sync history",
     subtitle: "Automatically every hour at minute 30, plus manual runs.",
+    points: {
+      hourly: "Every hour at :30",
+      manual: "Plus manual runs",
+    },
     col: {
       when: "When",
       source: "Source",
@@ -481,7 +549,7 @@ const en = {
       api: "OLX API",
     },
     changes: "+{{created}} new, {{updated}} changed, {{removed}} removed",
-    empty: "No runs yet.",
+    empty: "No runs yet",
   },
   pagination: {
     of: "of",
@@ -492,8 +560,11 @@ const en = {
   },
   widget: {
     title: "OLX",
-    empty: "No OLX advert is linked to this product.",
-    hint: "Put the variant SKU in the advert's external_id, or add a line \"Kod produktu: {{sku}}\" to its description.",
+    empty: "No linked advert",
+    points: {
+      external: "SKU in external_id",
+      description: "\"Kod produktu: {{sku}}\" in the description",
+    },
     more: "All adverts",
     demo: "Sample data",
     alerts: "Alerts",

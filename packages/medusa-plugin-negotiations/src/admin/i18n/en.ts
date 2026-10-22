@@ -7,13 +7,38 @@ const en = {
   subtitle:
     "B2B price negotiations between your logged-in customers and your team. A customer asks for a price on a product or a whole cart, you reply, send a counter offer, accept or reject, and every move reaches other plugins as an event.",
   error: "Could not load negotiations: {{message}}",
+  points: {
+    requests: "B2B price requests",
+    subject: "Product or whole cart",
+    moves: "Reply, counter, accept",
+    events: "Every move is an event",
+    expiry: "Stale threads expire",
+  },
+  thread: {
+    back: "All negotiations",
+    facts: "Details",
+    answer: "Your move",
+    expires: "Expires {{time}}",
+    noExpiry: "No expiry",
+    value: "Value {{value}}",
+    points: {
+      left: "Customer on the left",
+      right: "Team on the right",
+      notes: "Notes in orange",
+      reply: "Reply to the customer",
+      counter: "Counter with a price",
+      note: "Notes stay internal",
+      closed: "Thread closed",
+      notesStill: "Notes still work",
+    },
+  },
   view: {
     panel: "Panel",
     guide: "Setup guide",
   },
   settings: {
     title: "Settings",
-    subtitle: "The technical side: the options in use and the expiry of stale threads, the draft order writer with its plan, the history of background runs.",
+    subtitle: "Options, expiry, draft orders, history of runs",
     tab: {
       general: "General",
       writers: "Writers",
@@ -60,11 +85,17 @@ const en = {
     moreCurrencies: "Plus {{count}} more currencies: {{list}}",
   },
   queue: {
+    points: {
+      newest: "Newest activity first",
+      waiting: "Red dot: your move",
+      row: "Click to open",
+    },
+    emptyHint: "Customers ask for a price in the store",
     title: "Threads",
     subtitle: "Latest activity first. A red dot marks a thread where the customer moved last and the team owes an answer.",
     search: "Reference, product, SKU or customer",
-    empty: "No negotiations yet. They appear here when customers ask for a price in the store.",
-    emptyFiltered: "No thread in this view.",
+    empty: "No negotiations yet",
+    emptyFiltered: "No thread in this view",
     loading: "Loading threads",
     col: {
       thread: "Thread",
@@ -167,7 +198,7 @@ const en = {
     currency: "Currency",
     currencyAssumed: "The store's default; this older thread names none",
     conversation: "Conversation",
-    noMessages: "No messages in this thread.",
+    noMessages: "No messages yet",
     closedTip: "This thread is closed. The conversation stays here for the record, and internal notes can still be added.",
     close: "Close",
     cartLines: "The cart when it was sent",
@@ -282,6 +313,11 @@ const en = {
     conflict: "The thread changed in the meantime. Load it again.",
   },
   general: {
+    points: {
+      config: "Set in medusa-config.ts",
+      readOnly: "Read only here",
+      defaults: "Every option has a default",
+    },
     title: "Options in use",
     subtitle: "Set in medusa-config.ts, in the options of the plugin. This page shows them; it does not change them.",
     on: "On",
@@ -303,6 +339,14 @@ const en = {
     optionsHint: "Every option has a default and nothing here can stop Medusa from starting. The Setup guide lists them all.",
   },
   expiry: {
+    points: {
+      days: "Days without a move: {{count}}",
+      off: "Expiry off",
+      restart: "Each move restarts the clock",
+      notes: "Notes do not count",
+      schedule: "Hourly pass at :15",
+      demo: "Demo threads never expire",
+    },
     title: "Expiry",
     rule: "An open or countered thread expires after {{count}} days without a move. Every message, offer or new target restarts the clock; internal notes do not. A counter offer can set its own validity instead.",
     off: "Expiry is off (expiryDays: 0). Only counter offers with their own validity expire.",
@@ -315,6 +359,11 @@ const en = {
     schedule: "The expiry pass runs every hour at minute 15; each expired thread gets a system message and emits negotiation.expired.",
   },
   writers: {
+    points: {
+      event: "Accept emits an event",
+      off: "Off by default",
+      plan: "A plan before any write",
+    },
     title: "Writes into Medusa",
     subtitle:
       "Accepting a negotiation records the agreed price and emits negotiation.accepted; nothing else changes in your store. The writer below can do more. It is off until the plugin options allow it and a person arms it here.",
@@ -337,6 +386,11 @@ const en = {
     turnedOff: "Draft order writer disarmed",
   },
   plan: {
+    points: {
+      cap: "Drafts per run: {{cap}}",
+      every: "Every 10 minutes when on",
+      dry: "Dry run writes nothing",
+    },
     title: "Plan",
     subtitle: "Queued threads and what each will become. A run creates at most {{cap}} drafts; the job runs every 10 minutes while the writer is armed.",
     dryRun: "Dry run",
@@ -344,7 +398,7 @@ const en = {
     dryDone: "Dry run: {{count}} ready",
     run: "Create now",
     busy: "A run is already in progress",
-    empty: "Nothing queued.",
+    empty: "Nothing queued",
     ready: "Ready",
     col: {
       thread: "Thread",
@@ -354,9 +408,13 @@ const en = {
     },
   },
   runs: {
+    points: {
+      newest: "Newest first",
+      kinds: "Expiry, drafts, demo",
+    },
     title: "History",
     subtitle: "Background runs in the current mode, newest first: expiry passes, draft order runs and rebuilds of the demo story.",
-    empty: "No runs yet.",
+    empty: "No runs yet",
     col: {
       when: "When",
       kind: "Kind",
@@ -391,7 +449,7 @@ const en = {
     more: "And {{count}} more on the Negotiations page.",
     product: {
       title: "Negotiations",
-      empty: "No customer has negotiated this product yet.",
+      empty: "No negotiations about this product",
       line: "{{qty}} pcs at {{price}}",
     },
     customer: {
@@ -399,6 +457,10 @@ const en = {
       all: "All of this customer",
     },
     orders: {
+      points: {
+        last: "Customer moved last",
+        answer: "Answer on the Negotiations page",
+      },
       title: "Negotiations waiting for you",
       subtitle: "Price requests where the customer moved last. Answer, counter, accept or reject on the Negotiations page.",
     },
@@ -484,7 +546,7 @@ const en = {
       },
       answer: {
         title: "Answer from the queue",
-        p1: "The Panel lists every thread, the ones waiting for you first in the counters. The thread drawer has the whole conversation, the facts (list price, the customer's target, your offer, the value) and the moves: reply, counter offer with an optional validity, accept the price on the table, reject with a reason, internal note.",
+        p1: "The Panel lists every thread, the ones waiting for you first in the counters. The thread page has the whole conversation, the facts (list price, the customer's target, your offer, the value) and the moves: reply, counter offer with an optional validity, accept the price on the table, reject with a reason, internal note.",
         p2: "Product and customer pages show their threads in a widget, and the order list shows what waits for you, so requests are seen where the team already works.",
         check: "A counter offer moves the thread to Counter offer and the customer sees it.",
       },

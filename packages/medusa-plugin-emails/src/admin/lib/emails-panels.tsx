@@ -1,19 +1,43 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightMini, BarsArrowDown, ChartBar, CircleStack, Clock, Eye, EyeSlash, PaperPlane } from "@medusajs/icons"
+import {
+  ArrowPath,
+  ArrowUpRightMini,
+  BarsArrowDown,
+  Beaker,
+  ChartBar,
+  CircleStack,
+  Clock,
+  ComputerDesktop,
+  CursorArrowRays,
+  Envelope,
+  ExclamationCircle,
+  Eye,
+  EyeSlash,
+  Language,
+  ListBullet,
+  MinusCircle,
+  Moon,
+  PaperPlane,
+  Phone,
+  ShoppingCart,
+  Sun,
+  Swatch,
+  Tag,
+  XCircle,
+} from "@medusajs/icons"
 import { Link } from "react-router-dom"
-import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import { Button, Drawer, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { OrderLink, ResendLink } from "./emails-links"
 import { CampaignBadge, DeliveryBadge } from "./emails-delivery"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "./emails-kit"
 import { KeyPoints } from "./emails-guide"
+import { EmptyState, EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, ToneBadge } from "./emails-blocks"
 import { errorMessage, useEmailsMessage, useEmailsMessages, useEmailsPreview, useEmailsRetry, useEmailsTest } from "./emails-api"
 import {
   EmailFrame,
-  EmptyRow,
   Fact,
-  FilterPills,
   KindBadge,
   MessageStatusBadge,
   OnOff,
@@ -83,13 +107,17 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
     : ""
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("gallery.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("gallery.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<Swatch />}
+      title={t("gallery.title")}
+      pointsLabel={t("gallery.subtitle")}
+      points={[
+        { icon: <ComputerDesktop />, text: t("gallery.points.devices") },
+        { icon: <Moon />, text: t("gallery.points.modes") },
+        { icon: <Language />, text: t("gallery.points.languages") },
+        { icon: <ShoppingCart />, text: t("gallery.points.data") },
+      ]}
+    >
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr]">
         <div className="flex flex-col gap-y-2 border-b border-ui-border-base p-4 lg:border-b-0 lg:border-r">
           {templates.map((x) => (
@@ -112,38 +140,17 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <FilterPills<Lang>
-                value={locale}
-                onChange={setLocale}
-                options={[
-                  { value: "pl", label: "PL" },
-                  { value: "en", label: "EN" },
-                ]}
-              />
-              <FilterPills<Theme>
-                value={theme}
-                onChange={setTheme}
-                options={[
-                  { value: "light", label: t("gallery.light") },
-                  { value: "dark", label: t("gallery.dark") },
-                ]}
-              />
-              <FilterPills<Width>
-                value={width}
-                onChange={setWidth}
-                options={[
-                  { value: "desktop", label: t("gallery.desktop") },
-                  { value: "mobile", label: t("gallery.phone") },
-                ]}
-              />
-              <FilterPills<PreviewSource>
-                value={effectiveSource}
-                onChange={setSource}
-                options={[
-                  { value: "sample", label: t("gallery.sample") },
-                  { value: "latest", label: t("gallery.latest"), disabled: !current?.latest },
-                ]}
-              />
+              <FilterButton icon={<Language />} label="PL" title={t("languages.pl")} active={locale === "pl"} onClick={() => setLocale("pl")} />
+              <FilterButton icon={<Language />} label="EN" title={t("languages.en")} active={locale === "en"} onClick={() => setLocale("en")} />
+              <FilterDivider />
+              <FilterButton icon={<Sun />} label={t("gallery.light")} active={theme === "light"} onClick={() => setTheme("light")} />
+              <FilterButton icon={<Moon />} label={t("gallery.dark")} active={theme === "dark"} onClick={() => setTheme("dark")} />
+              <FilterDivider />
+              <FilterButton icon={<ComputerDesktop />} label={t("gallery.desktop")} active={width === "desktop"} onClick={() => setWidth("desktop")} />
+              <FilterButton icon={<Phone />} label={t("gallery.phone")} active={width === "mobile"} onClick={() => setWidth("mobile")} />
+              <FilterDivider />
+              <FilterButton icon={<Beaker />} label={t("gallery.sample")} active={effectiveSource === "sample"} onClick={() => setSource("sample")} />
+              <FilterButton icon={<ShoppingCart />} label={t("gallery.latest")} active={effectiveSource === "latest"} disabled={!current?.latest} onClick={() => setSource("latest")} />
             </div>
           </div>
 
@@ -160,19 +167,13 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
                     {t("gallery.size", { size: fmtKb(preview.data.bytes, lang) })}
                   </Text>
                 ) : null}
-                {sourceText ? (
-                  <Badge size="2xsmall" color={preview.data?.source === "latest" ? "blue" : "grey"}>
-                    {sourceText}
-                  </Badge>
-                ) : null}
+                {sourceText ? <ToneBadge tone={preview.data?.source === "latest" ? "blue" : "grey"}>{sourceText}</ToneBadge> : null}
               </div>
             </div>
             <div className="flex justify-center p-4">
               {preview.isLoading ? (
                 <div className="flex h-[420px] items-center justify-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {t("gallery.rendering")}
-                  </Text>
+                  <EmptyState icon={<ArrowPath className="animate-spin" />} title={t("gallery.rendering")} />
                 </div>
               ) : preview.isError ? (
                 <div className="w-full">
@@ -188,9 +189,20 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
 
           {current ? (
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <Text size="xsmall" className="max-w-2xl text-ui-fg-muted">
-                {current.latest ? t("gallery.latestNote") : t("gallery.sampleNote")}
-              </Text>
+              <KeyPoints
+                label={current.latest ? t("gallery.latestNote") : t("gallery.sampleNote")}
+                items={
+                  current.latest
+                    ? [
+                        { icon: <ShoppingCart />, text: t("gallery.points.latestOrder") },
+                        { icon: <EyeSlash />, text: t("gallery.points.personReplaced") },
+                      ]
+                    : [
+                        { icon: <Beaker />, text: t("gallery.points.sampleData") },
+                        { icon: <Tag />, text: t("gallery.points.testSubject") },
+                      ]
+                }
+              />
               <Button size="small" variant="secondary" onClick={() => onSendTest({ template: current.key, locale, source: effectiveSource })}>
                 <PaperPlane />
                 {t("gallery.sendThis")}
@@ -199,7 +211,7 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
           ) : null}
         </div>
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -228,16 +240,8 @@ function TemplateCard({ template, lang, active, showSource, onClick }: { templat
         <Text size="xsmall" leading="compact" className="font-mono text-ui-fg-muted">
           {template.key}
         </Text>
-        {showSource && template.source === "app" ? (
-          <Badge size="2xsmall" color="grey">
-            {t("templates.app")}
-          </Badge>
-        ) : null}
-        {!template.enabled ? (
-          <Badge size="2xsmall" color="grey">
-            {template.allowed ? t("templates.off") : t("templates.blocked")}
-          </Badge>
-        ) : null}
+        {showSource && template.source === "app" ? <ToneBadge>{t("templates.app")}</ToneBadge> : null}
+        {!template.enabled ? <ToneBadge>{template.allowed ? t("templates.off") : t("templates.blocked")}</ToneBadge> : null}
       </span>
     </button>
   )
@@ -248,6 +252,15 @@ function TemplateCard({ template, lang, active, showSource, onClick }: { templat
 /* ------------------------------------------------------------------ */
 
 const FILTERS: MessageFilter[] = ["all", "sent", "attention", "skipped", "test", "bounced"]
+
+const FILTER_ICON: Record<MessageFilter, ReactNode> = {
+  all: <ListBullet />,
+  sent: <PaperPlane />,
+  attention: <ExclamationCircle />,
+  skipped: <MinusCircle />,
+  test: <Beaker />,
+  bounced: <XCircle />,
+}
 
 function filterCount(status: StatusResponse, f: MessageFilter): number | undefined {
   const c = status.counts
@@ -334,19 +347,14 @@ export function MessagesSection({
   const errorText = useErrorText()
 
   return (
-    <Container id="emails-log" className="scroll-mt-4 divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <span className="flex flex-wrap items-center gap-2">
-          <Heading level="h2">{demo ? t("log.demoTitle") : t("log.title")}</Heading>
-          {demo ? (
-            <Badge size="2xsmall" color="purple">
-              {t("log.simulated")}
-            </Badge>
-          ) : null}
-        </span>
-        <KeyPoints
-          label={demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
-          items={
+    <Section
+      id="emails-log"
+      icon={<Envelope />}
+      title={demo ? t("log.demoTitle") : t("log.title")}
+      badges={demo ? <ToneBadge tone="blue">{t("log.simulated")}</ToneBadge> : null}
+      pointsLabel={demo ? t("log.demoSubtitle") : t("log.subtitle", { days: status.retentionDays })}
+      actions={<SearchInput className="sm:w-72" value={search} onChange={setSearch} placeholder={t(status?.showAddresses ? "log.searchAddresses" : "log.search")} />}
+      points={
             demo
               ? [
                   { icon: <PaperPlane />, text: t("log.points.nothingSent"), tone: "orange" },
@@ -360,31 +368,14 @@ export function MessagesSection({
                     ? [{ icon: <CircleStack />, text: t("log.points.history", { date: fmtDateTime(status.history.firstAt, lang) }), tone: "blue" as const }]
                     : []),
                 ]
-          }
-        />
-      </div>
+      }
+    >
       {scoped && scope ? (
         <div className="flex flex-wrap items-center gap-2 px-6 py-3">
-          {scope.orderId ? (
-            <Badge size="2xsmall" color="blue">
-              {t("log.scope.order", { id: scope.orderId })}
-            </Badge>
-          ) : null}
-          {scope.customerId ? (
-            <Badge size="2xsmall" color="blue">
-              {t("log.scope.customer", { id: scope.customerId })}
-            </Badge>
-          ) : null}
-          {scope.since ? (
-            <Badge size="2xsmall" color="grey">
-              {t(`log.scope.since.${scope.since}`)}
-            </Badge>
-          ) : null}
-          {group ? (
-            <Badge size="2xsmall" color="purple">
-              {group.label}
-            </Badge>
-          ) : null}
+          {scope.orderId ? <ToneBadge tone="blue">{t("log.scope.order", { id: scope.orderId })}</ToneBadge> : null}
+          {scope.customerId ? <ToneBadge tone="blue">{t("log.scope.customer", { id: scope.customerId })}</ToneBadge> : null}
+          {scope.since ? <ToneBadge icon={<Clock />}>{t(`log.scope.since.${scope.since}`)}</ToneBadge> : null}
+          {group ? <ToneBadge tone="blue">{group.label}</ToneBadge> : null}
           {group?.link && !group.link.path.includes(":") ? (
             <Link to={group.link.path} className="txt-compact-small-plus inline-flex items-center gap-x-1 text-ui-fg-interactive hover:underline">
               {group.link.label}
@@ -393,22 +384,33 @@ export function MessagesSection({
           ) : null}
           {onClearScope ? (
             <Button size="small" variant="transparent" onClick={onClearScope}>
+              <XCircle />
               {t("log.scope.clear")}
             </Button>
           ) : null}
         </div>
       ) : null}
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col gap-2">
-          <FilterPills<MessageFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`log.filter.${f}`), count: scoped ? undefined : filterCount(status, f) }))} />
-          {groups.length && onGroup ? (
-            <FilterPills<string> value={group?.key ?? ""} onChange={onGroup} options={[{ value: "", label: t("log.group.all") }, ...groups.map((g) => ({ value: g.key, label: g.label }))]} />
-          ) : null}
-        </div>
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t(status?.showAddresses ? "log.searchAddresses" : "log.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+      <FilterBar>
+        {FILTERS.map((f) => (
+          <FilterButton
+            key={f}
+            icon={FILTER_ICON[f]}
+            label={t(`log.filter.${f}`)}
+            count={scoped ? undefined : filterCount(status, f)}
+            attention={f === "attention" || f === "bounced"}
+            active={filter === f}
+            onClick={() => onFilter(filter === f && f !== "all" ? "all" : f)}
+          />
+        ))}
+        {groups.length && onGroup ? (
+          <>
+            <FilterDivider />
+            {groups.map((g) => (
+              <FilterButton key={g.key} icon={<Envelope />} label={g.label} title={t("log.group.title")} active={group?.key === g.key} onClick={() => onGroup(group?.key === g.key ? "" : g.key)} />
+            ))}
+          </>
+        ) : null}
+      </FilterBar>
       {messages.isError ? (
         <div className="px-6 py-4">
           <InlineTip variant="error" label={t("log.title")}>
@@ -434,7 +436,15 @@ export function MessagesSection({
             {rows.length === 0 && messages.isLoading ? (
               <KitSkeletonRows cols={7} />
             ) : rows.length === 0 ? (
-              <EmptyRow cols={7} text={demo ? t("log.demoEmpty") : t("log.empty")} />
+              <EmptyTableRow
+                cols={7}
+                icon={<Envelope />}
+                title={demo ? t("log.demoEmpty") : t("log.empty")}
+                points={[
+                  { icon: <ShoppingCart />, text: t("log.emptyPoints.order") },
+                  { icon: <PaperPlane />, text: t("log.emptyPoints.test") },
+                ]}
+              />
             ) : (
               rows.map((m) => (
                 <Table.Row key={m.id} className="[&_td]:py-2.5 align-top">
@@ -447,9 +457,7 @@ export function MessagesSection({
                         </Text>
                         <KindBadge kind={m.kind} />
                         {m.variant && groupOf(m.template)?.variantLabels?.[m.variant] ? (
-                          <Badge size="2xsmall" color={m.variant === "overdue" ? "red" : "blue"}>
-                            {groupOf(m.template)!.variantLabels![m.variant]}
-                          </Badge>
+                          <ToneBadge tone={m.variant === "overdue" ? "red" : "blue"}>{groupOf(m.template)!.variantLabels![m.variant]}</ToneBadge>
                         ) : null}
                       </span>
                       <Text size="xsmall" className="font-mono text-ui-fg-muted">
@@ -463,11 +471,9 @@ export function MessagesSection({
                     <div className="flex flex-col items-start gap-y-1">
                       {m.orderId ? <OrderLink id={m.orderId} open={t("log.openOrder")} /> : null}
                       {m.orderState ? (
-                        <span title={m.orderState.hint ?? undefined}>
-                          <Badge size="2xsmall" color={m.orderState.color} className="whitespace-nowrap">
-                            {m.orderState.label}
-                          </Badge>
-                        </span>
+                        <ToneBadge tone={m.orderState.color} title={m.orderState.hint ?? undefined}>
+                          {m.orderState.label}
+                        </ToneBadge>
                       ) : null}
                       <GroupLink group={groupOf(m.template)} message={m} />
                     </div>
@@ -495,9 +501,7 @@ export function MessagesSection({
                     </div>
                   </Table.Cell>
                   <Table.Cell className="text-right">
-                    <Button size="small" variant="transparent" onClick={() => onOpen(m.id)}>
-                      {t("log.details")}
-                    </Button>
+                    <RowActions actions={[{ key: "open", label: t("log.details"), icon: <Eye />, onClick: () => onOpen(m.id) }]} />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -516,7 +520,7 @@ export function MessagesSection({
         nextPage={() => setPage(page + 1)}
         translations={{ of: t("pagination.of"), results: t("pagination.results"), pages: t("pagination.pages"), prev: t("pagination.prev"), next: t("pagination.next") }}
       />
-    </Container>
+    </Section>
   )
 }
 
@@ -524,17 +528,15 @@ export function MessagesSection({
 export function ByTemplateSection({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("emails")
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("byTemplate.title")}</Heading>
-        <KeyPoints
-          label={t("byTemplate.subtitle")}
-          items={[
-            { icon: <Clock />, text: t("byTemplate.points.days") },
-            { icon: <ChartBar />, text: t("byTemplate.points.each") },
-          ]}
-        />
-      </div>
+    <Section
+      icon={<ChartBar />}
+      title={t("byTemplate.title")}
+      pointsLabel={t("byTemplate.subtitle")}
+      points={[
+        { icon: <Clock />, text: t("byTemplate.points.days") },
+        { icon: <CursorArrowRays />, text: t("byTemplate.points.each") },
+      ]}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -572,7 +574,7 @@ export function ByTemplateSection({ status, lang }: { status: StatusResponse; la
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -631,11 +633,7 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
                 <DeliveryBadge event={m.delivery} />
                 <CampaignBadge message={m} campaigns={status?.campaigns} />
                 <KindBadge kind={m.kind} />
-                {m.rotation > 0 ? (
-                  <Badge size="2xsmall" color="grey">
-                    {t("drawer.retriedTimes", { count: m.rotation })}
-                  </Badge>
-                ) : null}
+                {m.rotation > 0 ? <ToneBadge icon={<ArrowPath />}>{t("drawer.retriedTimes", { count: m.rotation })}</ToneBadge> : null}
               </div>
               {m.error ? (
                 <InlineTip variant={m.status === "skipped" ? "info" : "error"} label={errorText(m.errorCode) || m.errorCode || t("drawer.error")}>
@@ -688,9 +686,7 @@ export function MessageDrawer({ id, status, lang, onClose }: { id: string; statu
                   </div>
                 </div>
               ) : (
-                <Text size="xsmall" className="text-ui-fg-muted">
-                  {demo ? t("drawer.noBodyDemo") : t("drawer.noBody")}
-                </Text>
+                <EmptyState compact icon={<EyeSlash />} title={demo ? t("drawer.noBodyDemo") : t("drawer.noBody")} />
               )}
             </>
           ) : null}
@@ -747,9 +743,14 @@ export function TestDrawer({ status, lang, initial, onClose }: { status: StatusR
           <Drawer.Title>{t("test.title")}</Drawer.Title>
         </Drawer.Header>
         <Drawer.Body className="flex flex-col gap-y-4 overflow-y-auto">
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("test.subtitle")}
-          </Text>
+          <KeyPoints
+            label={t("test.subtitle")}
+            items={[
+              { icon: <Envelope />, text: t("test.points.one") },
+              { icon: <PaperPlane />, text: t("test.points.path") },
+              { icon: <Tag />, text: t("test.points.subject") },
+            ]}
+          />
           <InlineTip variant={status.mode === "live" ? "warning" : "info"} label={t(`test.mode.${status.mode}.label`)}>
             {t(`test.mode.${status.mode}.text`)}
           </InlineTip>

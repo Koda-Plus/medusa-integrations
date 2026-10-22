@@ -1,12 +1,12 @@
-import type { ReactNode } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminProduct, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Heading, Text } from "@medusajs/ui"
+import { ArrowUpRightMini, Clock, Link as LinkIcon, Tag } from "@medusajs/icons"
+import { Heading, Text } from "@medusajs/ui"
 import { useBaseLinkerProductCards } from "../lib/baselinker-api"
+import { EmptyState, ToneBadge } from "../lib/baselinker-blocks"
 import { BaseLinkerIcon } from "../lib/baselinker-icon"
-import { WidgetFrame, hostable } from "../lib/baselinker-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/baselinker-kit"
 import { ConflictBadge, fmtNumber } from "../lib/baselinker-ui"
 
 /**
@@ -15,8 +15,8 @@ import { ConflictBadge, fmtNumber } from "../lib/baselinker-ui"
  * but could not be linked, with the reason, and the main card the variant
  * cards hang under (a container, never linked itself).
  *
- * A host embeds it with `embedded`: no frame and header of its own, a line
- * while loading and on an error.
+ * A host embeds it with `embedded`: no frame and header of its own.
+ * Links are plain anchors (no react-router), so the card works in any host.
  */
 const SHOWN = 8
 
@@ -25,39 +25,47 @@ const BaseLinkerProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduc
   const lang = i18n.language || "en"
   const q = useBaseLinkerProductCards(data.id)
   const cards = q.data?.cards ?? []
+  const more = `/app/baselinker?section=cards&q=${encodeURIComponent(data.id)}`
 
-  if (q.isLoading) return embedded ? <Quiet>{t("productWidget.loading")}</Quiet> : null
-  if (q.isError) return <Quiet frame={!embedded}>{t("productWidget.failed")}</Quiet>
+  if (q.isLoading) return embedded ? <KitLoading label={t("productWidget.loading")} /> : null
+  if (q.isError) {
+    const body = (
+      <div className="px-6 py-4">
+        <Text size="small" className="text-ui-tag-red-text">
+          {t("productWidget.failed")}
+        </Text>
+      </div>
+    )
+    return embedded ? body : <WidgetFrame header={null}>{body}</WidgetFrame>
+  }
 
   return (
     <WidgetFrame
       embedded={embedded}
       header={
-        <div className="flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-x-2">
+        <div className="flex items-center justify-between gap-x-2 px-6 py-4">
+          <div className="flex min-w-0 items-center gap-x-2">
             <BaseLinkerIcon width={18} height={18} className="shrink-0" />
             <Heading level="h2">{t("productWidget.title")}</Heading>
-            {q.data?.mode === "demo" ? (
-              <Badge size="2xsmall" color="purple">
-                {t("widget.demo")}
-              </Badge>
-            ) : null}
+            {q.data?.mode === "demo" ? <ToneBadge tone="blue">{t("widget.demo")}</ToneBadge> : null}
           </div>
-          <Link to={`/baselinker?section=cards&q=${encodeURIComponent(data.id)}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+          <a href={more} className="txt-compact-small-plus inline-flex shrink-0 items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
             {t("productWidget.more")}
-          </Link>
+            <ArrowUpRightMini />
+          </a>
         </div>
       }
     >
       {cards.length === 0 ? (
-        <div className="flex flex-col gap-y-1 px-6 py-4">
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("productWidget.none")}
-          </Text>
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("productWidget.hint")}
-          </Text>
-        </div>
+        <EmptyState
+          compact
+          icon={<Tag />}
+          title={t("productWidget.none")}
+          points={[
+            { icon: <LinkIcon />, text: t("productWidget.points.sku") },
+            { icon: <Clock />, text: t("productWidget.points.hourly") },
+          ]}
+        />
       ) : (
         cards.slice(0, SHOWN).map((c) => (
           <div key={c.id} className="flex items-start justify-between gap-x-3 px-6 py-3">
@@ -69,17 +77,12 @@ const BaseLinkerProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduc
                 <span className="font-mono text-ui-fg-muted txt-compact-xsmall">#{c.blProductId}</span>
                 {c.sku ? <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{c.sku}</span> : null}
                 {c.isContainer ? (
-                  <Badge size="2xsmall" color="blue">
+                  <ToneBadge tone="blue" title={t("productWidget.containerNote")}>
                     {t("productWidget.container")}
-                  </Badge>
+                  </ToneBadge>
                 ) : null}
                 {c.conflict ? <ConflictBadge conflict={c.conflict} /> : null}
               </span>
-              {c.isContainer ? (
-                <Text size="xsmall" className="text-ui-fg-muted">
-                  {t("productWidget.containerNote")}
-                </Text>
-              ) : null}
             </div>
             {c.isContainer ? null : (
               <div className="flex shrink-0 flex-col items-end gap-y-0.5">
@@ -96,25 +99,13 @@ const BaseLinkerProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduc
       )}
       {cards.length > SHOWN ? (
         <div className="px-6 py-3">
-          <Link to={`/baselinker?section=cards&q=${encodeURIComponent(data.id)}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+          <a href={more} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
             {t("productWidget.moreCards", { count: cards.length - SHOWN })}
-          </Link>
+          </a>
         </div>
       ) : null}
     </WidgetFrame>
   )
-}
-
-/** A quiet line instead of nothing: while loading or on an error. */
-function Quiet({ children, frame = false }: { children: ReactNode; frame?: boolean }) {
-  const body = (
-    <div className="px-6 py-4">
-      <Text size="small" className="text-ui-fg-subtle">
-        {children}
-      </Text>
-    </div>
-  )
-  return frame ? <WidgetFrame header={null}>{body}</WidgetFrame> : body
 }
 
 export const config = defineWidgetConfig({

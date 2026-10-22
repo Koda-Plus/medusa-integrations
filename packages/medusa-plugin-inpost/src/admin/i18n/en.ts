@@ -2,6 +2,13 @@ import { communityEn } from "../lib/inpost-kit-community"
 import { integrationEn } from "../../modules/inpost/lib/integration-texts"
 
 const en = {
+  points: {
+    lockers: "Paczkomat lockers and courier",
+    cod: "Cash on delivery",
+    plan: "Shipment from a plan you read",
+    statuses: "Statuses by webhook",
+    armed: "Writes only when armed",
+  },
   title: "InPost",
   by: "by Koda Plus",
   subtitle:
@@ -16,7 +23,7 @@ const en = {
   },
   settings: {
     title: "Settings",
-    subtitle: "The technical side: the InPost account and the webhook, the sender with the default parcel and label, the writers and the history.",
+    subtitle: "The InPost account and what the plugin may change.",
     tab: {
       account: "InPost account",
       shipping: "Sender and parcel",
@@ -45,6 +52,9 @@ const en = {
     resetConfirm: "Start over",
   },
   actions: {
+    openManager: "InPost Manager",
+    create: "Create",
+    buyNotArmed: "Pay the offer (arm the writer first)",
     moreActions: "More actions",
     sync: "Refresh statuses",
     syncing: "Refreshing...",
@@ -114,13 +124,20 @@ const en = {
     problems: "Problems and returns",
   },
   parcels: {
+    points: {
+      plan: "Created from its plan",
+      statuses: "Statuses by webhook and every 15 min",
+      row: "Actions in each row",
+    },
+    emptyHint: "They appear on fulfillment",
+    emptyDemoHint: "Built from the store's orders",
     title: "Shipments",
     subtitle:
       "Every InPost fulfillment of the store, next to its order. A shipment is created from its plan; then InPost's statuses come by webhook and the status pass, the label is one click away.",
     search: "Order number, tracking number, locker",
-    empty: "No shipments here.",
-    emptyAll: "No InPost shipments yet. They appear when an order with an InPost shipping option is fulfilled in Medusa.",
-    emptyDemo: "No sample shipments yet: the demo builds them from the store's orders. Place an order and come back.",
+    empty: "No shipments here",
+    emptyAll: "No InPost shipments yet",
+    emptyDemo: "No sample shipments yet",
     filter: {
       all: "All",
       to_create: "To create",
@@ -316,7 +333,7 @@ const en = {
     title: "Shipment of order #{{order}}",
     loading: "Loading...",
     history: "History",
-    noHistory: "Nothing yet.",
+    noHistory: "Nothing yet",
     locker: "Locker",
     tracking: "Tracking",
     shipmentId: "ShipX shipment",
@@ -369,7 +386,7 @@ const en = {
     placeholder: "KRA01M, 30-415 or Kraków",
     hint: "A postal code lists the nearest lockers first.",
     demoNote: "Demo: the sample lockers of the simulation.",
-    empty: "No lockers found.",
+    empty: "No lockers found",
     payment: "Card payment",
     distance: "{{m}} m",
     current: "Current",
@@ -395,6 +412,12 @@ const en = {
     back: "Back",
   },
   account: {
+    points: {
+      demo: "Demo, no account used",
+      api: "ShipX API",
+      token: "Token stays on the server",
+      schedule: "Status pass every 15 min",
+    },
     title: "InPost account",
     subtitle: "The ShipX API of your organization in InPost Manager. The token stays on the server: the admin only knows whether it is set.",
     demoNote: "Demo mode: no InPost account is used. The check answers for the simulation.",
@@ -426,6 +449,11 @@ const en = {
     none: "No delivery yet. Paste the URL in InPost Manager: My account, API, webhook.",
   },
   shipping: {
+    points: {
+      demo: "Demo settings only",
+      wins: "Saved here wins over options",
+      perShipment: "Changeable per shipment",
+    },
     title: "Sender and parcel",
     subtitle: "Saved here for the live mode; a saved value wins over the plugin option.",
     subtitleDemo: "Saved for the demo mode only; the live settings stay as they are.",
@@ -456,6 +484,13 @@ const en = {
     clearSender: "Use the options again",
   },
   writers: {
+    points: {
+      demo: "Demo: simulation only",
+      off: "Off until allowed and armed",
+      who: "Who and when, kept",
+    },
+    autoOnBadge: "On",
+    autoOffBadge: "Off",
     title: "Writers",
     subtitle: "What the plugin may change outside its own tables. Each is off until it is allowed in the options and armed here; who armed it and when is kept.",
     demo: "Demo mode: the writers act on the simulation only, never on InPost or on Medusa's orders. The demo toggles are separate from the live ones.",
@@ -481,9 +516,13 @@ const en = {
     autoOff: "autoCreate is off: every shipment is created by a person, from its plan (the default).",
   },
   history: {
+    points: {
+      newest: "Newest first",
+      kept: "Kept 120 days",
+    },
     title: "History",
     subtitle: "Status passes, webhook deliveries, actions and statuses of this mode, newest first. Kept for 120 days.",
-    empty: "Nothing yet.",
+    empty: "Nothing yet",
     kinds: {
       all: "All",
       run: "Status passes",
@@ -529,19 +568,20 @@ const en = {
     },
   },
   widget: {
+    noneHint: "Fulfill, then create from the plan",
     title: "InPost",
     more: "All shipments",
     chosen: "Chosen by the customer",
     courier: "Courier to the shipping address.",
-    none: "No shipment yet: fulfill the items with the InPost shipping option, then create the shipment from its plan.",
-    notConfigured: "InPost is not configured; the choice is kept on the order.",
+    none: "No shipment yet",
+    notConfigured: "InPost not configured",
     statusAt: "Status since",
-    waitingForArm: "Waiting for a person: read the plan, then create it once the shipment writer is armed.",
+    waitingForArm: "Waiting: writer not armed",
     showHistory: "History ({{count}})",
     hideHistory: "Hide the history",
     loading: "Reading the InPost shipments of this order",
     failed: "Could not read the InPost shipments of this order",
-    notInpost: "This order does not go with InPost.",
+    notInpost: "Not shipped with InPost",
   },
   references: {
     title: "Running in stores built by Koda Plus",

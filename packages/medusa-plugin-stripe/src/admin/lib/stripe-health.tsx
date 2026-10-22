@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightMini } from "@medusajs/icons"
-import { Badge, Container, Heading, Text, clx } from "@medusajs/ui"
+import { ArrowUpRightMini, Clock, MagnifyingGlass, ShieldCheck, Wrench } from "@medusajs/icons"
+import { Text, clx } from "@medusajs/ui"
+import { Section, ToneBadge } from "./stripe-blocks"
+import { KitLoading } from "./stripe-kit"
 import type { CheckItemDto, CheckResultDto, MethodKey, StripeChecksResponse } from "../../modules/stripe/lib/contract"
 import { ExternalLink, SampleBadge, VerdictBadge, VerdictIcon, fmtAgo, fmtDate, fmtDateTime, fmtMoney } from "./stripe-ui"
 
@@ -152,48 +154,43 @@ export function HealthSection({ checks, loading, lang }: { checks: StripeChecksR
   const { t } = useTranslation("stripe")
   const s = checks?.summary
   return (
-    <Container className="divide-y p-0" id="stripe-health">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Heading level="h2">{t("health.title")}</Heading>
-            {checks?.mode === "demo" ? <SampleBadge /> : null}
-          </div>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {t("health.subtitle")}
-          </Text>
-        </div>
-        {s ? (
-          <div className="flex shrink-0 flex-col items-start gap-1 md:items-end">
-            <span className="flex flex-wrap items-center gap-1.5">
-              <Badge size="2xsmall" color="green">
-                <span className="tabular-nums">{s.pass}</span>&nbsp;{t("health.verdict.pass")}
-              </Badge>
-              {s.warn > 0 ? (
-                <Badge size="2xsmall" color="orange">
-                  <span className="tabular-nums">{s.warn}</span>&nbsp;{t("health.verdict.warn")}
-                </Badge>
-              ) : null}
-              {s.fail > 0 ? (
-                <Badge size="2xsmall" color="red">
-                  <span className="tabular-nums">{s.fail}</span>&nbsp;{t("health.verdict.fail")}
-                </Badge>
-              ) : null}
-              {s.unknown > 0 ? (
-                <Badge size="2xsmall" color="grey">
-                  <span className="tabular-nums">{s.unknown}</span>&nbsp;{t("health.verdict.unknown")}
-                </Badge>
-              ) : null}
-            </span>
-            {checks?.checkedAt ? (
-              <Text size="xsmall" className="text-ui-fg-muted">
-                {t("health.checkedAt", { when: fmtAgo(checks.checkedAt, lang) })}
-              </Text>
+    <Section
+      id="stripe-health"
+      icon={<ShieldCheck />}
+      title={t("health.title")}
+      badges={checks?.mode === "demo" ? <SampleBadge /> : null}
+      pointsLabel={t("health.subtitle")}
+      points={[
+        { icon: <MagnifyingGlass />, text: t("health.points.reads") },
+        { icon: <Wrench />, text: t("health.points.fix") },
+        checks?.checkedAt ? { icon: <Clock />, text: t("health.checkedAt", { when: fmtAgo(checks.checkedAt, lang) }) } : { icon: <Clock />, text: t("health.points.cached") },
+      ]}
+      actions={
+        s ? (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <ToneBadge tone="green">
+              <span className="tabular-nums">{s.pass}</span>&nbsp;{t("health.verdict.pass")}
+            </ToneBadge>
+            {s.warn > 0 ? (
+              <ToneBadge tone="orange">
+                <span className="tabular-nums">{s.warn}</span>&nbsp;{t("health.verdict.warn")}
+              </ToneBadge>
             ) : null}
-          </div>
-        ) : null}
-      </div>
-      {loading && !checks ? <div className="px-6 py-6" /> : null}
+            {s.fail > 0 ? (
+              <ToneBadge tone="red">
+                <span className="tabular-nums">{s.fail}</span>&nbsp;{t("health.verdict.fail")}
+              </ToneBadge>
+            ) : null}
+            {s.unknown > 0 ? (
+              <ToneBadge tone="grey">
+                <span className="tabular-nums">{s.unknown}</span>&nbsp;{t("health.verdict.unknown")}
+              </ToneBadge>
+            ) : null}
+          </span>
+        ) : null
+      }
+    >
+      {loading && !checks ? <KitLoading label={t("health.loading")} /> : null}
       {checks ? (
         <ul className="flex flex-col divide-y divide-ui-border-base">
           {checks.results.map((r) => (
@@ -201,7 +198,7 @@ export function HealthSection({ checks, loading, lang }: { checks: StripeChecksR
           ))}
         </ul>
       ) : null}
-    </Container>
+    </Section>
   )
 }
 

@@ -3,11 +3,13 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Heading, Text } from "@medusajs/ui"
+import { ArchiveBox, History as HistoryIcon, TruckFast } from "@medusajs/icons"
+import { Button, Heading, Text } from "@medusajs/ui"
 import type { ParcelDto } from "../../modules/inpost/lib/contract"
 import { useInpostOrder } from "../lib/inpost-api"
 import { InpostIcon } from "../lib/inpost-icon"
-import { WidgetFrame, hostable } from "../lib/inpost-kit"
+import { EmptyState, ToneBadge } from "../lib/inpost-blocks"
+import { KitLoading, WidgetFrame, hostable } from "../lib/inpost-kit"
 import { History, ParcelActions } from "../lib/inpost-plan"
 import { KindBadges, LockerLines, ParcelStatus, ProblemList, TrackingCell, fmtDateTime, fmtMoney } from "../lib/inpost-ui"
 
@@ -28,8 +30,9 @@ const InpostOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
   const lang = i18n.language || "en"
   const q = useInpostOrder(data.id)
   const info = q.data
-  if (q.isLoading || !info) return embedded ? <Quiet>{q.isError ? t("widget.failed") : t("widget.loading")}</Quiet> : null
-  if (!info.chosen && info.parcels.length === 0) return embedded ? <Quiet>{t("widget.notInpost")}</Quiet> : null
+  if (q.isLoading) return embedded ? <KitLoading label={t("widget.loading")} /> : null
+  if (!info) return embedded ? <EmptyState compact icon={<TruckFast />} title={t("widget.failed")} /> : null
+  if (!info.chosen && info.parcels.length === 0) return embedded ? <EmptyState compact icon={<TruckFast />} title={t("widget.notInpost")} /> : null
   const chosen = info.chosen
 
   return (
@@ -40,11 +43,7 @@ const InpostOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
         <div className="flex items-center gap-x-2">
           <InpostIcon width={18} height={18} className="shrink-0" />
           <Heading level="h2">{t("widget.title")}</Heading>
-          {info.mode === "demo" ? (
-            <Badge size="2xsmall" color="purple">
-              {t("demo.badge")}
-            </Badge>
-          ) : null}
+          {info.mode === "demo" ? <ToneBadge tone="blue">{t("demo.badge")}</ToneBadge> : null}
         </div>
         <Link to={`/inpost?q=${data.display_id ?? ""}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
           {t("widget.more")}
@@ -54,9 +53,7 @@ const InpostOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
     >
       {embedded && info.mode === "demo" ? (
         <div className="px-6 py-2">
-          <Badge size="2xsmall" color="purple">
-            {t("demo.badge")}
-          </Badge>
+          <ToneBadge tone="blue">{t("demo.badge")}</ToneBadge>
         </div>
       ) : null}
 
@@ -90,25 +87,16 @@ const InpostOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
       ) : null}
 
       {info.parcels.length === 0 ? (
-        <div className="px-6 py-4">
-          <Text size="small" className="text-ui-fg-subtle">
-            {!info.configured ? t("widget.notConfigured") : t("widget.none")}
-          </Text>
-        </div>
+        <EmptyState
+          compact
+          icon={<ArchiveBox />}
+          title={!info.configured ? t("widget.notConfigured") : t("widget.none")}
+          points={info.configured ? [{ icon: <TruckFast />, text: t("widget.noneHint") }] : undefined}
+        />
       ) : (
         info.parcels.map((p) => <ParcelBlock key={p.id} parcel={p} lang={lang} writers={info.writers} events={info.events.filter((e) => e.parcelId === p.id)} />)
       )}
     </WidgetFrame>
-  )
-}
-
-function Quiet({ children }: { children: ReactNode }) {
-  return (
-    <div className="px-6 py-4">
-      <Text size="small" className="text-ui-fg-subtle">
-        {children}
-      </Text>
-    </div>
   )
 }
 
@@ -160,21 +148,18 @@ function ParcelBlock({ parcel: p, lang, writers, events }: { parcel: ParcelDto; 
         </Text>
       ) : null}
       {p.problems.length > 0 && (p.state === "pending" || p.state === "failed") ? <ProblemList items={p.problems} /> : null}
-      {p.state === "pending" && !writers?.shipment?.armed ? (
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("widget.waitingForArm")}
-        </Text>
-      ) : null}
+      {p.state === "pending" && !writers?.shipment?.armed ? <ToneBadge tone="orange">{t("widget.waitingForArm")}</ToneBadge> : null}
       {p.fulfillmentCanceledAt && p.state === "created" ? (
         <Text size="xsmall" className="text-ui-tag-orange-text">
           {t("detail.fulfillmentCanceledText")}
         </Text>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button type="button" className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => setShowHistory(!showHistory)}>
+        <Button size="small" variant="transparent" onClick={() => setShowHistory(!showHistory)}>
+          <HistoryIcon />
           {showHistory ? t("widget.hideHistory") : t("widget.showHistory", { count: events.length })}
-        </button>
-        <ParcelActions parcel={p} lang={lang} writers={writers} />
+        </Button>
+        <ParcelActions parcel={p} lang={lang} writers={writers} layout="row" />
       </div>
       {showHistory ? <History events={events} lang={lang} /> : null}
     </div>

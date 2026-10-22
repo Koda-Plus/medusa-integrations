@@ -1,9 +1,32 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
+import {
+  ArchiveBox,
+  ArrowDownTray,
+  ArrowLongRight,
+  ArrowPath,
+  BarsArrowDown,
+  Bolt,
+  CheckCircle,
+  Clock,
+  CubeSolid,
+  DocumentText,
+  ExclamationCircle,
+  Link,
+  ListBullet,
+  LockClosedSolid,
+  MagnifyingGlass,
+  PaperPlane,
+  QueueList,
+  Receipt,
+  ShieldCheck,
+  ShoppingCart,
+  Tag,
+} from "@medusajs/icons"
+import { Container, InlineTip, Table, Text, toast } from "@medusajs/ui"
 import type { RunDto, SubiektStatusResponse, TaskDto } from "../../../modules/subiekt/lib/contract"
 import {
   errorMessage,
@@ -16,19 +39,32 @@ import {
   useSubiektSync,
   useSubiektTasks,
 } from "../../lib/subiekt-api"
+import {
+  EmptyState,
+  EmptyTableRow,
+  FilterBar,
+  FilterButton,
+  FilterDivider,
+  RowActions,
+  SearchInput,
+  Section,
+  StatTile,
+  StatTiles,
+  ToneBadge,
+  useDebouncedValue,
+} from "../../lib/subiekt-blocks"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/subiekt-guide"
 import { GuideView, usePromptSpec } from "../../lib/subiekt-guide-view"
 import { SubiektIcon } from "../../lib/subiekt-icon"
+import { KitSkeletonRows } from "../../lib/subiekt-kit"
 import { BridgeSection, ProductsSection, WritersSection } from "../../lib/subiekt-panels"
 import {
   ConnectionBadge,
   DocumentStatusBadge,
   Field,
-  FilterPills,
   Pager,
   RunStatusBadge,
   SampleList,
-  StatTile,
   StoreColumn,
   StoreOrderCell,
   TaskStatusBadge,
@@ -42,31 +78,49 @@ import {
 } from "../../lib/subiekt-ui"
 
 /**
- * Subiekt nexo by Koda Plus. Three views, switched in the header and kept in the URL:
+ * Subiekt nexo. Three views, switched in the header and kept in the URL:
  *
- * - Panel: the business side. Counters, the queue of orders on their way to
- *   Subiekt and the documents Subiekt issued, each next to its order in the
- *   store, then the products and prices from Subiekt next to the store products.
+ * - Panel: the business side. Counters (each a filter of the list below),
+ *   the queue of orders on their way to Subiekt and the documents Subiekt
+ *   issued, each next to its order in the store, then the products and
+ *   prices from Subiekt next to the store products.
  * - Setup guide (`?view=guide`).
- * - Settings (`?view=settings&tab=`), behind the cog: the technical side.
- *   The connection, the bridge diagnostics, the writers, the stock sync and the history.
+ * - Settings (`?view=settings&tab=`): the technical side. The connection,
+ *   the bridge diagnostics, the writers, the stock sync and the history.
  *
- * The demo note and the stores running the integration sit in header badges.
+ * Deep links: `?filter=attention|open|done|all` (the queue) and `?q=1042`
+ * (the queue and the documents, by order number), as the order card links.
  */
 const PAGE_SIZE = 15
 
 const SETTINGS_TABS = ["connection", "bridge", "writers", "stock", "runs"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
+const TASK_FILTERS = ["attention", "open", "done", "all"] as const
+type TaskFilter = (typeof TASK_FILTERS)[number]
+type DocFilter = "all" | "ZK" | "WZ" | "FS" | "PA"
+
+function scrollToSection(id: string): void {
+  requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }))
+}
+
 const SubiektPage = () => {
   const { t, i18n } = useTranslation("subiekt")
   const lang = i18n.language || "en"
   const client = useQueryClient()
   const nav = usePageNav(SETTINGS_TABS)
+  const [params] = useSearchParams()
   const [pollUntil, setPollUntil] = useState(0)
   const status = useSubiektStatus(pollUntil)
   const s = status.data
   const polling = (s?.running.length ?? 0) > 0 || Date.now() < pollUntil
+
+  const asked = params.get("filter") ?? ""
+  const [taskFilter, setTaskFilter] = useState<TaskFilter | null>((TASK_FILTERS as readonly string[]).includes(asked) ? (asked as TaskFilter) : null)
+  const [docKind, setDocKind] = useState<DocFilter>("all")
+  const initialQuery = (params.get("q") ?? "").slice(0, 80)
+  /* Without a filter in the address: what needs a person first, everything otherwise. */
+  const filter: TaskFilter = taskFilter ?? (s && s.counts.failed > 0 ? "attention" : "all")
 
   /* A finished run refreshes the tables below. */
   const runKey = JSON.stringify(Object.values(s?.lastRuns ?? {}).map((r) => r?.id ?? ""))
@@ -79,11 +133,23 @@ const SubiektPage = () => {
   }, [runKey, client])
 
   const poll = () => setPollUntil(Date.now() + 30_000)
+  /* A tile filters the list below it; a second click on the active one clears the filter. */
+  const toggleTasks = (f: TaskFilter) => {
+    setTaskFilter(filter === f ? "all" : f)
+    scrollToSection("subiekt-tasks")
+  }
+  const toggleDocs = (k: DocFilter) => {
+    setDocKind(docKind === k ? "all" : k)
+    scrollToSection("subiekt-documents")
+  }
+
+  const c = s?.counts
+  const queued = c ? c.pending + c.running + c.unknown : 0
 
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} loading={status.isLoading} lang={lang} nav={nav} onAction={poll} />
+        <Header status={s} loading={status.isLoading} fetching={status.isFetching} lang={lang} nav={nav} onAction={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -92,20 +158,23 @@ const SubiektPage = () => {
           </div>
         ) : null}
         {s ? <Warnings status={s} /> : null}
-        {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 divide-x divide-y md:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
-            <StatTile label={t("stats.sent24h")} value={fmtNumber(s.counts.succeeded24h, lang)} />
-            <StatTile label={t("stats.waiting")} value={fmtNumber(s.counts.waiting, lang)} tone={s.counts.waiting ? undefined : "muted"} />
+        {c && nav.view === "panel" ? (
+          <StatTiles columns={7}>
+            <StatTile label={t("stats.sent24h")} value={fmtNumber(c.succeeded24h, lang)} tone={c.succeeded24h ? "green" : "grey"} active={filter === "done"} onClick={() => toggleTasks("done")} />
+            <StatTile label={t("stats.waiting")} value={fmtNumber(c.waiting, lang)} hint={c.waiting ? t("stats.hintWaiting") : undefined} />
+            <StatTile label={t("stats.queue")} value={fmtNumber(queued, lang)} tone={queued ? "blue" : "grey"} active={filter === "open"} onClick={() => toggleTasks("open")} />
             <StatTile
-              label={t("stats.queue")}
-              value={fmtNumber(s.counts.pending + s.counts.running + s.counts.unknown, lang)}
-              tone={s.counts.pending + s.counts.running + s.counts.unknown ? undefined : "muted"}
+              label={t("stats.attention")}
+              value={fmtNumber(c.failed, lang)}
+              tone={c.failed ? "red" : "grey"}
+              hint={c.failed ? t("stats.hintAttention") : undefined}
+              active={filter === "attention"}
+              onClick={() => toggleTasks("attention")}
             />
-            <StatTile label={t("stats.attention")} value={fmtNumber(s.counts.failed, lang)} tone={s.counts.failed ? "attention" : "muted"} />
-            <StatTile label={t("stats.zk")} value={fmtNumber(s.counts.zk, lang)} />
-            <StatTile label={t("stats.wz")} value={fmtNumber(s.counts.wz, lang)} />
-            <StatTile label={t("stats.sales")} value={fmtNumber(s.counts.fs + s.counts.pa, lang)} tone={s.counts.fs + s.counts.pa ? undefined : "muted"} />
-          </div>
+            <StatTile label={t("stats.zk")} value={fmtNumber(c.zk, lang)} active={docKind === "ZK"} onClick={() => toggleDocs("ZK")} />
+            <StatTile label={t("stats.wz")} value={fmtNumber(c.wz, lang)} active={docKind === "WZ"} onClick={() => toggleDocs("WZ")} />
+            <StatTile label={t("stats.sales")} value={fmtNumber(c.fs + c.pa, lang)} />
+          </StatTiles>
         ) : null}
       </Container>
 
@@ -114,8 +183,8 @@ const SubiektPage = () => {
       {/* The documents table reads its own endpoint, so it shows even when the status failed, as it always did. */}
       {nav.view === "panel" ? (
         <>
-          {s ? <TasksSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
-          <DocumentsSection lang={lang} poll={polling} />
+          {s ? <TasksSection status={s} lang={lang} poll={polling} onAction={poll} filter={filter} onFilter={setTaskFilter} initialQuery={initialQuery} /> : null}
+          <DocumentsSection lang={lang} poll={polling} kind={docKind} onKind={setDocKind} counts={c} initialQuery={initialQuery} />
           {s ? <ProductsSection status={s} lang={lang} poll={polling} onAction={poll} /> : null}
         </>
       ) : null}
@@ -130,7 +199,7 @@ const SubiektPage = () => {
             { id: "connection", label: t("settings.tab.connection") },
             { id: "bridge", label: t("settings.tab.bridge") },
             { id: "writers", label: t("settings.tab.writers"), badge: s?.writers.filter((w) => w.active).length, tone: "orange" },
-            { id: "stock", label: t("settings.tab.stock"), badge: s?.options.stockDryRun ? t("stock.dryRun") : null, tone: "purple" },
+            { id: "stock", label: t("settings.tab.stock"), badge: s?.options.stockDryRun ? t("stock.dryRun") : null, tone: "blue" },
             { id: "runs", label: t("settings.tab.runs") },
           ]}
         >
@@ -150,17 +219,20 @@ const SubiektPage = () => {
 function Header({
   status,
   loading,
+  fetching,
   lang,
   nav,
   onAction,
 }: {
   status: SubiektStatusResponse | undefined
   loading: boolean
+  fetching: boolean
   lang: string
   nav: PageNav<SettingsTabId>
   onAction: () => void
 }) {
   const { t } = useTranslation("subiekt")
+  const client = useQueryClient()
   const sync = useSubiektSync()
   const check = useSubiektCheck()
   const ready = Boolean(status && (status.mode === "demo" || status.configured))
@@ -192,14 +264,20 @@ function Header({
   }
 
   const panel = nav.view !== "guide"
+  const refreshAction: HeaderAction = {
+    key: "refresh",
+    label: t("actions.refresh"),
+    icon: <ArrowPath />,
+    loading: fetching && !loading,
+    onClick: () => void client.invalidateQueries({ queryKey: subiektKeys.all }),
+  }
   /* Checking the bridge stays reachable from the guide too: its steps ask for it. */
-  const checkAction: HeaderAction = { key: "check", label: t("actions.check"), loading: check.isPending, disabled: !ready, onClick: () => void onCheck() }
+  const checkAction: HeaderAction = { key: "check", label: t("actions.check"), icon: <ShieldCheck />, loading: check.isPending, disabled: !ready, onClick: () => void onCheck() }
 
   return (
     <IntegrationHeader
       icon={<SubiektIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         !loading ? (
           <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
@@ -208,6 +286,14 @@ function Header({
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <ShoppingCart />, text: t("points.orders") },
+        { icon: <ArchiveBox />, text: t("points.wz") },
+        { icon: <Receipt />, text: t("points.sales") },
+        { icon: <CubeSolid />, text: t("points.stock") },
+        { icon: <Tag />, text: t("points.prices") },
+        { icon: <LockClosedSolid />, text: t("points.safe"), tone: "green" },
+      ]}
       social={
         <>
           <ReferencesBadge
@@ -242,7 +328,7 @@ function Header({
           ? {
               key: "stock",
               label: running.has("stock") ? t("actions.running") : t("actions.stock"),
-              icon: <ArrowPath />,
+              icon: <CubeSolid />,
               disabled: !ready || running.has("stock"),
               onClick: () => void start("stock"),
             }
@@ -251,15 +337,17 @@ function Header({
       actions={
         panel
           ? [
+              refreshAction,
               {
                 key: "events",
                 label: running.has("events") ? t("actions.running") : t("actions.events"),
+                icon: <ArrowDownTray />,
                 disabled: !ready || running.has("events"),
                 onClick: () => void start("events"),
               },
               checkAction,
             ]
-          : [checkAction]
+          : [refreshAction, checkAction]
       }
     />
   )
@@ -295,11 +383,17 @@ function ConnectionSection({ status, lang }: { status: SubiektStatusResponse; la
   const c = status.connection
   const h = c.health
   return (
-    <Container className="divide-y p-0">
-      <div className="flex items-center justify-between px-6 py-4">
-        <Heading level="h2">{t("connection.title")}</Heading>
-        <ConnectionBadge status={status} />
-      </div>
+    <Section
+      icon={<Link />}
+      title={t("connection.title")}
+      badges={<ConnectionBadge status={status} />}
+      points={[
+        { icon: <Clock />, text: t("connection.points.queue") },
+        { icon: <Clock />, text: t("connection.points.documents") },
+        { icon: <Clock />, text: t("connection.points.stock") },
+        { icon: <Clock />, text: t("connection.points.products") },
+      ]}
+    >
       <div className="py-2">
         <Field label={t("connection.bridge")}>
           {h ? (
@@ -329,12 +423,7 @@ function ConnectionSection({ status, lang }: { status: SubiektStatusResponse; la
           </InlineTip>
         </div>
       ) : null}
-      <div className="px-6 py-3">
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("connection.schedule")}
-        </Text>
-      </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -374,29 +463,23 @@ function StockSection({ run, lang }: { run: RunDto | null; lang: string }) {
     : []
   const samples = stats?.samples
   return (
-    <Container className="divide-y p-0">
-      <div className="flex items-center justify-between gap-x-2 px-6 py-4">
-        <div>
-          <Heading level="h2">{t("stock.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("stock.subtitle")}
-          </Text>
-        </div>
-        <div className="flex shrink-0 items-center gap-x-2 whitespace-nowrap">
-          {run?.dryRun ? (
-            <Badge size="2xsmall" color="purple">
-              {t("stock.dryRun")}
-            </Badge>
-          ) : null}
+    <Section
+      icon={<CubeSolid />}
+      title={t("stock.title")}
+      badges={
+        <>
+          {run?.dryRun ? <ToneBadge tone="blue">{t("stock.dryRun")}</ToneBadge> : null}
           {run ? <RunStatusBadge status={run.status} /> : null}
-        </div>
-      </div>
+        </>
+      }
+      points={[
+        { icon: <ArrowLongRight />, text: t("stock.points.direction") },
+        { icon: <MagnifyingGlass />, text: t("stock.points.match") },
+      ]}
+      pointsLabel={t("stock.subtitle")}
+    >
       {!run ? (
-        <div className="px-6 py-4">
-          <Text size="small" className="text-ui-fg-muted">
-            {t("stock.never")}
-          </Text>
-        </div>
+        <EmptyState icon={<CubeSolid />} title={t("stock.never")} compact />
       ) : (
         <>
           <div className="px-6 py-3">
@@ -406,25 +489,18 @@ function StockSection({ run, lang }: { run: RunDto | null; lang: string }) {
             </Text>
           </div>
           {counters.length > 0 ? (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 px-6 py-4 sm:grid-cols-4">
+            <StatTiles columns={4}>
               {counters.map(([key, value, warn]) => (
-                <div key={key} className="flex flex-col">
-                  <Text size="xsmall" className="text-ui-fg-subtle">
-                    {t(`stock.counters.${key}`)}
-                  </Text>
-                  <Text size="small" weight="plus" className={warn && value ? "text-ui-tag-orange-text tabular-nums" : "tabular-nums"}>
-                    {fmtNumber(value ?? 0, lang)}
-                  </Text>
-                </div>
+                <StatTile key={key} label={t(`stock.counters.${key}`)} value={fmtNumber(value ?? 0, lang)} tone={warn && value ? "orange" : "grey"} />
               ))}
-            </div>
+            </StatTiles>
           ) : null}
           {samples ? (
             <div className="flex flex-col gap-y-3 px-6 py-4">
               {samples.changes && samples.changes.length > 0 ? (
                 <SampleList
                   label={t("stock.samples.changes")}
-                  items={samples.changes.map((c) => `${c.sku ?? "?"}: ${c.from === null ? "-" : fmtNumber(c.from, lang)} → ${fmtNumber(c.to, lang)}`)}
+                  items={samples.changes.map((ch) => `${ch.sku ?? "?"}: ${ch.from === null ? "-" : fmtNumber(ch.from, lang)} → ${fmtNumber(ch.to, lang)}`)}
                 />
               ) : null}
               {samples.unmatchedVariants && samples.unmatchedVariants.length > 0 ? (
@@ -438,13 +514,11 @@ function StockSection({ run, lang }: { run: RunDto | null; lang: string }) {
           ) : null}
         </>
       )}
-    </Container>
+    </Section>
   )
 }
 
 /* ------------------------------------------------------------------ */
-
-type TaskFilter = "attention" | "open" | "done" | "all"
 
 function TaskDetails({ task, lang }: { task: TaskDto; lang: string }) {
   const { t } = useTranslation("subiekt")
@@ -488,14 +562,30 @@ function TaskDetails({ task, lang }: { task: TaskDto; lang: string }) {
   )
 }
 
-function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusResponse; lang: string; poll: boolean; onAction: () => void }) {
+function TasksSection({
+  status,
+  lang,
+  poll,
+  onAction,
+  filter,
+  onFilter,
+  initialQuery,
+}: {
+  status: SubiektStatusResponse
+  lang: string
+  poll: boolean
+  onAction: () => void
+  filter: TaskFilter
+  onFilter: (f: TaskFilter) => void
+  initialQuery: string
+}) {
   const { t } = useTranslation("subiekt")
-  const [filter, setFilter] = useState<TaskFilter>(status.counts.failed > 0 ? "attention" : "all")
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialQuery)
   const [offset, setOffset] = useState(0)
-  const q = search.trim()
-  const open = status.counts.waiting + status.counts.pending + status.counts.running + status.counts.unknown
-  const tasks = useSubiektTasks(filter, q, offset, PAGE_SIZE, poll || status.counts.pending + status.counts.running + status.counts.unknown > 0)
+  const q = useDebouncedValue(search).trim()
+  const c = status.counts
+  const open = c.waiting + c.pending + c.running + c.unknown
+  const tasks = useSubiektTasks(filter, q, offset, PAGE_SIZE, poll || c.pending + c.running + c.unknown > 0)
   const retry = useSubiektRetry()
   const rows = tasks.data?.tasks ?? []
 
@@ -510,32 +600,28 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
       toast.error(t("toast.error", { error: errorMessage(err) }))
     }
   }
+  const pick = (f: TaskFilter) => onFilter(filter === f && f !== "all" ? "all" : f)
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <Heading level="h2">{t("tasks.title")}</Heading>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle" title={t("tasks.technical")}>
-            {t("tasks.subtitle")}
-          </Text>
-        </div>
-        <div className="w-full md:w-56">
-          <Input size="small" type="search" placeholder={t("tasks.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
-      <div className="px-6 py-3">
-        <FilterPills<TaskFilter>
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: "attention", label: t("tasks.filters.attention"), count: status.counts.failed },
-            { value: "open", label: t("tasks.filters.open"), count: open },
-            { value: "done", label: t("tasks.filters.done") },
-            { value: "all", label: t("tasks.filters.all") },
-          ]}
-        />
-      </div>
+    <Section
+      id="subiekt-tasks"
+      icon={<QueueList />}
+      title={t("tasks.title")}
+      points={[
+        { icon: <ListBullet />, text: t("tasks.points.order") },
+        { icon: <ArrowPath />, text: t("tasks.points.retries") },
+        { icon: <ExclamationCircle />, text: t("tasks.points.failed"), tone: c.failed ? "orange" : "grey" },
+      ]}
+      pointsLabel={t("tasks.subtitle")}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("tasks.search")} />}
+    >
+      <FilterBar>
+        <FilterButton icon={<ListBullet />} label={t("tasks.filters.all")} active={filter === "all"} onClick={() => pick("all")} />
+        <FilterDivider />
+        <FilterButton icon={<ExclamationCircle />} label={t("tasks.filters.attention")} count={c.failed} attention active={filter === "attention"} onClick={() => pick("attention")} />
+        <FilterButton icon={<Clock />} label={t("tasks.filters.open")} count={open} active={filter === "open"} onClick={() => pick("open")} />
+        <FilterButton icon={<CheckCircle />} label={t("tasks.filters.done")} active={filter === "done"} onClick={() => pick("done")} />
+      </FilterBar>
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -552,14 +638,10 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={7} className="px-6 py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {tasks.isLoading ? "" : t("tasks.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {tasks.isLoading ? (
+              <KitSkeletonRows cols={7} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={7} icon={filter === "attention" ? <CheckCircle /> : <QueueList />} title={t(`tasks.emptyBy.${filter}`)} />
             ) : (
               rows.map((task) => (
                 <Table.Row key={task.id} className="[&_td]:py-2.5">
@@ -571,20 +653,27 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
                       ? t(`tasks.documentKinds.${task.documentKind}`)
                       : t(`tasks.kinds.${task.kind}`)}
                   </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap font-mono text-xs">{task.documentNumber ?? ""}</Table.Cell>
+                  <Table.Cell className="whitespace-nowrap font-mono txt-compact-xsmall">{task.documentNumber ?? ""}</Table.Cell>
                   <Table.Cell>
-                    <TaskStatusBadge status={task.status} />
+                    <TaskStatusBadge status={task.status} dot />
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{task.attempts}</Table.Cell>
                   <Table.Cell className="max-w-md">
                     <TaskDetails task={task} lang={lang} />
                   </Table.Cell>
                   <Table.Cell className="text-right">
-                    {task.status === "failed" || task.status === "unknown" || (task.status === "pending" && task.attempts > 0) || task.status === "waiting" ? (
-                      <Button size="small" variant="secondary" isLoading={retry.isPending && retry.variables === task.id} onClick={() => onRetry(task)}>
-                        {task.status === "waiting" ? t("actions.send") : t("actions.retry")}
-                      </Button>
-                    ) : null}
+                    <RowActions
+                      actions={[
+                        {
+                          key: "send",
+                          label: task.status === "waiting" ? t("actions.send") : t("actions.retry"),
+                          icon: task.status === "waiting" ? <PaperPlane /> : <ArrowPath />,
+                          loading: retry.isPending && retry.variables === task.id,
+                          hidden: !(task.status === "failed" || task.status === "unknown" || (task.status === "pending" && task.attempts > 0) || task.status === "waiting"),
+                          onClick: () => void onRetry(task),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -593,37 +682,69 @@ function TasksSection({ status, lang, poll, onAction }: { status: SubiektStatusR
         </Table>
       </div>
       <Pager offset={offset} limit={PAGE_SIZE} count={tasks.data?.count ?? 0} onChange={setOffset} />
-    </Container>
+    </Section>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
-type DocFilter = "all" | "ZK" | "WZ" | "FS" | "PA"
+const DOC_KINDS: Array<{ kind: Exclude<DocFilter, "all">; icon: ReactNode; count: (c: SubiektStatusResponse["counts"]) => number }> = [
+  { kind: "ZK", icon: <ShoppingCart />, count: (c) => c.zk },
+  { kind: "WZ", icon: <ArchiveBox />, count: (c) => c.wz },
+  { kind: "FS", icon: <DocumentText />, count: (c) => c.fs },
+  { kind: "PA", icon: <Receipt />, count: (c) => c.pa },
+]
 
-function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
+function DocumentsSection({
+  lang,
+  poll,
+  kind,
+  onKind,
+  counts,
+  initialQuery,
+}: {
+  lang: string
+  poll: boolean
+  kind: DocFilter
+  onKind: (k: DocFilter) => void
+  counts: SubiektStatusResponse["counts"] | undefined
+  initialQuery: string
+}) {
   const { t } = useTranslation("subiekt")
-  const [kind, setKind] = useState<DocFilter>("all")
+  const [search, setSearch] = useState(initialQuery)
+  const q = useDebouncedValue(search).trim()
   const [offset, setOffset] = useState(0)
-  const docs = useSubiektDocuments(kind, "", offset, PAGE_SIZE, poll)
+  const docs = useSubiektDocuments(kind, q, offset, PAGE_SIZE, poll)
   const rows = docs.data?.documents ?? []
-  useEffect(() => setOffset(0), [kind])
+  useEffect(() => setOffset(0), [kind, q])
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <Heading level="h2">{t("documents.title")}</Heading>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {t("documents.subtitle")}
-          </Text>
-        </div>
-        <FilterPills<DocFilter>
-          value={kind}
-          onChange={setKind}
-          options={(["all", "ZK", "WZ", "FS", "PA"] as const).map((k) => ({ value: k, label: t(`documents.filters.${k}`) }))}
-        />
-      </div>
+    <Section
+      id="subiekt-documents"
+      icon={<DocumentText />}
+      title={t("documents.title")}
+      points={[
+        { icon: <Link />, text: t("documents.points.tag") },
+        { icon: <ArchiveBox />, text: t("documents.points.warehouse") },
+        { icon: <Receipt />, text: t("documents.points.ksef") },
+      ]}
+      pointsLabel={t("documents.subtitle")}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("documents.search")} />}
+    >
+      <FilterBar>
+        <FilterButton icon={<ListBullet />} label={t("documents.filters.all")} count={counts?.documents} active={kind === "all"} onClick={() => onKind("all")} />
+        <FilterDivider />
+        {DOC_KINDS.map((d) => (
+          <FilterButton
+            key={d.kind}
+            icon={d.icon}
+            label={t(`documents.filters.${d.kind}`)}
+            count={counts ? d.count(counts) : undefined}
+            active={kind === d.kind}
+            onClick={() => onKind(kind === d.kind ? "all" : d.kind)}
+          />
+        ))}
+      </FilterBar>
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -639,18 +760,14 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={6} className="px-6 py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {docs.isLoading ? "" : t("documents.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {docs.isLoading ? (
+              <KitSkeletonRows cols={6} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={6} icon={<DocumentText />} title={t("documents.empty")} />
             ) : (
               rows.map((d) => (
                 <Table.Row key={d.id} className="[&_td]:py-2.5">
-                  <Table.Cell className="whitespace-nowrap font-mono text-xs">
+                  <Table.Cell className="whitespace-nowrap font-mono txt-compact-xsmall">
                     {d.number}
                     {d.related.length > 0 ? <span className="text-ui-fg-muted"> ← {d.related.map((r) => r.number).join(", ")}</span> : null}
                   </Table.Cell>
@@ -659,11 +776,11 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDateTime(d.issuedAt, lang)}</Table.Cell>
                   <Table.Cell>{t(`documents.sources.${d.source}`, { defaultValue: d.source })}</Table.Cell>
-                  <Table.Cell className="whitespace-nowrap font-mono text-xs">
+                  <Table.Cell className="whitespace-nowrap font-mono txt-compact-xsmall">
                     {d.ksefNumber ? d.ksefNumber : d.kind === "FS" && d.status !== "canceled" ? <span className="font-sans text-ui-fg-muted">{t("documents.ksefWaiting")}</span> : ""}
                   </Table.Cell>
                   <Table.Cell>
-                    <DocumentStatusBadge status={d.status} />
+                    <DocumentStatusBadge status={d.status} dot />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -672,7 +789,7 @@ function DocumentsSection({ lang, poll }: { lang: string; poll: boolean }) {
         </Table>
       </div>
       <Pager offset={offset} limit={PAGE_SIZE} count={docs.data?.count ?? 0} onChange={setOffset} />
-    </Container>
+    </Section>
   )
 }
 
@@ -683,10 +800,14 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
   const runs = useSubiektRuns(poll)
   const rows = runs.data?.runs ?? []
   return (
-    <Container className="divide-y p-0">
-      <div className="px-6 py-4">
-        <Heading level="h2">{t("runs.title")}</Heading>
-      </div>
+    <Section
+      icon={<Clock />}
+      title={t("runs.title")}
+      points={[
+        { icon: <BarsArrowDown />, text: t("runs.points.newest") },
+        { icon: <Bolt />, text: t("runs.points.jobs") },
+      ]}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -700,21 +821,17 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={6} className="px-6 py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {runs.isLoading ? "" : t("runs.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {runs.isLoading ? (
+              <KitSkeletonRows cols={6} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={6} icon={<Clock />} title={t("runs.empty")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5">
                   <Table.Cell className="whitespace-nowrap">{t(`runs.kinds.${r.kind}`)}</Table.Cell>
                   <Table.Cell className="whitespace-nowrap text-ui-fg-subtle">{t(`runs.triggers.${r.trigger}`, { defaultValue: r.trigger })}</Table.Cell>
                   <Table.Cell>
-                    <RunStatusBadge status={r.status} />
+                    <RunStatusBadge status={r.status} dot />
                   </Table.Cell>
                   <Table.Cell className="max-w-lg">
                     <Text size="small">{runSummary(r, t)}</Text>
@@ -727,7 +844,7 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 

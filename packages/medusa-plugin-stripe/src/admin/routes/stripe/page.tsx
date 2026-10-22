@@ -2,8 +2,9 @@
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, ArrowUturnLeft, ChartBar, ExclamationCircle, LockClosedSolid, Receipt, ShieldCheck, Spinner } from "@medusajs/icons"
-import { Badge, Container, InlineTip, toast, Text } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, ArrowUturnLeft, ChartBar, ExclamationCircle, Eye, LockClosedSolid, Receipt, ShieldCheck } from "@medusajs/icons"
+import { Container, InlineTip, toast } from "@medusajs/ui"
+import { ToneBadge, type Tone } from "../../lib/stripe-blocks"
 import type { PaymentFilter, StripeMode, StripeOverviewResponse, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
 import { errorMessage, useStripeChecks, useStripeOverview, useStripeRefresh, useStripeStatus } from "../../lib/stripe-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/stripe-guide"
@@ -39,7 +40,7 @@ function scrollToSection(id: string): void {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
 }
 
-const MODE_COLOR: Record<StripeMode, "green" | "orange" | "blue" | "grey" | "purple"> = { demo: "purple", live: "green", test: "orange", unconfigured: "orange" }
+const MODE_COLOR: Record<StripeMode, Exclude<Tone, "purple">> = { demo: "blue", live: "green", test: "orange", unconfigured: "orange" }
 
 const StripePage = () => {
   const { t, i18n } = useTranslation("stripe")
@@ -106,19 +107,7 @@ const StripePage = () => {
           </div>
         ) : null}
         {s && nav.view === "panel" && configured && !o && overview.isLoading ? (
-          <div className="flex flex-col gap-3 px-6 py-5">
-            <div className="flex items-center gap-x-2">
-              <Spinner className="animate-spin text-ui-fg-muted" />
-              <Text size="small" className="text-ui-fg-subtle">
-                {t("loading")}
-              </Text>
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="h-[84px] animate-pulse rounded-lg bg-ui-bg-component" />
-              ))}
-            </div>
-          </div>
+          <KitLoading label={t("loading")} />
         ) : null}
         {nav.view === "panel" && overview.isError ? (
           <div className="px-6 py-4">
@@ -203,16 +192,15 @@ function Header({ status, overview, lang, nav }: { status: StripeStatusResponse 
     <IntegrationHeader
       icon={<StripeIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         status ? (
           <>
             <ModeBadge color={MODE_COLOR[status.mode]} label={t(`mode.${status.mode}`)} title={t("demo.label")}>
               {status.mode === "demo" ? <DemoDetails /> : null}
             </ModeBadge>
-            <Badge size="2xsmall" color="orange">
+            <ToneBadge tone="blue" icon={<Eye />}>
               {t("mode.readOnly")}
-            </Badge>
+            </ToneBadge>
           </>
         ) : null
       }
@@ -254,22 +242,22 @@ function Header({ status, overview, lang, nav }: { status: StripeStatusResponse 
       view={nav.view}
       onView={(v) => nav.go(v)}
       labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
-      primary={
-        nav.view !== "guide" && status
-          ? {
-              key: "refresh",
-              label: refresh.isPending ? t("actions.refreshing") : t("actions.refresh"),
-              icon: <ArrowPath />,
-              loading: refresh.isPending,
-              disabled: !overview && status.configured,
-              onClick: () => void onRefresh(),
-            }
-          : null
-      }
+      primary={status ? { key: "dashboard", label: t("actions.dashboard"), icon: <ArrowUpRightOnBox />, onClick: () => open(dashboard) } : null}
       actions={
         status
           ? [
-              { key: "dashboard", label: t("actions.dashboard"), icon: <ArrowUpRightOnBox />, onClick: () => open(dashboard) },
+              ...(nav.view !== "guide"
+                ? [
+                    {
+                      key: "refresh",
+                      label: refresh.isPending ? t("actions.refreshing") : t("actions.refresh"),
+                      icon: <ArrowPath />,
+                      loading: refresh.isPending,
+                      disabled: !overview && status.configured,
+                      onClick: () => void onRefresh(),
+                    },
+                  ]
+                : []),
               { key: "webhooks", label: t("actions.webhooks"), icon: <ArrowUpRightOnBox />, onClick: () => open(`${dashboard}/webhooks`) },
             ]
           : []

@@ -1,7 +1,9 @@
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Container, Heading, InlineTip, Text } from "@medusajs/ui"
+import { ArrowUpRightOnBox, Calendar, CogSixTooth, DocumentText, EnvelopeSolid, EyeSlash, LockClosedSolid, PencilSquare } from "@medusajs/icons"
+import { InlineTip, Text } from "@medusajs/ui"
 import type { StatusResponse } from "../../modules/credit/lib/contract"
+import { Section, ToneBadge } from "./credit-blocks"
 import { StoreRule } from "./credit-rule"
 
 /**
@@ -27,25 +29,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function OnOff({ on, onLabel, offLabel }: { on: boolean; onLabel: string; offLabel: string }) {
-  return (
-    <Badge size="2xsmall" color={on ? "green" : "grey"}>
-      {on ? onLabel : offLabel}
-    </Badge>
-  )
-}
-
-function Section({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
-  return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-y-1 px-6 py-4">
-        <Heading level="h2">{title}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {subtitle}
-        </Text>
-      </div>
-      {children}
-    </Container>
-  )
+  return <ToneBadge tone={on ? "green" : "grey"}>{on ? onLabel : offLabel}</ToneBadge>
 }
 
 /** The options in use: mode, enforcement, demo, the payment terms and what the page may change. */
@@ -56,12 +40,19 @@ export function OptionsTab({ status }: { status: StatusResponse }) {
   const yes = t("settings.on")
   const no = t("settings.off")
   return (
-    <Section title={t("settings.options.title")} subtitle={t("settings.options.subtitle")}>
+    <Section
+      icon={<CogSixTooth />}
+      title={t("settings.options.title")}
+      pointsLabel={t("settings.options.subtitle")}
+      points={[
+        { icon: <PencilSquare />, text: t("settings.options.points.config") },
+        { icon: <LockClosedSolid />, text: t("settings.options.points.enforce") },
+        { icon: <Calendar />, text: t("settings.options.points.terms") },
+      ]}
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-3">
         <Fact label={t("settings.options.mode")}>
-          <Badge size="2xsmall" color={store ? "blue" : "grey"}>
-            {store ? t("settings.options.modeStore") : t("settings.options.modeOwn")}
-          </Badge>
+          <ToneBadge tone={store ? "blue" : "grey"}>{store ? t("settings.options.modeStore") : t("settings.options.modeOwn")}</ToneBadge>
         </Fact>
         <Fact label={t("settings.options.enforce")}>
           <OnOff on={status.enforce} onLabel={yes} offLabel={no} />
@@ -71,9 +62,7 @@ export function OptionsTab({ status }: { status: StatusResponse }) {
         </Fact>
         <Fact label={t("settings.options.terms")}>
           {choices.map((d) => (
-            <Badge key={d} size="2xsmall" color="grey">
-              {d === 0 ? t("set.immediate") : t("set.net", { days: d })}
-            </Badge>
+            <ToneBadge key={d}>{d === 0 ? t("set.immediate") : t("set.net", { days: d })}</ToneBadge>
           ))}
         </Fact>
         <Fact label={t("settings.options.maxDays")}>{status.maxNetDays ? t("ui.days", { days: status.maxNetDays }) : t("settings.none")}</Fact>
@@ -97,7 +86,17 @@ export function StoreTab({ status }: { status: StatusResponse }) {
   const yes = t("settings.on")
   const no = t("settings.off")
   return (
-    <Section title={t("settings.store.title")} subtitle={t("settings.store.subtitle")}>
+    <Section
+      icon={<EnvelopeSolid />}
+      title={t("settings.store.title")}
+      pointsLabel={t("settings.store.subtitle")}
+      points={[
+        { icon: <EnvelopeSolid />, text: t("settings.store.points.reminders") },
+        { icon: <DocumentText />, text: t("settings.store.points.documents") },
+        { icon: <ArrowUpRightOnBox />, text: t("settings.store.points.settle") },
+        { icon: <EyeSlash />, text: t("settings.store.points.hide") },
+      ]}
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-3">
         <Fact label={t("settings.store.reminders")}>
           <OnOff on={Boolean(status.reminders?.send)} onLabel={yes} offLabel={no} />

@@ -1,10 +1,12 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { InformationCircleSolid } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Switch, Table, Text, toast, usePrompt } from "@medusajs/ui"
+import { Beaker, BarsArrowDown, CalendarMini, ChartBar, CheckCircleSolid, Clock, CurrencyDollar, Envelope, ExclamationCircle, Eye, EyeSlash, InformationCircleSolid, LockClosedSolid, PencilSquare, ShieldCheck } from "@medusajs/icons"
+import { Button, InlineTip, Switch, Table, Text, toast, usePrompt } from "@medusajs/ui"
 import type { DocumentKind, StatusResponse, SummaryMonthDto, WriterDto, WriterKey } from "../../modules/fakturownia/lib/contract"
 import { errorMessage, useFakturowniaEmail, useFakturowniaEmails, useFakturowniaReminders, useFakturowniaSummary, useFakturowniaWriter } from "./fakturownia-api"
+import { EmptyTableRow, RowActions, Section, ToneBadge } from "./fakturownia-blocks"
 import { EmailHistory } from "./fakturownia-document"
+import { KitLoading, KitSkeletonRows } from "./fakturownia-kit"
 import { KindBadge, MedusaMark, StoreOrderCell, WriterBadge, fmtDate, fmtDateTime, fmtMoney, fmtMoneyList, fmtNumber } from "./fakturownia-ui"
 
 const WRITER_KEYS: WriterKey[] = ["corrections", "emails", "ksef"]
@@ -51,24 +53,21 @@ export function WritersSection({ status, lang }: { status: StatusResponse; lang:
     }
   }
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("writers.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("writers.subtitle")}
-        </Text>
-      </div>
-      {status.mode === "demo" ? (
-        <div className="px-6 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("writers.demo")}
-          </Text>
-        </div>
-      ) : null}
+    <Section
+      icon={<PencilSquare />}
+      title={t("writers.title")}
+      badges={status.mode === "demo" ? <ToneBadge tone="blue" icon={<Beaker />}>{t("writers.demoBadge")}</ToneBadge> : null}
+      pointsLabel={t("writers.subtitle")}
+      points={[
+        { icon: <PencilSquare />, text: t("writers.points.offByDefault") },
+        { icon: <LockClosedSolid />, text: t("writers.points.option") },
+        { icon: <Beaker />, text: t("writers.points.beta"), tone: "orange", title: t("writers.betaHint") },
+      ]}
+    >
       {WRITER_KEYS.map((key) => (
         <WriterRow key={key} writer={status.writers[key]} lang={lang} busy={toggle.isPending && toggle.variables?.writer === key} onFlip={(on) => void flip(key, on)} />
       ))}
-    </Container>
+    </Section>
   )
 }
 
@@ -76,21 +75,18 @@ function WriterRow({ writer, lang, busy, onFlip }: { writer: WriterDto; lang: st
   const { t } = useTranslation("fakturownia")
   return (
     <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
-      <div className="flex max-w-3xl flex-col gap-y-1">
+      <div className="flex min-w-0 flex-col gap-y-1">
         <span className="flex flex-wrap items-center gap-2">
           <Text size="small" weight="plus" className="text-ui-fg-base">
             {t(`writers.names.${writer.key}`)}
           </Text>
           <WriterBadge writer={writer} />
-          <Badge size="2xsmall" color="orange" title={t("writers.betaHint")}>
+          <ToneBadge tone="orange" title={t("writers.betaHint")}>
             {t("writers.beta")}
-          </Badge>
+          </ToneBadge>
         </span>
         <Text size="small" className="text-ui-fg-subtle">
           {t(`writers.descriptions.${writer.key}`)}
-        </Text>
-        <Text size="xsmall" className="text-ui-tag-orange-text">
-          {t("writers.betaHint")}
         </Text>
         <Text size="xsmall" className="text-ui-fg-muted">
           {!writer.allowed
@@ -122,21 +118,18 @@ export function UnpaidSection({ status, lang, onOpenDocument }: { status: Status
     }
   }
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex max-w-3xl flex-col gap-1">
-          <Heading level="h2">{t("unpaid.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("unpaid.subtitle", { days: status.options.reminderAfterDays })}
-          </Text>
-        </div>
-        <span className="flex items-center gap-x-2">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("writers.names.emails")}
-          </Text>
-          <WriterBadge writer={writer} />
-        </span>
-      </div>
+    <Section
+      id="fakturownia-unpaid"
+      icon={<CurrencyDollar />}
+      title={t("unpaid.title")}
+      badges={<WriterBadge writer={writer} label={t("writers.names.emails")} />}
+      pointsLabel={t("unpaid.subtitle", { days: status.options.reminderAfterDays })}
+      points={[
+        { icon: <Clock />, text: t("unpaid.points.age", { count: status.options.reminderAfterDays }) },
+        { icon: <BarsArrowDown />, text: t("unpaid.points.oldest") },
+        { icon: <Envelope />, text: t("unpaid.points.daily"), title: t("unpaid.noApi") },
+      ]}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -160,58 +153,53 @@ export function UnpaidSection({ status, lang, onOpenDocument }: { status: Status
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={6} className="px-6 py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {q.isLoading ? "" : t("unpaid.empty")}
+            {q.isLoading ? <KitSkeletonRows cols={6} rows={3} /> : null}
+            {!q.isLoading && rows.length === 0 ? <EmptyTableRow cols={6} icon={<CheckCircleSolid />} title={t("unpaid.empty")} /> : null}
+            {rows.map((r) => (
+              <Table.Row key={r.document.id} className="[&_td]:py-2.5">
+                <Table.Cell className="max-w-[340px]">
+                  <StoreOrderCell orderId={r.document.orderId} displayId={r.document.displayId} />
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap">
+                  <span className="flex items-center gap-x-2">
+                    <KindBadge kind={r.document.kind} />
+                    <button type="button" className="txt-compact-small font-mono text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => onOpenDocument(r.document.id)}>
+                      {r.document.number ?? ""}
+                    </button>
+                  </span>
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap">
+                  {fmtDate(r.document.issueDate, lang)}
+                  <Text size="xsmall" className="text-ui-fg-muted">
+                    {t("unpaid.age", { count: r.ageDays })}
                   </Text>
-                </td>
-              </Table.Row>
-            ) : (
-              rows.map((r) => (
-                <Table.Row key={r.document.id} className="[&_td]:py-2.5">
-                  <Table.Cell className="max-w-[340px]">
-                    <StoreOrderCell orderId={r.document.orderId} displayId={r.document.displayId} />
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap">
-                    <span className="flex items-center gap-x-2">
-                      <KindBadge kind={r.document.kind} />
-                      <button type="button" className="txt-compact-small font-mono text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => onOpenDocument(r.document.id)}>
-                        {r.document.number ?? ""}
-                      </button>
-                    </span>
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap">
-                    {fmtDate(r.document.issueDate, lang)}
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtMoney(r.document.totalGross, r.document.currency, lang)}</Table.Cell>
+                <Table.Cell className="whitespace-nowrap">
+                  <Text size="small">{r.reminders > 0 ? t("unpaid.sentCount", { count: r.reminders }) : t("unpaid.noneYet")}</Text>
+                  {r.lastReminderAt ? (
                     <Text size="xsmall" className="text-ui-fg-muted">
-                      {t("unpaid.age", { count: r.ageDays })}
+                      {t("unpaid.last", { time: fmtDateTime(r.lastReminderAt, lang) })}
                     </Text>
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtMoney(r.document.totalGross, r.document.currency, lang)}</Table.Cell>
-                  <Table.Cell className="whitespace-nowrap">
-                    <Text size="small">{r.reminders > 0 ? t("unpaid.sentCount", { count: r.reminders }) : t("unpaid.noneYet")}</Text>
-                    {r.lastReminderAt ? (
-                      <Text size="xsmall" className="text-ui-fg-muted">
-                        {t("unpaid.last", { time: fmtDateTime(r.lastReminderAt, lang) })}
-                      </Text>
-                    ) : null}
-                  </Table.Cell>
-                  <Table.Cell className="text-right">
-                    <Button
-                      size="small"
-                      variant="secondary"
-                      disabled={!writer.armed || !r.canRemind}
-                      isLoading={send.isPending && send.variables?.id === r.document.id}
-                      onClick={() => void remind(r.document.id)}
-                      title={!r.canRemind ? t("unpaid.tooSoon") : undefined}
-                    >
-                      {t("email.remind")}
-                    </Button>
-                  </Table.Cell>
-                </Table.Row>
-              ))
-            )}
+                  ) : null}
+                </Table.Cell>
+                <Table.Cell className="text-right">
+                  <RowActions
+                    actions={[
+                      {
+                        key: "remind",
+                        label: !r.canRemind ? t("unpaid.tooSoon") : !writer.armed ? t("email.writerOff") : t("email.remind"),
+                        icon: <Envelope />,
+                        disabled: !writer.armed || !r.canRemind,
+                        loading: send.isPending && send.variables?.id === r.document.id,
+                        onClick: () => void remind(r.document.id),
+                      },
+                      { key: "details", label: t("documents.details"), icon: <Eye />, onClick: () => onOpenDocument(r.document.id) },
+                    ]}
+                  />
+                </Table.Cell>
+              </Table.Row>
+            ))}
           </Table.Body>
         </Table>
       </div>
@@ -222,7 +210,7 @@ export function UnpaidSection({ status, lang, onOpenDocument }: { status: Status
           </Text>
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }
 
@@ -234,23 +222,24 @@ export function MailboxSection({ status, lang }: { status: StatusResponse; lang:
   const count = q.data?.count ?? 0
   const demo = status.mode === "demo"
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <span className="flex flex-wrap items-center gap-2">
-          <Heading level="h2">{demo ? t("mailbox.demoTitle") : t("mailbox.title")}</Heading>
-          {demo ? (
-            <Badge size="2xsmall" color="purple">
-              {t("mailbox.simulated")}
-            </Badge>
-          ) : null}
-        </span>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {demo ? t("mailbox.demoSubtitle") : t("mailbox.subtitle")}
-        </Text>
-      </div>
-      <div className="px-6 py-2">
-        <EmailHistory emails={q.data?.emails ?? []} lang={lang} showDocument />
-      </div>
+    <Section
+      icon={<Envelope />}
+      title={demo ? t("mailbox.demoTitle") : t("mailbox.title")}
+      badges={
+        demo ? (
+          <ToneBadge tone="blue" icon={<Beaker />}>
+            {t("mailbox.simulated")}
+          </ToneBadge>
+        ) : null
+      }
+      pointsLabel={demo ? t("mailbox.demoSubtitle") : t("mailbox.subtitle")}
+      points={[
+        { icon: <BarsArrowDown />, text: t("mailbox.points.newest") },
+        { icon: <EyeSlash />, text: t("mailbox.points.masked") },
+        demo && { icon: <Beaker />, text: t("mailbox.points.nothingSent"), tone: "blue" },
+      ]}
+    >
+      <div className="px-6 py-2">{q.isLoading ? <KitLoading /> : <EmailHistory emails={q.data?.emails ?? []} lang={lang} showDocument />}</div>
       {count > 10 ? (
         <div className="flex items-center justify-end gap-2 px-6 py-3">
           <Button size="small" variant="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>
@@ -261,7 +250,7 @@ export function MailboxSection({ status, lang }: { status: StatusResponse; lang:
           </Button>
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }
 
@@ -288,18 +277,23 @@ export function SummarySection({ lang }: { lang: string }) {
   const months = q.data?.months ?? []
   const shown = all ? months : months.filter((m, i) => i === 0 || !isEmptyMonth(m))
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex max-w-3xl flex-col gap-1">
-          <Heading level="h2">{t("summary.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("summary.subtitle")}
-          </Text>
-        </div>
-        <Button size="small" variant="transparent" onClick={() => setAll(!all)}>
+    <Section
+      icon={<ChartBar />}
+      title={t("summary.title")}
+      pointsLabel={t("summary.subtitle")}
+      points={[
+        { icon: <CalendarMini />, text: t("summary.points.months") },
+        { icon: <CurrencyDollar />, text: t("summary.points.currency") },
+        { icon: <ExclamationCircle />, text: t("summary.points.unpaid") },
+        { icon: <ShieldCheck />, text: t("summary.points.ksef") },
+      ]}
+      actions={
+        <Button size="small" variant="secondary" onClick={() => setAll(!all)}>
+          {all ? <EyeSlash /> : <Eye />}
           {all ? t("summary.onlyActive") : t("summary.allMonths")}
         </Button>
-      </div>
+      }
+    >
       {q.data?.capped ? (
         <div className="px-6 py-3">
           <InlineTip variant="warning" label={t("summary.title")}>
@@ -322,6 +316,7 @@ export function SummarySection({ lang }: { lang: string }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
+            {q.isLoading ? <KitSkeletonRows cols={7} rows={4} /> : null}
             {shown.map((m) => (
               <Table.Row key={m.month} className="[&_td]:py-2.5 align-top">
                 <Table.Cell className="whitespace-nowrap capitalize">{monthLabel(m.month, lang)}</Table.Cell>
@@ -368,6 +363,6 @@ export function SummarySection({ lang }: { lang: string }) {
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }

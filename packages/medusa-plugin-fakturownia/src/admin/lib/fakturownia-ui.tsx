@@ -1,7 +1,22 @@
 import { useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { Badge, Button, Drawer, Input, Label, StatusBadge, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import { ArrowUpRightMini, ArrowUpRightOnBox } from "@medusajs/icons"
+import { Button, Drawer, Input, Label, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import {
+  ArrowDownTray,
+  ArrowPath,
+  ArrowUpRightMini,
+  ArrowUpRightOnBox,
+  ArrowUturnLeft,
+  Bolt,
+  CheckCircle,
+  DocumentSeries,
+  DocumentText,
+  Eye,
+  LockClosedSolid,
+  MagnifyingGlass,
+  PencilSquare,
+  Receipt,
+} from "@medusajs/icons"
 import { useTranslation } from "react-i18next"
 import type {
   BuyerWarningDto,
@@ -19,9 +34,8 @@ import type {
   WriterDto,
 } from "../../modules/fakturownia/lib/contract"
 import type { Reference } from "./fakturownia-guide"
+import { ToneBadge, type RowAction, type Tone } from "./fakturownia-blocks"
 import { errorMessage, openFile, pdfPath, useFakturowniaDocumentAction, useFakturowniaMarkIssued, type DocumentAction } from "./fakturownia-api"
-
-type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -61,7 +75,7 @@ export function fmtMoney(value: number | null | undefined, currency: string | nu
 /** One word for the whole connection, for the mode badge of the header: what a person needs to know first. */
 export function connectionState(s: StatusResponse | undefined): { key: string; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
-  if (s.mode === "demo") return { key: "demo", tone: "purple" }
+  if (s.mode === "demo") return { key: "demo", tone: "blue" }
   if (!s.configured) return { key: "notConfigured", tone: "orange" }
   const last = s.lastRuns.issue
   if (s.lastCheck && !s.lastCheck.ok) return { key: "error", tone: "red" }
@@ -80,120 +94,54 @@ const STATUS_TONE: Record<DocumentStatus, Tone> = {
   needs_correction: "orange",
 }
 
-export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
-  const { t } = useTranslation("fakturownia")
-  return <StatusBadge color={STATUS_TONE[status] ?? "grey"}>{t(`documents.statuses.${status}`)}</StatusBadge>
+export function documentTone(status: DocumentStatus): Tone {
+  return STATUS_TONE[status] ?? "grey"
 }
 
-const KIND_TONE: Record<DocumentKind, "blue" | "purple" | "grey" | "orange"> = { vat: "blue", proforma: "purple", receipt: "grey", correction: "orange" }
+export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
+  const { t } = useTranslation("fakturownia")
+  return <ToneBadge tone={documentTone(status)}>{t(`documents.statuses.${status}`)}</ToneBadge>
+}
+
+/** The kind of a document is a label, not a state: grey, with its own icon. */
+const KIND_ICON: Record<DocumentKind, ReactNode> = { vat: <DocumentText />, proforma: <DocumentSeries />, receipt: <Receipt />, correction: <ArrowUturnLeft /> }
 
 export function KindBadge({ kind }: { kind: DocumentKind }) {
   const { t } = useTranslation("fakturownia")
   return (
-    <Badge size="2xsmall" color={KIND_TONE[kind] ?? "grey"} className="whitespace-nowrap">
+    <ToneBadge tone="grey" icon={KIND_ICON[kind]}>
       {t(`documents.kinds.${kind}`)}
-    </Badge>
+    </ToneBadge>
   )
 }
 
 const GOV_TONE: Record<GovState, Tone> = { none: "grey", processing: "blue", accepted: "green", problem: "red", not_applicable: "grey", offline: "orange" }
+
+export function govTone(state: GovState): Tone {
+  return GOV_TONE[state] ?? "grey"
+}
 
 /** The KSeF state of a VAT invoice or a correction; nothing for kinds KSeF does not take. */
 export function KsefBadge({ doc }: { doc: Pick<DocumentDto, "kind" | "govState" | "govId" | "govError" | "status"> }) {
   const { t } = useTranslation("fakturownia")
   if ((doc.kind !== "vat" && doc.kind !== "correction") || doc.govState === "not_applicable" || (doc.status !== "issued" && doc.status !== "needs_correction")) return null
   return (
-    <span title={doc.govId ?? doc.govError ?? undefined}>
-      <StatusBadge color={GOV_TONE[doc.govState] ?? "grey"}>{t(`documents.ksefStates.${doc.govState}`)}</StatusBadge>
-    </span>
+    <ToneBadge tone={govTone(doc.govState)} title={doc.govId ?? doc.govError ?? undefined}>
+      {t(`documents.ksefStates.${doc.govState}`)}
+    </ToneBadge>
   )
 }
 
 export function PaidBadge({ paid }: { paid: boolean }) {
   const { t } = useTranslation("fakturownia")
-  return (
-    <Badge size="2xsmall" color={paid ? "green" : "orange"}>
-      {paid ? t("documents.paid") : t("documents.unpaid")}
-    </Badge>
-  )
+  return <ToneBadge tone={paid ? "green" : "orange"}>{paid ? t("documents.paid") : t("documents.unpaid")}</ToneBadge>
 }
 
 const RUN_TONE: Record<RunStatus, Tone> = { ok: "green", partial: "orange", error: "red" }
 
 export function RunStatusBadge({ status }: { status: RunStatus }) {
   const { t } = useTranslation("fakturownia")
-  return <StatusBadge color={RUN_TONE[status] ?? "grey"}>{t(`runs.statuses.${status}`)}</StatusBadge>
-}
-
-export function StatTile({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-}: {
-  label: string
-  value: ReactNode
-  tone?: "default" | "green" | "orange" | "red"
-  active?: boolean
-  onClick?: () => void
-}) {
-  const dot =
-    tone === "green" ? "bg-ui-tag-green-icon" : tone === "orange" ? "bg-ui-tag-orange-icon" : tone === "red" ? "bg-ui-tag-red-icon" : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "hover:bg-ui-bg-component-hover cursor-pointer" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-    </button>
-  )
-}
-
-export function FilterPills<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T
-  options: Array<{ value: T; label: string; count?: number }>
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={clx(
-            "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg",
-            value === o.value
-              ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color"
-              : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-          )}
-        >
-          {o.label}
-          {typeof o.count === "number" ? <span className="tabular-nums opacity-80">{o.count}</span> : null}
-        </button>
-      ))}
-    </div>
-  )
+  return <ToneBadge tone={RUN_TONE[status] ?? "grey"}>{t(`runs.statuses.${status}`)}</ToneBadge>
 }
 
 export function Fact({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
@@ -249,40 +197,42 @@ export function StoreOrderCell({ orderId, displayId }: { orderId: string; displa
   )
 }
 
-/** "Open in Fakturownia" (live mode) and the PDF streamed by the backend. */
+function downloadPdf(doc: DocumentDto, t: Translate): void {
+  void openFile(pdfPath(doc.id), `${doc.number ?? doc.id}.pdf`).catch((err: unknown) => toast.error(t("toast.error", { error: errorMessage(err) })))
+}
+
+/** "PDF" and "Open in Fakturownia" (live mode) as links, for the document drawer. */
 export function DocumentLinks({ doc }: { doc: DocumentDto }) {
   const { t } = useTranslation("fakturownia")
   if (!doc.fakturowniaUrl && !doc.actions.pdf) return null
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+    <span className="inline-flex flex-wrap items-center gap-2">
       {doc.actions.pdf ? (
-        <button
-          type="button"
-          className="inline-flex items-center gap-x-1 txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover"
-          onClick={() =>
-            void openFile(pdfPath(doc.id), `${doc.number ?? doc.id}.pdf`).catch((err: unknown) => toast.error(t("toast.error", { error: errorMessage(err) })))
-          }
-        >
+        <Button size="small" variant="secondary" onClick={() => downloadPdf(doc, t)}>
+          <ArrowDownTray />
           {t("actions.pdf")}
-          <ArrowUpRightOnBox className="shrink-0" />
-        </button>
+        </Button>
       ) : null}
       {doc.fakturowniaUrl ? (
-        <a href={doc.fakturowniaUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-1 txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-          {t("actions.open")}
-          <ArrowUpRightOnBox className="shrink-0" />
-        </a>
+        <Button size="small" variant="secondary" asChild>
+          <a href={doc.fakturowniaUrl} target="_blank" rel="noreferrer">
+            <ArrowUpRightOnBox />
+            {t("actions.open")}
+          </a>
+        </Button>
       ) : null}
     </span>
   )
 }
 
 /**
- * What a person can do with a document that needs one: "Retry" (failed),
- * "Check in Fakturownia", "Issue again" and "Mark as issued" (unknown).
- * Every write asks for a confirmation first.
+ * The actions of one document as `RowActions` items: the writes a document
+ * may need ("Retry" for a failed one, "Check in Fakturownia", "Issue again"
+ * and "Mark as issued" for an unknown result), each confirmed first, and with
+ * `links` the PDF, Fakturownia and the details drawer. `extra` holds the
+ * "Mark as issued" drawer: render it next to the actions.
  */
-export function DocumentActions({ doc, onDone }: { doc: DocumentDto; onDone?: () => void }) {
+export function useDocumentActions(doc: DocumentDto, { onDone, onOpen, links = false }: { onDone?: () => void; onOpen?: () => void; links?: boolean } = {}): { actions: RowAction[]; extra: ReactNode } {
   const { t } = useTranslation("fakturownia")
   const prompt = usePrompt()
   const action = useFakturowniaDocumentAction()
@@ -310,30 +260,36 @@ export function DocumentActions({ doc, onDone }: { doc: DocumentDto; onDone?: ()
     }
   }
 
-  if (!doc.actions.retry && !doc.actions.reconcile && !doc.actions.issueAgain && !doc.actions.markIssued) return null
+  const actions: RowAction[] = [
+    { key: "retry", label: t("actions.retry"), icon: <ArrowPath />, loading: busy("retry"), hidden: !doc.actions.retry, onClick: () => void run("retry") },
+    { key: "check", label: t("actions.checkRemote"), icon: <MagnifyingGlass />, loading: busy("check"), hidden: !doc.actions.reconcile, onClick: () => void run("check") },
+    { key: "issue-again", label: t("actions.issueAgain"), icon: <Bolt />, danger: true, loading: busy("issue-again"), hidden: !doc.actions.issueAgain, onClick: () => void run("issue-again") },
+    { key: "mark", label: t("actions.markIssued"), icon: <CheckCircle />, hidden: !doc.actions.markIssued, onClick: () => setMarking(true) },
+  ]
+  if (links) {
+    actions.push(
+      { key: "pdf", label: t("actions.pdf"), icon: <ArrowDownTray />, hidden: !doc.actions.pdf, onClick: () => downloadPdf(doc, t) },
+      { key: "open", label: t("actions.open"), icon: <ArrowUpRightOnBox />, hidden: !doc.fakturowniaUrl, href: doc.fakturowniaUrl ?? undefined, external: true },
+      { key: "details", label: t("documents.details"), icon: <Eye />, hidden: !onOpen, onClick: () => onOpen?.() },
+    )
+  }
+  return { actions, extra: marking ? <MarkIssuedDrawer doc={doc} onClose={() => setMarking(false)} onDone={onDone} /> : null }
+}
+
+/** The writes of a document as visible buttons with icons (the drawer). */
+export function DocumentActions({ doc, onDone }: { doc: DocumentDto; onDone?: () => void }) {
+  const { actions, extra } = useDocumentActions(doc, { onDone })
+  const shown = actions.filter((a) => !a.hidden)
+  if (!shown.length) return null
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {doc.actions.retry ? (
-        <Button size="small" variant="secondary" isLoading={busy("retry")} onClick={() => void run("retry")}>
-          {t("actions.retry")}
+      {shown.map((a) => (
+        <Button key={a.key} size="small" variant={a.danger ? "danger" : "secondary"} isLoading={a.loading} onClick={() => a.onClick?.()}>
+          {a.icon}
+          {a.label}
         </Button>
-      ) : null}
-      {doc.actions.reconcile ? (
-        <Button size="small" variant="secondary" isLoading={busy("check")} onClick={() => void run("check")}>
-          {t("actions.checkRemote")}
-        </Button>
-      ) : null}
-      {doc.actions.issueAgain ? (
-        <Button size="small" variant="secondary" isLoading={busy("issue-again")} onClick={() => void run("issue-again")}>
-          {t("actions.issueAgain")}
-        </Button>
-      ) : null}
-      {doc.actions.markIssued ? (
-        <Button size="small" variant="transparent" onClick={() => setMarking(true)}>
-          {t("actions.markIssued")}
-        </Button>
-      ) : null}
-      {marking ? <MarkIssuedDrawer doc={doc} onClose={() => setMarking(false)} onDone={onDone} /> : null}
+      ))}
+      {extra}
     </div>
   )
 }
@@ -483,14 +439,25 @@ const PLAN_TONE: Record<PlanStatus, Tone> = { draft: "orange", manual: "orange",
 
 export function PlanStatusBadge({ status }: { status: PlanStatus }) {
   const { t } = useTranslation("fakturownia")
-  return <StatusBadge color={PLAN_TONE[status] ?? "grey"}>{t(`corrections.statuses.${status}`)}</StatusBadge>
+  return <ToneBadge tone={PLAN_TONE[status] ?? "grey"}>{t(`corrections.statuses.${status}`)}</ToneBadge>
 }
 
-/** Whether a writer writes, is off, or cannot be turned on (the option). */
-export function WriterBadge({ writer }: { writer: WriterDto }) {
+/** Whether a writer writes, is off, or cannot be turned on (the option); `label` names the writer in front. */
+export function WriterBadge({ writer, label }: { writer: WriterDto; label?: string }) {
   const { t } = useTranslation("fakturownia")
-  if (!writer.allowed) return <StatusBadge color="grey">{t("writers.blocked")}</StatusBadge>
-  return <StatusBadge color={writer.armed ? "green" : "orange"}>{writer.armed ? t("writers.armed") : t("writers.off")}</StatusBadge>
+  const prefix = label ? `${label}: ` : ""
+  if (!writer.allowed) {
+    return (
+      <ToneBadge tone="grey" icon={<LockClosedSolid />}>
+        {prefix + t("writers.blocked")}
+      </ToneBadge>
+    )
+  }
+  return (
+    <ToneBadge tone={writer.armed ? "green" : "orange"} icon={<PencilSquare />}>
+      {prefix + (writer.armed ? t("writers.armed") : t("writers.off"))}
+    </ToneBadge>
+  )
 }
 
 /** Why a buyer that looks like a company got a consumer document. */
@@ -510,14 +477,17 @@ export function BuyerWarningText({ warning }: { warning: BuyerWarningDto | null 
   )
 }
 
-/** A small framed block with a label, for the drawers. */
-export function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
+/** A framed block with an icon and a label, for the document drawer. */
+export function DrawerBlock({ icon, title, children, aside }: { icon?: ReactNode; title: string; children: ReactNode; aside?: ReactNode }) {
   return (
     <div className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Text size="small" weight="plus" className="text-ui-fg-base">
-          {title}
-        </Text>
+        <span className="flex items-center gap-x-2">
+          {icon ? <span className="flex shrink-0 text-ui-fg-subtle [&_svg]:size-4">{icon}</span> : null}
+          <Text size="small" weight="plus" className="text-ui-fg-base">
+            {title}
+          </Text>
+        </span>
         {aside}
       </div>
       {children}

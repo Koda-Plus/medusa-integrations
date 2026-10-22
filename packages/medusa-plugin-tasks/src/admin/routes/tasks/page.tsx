@@ -3,24 +3,44 @@ import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUturnLeft, Plus } from "@medusajs/icons"
-import { Badge, Container, Heading, InlineTip, Table, Text } from "@medusajs/ui"
+import {
+  ArchiveBox,
+  ArrowPath,
+  ArrowUturnLeft,
+  BarsArrowDown,
+  Beaker,
+  Calendar,
+  ChatBubbleLeftRight,
+  CheckCircle,
+  Clock,
+  CursorArrowRays,
+  ExclamationCircle,
+  Fire,
+  Funnel,
+  History,
+  ListBullet,
+  Plus,
+  ShoppingCart,
+  Sparkles,
+  SquaresPlus,
+  Users,
+} from "@medusajs/icons"
+import { Container, InlineTip, Table } from "@medusajs/ui"
 import { isLinkType } from "../../../modules/tasks/lib/constants"
 import type { StatusResponse, TaskDto } from "../../../modules/tasks/lib/contract"
 import { errorMessage, localDay, tasksKeys, useBoard, useBoardActivity, useEnsureSandbox, useMoveTask, useTasksStatus } from "../../lib/tasks-api"
-import { BoardColumns, FilterBar, RoadmapView, applyFilters, filtered, type BoardFilters, type QuickFilter } from "../../lib/tasks-board"
+import { BoardColumns, RoadmapView, TaskFilters, applyFilters, filtered, type BoardFilters, type QuickFilter } from "../../lib/tasks-board"
 import { filtersFromParams, filtersToParams } from "../../lib/tasks-rules"
 import { TaskDrawer } from "../../lib/tasks-drawer"
 import { CreateTaskModal, useFailToast, type PickedRecord } from "../../lib/tasks-form"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/tasks-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/tasks-guide"
+import { EmptyTableRow, FilterButton, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/tasks-blocks"
+import { KitFetchingBar, KitLoading, KitSkeletonRows } from "../../lib/tasks-kit"
 import { GuideView, usePromptSpec } from "../../lib/tasks-guide-view"
 import { TasksIcon } from "../../lib/tasks-icon"
 import { GeneralSection, SandboxDetails, SandboxSection, useResetAction } from "../../lib/tasks-settings"
 import {
-  Empty,
   Person,
-  Segmented,
-  StatTile,
   activityText,
   actorOf,
   fmtDateTime,
@@ -136,6 +156,9 @@ const TasksPage = () => {
 
   const quick = (q: QuickFilter) => setFilters({ ...filters, quick: filters.quick === q ? "none" : q })
   const counts = board.data?.counts ?? s?.counts
+  const hiddenClosed = board.data?.hidden_closed ?? 0
+  const hiddenOpen = board.data?.hidden_open ?? 0
+  const roadmap = layout === "roadmap"
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -149,15 +172,15 @@ const TasksPage = () => {
           </div>
         ) : null}
         {counts && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4 xl:grid-cols-7">
-            <StatTile label={t("stats.open")} value={fmtNumber(counts.open, lang)} tone="blue" />
-            <StatTile label={t("stats.inProgress")} value={fmtNumber(counts.in_progress, lang)} tone="orange" />
-            <StatTile label={t("stats.review")} value={fmtNumber(counts.review, lang)} tone="purple" />
-            <StatTile label={t("stats.overdue")} value={fmtNumber(counts.overdue, lang)} tone={counts.overdue > 0 ? "red" : "default"} active={filters.quick === "overdue"} onClick={() => quick("overdue")} />
-            <StatTile label={t("stats.urgent")} value={fmtNumber(counts.urgent, lang)} tone={counts.urgent > 0 ? "orange" : "default"} active={filters.quick === "urgent"} onClick={() => quick("urgent")} />
-            <StatTile label={t("stats.unassigned")} value={fmtNumber(counts.unassigned, lang)} active={filters.quick === "unassigned"} onClick={() => quick("unassigned")} />
-            <StatTile label={t("stats.closed")} value={fmtNumber(counts.done + counts.rejected, lang)} tone="green" />
-          </div>
+          <StatTiles columns={7}>
+            <StatTile icon={<ListBullet />} label={t("stats.open")} value={fmtNumber(counts.open, lang)} active={filters.quick === "open"} onClick={() => quick("open")} />
+            <StatTile icon={<Clock />} label={t("stats.inProgress")} value={fmtNumber(counts.in_progress, lang)} tone={counts.in_progress > 0 ? "blue" : "grey"} />
+            <StatTile icon={<CheckCircle />} label={t("stats.review")} value={fmtNumber(counts.review, lang)} tone={counts.review > 0 ? "orange" : "grey"} active={filters.quick === "review"} onClick={() => quick("review")} />
+            <StatTile icon={<ExclamationCircle />} label={t("stats.overdue")} value={fmtNumber(counts.overdue, lang)} tone={counts.overdue > 0 ? "red" : "grey"} active={filters.quick === "overdue"} onClick={() => quick("overdue")} />
+            <StatTile icon={<Fire />} label={t("stats.urgent")} value={fmtNumber(counts.urgent, lang)} tone={counts.urgent > 0 ? "orange" : "grey"} active={filters.quick === "urgent"} onClick={() => quick("urgent")} />
+            <StatTile icon={<Users />} label={t("stats.unassigned")} value={fmtNumber(counts.unassigned, lang)} tone={counts.unassigned > 0 ? "orange" : "grey"} active={filters.quick === "unassigned"} onClick={() => quick("unassigned")} />
+            <StatTile icon={<CheckCircle />} label={t("stats.closed")} value={fmtNumber(counts.done + counts.rejected, lang)} tone={counts.done > 0 ? "green" : "grey"} />
+          </StatTiles>
         ) : null}
       </Container>
 
@@ -165,32 +188,43 @@ const TasksPage = () => {
 
       {nav.view === "panel" ? (
         <>
-          <Container className="divide-y p-0">
-            <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex max-w-3xl flex-col gap-1">
-                <Heading level="h2">{layout === "roadmap" ? t("roadmap.title") : t("board.title")}</Heading>
-                <Text size="small" className="text-ui-fg-subtle">
-                  {layout === "roadmap" ? t("roadmap.subtitle") : t("board.subtitle")}
-                </Text>
-              </div>
-              <Segmented<Layout>
-                value={layout}
-                onChange={setLayout}
-                options={[
-                  { value: "board", label: t("layout.board") },
-                  { value: "roadmap", label: t("layout.roadmap") },
-                ]}
-              />
-            </div>
+          <Section
+            id="tasks-board"
+            icon={roadmap ? <Calendar /> : <SquaresPlus />}
+            title={roadmap ? t("roadmap.title") : t("board.title")}
+            pointsLabel={roadmap ? t("roadmap.subtitle") : t("board.subtitle")}
+            points={
+              roadmap
+                ? [
+                    { icon: <Calendar />, text: t("roadmap.points.byDue") },
+                    { icon: <BarsArrowDown />, text: t("roadmap.points.openFirst") },
+                    { icon: <Users />, text: t("roadmap.points.people") },
+                  ]
+                : [
+                    { icon: <CursorArrowRays />, text: t("board.points.drag") },
+                    { icon: <ChatBubbleLeftRight />, text: t("board.points.open") },
+                    { icon: <ShoppingCart />, text: t("board.points.links") },
+                  ]
+            }
+            actions={
+              <>
+                <SearchInput value={filters.q} onChange={(q) => setFilters({ ...filters, q })} placeholder={t("board.search")} />
+                <FilterButton icon={<SquaresPlus />} label={t("layout.board")} active={!roadmap} onClick={() => setLayout("board")} />
+                <FilterButton icon={<Calendar />} label={t("layout.roadmap")} active={roadmap} onClick={() => setLayout("roadmap")} />
+              </>
+            }
+          >
+            <TaskFilters value={filters} onChange={setFilters} tasks={tasks} index={index} today={today} viewerId={viewerId} />
+            <KitFetchingBar active={board.isFetching && !board.isLoading} />
             <div className="flex flex-col gap-y-3 px-6 py-4">
-              <FilterBar value={filters} onChange={setFilters} tasks={tasks} index={index} />
-              {filtered(filters) || (board.data?.hidden_closed ?? 0) > 0 || (board.data?.hidden_open ?? 0) > 0 ? (
-                <Text size="small" className="text-ui-fg-subtle">
-                  {filters.quick !== "none" ? `${t(`board.quick.${filters.quick}`)}. ` : ""}
-                  {filtered(filters) ? `${t("board.shown", { shown: visible.length, total: tasks.length })} ` : ""}
-                  {(board.data?.hidden_closed ?? 0) > 0 ? t("board.hiddenClosed", { count: board.data?.hidden_closed ?? 0 }) : ""}
-                  {(board.data?.hidden_open ?? 0) > 0 ? ` ${t("board.hiddenOpen", { count: board.data?.hidden_open ?? 0 })}` : ""}
-                </Text>
+              {filtered(filters) || hiddenClosed > 0 || hiddenOpen > 0 ? (
+                <KeyPoints
+                  items={[
+                    filtered(filters) && { icon: <Funnel />, text: t("board.shown", { shown: visible.length, total: tasks.length }), tone: "blue" },
+                    hiddenClosed > 0 && { icon: <ArchiveBox />, text: t("board.hiddenClosed", { count: hiddenClosed }) },
+                    hiddenOpen > 0 && { icon: <ExclamationCircle />, text: t("board.hiddenOpen", { count: hiddenOpen }), tone: "orange", title: t("board.hiddenOpenHint") },
+                  ]}
+                />
               ) : null}
               {board.isError ? (
                 <InlineTip variant="error" label={t("board.title")}>
@@ -198,8 +232,8 @@ const TasksPage = () => {
                 </InlineTip>
               ) : null}
               {board.isLoading ? (
-                <Empty text={t("board.loading")} />
-              ) : layout === "roadmap" ? (
+                <KitLoading label={t("board.loading")} />
+              ) : roadmap ? (
                 <RoadmapView
                   tasks={visible}
                   all={tasks}
@@ -221,7 +255,7 @@ const TasksPage = () => {
                 />
               )}
             </div>
-          </Container>
+          </Section>
           <ActivitySection index={index} titles={tasks} onOpen={(id) => setParam({ task: id })} />
         </>
       ) : null}
@@ -234,7 +268,7 @@ const TasksPage = () => {
           onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
           tabs={[
             { id: "general", label: t("settings.tab.general") },
-            { id: "sandbox", label: t("settings.tab.sandbox"), badge: s.sandbox_board.enabled ? s.options.sandbox_account_count : null, tone: "purple" },
+            { id: "sandbox", label: t("settings.tab.sandbox"), badge: s.sandbox_board.enabled ? s.options.sandbox_account_count : null, tone: "blue" },
           ]}
         >
           {nav.tab === "general" ? <GeneralSection status={s} /> : null}
@@ -276,24 +310,26 @@ function Header({ status, loading, lang, nav, onNew }: { status: StatusResponse 
     <IntegrationHeader
       icon={<TasksIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         !loading && status ? (
           <>
             {status.sandbox ? (
-              <ModeBadge color="purple" label={t("mode.sandbox")} title={t("sandbox.label")}>
+              <ModeBadge color="blue" label={t("mode.sandbox")} title={t("sandbox.label")}>
                 <SandboxDetails status={status} />
               </ModeBadge>
             ) : null}
-            {status.counts.overdue > 0 ? (
-              <Badge size="2xsmall" color="red">
-                {t("mode.overdue", { count: status.counts.overdue })}
-              </Badge>
-            ) : null}
+            {status.counts.overdue > 0 ? <ToneBadge tone="red">{t("mode.overdue", { count: status.counts.overdue })}</ToneBadge> : null}
           </>
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <SquaresPlus />, text: t("points.board") },
+        { icon: <ChatBubbleLeftRight />, text: t("points.comments") },
+        { icon: <ShoppingCart />, text: t("points.links") },
+        { icon: <Sparkles />, text: t("points.agents") },
+        status?.sandbox && { icon: <Beaker />, text: t("points.sandbox"), tone: "blue" },
+      ]}
       social={
         <>
           <ReferencesBadge
@@ -343,51 +379,54 @@ function ActivitySection({ index, titles, onOpen }: { index: PeopleIndex; titles
   }
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("activity.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("activity.subtitle")}
-        </Text>
+    <Section
+      id="tasks-activity"
+      icon={<History />}
+      title={t("activity.title")}
+      pointsLabel={t("activity.subtitle")}
+      points={[
+        { icon: <SquaresPlus />, text: t("activity.points.all") },
+        { icon: <BarsArrowDown />, text: t("activity.points.newest") },
+        { icon: <CursorArrowRays />, text: t("activity.points.click") },
+      ]}
+    >
+      <KitFetchingBar active={q.isFetching && !q.isLoading} />
+      <div className="overflow-x-auto">
+        <Table>
+          <Table.Header>
+            <Table.Row>
+              <Table.HeaderCell>{t("activity.when")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("activity.who")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("activity.what")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("activity.task")}</Table.HeaderCell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {q.isLoading ? <KitSkeletonRows cols={4} rows={4} /> : null}
+            {!q.isLoading && rows.length === 0 ? <EmptyTableRow cols={4} icon={<History />} title={t("activity.empty")} /> : null}
+            {rows.map((a) => {
+              const deleted = a.type === "task_deleted"
+              return (
+                <Table.Row key={a.id} className={deleted ? undefined : "cursor-pointer"} onClick={deleted ? undefined : () => onOpen(a.task_id)}>
+                  <Table.Cell className="whitespace-nowrap">
+                    <span title={fmtDateTime(a.created_at, lang)} className="text-ui-fg-subtle">
+                      {fmtRelative(a.created_at, lang)}
+                    </span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Person who={actorOf(a, index, labels)} />
+                  </Table.Cell>
+                  <Table.Cell>{activityText(a, labels)}</Table.Cell>
+                  <Table.Cell className="max-w-[24rem]">
+                    <span className={deleted ? "block truncate text-ui-fg-muted line-through" : "block truncate text-ui-fg-interactive"}>{titleOf(a.task_id, a.task_title)}</span>
+                  </Table.Cell>
+                </Table.Row>
+              )
+            })}
+          </Table.Body>
+        </Table>
       </div>
-      {rows.length === 0 ? (
-        <Empty text={q.isLoading ? "" : t("activity.empty")} />
-      ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <Table.Header>
-              <Table.Row>
-                <Table.HeaderCell>{t("activity.when")}</Table.HeaderCell>
-                <Table.HeaderCell>{t("activity.who")}</Table.HeaderCell>
-                <Table.HeaderCell>{t("activity.what")}</Table.HeaderCell>
-                <Table.HeaderCell>{t("activity.task")}</Table.HeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {rows.map((a) => {
-                const deleted = a.type === "task_deleted"
-                return (
-                  <Table.Row key={a.id} className={deleted ? undefined : "cursor-pointer"} onClick={deleted ? undefined : () => onOpen(a.task_id)}>
-                    <Table.Cell className="whitespace-nowrap">
-                      <span title={fmtDateTime(a.created_at, lang)} className="text-ui-fg-subtle">
-                        {fmtRelative(a.created_at, lang)}
-                      </span>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Person who={actorOf(a, index, labels)} />
-                    </Table.Cell>
-                    <Table.Cell>{activityText(a, labels)}</Table.Cell>
-                    <Table.Cell className="max-w-[24rem]">
-                      <span className={deleted ? "block truncate text-ui-fg-muted line-through" : "block truncate text-ui-fg-interactive"}>{titleOf(a.task_id, a.task_title)}</span>
-                    </Table.Cell>
-                  </Table.Row>
-                )
-              })}
-            </Table.Body>
-          </Table>
-        </div>
-      )}
-    </Container>
+    </Section>
   )
 }
 

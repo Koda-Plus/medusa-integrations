@@ -3,11 +3,12 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminProduct, DetailWidgetProps } from "@medusajs/framework/types"
-import { ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Heading, Text } from "@medusajs/ui"
+import { ArrowUpRightOnBox, Tag } from "@medusajs/icons"
+import { Heading, Text } from "@medusajs/ui"
+import { EmptyState, ToneBadge } from "../lib/allegro-blocks"
 import { useAllegroProductOffers } from "../lib/allegro-api"
 import { AllegroIcon } from "../lib/allegro-icon"
-import { WidgetFrame, hostable } from "../lib/allegro-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/allegro-kit"
 import { OfferStatus, StockCell, fmtMoney } from "../lib/allegro-ui"
 
 /**
@@ -27,7 +28,8 @@ const AllegroProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduct> 
   const firstSku = data.variants?.find((v) => v.sku)?.sku ?? "SKU"
   /* The page opens on the offers of this product: a search by the first signature. */
   const more = data.variants?.find((v) => v.sku)?.sku ? `/allegro?filter=all&q=${encodeURIComponent(firstSku)}` : "/allegro"
-  if (embedded && (q.isLoading || q.isError)) return <Quiet>{q.isError ? t("widget.failed") : t("widget.loading")}</Quiet>
+  if (embedded && q.isError) return <Quiet>{t("widget.failed")}</Quiet>
+  if (embedded && q.isLoading) return <KitLoading label={t("widget.loading")} />
 
   return (
     <WidgetFrame
@@ -38,9 +40,7 @@ const AllegroProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduct> 
             <AllegroIcon width={18} height={18} className="shrink-0" />
             <Heading level="h2">{t("widget.title")}</Heading>
             {q.data?.mode === "demo" ? (
-              <Badge size="2xsmall" color="purple">
-                {t("widget.demo")}
-              </Badge>
+              <ToneBadge tone="purple">{t("widget.demo")}</ToneBadge>
             ) : null}
           </div>
           <Link to={more} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
@@ -52,9 +52,7 @@ const AllegroProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduct> 
       {embedded ? (
         <div className="flex items-center justify-between gap-2 px-6 py-2">
           {q.data?.mode === "demo" ? (
-            <Badge size="2xsmall" color="purple">
-              {t("widget.demo")}
-            </Badge>
+            <ToneBadge tone="purple">{t("widget.demo")}</ToneBadge>
           ) : (
             <span />
           )}
@@ -63,15 +61,19 @@ const AllegroProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduct> 
           </Link>
         </div>
       ) : null}
-      {q.isLoading ? null : offers.length === 0 ? (
-        <div className="flex flex-col gap-y-1 px-6 py-4">
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("widget.empty")}
-          </Text>
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("widget.hint", { sku: firstSku })}
-          </Text>
-        </div>
+      {q.isLoading ? (
+        <KitLoading label={t("widget.loading")} />
+      ) : offers.length === 0 ? (
+        <EmptyState
+          compact
+          icon={<Tag />}
+          title={t("widget.empty")}
+          action={
+            <Text size="xsmall" className="text-ui-fg-muted">
+              {t("widget.hint", { sku: firstSku })}
+            </Text>
+          }
+        />
       ) : (
         offers.slice(0, 6).map((o) => (
           <div key={o.id} className="flex items-start justify-between gap-x-3 px-6 py-3">
@@ -88,9 +90,7 @@ const AllegroProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduct> 
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{o.sku}</span>
                 {o.isPrimary ? (
-                  <Badge size="2xsmall" color="green">
-                    {t("offers.primary")}
-                  </Badge>
+                  <ToneBadge tone="green">{t("offers.primary")}</ToneBadge>
                 ) : null}
               </span>
               <StockCell offer={o} />

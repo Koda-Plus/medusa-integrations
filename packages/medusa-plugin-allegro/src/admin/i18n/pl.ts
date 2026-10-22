@@ -8,6 +8,13 @@ const pl: typeof en = {
   by: "by Koda Plus",
   subtitle:
     "Łączy oferty Allegro z produktami po sygnaturze, wyłapuje różnice stanów, zanim zauważą je kupujący, importuje zamówienia z Allegro do Medusy dokładnie raz i odsyła stany, przesyłki i faktury, a każdy zapis uzbraja człowiek.",
+  points: {
+    offers: "Oferty łączone po sygnaturze",
+    stock: "Różnice stanów przed kupującym",
+    orders: "Zamówienia importowane raz",
+    back: "Przesyłki i faktury do Allegro",
+    armed: "Każdy zapis uzbraja człowiek",
+  },
   view: {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
@@ -34,6 +41,8 @@ const pl: typeof en = {
     writersArmed: "Uzbrojone zapisy: {{count}}",
   },
   actions: {
+    reload: "Odśwież",
+    sellerPanel: "Panel sprzedawcy",
     moreActions: "Więcej akcji",
     sync: "Synchronizuj teraz",
     syncing: "Synchronizacja trwa",
@@ -98,6 +107,13 @@ const pl: typeof en = {
   },
   community: communityPl,
   connection: {
+    points: {
+      device: "Logowanie kodem, bez przekierowania",
+      scopes: "Tylko potrzebne zakresy",
+      encrypted: "Tokeny szyfrowane",
+      refresh: "Tokeny odświeżają się same",
+      demo: "Demo: bez połączenia z Allegro",
+    },
     title: "Konto Allegro",
     subtitle: "Konto sprzedawcy na {{host}}. Logowanie kodem urządzenia, bez adresu zwrotnego. Zgoda obejmuje tylko zakresy, których wymagają opcje.",
     sandbox: "Sandbox",
@@ -158,6 +174,12 @@ const pl: typeof en = {
     unknown: "Brak ilości",
   },
   writers: {
+    points: {
+      twoSwitches: "Opcje i człowiek",
+      off: "Domyślnie wyłączone",
+      breaker: "Rozbraja się po błędach",
+      demo: "Demo: nic nie trafia do Allegro",
+    },
     title: "Zapisy",
     subtitle:
       "Każdy zapis należy do jednego modułu zapisu. Działa on tylko wtedy, gdy pozwalają na to opcje wtyczki (writes) i gdy człowiek uzbroi go tutaj; oba przełączniki są domyślnie wyłączone. Zapis, który raz po raz się nie udaje, sam się rozbraja i mówi dlaczego.",
@@ -212,6 +234,15 @@ const pl: typeof en = {
     cancel: "Anuluj",
   },
   plans: {
+    points: {
+      mode: "Tryb: {{mode}}",
+      cap: "Najwyżej {{cap}} na przebieg",
+      bounds: "Granice {{min}}, {{max}}",
+      drafts: "Tylko szkice",
+      planned: "Plan z {{when}}",
+      applied: "Zastosowano {{applied}}, błędy {{failed}}",
+      notArmed: "Zapis nieuzbrojony",
+    },
     stock: {
       title: "Plan wysyłki stanów",
       subtitle: "Dostępna ilość w Medusie każdego połączonego wariantu wobec jego głównej oferty na Allegro. Tryb: {{mode}}. Najwyżej {{cap}} ofert na przebieg.",
@@ -305,7 +336,7 @@ const pl: typeof en = {
       failed: "Błąd",
       unknown: "Sprawdzamy",
     },
-    empty: "Nic w tym widoku.",
+    empty: "Nic w tym widoku",
     demoBounds: "granice demo",
     simulatedEan: "EAN symulowany",
     floorCeiling: "granice od {{min}} do {{max}}",
@@ -316,6 +347,16 @@ const pl: typeof en = {
     notArmed: "Uzbrój zapis, aby zastosować plan.",
   },
   imports: {
+    points: {
+      once: "Każde zamówienie dokładnie raz",
+      held: "Wstrzymane z powodem",
+      target: "{{channel}}, {{region}}",
+      noTarget: "Cel nieustawiony",
+      cursor: "Dziennik {{when}}",
+      noCursor: "Dziennik nieuruchomiony",
+      lastOk: "Ostatni import {{when}}",
+      notArmed: "Import nieuzbrojony",
+    },
     title: "Zaimportowane zamówienia",
     subtitle: "Zakupy z Allegro jako zamówienia w Twoim sklepie, każdy dokładnie raz. Wstrzymane zamówienie mówi dlaczego: usuń przyczynę i kliknij Ponów.",
     how: "Formularze zakupu z Allegro jako zamówienia w Medusie, dokładnie raz: wiersz dla każdego formularza, zanim cokolwiek się stanie, sprawdzenie w Medusie przed każdym utworzeniem i powód przy każdym wstrzymanym zamówieniu.",
@@ -418,7 +459,7 @@ const pl: typeof en = {
     notPaid: "Nieopłacone",
     cod: "Za pobraniem",
     mismatch: "Medusa: {{total}}",
-    empty: "Brak importów w tym widoku.",
+    empty: "Brak importów w tym widoku",
     window: {
       title: "Import zaległych zamówień",
       text: "Dodaj do kolejki zamówienia z Allegro kupione między dwiema datami, najwyżej 62 dni naraz: sprzed uzbrojenia importu albo z przerwy dłuższej niż 60 dni, przez które Allegro przechowuje zdarzenia zamówień.",
@@ -438,6 +479,11 @@ const pl: typeof en = {
     },
   },
   outbox: {
+    points: {
+      once: "Wysyłane raz",
+      lookup: "Sprawdzane przed ponowieniem",
+      notArmed: "Zapis nieuzbrojony",
+    },
     title: "Przesyłki, statusy i faktury",
     subtitle: "Wysyłane do Allegro każde raz, po sprawdzeniu zamówienia. Niejasna odpowiedź jest najpierw sprawdzana na Allegro, zanim cokolwiek pójdzie ponownie.",
     writer: {
@@ -471,10 +517,17 @@ const pl: typeof en = {
       unknown: "Sprawdzamy",
       skipped: "Pominięte",
     },
-    empty: "Nic w tym widoku.",
+    empty: "Nic w tym widoku",
     fakturowniaMissing: "Moduł Fakturowni nie jest zainstalowany: faktury mogą przychodzić zdarzeniem allegro.invoice.attach.requested.",
   },
   issues: {
+    points: {
+      kinds: "Zwroty, dyskusje, reklamacje",
+      reply: "Odpowiedź w panelu sprzedawcy",
+      checked: "Sprawdzono {{when}}",
+      offDisputes: "Dyskusje nieśledzone",
+      offMessages: "Wiadomości nieliczone",
+    },
     title: "Sprawy kupujących",
     subtitle: "Zwroty, dyskusje i reklamacje Twoich kupujących z Allegro oraz ich nieprzeczytane wiadomości. Odpowiadasz w panelu sprzedawcy Allegro, linki są poniżej.",
     tiles: {
@@ -579,9 +632,14 @@ const pl: typeof en = {
       CLAIM_REJECTED: "Odrzucona",
     },
     needsReply: "Czeka na Ciebie",
-    empty: "Nic w tym widoku.",
+    empty: "Nic w tym widoku",
   },
   offers: {
+    points: {
+      signature: "Łączone po sygnaturze",
+      qty: "Ilość Allegro / Medusa",
+      check: "Kontrola tylko oznacza",
+    },
     title: "Oferty",
     subtitle: "Oferty z Allegro obok produktów, które sprzedają w sklepie. Przy połączonej ofercie widać jej produkt w Medusie, jeden klik dalej. Ilość pokazuje Allegro / Medusa.",
     matching:
@@ -604,7 +662,7 @@ const pl: typeof en = {
       stock: "Ilość",
       product: "Produkt w sklepie",
     },
-    empty: "Brak ofert w tym widoku.",
+    empty: "Brak ofert w tym widoku",
     primary: "Główna",
     sample: "Przykład",
     noProduct: "Brak produktu z tą sygnaturą",
@@ -614,6 +672,11 @@ const pl: typeof en = {
       "Kontrola stanów oznacza różnice; zapis stanów działa na jej podstawie tylko wtedy, gdy jest uzbrojony. Sprzedaż na Allegro, o której Medusa jeszcze nie wie, wygląda jak nadsprzedaż, dlatego import zamówień idzie pierwszy.",
   },
   orders: {
+    points: {
+      journal: "Dziennik co 10 min",
+      lines: "Pozycje z produktami",
+      store: "Obok zamówienie w sklepie",
+    },
     title: "Zamówienia z Allegro",
     subtitle: "Zamówienia złożone na Allegro, ich pozycje i to, czy każde trafiło już do Twojego sklepu.",
     journal: "Dziennik odświeżany co dziesięć minut, z importem każdego zamówienia do Medusy. Sam dziennik nie przechowuje danych kupującego.",
@@ -651,11 +714,15 @@ const pl: typeof en = {
       SUSPENDED: "Wstrzymane",
       RETURNED: "Zwrócone",
     },
-    empty: "Brak zamówień w tym widoku.",
+    empty: "Brak zamówień w tym widoku",
     notImported: "Nie zaimportowano",
     inStore: "Zamówienie w sklepie",
   },
   runs: {
+    points: {
+      what: "Synchronizacje, plany, zapisy",
+      when: "Z harmonogramu i ręcznie",
+    },
     title: "Historia",
     subtitle: "Każda synchronizacja, plan i przebieg zapisu, z harmonogramu i ręczne.",
     col: {
@@ -695,7 +762,7 @@ const pl: typeof en = {
       api: "Allegro API",
     },
     changes: "+{{created}} nowe, {{updated}} zmienione, {{removed}} usunięte",
-    empty: "Jeszcze nic się nie wydarzyło.",
+    empty: "Jeszcze bez przebiegów",
   },
   pagination: {
     of: "z",
@@ -706,7 +773,7 @@ const pl: typeof en = {
   },
   widget: {
     title: "Allegro",
-    empty: "Żadna oferta Allegro nie jest połączona z tym produktem.",
+    empty: "Brak połączonej oferty",
     hint: "Wpisz SKU wariantu w sygnaturze oferty (external.id), na przykład {{sku}}.",
     more: "Wszystkie oferty",
     demo: "Dane przykładowe",
@@ -734,7 +801,7 @@ const pl: typeof en = {
     handled: "Oznacz jako załatwione",
     handledToast: "Oznaczone jako załatwione",
     sent: "Wysłane do Allegro",
-    noneSent: "Nic jeszcze nie poszło do Allegro.",
+    noneSent: "Nic jeszcze nie wysłano",
     issues: "Zwroty i spory",
     panel: "Panel sprzedawcy",
   },

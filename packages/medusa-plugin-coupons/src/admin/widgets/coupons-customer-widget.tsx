@@ -2,9 +2,11 @@ import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminCustomer, DetailWidgetProps } from "@medusajs/framework/types"
 import { Heading, Text } from "@medusajs/ui"
+import { Receipt } from "@medusajs/icons"
 import { useCustomerCoupons } from "../lib/coupons-api"
 import { CouponsIcon } from "../lib/coupons-icon"
-import { WidgetFrame, hostable } from "../lib/coupons-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/coupons-kit"
+import { EmptyState } from "../lib/coupons-blocks"
 import { couponSentence } from "../lib/coupons-sentence"
 import { StatusBadge, useFormat } from "../lib/coupons-ui"
 
@@ -19,22 +21,30 @@ const CouponsCustomerCard = ({ data, embedded }: DetailWidgetProps<AdminCustomer
   const r = q.data
   const empty = !r || (r.used.length === 0 && r.forThem.length === 0)
   if (!embedded && empty) return null
+  /* Embedded in a host: a loader first, never "none" before the data came. */
+  if (embedded && q.isLoading) return <KitLoading />
   const currency = r?.currency || "PLN"
   return (
     <WidgetFrame
       embedded={embedded}
       header={
-        <div className="flex items-center gap-x-2 px-6 py-4">
-          <CouponsIcon width={18} height={18} />
-          <Heading level="h2">{t("widget.customer.title")}</Heading>
+        <div className="flex flex-col gap-y-1.5 px-6 py-4">
+          <div className="flex items-center justify-between gap-x-2">
+            <div className="flex items-center gap-x-2">
+              <CouponsIcon width={18} height={18} />
+              <Heading level="h2">{t("widget.customer.title")}</Heading>
+              
+            </div>
+            <a href="/app/coupons" className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+              {t("widget.open")}
+            </a>
+          </div>
         </div>
       }
     >
       {empty || !r ? (
         <div className="px-6 py-4">
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("widget.customer.none")}
-          </Text>
+          <EmptyState compact icon={<Receipt />} title={t("widget.customer.none")} />
         </div>
       ) : (
         <>

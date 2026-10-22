@@ -1,12 +1,14 @@
-import { useState, type ReactNode } from "react"
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
+import { Envelope, ExclamationCircle } from "@medusajs/icons"
 import { Heading, Text } from "@medusajs/ui"
+import { EmptyState } from "../lib/emails-blocks"
 import { useEmailsMessages } from "../lib/emails-api"
 import { EmailsIcon } from "../lib/emails-icon"
-import { WidgetFrame, hostable } from "../lib/emails-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/emails-kit"
 import { MessageDrawer } from "../lib/emails-panels"
 import { KindBadge, MessageStatusBadge, fmtDateTime, templateLabel } from "../lib/emails-ui"
 
@@ -30,7 +32,7 @@ const EmailsOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
   const rows = q.data?.messages ?? []
   const all = `/emails?order_id=${encodeURIComponent(data.id)}`
 
-  if (embedded && (q.isLoading || q.isError) && rows.length === 0) return <Quiet>{q.isError ? t("widget.failed") : t("widget.loading")}</Quiet>
+  if (embedded && (q.isLoading || q.isError) && rows.length === 0) return q.isError ? <EmptyState compact icon={<ExclamationCircle />} title={t("widget.failed")} /> : <KitLoading label={t("widget.loading")} />
 
   return (
     <WidgetFrame
@@ -48,7 +50,11 @@ const EmailsOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
       }
     >
       {rows.length === 0 ? (
-        <Quiet>{q.isLoading ? "" : q.isError ? t("widget.failed") : t("widget.empty")}</Quiet>
+        q.isLoading ? (
+          <KitLoading label={t("widget.loading")} />
+        ) : (
+          <EmptyState compact icon={q.isError ? <ExclamationCircle /> : <Envelope />} title={q.isError ? t("widget.failed") : t("widget.empty")} />
+        )
       ) : (
         <ul className="flex flex-col divide-y divide-ui-border-base">
           {rows.map((m) => (
@@ -83,16 +89,6 @@ const EmailsOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
       ) : null}
       {open ? <MessageDrawer id={open} lang={lang} onClose={() => setOpen(null)} /> : null}
     </WidgetFrame>
-  )
-}
-
-function Quiet({ children }: { children: ReactNode }) {
-  return (
-    <div className="px-6 py-4">
-      <Text size="small" className="text-ui-fg-muted">
-        {children}
-      </Text>
-    </div>
   )
 }
 

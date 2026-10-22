@@ -2,6 +2,20 @@ import { communityEn } from "../lib/inpostpay-kit-community"
 import { integrationEn } from "../../modules/inpostpay/lib/integration-texts"
 
 const en = {
+  points: {
+    button: "Button on product and cart",
+    app: "Confirmed in the InPost app",
+    delivery: "Locker or courier from the app",
+    order: "Order lands in Medusa",
+    signed: "Signed Merchant API calls",
+  },
+  pagination: {
+    of: "of",
+    results: "results",
+    pages: "pages",
+    prev: "Previous",
+    next: "Next",
+  },
   title: "InPost Pay",
   by: "by Koda Plus",
   subtitle:
@@ -12,7 +26,7 @@ const en = {
   },
   settings: {
     title: "Settings",
-    subtitle: "The shipping option of each InPost Pay delivery, the places of the button and the InPost account with the addresses for the merchant portal.",
+    subtitle: "Deliveries, the button and the InPost account.",
     tab: {
       delivery: "Delivery",
       button: "Button",
@@ -90,6 +104,13 @@ const en = {
     LOGIN_PAGE: "Login",
   },
   table: {
+    points: {
+      where: "Where the button was",
+      app: "The app's answer",
+      payment: "InPost payment status",
+    },
+    emptyHint: "They appear on a button click",
+    emptyFiltered: "No baskets here",
     title: "Baskets and orders",
     subtitle: "Every cart bound to InPost Pay, newest first: where the button was, what the app answered, the order it became and InPost's payment status.",
     when: "Bound",
@@ -100,7 +121,7 @@ const en = {
     total: "Total",
     products: "Products",
     order: "Order",
-    empty: "No basket here yet. Baskets appear when a customer clicks the InPost Pay button.",
+    empty: "No baskets yet",
     search: "Order number, order, cart or basket id",
     openOrder: "Open order",
     noOrder: "No order",
@@ -113,8 +134,8 @@ const en = {
     title: "InPost Pay",
     loading: "Loading InPost Pay",
     failed: "Could not load InPost Pay",
-    none: "This order did not come through InPost Pay.",
-    notConfigured: "InPost Pay is not configured.",
+    none: "Not from InPost Pay",
+    notConfigured: "InPost Pay not configured",
     phone: "App user",
     delivery: "Delivery",
     point: "Parcel locker",
@@ -123,9 +144,15 @@ const en = {
     orderStatus: "InPost order status",
     more: "Open InPost Pay",
     history: "History",
-    demoNote: "Demo: placed from a simulated app confirmation, nothing was paid.",
+    demoNote: "Demo: nothing paid",
   },
   delivery_settings: {
+    points: {
+      option: "Shipping option per delivery",
+      refused: "Unmapped delivery is refused",
+      demo: "Demo: the cart's first option",
+    },
+    noOptionsHint: "Settings, Locations and shipping",
     title: "Delivery",
     subtitle: "Which shipping option of the store an InPost Pay delivery becomes. The app offers only the mapped deliveries the cart can use; an order for a delivery without a shipping option is refused (demo mode takes the first option of the cart instead).",
     none: "Not mapped",
@@ -134,11 +161,16 @@ const en = {
       COURIER: "The InPost courier to the address from the app.",
       DIGITAL: "No parcel: digital goods.",
     },
-    noOptions: "The store has no shipping options yet. Create them in Settings, Locations and shipping.",
+    noOptions: "No shipping options yet",
     save: "Save delivery",
     saved: "Delivery saved",
   },
   button_settings: {
+    points: {
+      config: "Read by the storefront",
+      required: "Product, cart, thank-you required",
+      audit: "Hidden until the audit",
+    },
     title: "Button",
     subtitle: "Where the storefront shows the InPost Pay button. The storefront reads these switches from GET /store/inpostpay/config. InPost requires the product page, the cart and the thank-you page; until the audit passes keep the button hidden from regular customers (test accounts or a URL parameter).",
     product: "Product page",
@@ -150,6 +182,10 @@ const en = {
     saved: "Places saved",
   },
   account: {
+    points: {
+      keys: "Keys from the merchant portal",
+      masked: "Secrets masked, on the server",
+    },
     title: "InPost account",
     subtitle: "The keys come from the InPost merchant portal (production) or from InPost (sandbox). Secrets stay on the server and are shown masked.",
     merchantApi: "Merchant Backend API address",

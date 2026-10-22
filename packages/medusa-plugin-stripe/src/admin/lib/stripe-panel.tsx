@@ -1,10 +1,30 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
-import { ArrowUpRightOnBox, ArrowUturnLeft, BarsArrowDown, Buildings, Cash, ChartBar, CheckCircle, Clock, CurrencyDollar, ExclamationCircle, Receipt, ShoppingBag } from "@medusajs/icons"
-import { Badge, Container, Heading, InlineTip, Input, Table, Text } from "@medusajs/ui"
+import {
+  ArrowUpRightOnBox,
+  ArrowUturnLeft,
+  BarsArrowDown,
+  Buildings,
+  Calendar,
+  Cash,
+  ChartBar,
+  CheckCircle,
+  Clock,
+  CreditCard,
+  CurrencyDollar,
+  ExclamationCircle,
+  GlobeEurope,
+  ListBullet,
+  Receipt,
+  ShieldCheck,
+  ShoppingBag,
+  Trophy,
+  XCircle,
+} from "@medusajs/icons"
+import { InlineTip, Table, Text } from "@medusajs/ui"
 import { KitSkeletonRows } from "./stripe-kit"
-import { KeyPoints } from "./stripe-guide"
+import { EmptyState, EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue, type Tone } from "./stripe-blocks"
 import { KitOrderAmountLines, KitOrderProductsCell, useKitCartProducts, useKitOrderProducts } from "./stripe-order-products"
 import type { MethodKey, MoneyDto, PaymentFilter, PaymentRowDto, PeriodStatsDto, StripeOverviewResponse } from "../../modules/stripe/lib/contract"
 import { useStripePayments } from "./stripe-api"
@@ -12,12 +32,10 @@ import {
   DisputeDue,
   ExternalLink,
   Fact,
-  FilterPills,
   MethodCell,
   OrderCell,
   PaymentStatusBadge,
   SampleBadge,
-  StatTile,
   declineText,
   fmtAgo,
   fmtDate,
@@ -48,26 +66,20 @@ const pagination = (t: (k: string) => string) => ({
   next: t("pagination.next"),
 })
 
-function useDebounced(value: string, ms = 300): string {
-  const [out, setOut] = useState(value)
-  useEffect(() => {
-    const id = window.setTimeout(() => setOut(value.trim()), ms)
-    return () => window.clearTimeout(id)
-  }, [value, ms])
-  return out
+/** The icon of each payments filter, next to its name and count. */
+const FILTER_ICON: Record<PaymentFilter, ReactNode> = {
+  all: <ListBullet />,
+  succeeded: <CheckCircle />,
+  failed: <XCircle />,
+  attention: <ExclamationCircle />,
+  refunded: <ArrowUturnLeft />,
+  disputed: <ShieldCheck />,
+  outside: <ArrowUpRightOnBox />,
+  foreign: <GlobeEurope />,
 }
 
-function EmptyRow({ cols, text }: { cols: number; text: string }) {
-  return (
-    <Table.Row>
-      <td colSpan={cols} className="px-6 py-6 text-center">
-        <Text size="small" className="text-ui-fg-muted">
-          {text}
-        </Text>
-      </td>
-    </Table.Row>
-  )
-}
+/** Filters with something to do: their count turns orange while above zero. */
+const ATTENTION: ReadonlySet<PaymentFilter> = new Set<PaymentFilter>(["failed", "attention", "disputed"])
 
 /* ------------------------------------------------------------------ */
 /* The figures of a period                                             */
@@ -78,14 +90,11 @@ export type PeriodDays = 7 | 30
 export function PeriodSwitch({ value, onChange }: { value: PeriodDays; onChange: (v: PeriodDays) => void }) {
   const { t } = useTranslation("stripe")
   return (
-    <FilterPills<"7" | "30">
-      value={String(value) as "7" | "30"}
-      onChange={(v) => onChange(Number(v) as PeriodDays)}
-      options={[
-        { value: "7", label: t("period.d7") },
-        { value: "30", label: t("period.d30") },
-      ]}
-    />
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("period.label")}>
+      {([7, 30] as const).map((d) => (
+        <FilterButton key={d} icon={<Calendar />} label={t(d === 7 ? "period.d7" : "period.d30")} active={value === d} onClick={() => onChange(d)} />
+      ))}
+    </div>
   )
 }
 
@@ -120,7 +129,7 @@ export function PeriodTiles({ overview, days, lang, onOpen }: { overview: Stripe
   const urgent = overview.disputes.some((d) => d.urgency === "overdue" || d.urgency === "urgent")
   return (
     <div className="flex flex-col gap-y-3">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <StatTiles columns={6} className="px-0 py-0">
         <StatTile label={t("stats.volume")} value={<MoneyValue values={p.volume} lang={lang} />} hint={t("stats.volumeHint", { n: fmtNumber(p.succeeded, lang) })} tone="green" onClick={() => onOpen({ payments: "succeeded" })} />
         <StatTile
           label={t("stats.fees")}
@@ -133,22 +142,31 @@ export function PeriodTiles({ overview, days, lang, onOpen }: { overview: Stripe
           label={t("stats.success")}
           value={p.successRate === null ? "0" : fmtPercent(p.successRate, lang, 1)}
           hint={p.successRate === null ? t("stats.successNone") : t("stats.successHint", { failed: p.failed, attempts: p.failed + p.succeeded })}
-          tone={p.successRate === null ? "default" : p.successRate >= 0.9 ? "green" : p.successRate >= 0.75 ? "orange" : "red"}
+          tone={p.successRate === null ? "grey" : p.successRate >= 0.9 ? "green" : p.successRate >= 0.75 ? "orange" : "red"}
           onClick={() => onOpen({ payments: "failed" })}
         />
-        <StatTile label={t("stats.refunds")} value={<MoneyValue values={p.refunded} lang={lang} />} hint={t("stats.refundsHint", { count: p.refunds })} tone={p.refunds > 0 ? "orange" : "default"} onClick={() => onOpen({ section: "stripe-refunds" })} />
+        <StatTile label={t("stats.refunds")} value={<MoneyValue values={p.refunded} lang={lang} />} hint={t("stats.refundsHint", { count: p.refunds })} tone={p.refunds > 0 ? "orange" : "grey"} onClick={() => onOpen({ section: "stripe-refunds" })} />
         <StatTile
           label={t("stats.disputes")}
           value={overview.disputes.length}
           hint={respond > 0 ? t("stats.disputesHint", { count: respond }) : t("stats.disputesNone")}
-          tone={urgent ? "red" : overview.disputes.length > 0 ? "orange" : "default"}
+          tone={urgent ? "red" : overview.disputes.length > 0 ? "orange" : "grey"}
           onClick={() => onOpen(overview.disputes.length > 0 ? { section: "stripe-disputes" } : { payments: "disputed" })}
         />
-      </div>
+      </StatTiles>
       {p.processing + p.authorized > 0 ? (
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {[p.processing > 0 ? t("stats.processing", { count: p.processing }) : null, p.authorized > 0 ? t("stats.authorized", { count: p.authorized }) : null].filter(Boolean).join(". ")}
-        </Text>
+        <span className="flex flex-wrap items-center gap-1.5">
+          {p.processing > 0 ? (
+            <ToneBadge tone="blue" icon={<Clock />}>
+              {t("stats.processing", { count: p.processing })}
+            </ToneBadge>
+          ) : null}
+          {p.authorized > 0 ? (
+            <ToneBadge tone="orange" icon={<CreditCard />}>
+              {t("stats.authorized", { count: p.authorized })}
+            </ToneBadge>
+          ) : null}
+        </span>
       ) : null}
       {p.partial ? (
         <InlineTip variant="warning" label={t(days === 7 ? "period.d7" : "period.d30")}>
@@ -210,24 +228,23 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
   const p = overview.periods.find((x) => x.days === days) ?? overview.periods[0]
   const rows = p?.methods ?? []
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Heading level="h2">{t("methods.title")}</Heading>
-          <Badge size="2xsmall" color="grey">
-            {t(days === 7 ? "period.d7" : "period.d30")}
-          </Badge>
+    <Section
+      id="stripe-methods"
+      icon={<CreditCard />}
+      title={t("methods.title")}
+      badges={
+        <>
+          <ToneBadge tone="grey">{t(days === 7 ? "period.d7" : "period.d30")}</ToneBadge>
           {overview.mode === "demo" ? <SampleBadge /> : null}
-        </div>
-        <KeyPoints
-          label={t("methods.subtitle")}
-          items={[
-            { icon: <ChartBar />, text: t("methods.points.how") },
-            { icon: <Receipt />, text: t("methods.points.fees") },
-            { icon: <CurrencyDollar />, text: t("methods.points.currency") },
-          ]}
-        />
-      </div>
+        </>
+      }
+      pointsLabel={t("methods.subtitle")}
+      points={[
+        { icon: <ChartBar />, text: t("methods.points.how") },
+        { icon: <Receipt />, text: t("methods.points.fees") },
+        { icon: <CurrencyDollar />, text: t("methods.points.currency") },
+      ]}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -244,7 +261,7 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={8} text={t("methods.empty")} />
+              <EmptyTableRow cols={8} icon={<CreditCard />} title={t("methods.empty")} />
             ) : (
               rows.map((m) => (
                 <Table.Row key={m.method} className="[&_td]:py-2.5">
@@ -266,7 +283,7 @@ export function MethodsSection({ overview, days, lang }: { overview: StripeOverv
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -322,7 +339,7 @@ export function PaymentsSection({
   }, [focus])
   const [method, setMethod] = useState<MethodKey | "all">("all")
   const [search, setSearch] = useState(initialQuery)
-  const q = useDebounced(search)
+  const q = useDebouncedValue(search).trim()
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, method, q])
   const payments = useStripePayments(filter, method, q, page * PAGE_SIZE, PAGE_SIZE, overview.fetchedAt)
@@ -334,43 +351,43 @@ export function PaymentsSection({
   const count = data?.count ?? 0
   const pageCount = Math.max(1, Math.ceil(count / PAGE_SIZE))
   const methods = useMemo(() => METHOD_ORDER.filter((m) => (data?.methods?.[m] ?? 0) > 0), [data?.methods])
+  /* A second click on the active filter clears it. */
+  const pickFilter = (f: PaymentFilter) => setFilter((cur) => (cur === f && f !== "all" ? "all" : f))
+  const pickMethod = (m: MethodKey | "all") => setMethod((cur) => (cur === m && m !== "all" ? "all" : m))
+  const shownFilters = PAYMENT_FILTERS.filter((f) => f !== "foreign" || filter === "foreign" || (data?.counts?.foreign ?? 0) > 0)
 
   return (
-    <Container className="scroll-mt-4 divide-y p-0" id="stripe-payments">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Heading level="h2">{t("payments.title")}</Heading>
-          {overview.mode === "demo" ? <SampleBadge /> : null}
-        </div>
-        <KeyPoints
-          label={t("payments.subtitle")}
-          items={[
-            { icon: <Clock />, text: t("payments.points.days") },
-            { icon: <BarsArrowDown />, text: t("payments.points.newest") },
-            { icon: <ShoppingBag />, text: t("payments.points.order") },
-            { icon: <ArrowUpRightOnBox />, text: t("payments.points.dashboard") },
-          ]}
-        />
-      </div>
-      <div className="flex flex-col gap-3 px-6 py-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <FilterPills<PaymentFilter>
-            value={filter}
-            onChange={setFilter}
-            options={PAYMENT_FILTERS.filter((f) => f !== "foreign" || filter === "foreign" || (data?.counts?.foreign ?? 0) > 0).map((f) => ({ value: f, label: t(`payments.filter.${f}`), count: data?.counts?.[f] }))}
-          />
-          <div className="w-full lg:w-80">
-            <Input size="small" type="search" placeholder={t("payments.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        </div>
-        {methods.length > 1 || method !== "all" ? (
-          <FilterPills<MethodKey | "all">
-            value={method}
-            onChange={setMethod}
-            options={[{ value: "all", label: t("payments.methodAll") }, ...methods.map((m) => ({ value: m, label: t(`methods.${m}`), count: data?.methods?.[m], icon: <MethodIcon method={m} title={t(`methods.${m}`)} /> }))]}
-          />
-        ) : null}
-      </div>
+    <Section
+      id="stripe-payments"
+      icon={<Receipt />}
+      title={t("payments.title")}
+      badges={overview.mode === "demo" ? <SampleBadge /> : null}
+      pointsLabel={t("payments.subtitle")}
+      points={[
+        { icon: <Clock />, text: t("payments.points.days") },
+        { icon: <BarsArrowDown />, text: t("payments.points.newest") },
+        { icon: <ShoppingBag />, text: t("payments.points.order") },
+        { icon: <ArrowUpRightOnBox />, text: t("payments.points.dashboard") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("payments.search")} className="sm:w-80" />}
+    >
+      <FilterBar>
+        {shownFilters.map((f, i) => (
+          <span key={f} className="contents">
+            {i === 1 ? <FilterDivider /> : null}
+            <FilterButton icon={FILTER_ICON[f]} label={t(`payments.filter.${f}`)} count={data?.counts?.[f]} attention={ATTENTION.has(f)} active={filter === f} onClick={() => pickFilter(f)} />
+          </span>
+        ))}
+      </FilterBar>
+      {methods.length > 1 || method !== "all" ? (
+        <FilterBar>
+          <FilterButton icon={<CreditCard />} label={t("payments.methodAll")} active={method === "all"} onClick={() => pickMethod("all")} />
+          <FilterDivider />
+          {methods.map((m) => (
+            <FilterButton key={m} icon={<MethodIcon method={m} title={t(`methods.${m}`)} />} label={t(`methods.${m}`)} count={data?.methods?.[m]} active={method === m} onClick={() => pickMethod(m)} />
+          ))}
+        </FilterBar>
+      ) : null}
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -389,7 +406,7 @@ export function PaymentsSection({
             {rows.length === 0 && payments.isLoading ? (
               <KitSkeletonRows cols={8} rows={8} />
             ) : rows.length === 0 ? (
-              <EmptyRow cols={8} text={overview.paymentsTotal === 0 ? t("payments.emptyRead") : t("payments.empty")} />
+              <EmptyTableRow cols={8} icon={<Receipt />} title={overview.paymentsTotal === 0 ? t("payments.emptyRead") : t("payments.empty")} />
             ) : (
               rows.map((p) => (
                 <Table.Row key={p.id} className="align-top [&_td]:py-2.5">
@@ -405,21 +422,9 @@ export function PaymentsSection({
                     <div className="flex flex-col items-end gap-y-1">
                       <span className="txt-compact-small-plus tabular-nums">{fmtMoney(p.amount, lang)}</span>
                       {p.order ? <KitOrderAmountLines data={products.data?.[p.order.id]} /> : null}
-                      {p.refunded ? (
-                        <Badge size="2xsmall" color="orange">
-                          {t("payments.refunded", { amount: fmtMoney(p.refunded, lang) })}
-                        </Badge>
-                      ) : null}
-                      {p.disputed ? (
-                        <Badge size="2xsmall" color={p.disputeOpen ? "red" : "grey"}>
-                          {t("payments.disputed")}
-                        </Badge>
-                      ) : null}
-                      {p.refundFailed ? (
-                        <Badge size="2xsmall" color="red">
-                          {t("payments.refundFailed")}
-                        </Badge>
-                      ) : null}
+                      {p.refunded ? <ToneBadge tone="orange">{t("payments.refunded", { amount: fmtMoney(p.refunded, lang) })}</ToneBadge> : null}
+                      {p.disputed ? <ToneBadge tone={p.disputeOpen ? "red" : "grey"}>{t("payments.disputed")}</ToneBadge> : null}
+                      {p.refundFailed ? <ToneBadge tone="red">{t("payments.refundFailed")}</ToneBadge> : null}
                     </div>
                   </Table.Cell>
                   <Table.Cell className="max-w-[220px]">
@@ -434,9 +439,7 @@ export function PaymentsSection({
                         </Text>
                       ) : null}
                       {p.risk === "elevated" || p.risk === "highest" ? (
-                        <Badge size="2xsmall" color={p.risk === "highest" ? "red" : "orange"}>
-                          {t(`payments.risk.${p.risk}`)}
-                        </Badge>
+                        <ToneBadge tone={p.risk === "highest" ? "red" : "orange"}>{t(`payments.risk.${p.risk}`)}</ToneBadge>
                       ) : null}
                     </div>
                   </Table.Cell>
@@ -488,7 +491,7 @@ export function PaymentsSection({
         nextPage={() => setPage((x) => x + 1)}
         translations={pagination(t)}
       />
-    </Container>
+    </Section>
   )
 }
 
@@ -501,32 +504,21 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
   const rows = overview.disputes
   const closed = overview.disputesClosed
   return (
-    <Container className="scroll-mt-4 divide-y p-0" id="stripe-disputes">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Heading level="h2">{t("disputes.title")}</Heading>
-          {overview.mode === "demo" ? <SampleBadge /> : null}
-        </div>
-        <KeyPoints
-          label={t("disputes.subtitle")}
-          items={[
-            { icon: <ExclamationCircle />, text: t("disputes.points.waiting"), tone: "orange" },
-            { icon: <ArrowUpRightOnBox />, text: t("disputes.points.answer") },
-            { icon: <Clock />, text: t("disputes.points.deadline"), tone: "red" },
-          ]}
-        />
-        {closed.won + closed.lost > 0 ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("disputes.closed", closed)}
-          </Text>
-        ) : null}
-      </div>
+    <Section
+      id="stripe-disputes"
+      icon={<ShieldCheck />}
+      title={t("disputes.title")}
+      badges={overview.mode === "demo" ? <SampleBadge /> : null}
+      pointsLabel={t("disputes.subtitle")}
+      points={[
+        { icon: <ExclamationCircle />, text: t("disputes.points.waiting"), tone: rows.length > 0 ? "orange" : "grey" },
+        { icon: <ArrowUpRightOnBox />, text: t("disputes.points.answer") },
+        { icon: <Clock />, text: t("disputes.points.deadline"), tone: rows.length > 0 ? "red" : "grey" },
+        closed.won + closed.lost > 0 && { icon: <Trophy />, text: t("disputes.closed", closed) },
+      ]}
+    >
       {rows.length === 0 ? (
-        <div className="px-6 py-4">
-          <Text size="small" className="text-ui-fg-muted">
-            {t("disputes.none")}
-          </Text>
-        </div>
+        <EmptyState compact icon={<ShieldCheck />} title={t("disputes.none")} />
       ) : (
         <div className="overflow-x-auto">
           <Table>
@@ -554,9 +546,7 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
                   <Table.Cell>{d.reason ? t(`disputes.reason.${d.reason}`, { defaultValue: d.reason }) : ""}</Table.Cell>
                   <Table.Cell>
                     <div className="flex flex-col items-start gap-y-1">
-                      <Badge size="2xsmall" color={d.urgency === "waiting" ? "blue" : "orange"}>
-                        {t(`disputes.status.${d.status}`, { defaultValue: d.status })}
-                      </Badge>
+                      <ToneBadge tone={d.urgency === "waiting" ? "blue" : "orange"}>{t(`disputes.status.${d.status}`, { defaultValue: d.status })}</ToneBadge>
                       {d.hasEvidence ? (
                         <Text size="xsmall" className="text-ui-fg-muted">
                           {t("disputes.evidence")}
@@ -579,37 +569,30 @@ export function DisputesSection({ overview, lang }: { overview: StripeOverviewRe
           </Table>
         </div>
       )}
-    </Container>
+    </Section>
   )
 }
 
-const REFUND_TONE: Record<string, "green" | "orange" | "red" | "grey" | "blue"> = { succeeded: "green", pending: "blue", requires_action: "orange", failed: "red", canceled: "grey" }
+const REFUND_TONE: Record<string, Tone> = { succeeded: "green", pending: "blue", requires_action: "orange", failed: "red", canceled: "grey" }
 
 export function RefundsSection({ overview, lang }: { overview: StripeOverviewResponse; lang: string }) {
   const { t } = useTranslation("stripe")
   const rows = overview.refunds
   return (
-    <Container className="scroll-mt-4 divide-y p-0" id="stripe-refunds">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Heading level="h2">{t("refunds.title")}</Heading>
-          {overview.mode === "demo" ? <SampleBadge /> : null}
-        </div>
-        <KeyPoints
-          label={t("refunds.subtitle")}
-          items={[
-            { icon: <Clock />, text: t("refunds.points.days") },
-            { icon: <ArrowUturnLeft />, text: t("refunds.points.order") },
-            { icon: <CheckCircle />, text: t("refunds.points.provider") },
-          ]}
-        />
-      </div>
+    <Section
+      id="stripe-refunds"
+      icon={<ArrowUturnLeft />}
+      title={t("refunds.title")}
+      badges={overview.mode === "demo" ? <SampleBadge /> : null}
+      pointsLabel={t("refunds.subtitle")}
+      points={[
+        { icon: <Clock />, text: t("refunds.points.days") },
+        { icon: <ArrowUturnLeft />, text: t("refunds.points.order") },
+        { icon: <CheckCircle />, text: t("refunds.points.provider") },
+      ]}
+    >
       {rows.length === 0 ? (
-        <div className="px-6 py-4">
-          <Text size="small" className="text-ui-fg-muted">
-            {t("refunds.none")}
-          </Text>
-        </div>
+        <EmptyState compact icon={<ArrowUturnLeft />} title={t("refunds.none")} />
       ) : (
         <div className="overflow-x-auto">
           <Table>
@@ -630,9 +613,7 @@ export function RefundsSection({ overview, lang }: { overview: StripeOverviewRes
                   <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtMoney(r.amount, lang)}</Table.Cell>
                   <Table.Cell>
                     <div className="flex flex-col items-start gap-y-1">
-                      <Badge size="2xsmall" color={REFUND_TONE[r.status] ?? "grey"}>
-                        {t(`refunds.status.${r.status}`, { defaultValue: r.status })}
-                      </Badge>
+                      <ToneBadge tone={REFUND_TONE[r.status] ?? "grey"}>{t(`refunds.status.${r.status}`, { defaultValue: r.status })}</ToneBadge>
                       {r.failureReason ? (
                         <Text size="xsmall" className="text-ui-tag-red-text" title={r.failureReason}>
                           {refundFailureText(t, r.failureReason)}
@@ -653,7 +634,7 @@ export function RefundsSection({ overview, lang }: { overview: StripeOverviewRes
           </Table>
         </div>
       )}
-    </Container>
+    </Section>
   )
 }
 
@@ -661,7 +642,7 @@ export function RefundsSection({ overview, lang }: { overview: StripeOverviewRes
 /* Balance and payouts                                                 */
 /* ------------------------------------------------------------------ */
 
-const PAYOUT_TONE: Record<string, "green" | "orange" | "red" | "grey" | "blue"> = { paid: "green", pending: "blue", in_transit: "blue", canceled: "grey", failed: "red" }
+const PAYOUT_TONE: Record<string, Tone> = { paid: "green", pending: "blue", in_transit: "blue", canceled: "grey", failed: "red" }
 
 /** Stripe lists every currency the account used; one with nothing in it is left out, unless the balance is empty altogether. */
 function held(list: readonly MoneyDto[]): MoneyDto[] {
@@ -675,7 +656,7 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
   const { upcoming, past } = overview.payouts
   const payoutRows = (list: typeof past, empty: string) =>
     list.length === 0 ? (
-      <EmptyRow cols={5} text={empty} />
+      <EmptyTableRow cols={5} icon={<Buildings />} title={empty} />
     ) : (
       list.slice(0, 10).map((p) => (
         <Table.Row key={p.id} className="[&_td]:py-2.5">
@@ -683,9 +664,7 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
           <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtMoney(p.amount, lang)}</Table.Cell>
           <Table.Cell>
             <div className="flex flex-col items-start gap-y-1">
-              <Badge size="2xsmall" color={PAYOUT_TONE[p.status] ?? "grey"}>
-                {t(`balance.status.${p.status}`, { defaultValue: p.status })}
-              </Badge>
+              <ToneBadge tone={PAYOUT_TONE[p.status] ?? "grey"}>{t(`balance.status.${p.status}`, { defaultValue: p.status })}</ToneBadge>
               {p.failureMessage ? (
                 <Text size="xsmall" className="text-ui-tag-red-text">
                   {p.failureMessage}
@@ -712,20 +691,17 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
     </Table.Header>
   )
   return (
-    <Container className="scroll-mt-4 divide-y p-0" id="stripe-balance">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Heading level="h2">{t("balance.title")}</Heading>
-          {overview.mode === "demo" ? <SampleBadge /> : null}
-        </div>
-        <KeyPoints
-          label={t("balance.subtitle")}
-          items={[
-            { icon: <Cash />, text: t("balance.points.held") },
-            { icon: <Buildings />, text: t("balance.points.bank") },
-          ]}
-        />
-      </div>
+    <Section
+      id="stripe-balance"
+      icon={<Cash />}
+      title={t("balance.title")}
+      badges={overview.mode === "demo" ? <SampleBadge /> : null}
+      pointsLabel={t("balance.subtitle")}
+      points={[
+        { icon: <Cash />, text: t("balance.points.held") },
+        { icon: <Buildings />, text: t("balance.points.bank") },
+      ]}
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2">
         {b ? (
           <>
@@ -737,9 +713,7 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
             </Fact>
           </>
         ) : (
-          <Text size="small" className="text-ui-fg-muted">
-            {t("balance.none")}
-          </Text>
+          <EmptyState compact icon={<Cash />} title={t("balance.none")} className="sm:col-span-2" />
         )}
       </div>
       <div className="flex flex-col">
@@ -768,7 +742,7 @@ export function BalanceSection({ overview, lang }: { overview: StripeOverviewRes
           </Table>
         </div>
       </div>
-    </Container>
+    </Section>
   )
 }
 

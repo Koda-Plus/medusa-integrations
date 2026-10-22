@@ -1,11 +1,28 @@
-import { useState } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Drawer, Heading, InlineTip, Input, Label, Select, StatusBadge, Table, Text, Textarea, clx, toast, usePrompt } from "@medusajs/ui"
+import {
+  ArrowUpRightOnBox,
+  ChatBubble,
+  ChatBubbleLeftRight,
+  CheckCircle,
+  Clock,
+  CurrencyDollar,
+  DocumentSeries,
+  DocumentText,
+  ExclamationCircle,
+  PencilSquare,
+  ShoppingCart,
+  Tag,
+  User,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, Input, Label, Select, Table, Text, Textarea, clx, toast, usePrompt } from "@medusajs/ui"
 import type { DraftOrderDto, MessageDto, StatusResponse, ThreadDto } from "../../modules/negotiations/lib/contract"
 import { errorCode, errorMessage, useNegotiationThread, useThreadMove, type ThreadMove } from "./negotiations-api"
+import { EmptyState, FilterBar, FilterButton, Section, SubpageHeader, ToneBadge, type Tone } from "./negotiations-blocks"
 import { NegotiationsIcon } from "./negotiations-icon"
+import { KitLoading } from "./negotiations-kit"
 import {
   DemoBadge,
   Fact,
@@ -25,43 +42,33 @@ type Tab = "reply" | "counter" | "note"
 
 const VALIDITY = ["", "3", "7", "14", "30"] as const
 
+const TAB_ICON: Record<Tab, ReactNode> = { reply: <ChatBubble />, counter: <CurrencyDollar />, note: <PencilSquare /> }
+
 /**
- * One thread: the facts, the conversation (customer on the left, the team on
- * the right, the moves in the middle, internal notes marked), and the moves
- * the team can make. Opens from the queue, the widgets and `?thread=<id>`.
+ * One thread as a page of its own (`?thread=<id>`): the header with the
+ * moves (accept, reject, open the customer or the product), the facts, the
+ * cart lines, the draft order, the conversation (customer on the left, the
+ * team on the right, the moves in the middle, internal notes marked) and the
+ * composer. Opens from the queue, the widgets and links.
  */
-export function ThreadDrawer({ id, preview, status, onClose }: { id: string | null; preview: ThreadDto | null; status: StatusResponse | undefined; onClose: () => void }) {
+export function ThreadPage({ id, preview, status, backHref }: { id: string; preview: ThreadDto | null; status: StatusResponse | undefined; backHref: string }) {
   const { t, i18n } = useTranslation("negotiations")
   const lang = i18n.language || "en"
   const detail = useNegotiationThread(id)
   const thread: ThreadDto | null = detail.data?.thread ?? preview
-  if (!id) return null
+  const back = { href: backHref, label: t("thread.back") }
 
-  return (
-    <Drawer open onOpenChange={(open) => (!open ? onClose() : undefined)}>
-      <Drawer.Content className="max-w-2xl">
-        {thread ? (
-          <ThreadBody key={thread.id} thread={thread} status={status} lang={lang} onClose={onClose} />
-        ) : (
-          <>
-            <Drawer.Header>
-              <Drawer.Title>{detail.isError ? t("drawer.notFound") : t("queue.loading")}</Drawer.Title>
-            </Drawer.Header>
-            <Drawer.Body>
-              {detail.isError ? (
-                <Text size="small" className="text-ui-fg-subtle">
-                  {errorMessage(detail.error)}
-                </Text>
-              ) : null}
-            </Drawer.Body>
-          </>
-        )}
-      </Drawer.Content>
-    </Drawer>
-  )
+  if (!thread) {
+    return (
+      <SubpageHeader back={back} icon={<NegotiationsIcon width={28} height={28} />} title={detail.isError ? t("drawer.notFound") : t("queue.loading")}>
+        {detail.isError ? <EmptyState icon={<ExclamationCircle />} title={errorMessage(detail.error)} /> : <KitLoading label={t("queue.loading")} />}
+      </SubpageHeader>
+    )
+  }
+  return <ThreadBody key={thread.id} thread={thread} status={status} lang={lang} back={back} />
 }
 
-function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; status: StatusResponse | undefined; lang: string; onClose: () => void }) {
+function ThreadBody({ thread, status, lang, back }: { thread: ThreadDto; status: StatusResponse | undefined; lang: string; back: { href: string; label: string } }) {
   const { t } = useTranslation("negotiations")
   const prompt = usePrompt()
   const move = useThreadMove()
@@ -73,6 +80,7 @@ function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; stat
   const [note, setNote] = useState("")
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
+  const answerRef = useRef<HTMLDivElement | null>(null)
 
   const active = thread.status === "open" || thread.status === "counter_offered"
   const who = customerLine(thread, t, lang)
@@ -81,6 +89,7 @@ function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; stat
   const unitWord = thread.subject === "cart" ? t("composer.forCart") : t("composer.perUnit")
   const taxWord = status?.options.taxInclusive ? t("composer.gross") : t("composer.net")
   const busy = (m: ThreadMove) => move.isPending && move.variables?.move === m
+  const value = fmtMoney(thread.value, currency, lang)
 
   const run = async (m: ThreadMove, body: Record<string, unknown>, done: string): Promise<boolean> => {
     try {
@@ -128,6 +137,10 @@ function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; stat
       setRejectReason("")
     }
   }
+  const startReject = () => {
+    setRejecting(true)
+    requestAnimationFrame(() => answerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
   const queueDraft = async () => {
     await run("draft-order", {}, t("toast.queued"))
   }
@@ -136,45 +149,72 @@ function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; stat
   const shownTab: Tab = tabs.includes(tab) ? tab : "note"
 
   return (
-    <>
-      <Drawer.Header>
-        <div className="flex flex-wrap items-center gap-2">
-          <NegotiationsIcon width={20} height={20} />
-          <Drawer.Title>{t("drawer.title", { ref: thread.ref })}</Drawer.Title>
-          <NegotiationStatusBadge status={thread.status} />
-          {thread.waitingFor === "team" ? (
-            <Badge size="2xsmall" color="red">
-              {t("waiting.team")}
-            </Badge>
-          ) : thread.waitingFor === "customer" ? (
-            <Badge size="2xsmall" color="grey">
-              {t("waiting.customer")}
-            </Badge>
-          ) : null}
-          {thread.demo ? <DemoBadge /> : null}
-        </div>
-      </Drawer.Header>
+    <div className="flex flex-col gap-y-3">
+      <SubpageHeader
+        back={back}
+        icon={<NegotiationsIcon width={28} height={28} />}
+        title={t("drawer.title", { ref: thread.ref })}
+        badges={
+          <>
+            <NegotiationStatusBadge status={thread.status} />
+            {thread.waitingFor === "team" ? <ToneBadge tone="orange">{t("waiting.team")}</ToneBadge> : thread.waitingFor === "customer" ? <ToneBadge tone="grey">{t("waiting.customer")}</ToneBadge> : null}
+            {thread.demo ? <DemoBadge /> : null}
+          </>
+        }
+        points={[
+          { icon: <User />, text: who.main },
+          { icon: thread.subject === "cart" ? <ShoppingCart /> : <Tag />, text: subject.main },
+          value ? { icon: <CurrencyDollar />, text: t("thread.value", { value }) } : null,
+          active ? { icon: <Clock />, text: thread.expiresAt ? t("thread.expires", { time: fmtRelative(thread.expiresAt, lang) }) : t("thread.noExpiry"), title: thread.expiresAt ? fmtDateTime(thread.expiresAt, lang) : undefined } : null,
+        ]}
+        actions={
+          <>
+            {thread.customer ? (
+              <Button size="small" variant="secondary" asChild>
+                <Link to={`/customers/${thread.customer.id}`}>
+                  <User />
+                  {t("drawer.openCustomer")}
+                </Link>
+              </Button>
+            ) : null}
+            {thread.productId && thread.subject !== "cart" ? (
+              <Button size="small" variant="secondary" asChild>
+                <Link to={`/products/${thread.productId}`}>
+                  <Tag />
+                  {t("drawer.openProduct")}
+                </Link>
+              </Button>
+            ) : null}
+            {active ? (
+              <>
+                <Button size="small" variant="danger" onClick={startReject} disabled={rejecting}>
+                  <XCircle />
+                  {t("reject.button")}
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => void accept()}
+                  isLoading={busy("accept")}
+                  disabled={!thread.price}
+                  title={thread.price ? t("accept.hint", { price: fmtMoney(thread.price, currency, lang) }) : t("errors.no_price")}
+                >
+                  <CheckCircle />
+                  {thread.price ? t("accept.button", { price: fmtMoney(thread.price, currency, lang) }) : t("accept.buttonNoPrice")}
+                </Button>
+              </>
+            ) : null}
+          </>
+        }
+      />
 
-      <Drawer.Body className="flex flex-col gap-y-6 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-4 rounded-lg border border-ui-border-base p-4 sm:grid-cols-3">
+      <Section icon={<DocumentText />} title={t("thread.facts")}>
+        <div className="grid grid-cols-2 gap-4 px-6 py-4 sm:grid-cols-3 xl:grid-cols-4">
           <Fact label={t("drawer.customer")}>
             <span className="block truncate">{who.main}</span>
             {who.sub ? <span className="block truncate text-ui-fg-muted">{who.sub}</span> : null}
-            {thread.customer ? (
-              <Link to={`/customers/${thread.customer.id}`} className="inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                {t("drawer.openCustomer")}
-                <ArrowUpRightOnBox />
-              </Link>
-            ) : null}
           </Fact>
           <Fact label={thread.subject === "cart" ? t("drawer.cart") : t("drawer.product")}>
             <span className="block">{subject.main}</span>
-            {thread.productId && thread.subject !== "cart" ? (
-              <Link to={`/products/${thread.productId}`} className="inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                {t("drawer.openProduct")}
-                <ArrowUpRightOnBox />
-              </Link>
-            ) : null}
           </Fact>
           {thread.subject === "cart" ? (
             <Fact label={t("drawer.lines")}>{fmtNumber(thread.items?.length ?? 0, lang)}</Fact>
@@ -189,7 +229,7 @@ function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; stat
           <Fact label={t("drawer.offered")}>{fmtMoney(thread.offered, currency, lang) || "-"}</Fact>
           {thread.agreed ? <Fact label={t("drawer.agreed")}>{fmtMoney(thread.agreed, currency, lang)}</Fact> : null}
           <Fact label={t("drawer.value")}>
-            {fmtMoney(thread.value, currency, lang) || "-"}
+            {value || "-"}
             {thread.discountPercent !== null && thread.discountPercent > 0 ? (
               <span className="block text-ui-fg-muted">{t("queue.below", { percent: fmtNumber(thread.discountPercent, lang) })}</span>
             ) : null}
@@ -217,115 +257,49 @@ function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; stat
             </Fact>
           ) : null}
         </div>
+      </Section>
 
-        {thread.items && thread.items.length > 0 ? <CartLines thread={thread} lang={lang} /> : null}
+      {thread.items && thread.items.length > 0 ? <CartLines thread={thread} lang={lang} /> : null}
 
-        {thread.status === "accepted" ? <DraftOrderBox thread={thread} status={status} lang={lang} busy={busy("draft-order")} onQueue={() => void queueDraft()} /> : null}
+      {thread.status === "accepted" ? <DraftOrderSection thread={thread} status={status} lang={lang} busy={busy("draft-order")} onQueue={() => void queueDraft()} /> : null}
 
-        <div className="flex flex-col gap-y-2">
-          <Heading level="h3">{t("drawer.conversation")}</Heading>
-          <div className="flex max-h-[28rem] flex-col gap-y-3 overflow-y-auto rounded-lg border border-ui-border-base bg-ui-bg-subtle p-4">
-            {(thread.messages ?? []).length === 0 ? (
-              <Text size="small" className="text-ui-fg-muted">
-                {t("drawer.noMessages")}
-              </Text>
-            ) : (
-              (thread.messages ?? []).map((m) => <Bubble key={m.id} m={m} thread={thread} lang={lang} />)
-            )}
-          </div>
+      <Section
+        icon={<ChatBubbleLeftRight />}
+        title={t("drawer.conversation")}
+        points={[
+          { icon: <User />, text: t("thread.points.left") },
+          { icon: <ChatBubble />, text: t("thread.points.right") },
+          { icon: <PencilSquare />, text: t("thread.points.notes") },
+        ]}
+      >
+        <div className="flex max-h-[36rem] flex-col gap-y-3 overflow-y-auto bg-ui-bg-subtle px-6 py-4">
+          {(thread.messages ?? []).length === 0 ? (
+            <EmptyState compact icon={<ChatBubbleLeftRight />} title={t("drawer.noMessages")} />
+          ) : (
+            (thread.messages ?? []).map((m) => <Bubble key={m.id} m={m} thread={thread} lang={lang} />)
+          )}
         </div>
+      </Section>
 
-        {!active ? (
-          <InlineTip variant="info" label={t(`status.${thread.status}`)}>
-            {t("drawer.closedTip")}
-          </InlineTip>
-        ) : null}
-
-        <div className="flex flex-col gap-y-3">
-          <div role="tablist" className="flex flex-wrap gap-1">
-            {tabs.map((k) => (
-              <button
-                key={k}
-                type="button"
-                role="tab"
-                aria-selected={shownTab === k}
-                onClick={() => setTab(k)}
-                className={clx(
-                  "txt-compact-small-plus rounded-md px-3 py-1.5 outline-none transition-fg focus-visible:shadow-borders-focus",
-                  shownTab === k ? "bg-ui-bg-component text-ui-fg-base shadow-borders-base" : "text-ui-fg-subtle hover:bg-ui-bg-component-hover hover:text-ui-fg-base",
-                )}
-              >
-                {t(`composer.${k}`)}
-              </button>
-            ))}
-          </div>
-
-          {shownTab === "reply" ? (
-            <div className="flex flex-col gap-y-2">
-              <Textarea rows={3} placeholder={t("composer.replyPlaceholder")} value={reply} onChange={(e) => setReply(e.target.value)} />
-              <div className="flex justify-end">
-                <Button size="small" onClick={() => void sendReply()} isLoading={busy("messages")}>
-                  {t("composer.send")}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {shownTab === "counter" ? (
-            <div className="flex flex-col gap-y-3">
-              <Text size="small" className="text-ui-fg-subtle">
-                {t("composer.counterHint", { unit: unitWord, tax: taxWord })}
-              </Text>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr]">
-                <div className="flex flex-col gap-y-1">
-                  <Label size="xsmall" weight="plus" htmlFor="negotiations-counter-price">
-                    {t("composer.price", { currency: (currency ?? "").toUpperCase(), unit: unitWord })}
-                  </Label>
-                  <Input id="negotiations-counter-price" inputMode="decimal" placeholder={thread.price?.value ?? "0.00"} value={counterPrice} onChange={(e) => setCounterPrice(e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-y-1">
-                  <Label size="xsmall" weight="plus" htmlFor="negotiations-counter-valid">
-                    {t("composer.validFor")}
-                  </Label>
-                  <Select value={validDays || "clock"} onValueChange={(v) => setValidDays(v === "clock" ? "" : v)}>
-                    <Select.Trigger id="negotiations-counter-valid">
-                      <Select.Value />
-                    </Select.Trigger>
-                    <Select.Content>
-                      {VALIDITY.map((d) => (
-                        <Select.Item key={d || "clock"} value={d || "clock"}>
-                          {d ? t("composer.validDays", { count: Number(d) }) : t("composer.validClock", { count: status?.options.expiryDays ?? 14 })}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select>
-                </div>
-              </div>
-              <Textarea rows={2} placeholder={t("composer.counterMessage")} value={counterMessage} onChange={(e) => setCounterMessage(e.target.value)} />
-              <div className="flex justify-end">
-                <Button size="small" variant="secondary" onClick={() => void sendCounter()} isLoading={busy("counter")}>
-                  {t("composer.sendCounter")}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {shownTab === "note" ? (
-            <div className="flex flex-col gap-y-2">
-              <Text size="xsmall" className="text-ui-fg-muted">
-                {t("composer.noteHint")}
-              </Text>
-              <Textarea rows={2} placeholder={t("composer.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} />
-              <div className="flex justify-end">
-                <Button size="small" variant="secondary" onClick={() => void saveNote()} isLoading={busy("notes")}>
-                  {t("composer.saveNote")}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
+      <div ref={answerRef} className="scroll-mt-4">
+        <Section
+          icon={<PencilSquare />}
+          title={t("thread.answer")}
+          points={
+            active
+              ? [
+                  { icon: <ChatBubble />, text: t("thread.points.reply") },
+                  { icon: <CurrencyDollar />, text: t("thread.points.counter") },
+                  { icon: <PencilSquare />, text: t("thread.points.note") },
+                ]
+              : [
+                  { icon: <XCircle />, text: t("thread.points.closed"), title: t("drawer.closedTip") },
+                  { icon: <PencilSquare />, text: t("thread.points.notesStill") },
+                ]
+          }
+        >
           {rejecting ? (
-            <div className="flex flex-col gap-y-2 rounded-lg border border-ui-border-error bg-ui-bg-subtle p-3">
+            <div className="flex flex-col gap-y-2 px-6 py-4">
               <Label size="xsmall" weight="plus" htmlFor="negotiations-reject-reason">
                 {t("reject.title")}
               </Label>
@@ -340,40 +314,91 @@ function ThreadBody({ thread, status, lang, onClose }: { thread: ThreadDto; stat
               </div>
             </div>
           ) : null}
-        </div>
-      </Drawer.Body>
 
-      <Drawer.Footer>
-        <Button size="small" variant="secondary" onClick={onClose}>
-          {t("drawer.close")}
-        </Button>
-        {active ? (
-          <>
-            <Button size="small" variant="danger" onClick={() => setRejecting(true)} disabled={rejecting}>
-              {t("reject.button")}
-            </Button>
-            <Button
-              size="small"
-              onClick={() => void accept()}
-              isLoading={busy("accept")}
-              disabled={!thread.price}
-              title={thread.price ? t("accept.hint", { price: fmtMoney(thread.price, currency, lang) }) : t("errors.no_price")}
-            >
-              {thread.price ? t("accept.button", { price: fmtMoney(thread.price, currency, lang) }) : t("accept.buttonNoPrice")}
-            </Button>
-          </>
-        ) : null}
-      </Drawer.Footer>
-    </>
+          {tabs.length > 1 ? (
+            <FilterBar>
+              {tabs.map((k) => (
+                <FilterButton key={k} icon={TAB_ICON[k]} label={t(`composer.${k}`)} active={shownTab === k} onClick={() => setTab(k)} />
+              ))}
+            </FilterBar>
+          ) : null}
+
+          <div className="px-6 py-4">
+            {shownTab === "reply" ? (
+              <div className="flex flex-col gap-y-2">
+                <Textarea rows={3} placeholder={t("composer.replyPlaceholder")} value={reply} onChange={(e) => setReply(e.target.value)} />
+                <div className="flex justify-end">
+                  <Button size="small" onClick={() => void sendReply()} isLoading={busy("messages")}>
+                    {t("composer.send")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {shownTab === "counter" ? (
+              <div className="flex flex-col gap-y-3">
+                <Text size="small" className="text-ui-fg-subtle">
+                  {t("composer.counterHint", { unit: unitWord, tax: taxWord })}
+                </Text>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr]">
+                  <div className="flex flex-col gap-y-1">
+                    <Label size="xsmall" weight="plus" htmlFor="negotiations-counter-price">
+                      {t("composer.price", { currency: (currency ?? "").toUpperCase(), unit: unitWord })}
+                    </Label>
+                    <Input id="negotiations-counter-price" inputMode="decimal" placeholder={thread.price?.value ?? "0.00"} value={counterPrice} onChange={(e) => setCounterPrice(e.target.value)} />
+                  </div>
+                  <div className="flex flex-col gap-y-1">
+                    <Label size="xsmall" weight="plus" htmlFor="negotiations-counter-valid">
+                      {t("composer.validFor")}
+                    </Label>
+                    <Select value={validDays || "clock"} onValueChange={(v) => setValidDays(v === "clock" ? "" : v)}>
+                      <Select.Trigger id="negotiations-counter-valid">
+                        <Select.Value />
+                      </Select.Trigger>
+                      <Select.Content>
+                        {VALIDITY.map((d) => (
+                          <Select.Item key={d || "clock"} value={d || "clock"}>
+                            {d ? t("composer.validDays", { count: Number(d) }) : t("composer.validClock", { count: status?.options.expiryDays ?? 14 })}
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select>
+                  </div>
+                </div>
+                <Textarea rows={2} placeholder={t("composer.counterMessage")} value={counterMessage} onChange={(e) => setCounterMessage(e.target.value)} />
+                <div className="flex justify-end">
+                  <Button size="small" variant="secondary" onClick={() => void sendCounter()} isLoading={busy("counter")}>
+                    {t("composer.sendCounter")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {shownTab === "note" ? (
+              <div className="flex flex-col gap-y-2">
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  {t("composer.noteHint")}
+                </Text>
+                <Textarea rows={2} placeholder={t("composer.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} />
+                <div className="flex justify-end">
+                  <Button size="small" variant="secondary" onClick={() => void saveNote()} isLoading={busy("notes")}>
+                    {t("composer.saveNote")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </Section>
+      </div>
+    </div>
   )
 }
 
 function CartLines({ thread, lang }: { thread: ThreadDto; lang: string }) {
   const { t } = useTranslation("negotiations")
   return (
-    <div className="flex flex-col gap-y-2">
-      <Heading level="h3">{t("drawer.cartLines")}</Heading>
-      <div className="overflow-x-auto rounded-lg border border-ui-border-base">
+    <Section icon={<ShoppingCart />} title={t("drawer.cartLines")}>
+      <div className="overflow-x-auto">
         <Table>
           <Table.Header>
             <Table.Row>
@@ -406,11 +431,11 @@ function CartLines({ thread, lang }: { thread: ThreadDto; lang: string }) {
           </Table.Body>
         </Table>
       </div>
-    </div>
+    </Section>
   )
 }
 
-const DRAFT_TONE: Record<DraftOrderDto["state"], "green" | "orange" | "red" | "grey" | "blue"> = {
+const DRAFT_TONE: Record<DraftOrderDto["state"], Tone> = {
   pending: "blue",
   creating: "blue",
   created: "green",
@@ -420,53 +445,57 @@ const DRAFT_TONE: Record<DraftOrderDto["state"], "green" | "orange" | "red" | "g
 }
 
 /** The draft order of an accepted thread: its state and link, or the way to queue it. */
-function DraftOrderBox({ thread, status, lang, busy, onQueue }: { thread: ThreadDto; status: StatusResponse | undefined; lang: string; busy: boolean; onQueue: () => void }) {
+function DraftOrderSection({ thread, status, lang, busy, onQueue }: { thread: ThreadDto; status: StatusResponse | undefined; lang: string; busy: boolean; onQueue: () => void }) {
   const { t } = useTranslation("negotiations")
   const writer = status?.writers.draftOrders
   const d = thread.draftOrder
   const canQueue = Boolean(writer?.allowed) && thread.subject !== "cart" && (!d || d.state === "failed" || d.state === "blocked")
   return (
-    <div className="flex flex-col gap-y-2 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-x-2">
-          <Text size="small" weight="plus" className="text-ui-fg-base">
-            {t("draft.title")}
-          </Text>
-          {d ? <StatusBadge color={DRAFT_TONE[d.state] ?? "grey"}>{t(`draft.states.${d.state}`)}</StatusBadge> : null}
-          {d?.simulated ? (
-            <Badge size="2xsmall" color="purple">
-              {t("draft.simulated")}
-            </Badge>
+    <Section
+      icon={<DocumentSeries />}
+      title={t("draft.title")}
+      badges={
+        <>
+          {d ? <ToneBadge tone={DRAFT_TONE[d.state] ?? "grey"}>{t(`draft.states.${d.state}`)}</ToneBadge> : null}
+          {d?.simulated ? <ToneBadge tone="purple">{t("draft.simulated")}</ToneBadge> : null}
+        </>
+      }
+      actions={
+        <>
+          {d?.state === "created" && d.draftOrderId && !d.simulated ? (
+            <Button size="small" variant="secondary" asChild>
+              <Link to={`/draft-orders/${d.draftOrderId}`}>
+                <ArrowUpRightOnBox />
+                {t("draft.open")}
+              </Link>
+            </Button>
           ) : null}
-        </span>
-        {canQueue ? (
-          <Button size="small" variant="secondary" isLoading={busy} onClick={onQueue}>
-            {d ? t("draft.retry") : t("draft.prepare")}
-          </Button>
-        ) : null}
+          {canQueue ? (
+            <Button size="small" variant="secondary" isLoading={busy} onClick={onQueue}>
+              {d ? t("draft.retry") : t("draft.prepare")}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      <div className="px-6 py-4">
+        <Text size="small" className="text-ui-fg-subtle">
+          {d?.state === "created"
+            ? t("draft.createdText", { number: d.displayId !== null ? `#${d.displayId}` : (d.draftOrderId ?? ""), time: fmtDateTime(d.updatedAt, lang) })
+            : d?.state === "blocked" || d?.state === "failed"
+              ? t(`draft.reasons.${d.error ?? "unknown"}`, { defaultValue: d.error ?? "" })
+              : d
+                ? t(`draft.stateText.${d.state}`)
+                : thread.subject === "cart"
+                  ? t("draft.reasons.cart")
+                  : writer?.allowed
+                    ? writer.armed
+                      ? t("draft.notQueued")
+                      : t("draft.notArmed")
+                    : t("draft.notAllowed")}
+        </Text>
       </div>
-      <Text size="small" className="text-ui-fg-subtle">
-        {d?.state === "created"
-          ? t("draft.createdText", { number: d.displayId !== null ? `#${d.displayId}` : (d.draftOrderId ?? ""), time: fmtDateTime(d.updatedAt, lang) })
-          : d?.state === "blocked" || d?.state === "failed"
-            ? t(`draft.reasons.${d.error ?? "unknown"}`, { defaultValue: d.error ?? "" })
-            : d
-              ? t(`draft.stateText.${d.state}`)
-              : thread.subject === "cart"
-                ? t("draft.reasons.cart")
-                : writer?.allowed
-                  ? writer.armed
-                    ? t("draft.notQueued")
-                    : t("draft.notArmed")
-                  : t("draft.notAllowed")}
-      </Text>
-      {d?.state === "created" && d.draftOrderId && !d.simulated ? (
-        <Link to={`/draft-orders/${d.draftOrderId}`} className="txt-compact-small-plus inline-flex w-fit items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-          {t("draft.open")}
-          <ArrowUpRightOnBox />
-        </Link>
-      ) : null}
-    </div>
+    </Section>
   )
 }
 

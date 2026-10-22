@@ -1,13 +1,15 @@
 import { Fragment, useMemo, useState, type ReactElement } from "react"
 import { useTranslation } from "react-i18next"
-import { Bolt, Buildings, BuildingStorefront, Cash, CheckCircleSolid, CheckMini, ChevronRight, ExclamationCircle, Gift, Key, ReceiptPercent, Sparkles, SquaresPlus, Tag, TruckFast, User, Users } from "@medusajs/icons"
-import { Badge, Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
+import { Bolt, Buildings, BuildingStorefront, Calendar, Cash, CheckCircleSolid, CheckMini, ChevronRight, Eye, ExclamationCircle, Gift, Key, ReceiptPercent, Sparkles, SquaresPlus, Tag, TruckFast, User, Users } from "@medusajs/icons"
+import { Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, NameMaps, WizardInput, WizardKind } from "../../modules/coupons/lib/contract"
 import { checkWizard, cleanCode, endOfMonth, suggestCode, wizardWarnings } from "../../modules/coupons/lib/wizard"
 import { CouponsRequestError, errorMessage, useCreateCoupon, useLookups } from "./coupons-api"
 import { BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, poolsWord } from "./coupons-fields"
 import { couponSentence, wizardCoupon } from "./coupons-sentence"
 import { useFormat } from "./coupons-ui"
+import { ToneBadge } from "./coupons-blocks"
+import { KeyPoints, type KeyPointItem } from "./coupons-guide"
 
 /**
  * THE CREATOR, full screen: the steps on the left (each with what was
@@ -128,6 +130,24 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
   const customers = [...new Set([...(form.customerIds ?? []), ...(form.customerId ? [form.customerId] : [])])]
 
   /* What was picked in a step, in one short sentence under its name. */
+  /* What each step decides, as short phrases; the full sentence stays as their tooltip. */
+  const stepPoints = (s: Step): KeyPointItem[] =>
+    s === 1
+      ? [
+          { icon: <ReceiptPercent />, text: t("wizard.ui.stepPoints.kind.pick") },
+          { icon: <Eye />, text: t("wizard.ui.stepPoints.kind.preview") },
+        ]
+      : s === 2
+        ? [
+            { icon: <Users />, text: t("wizard.ui.stepPoints.audience.everyone") },
+            { icon: <BuildingStorefront />, text: t("wizard.ui.stepPoints.audience.retail") },
+            { icon: <User />, text: t("wizard.ui.stepPoints.audience.customers") },
+          ]
+        : [
+            { icon: <Key />, text: t("wizard.ui.stepPoints.rules.mode") },
+            { icon: <Calendar />, text: t("wizard.ui.stepPoints.rules.validity") },
+            { icon: <Tag />, text: t("wizard.ui.stepPoints.rules.limits") },
+          ]
   const stepSummary = (s: Step): string => {
     if (s === 1) {
       if (form.kind === "buy_get") return `${t("wizard.kind.buy_get.label")}, ${form.buyGet?.buy ?? 0} + ${form.buyGet?.free ?? 0}`
@@ -211,9 +231,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
             <div className="flex flex-col gap-y-5 p-6 lg:overflow-y-auto lg:px-10 lg:py-8">
               <div>
                 <Heading>{t(`wizard.step.${STEP_KEY[step]}`)}</Heading>
-                <Text size="small" className="max-w-xl text-ui-fg-subtle">
-                  {t(`wizard.ui.stepIntro.${STEP_KEY[step]}`)}
-                </Text>
+                <KeyPoints className="mt-1.5" label={t(`wizard.ui.stepIntro.${STEP_KEY[step]}`)} items={stepPoints(step)} />
               </div>
 
               {step === 1 ? (
@@ -450,7 +468,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
                   </Text>
                 ) : null}
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-dashed border-ui-border-base pt-3">
-                  {form.mode === "code" ? <span className="rounded-md bg-ui-bg-component px-2 py-1 font-mono txt-compact-small-plus">{withCode.code}</span> : <Badge size="2xsmall" color="blue">{t("wizard.mode.automatic")}</Badge>}
+                  {form.mode === "code" ? <span className="rounded-md bg-ui-bg-component px-2 py-1 font-mono txt-compact-small-plus">{withCode.code}</span> : <ToneBadge tone="blue">{t("wizard.mode.automatic")}</ToneBadge>}
                   <Text size="xsmall" className="text-ui-fg-muted">
                     {form.mode === "code" ? t("wizard.ui.previewCode") : t("wizard.ui.previewAutomatic")}
                   </Text>

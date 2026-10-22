@@ -1,11 +1,12 @@
-import { useMemo, useRef, useState, type DragEvent } from "react"
-import { ChatBubble, XMarkMini } from "@medusajs/icons"
-import { Badge, Button, Input, Select, Text, clx } from "@medusajs/ui"
-import { STATUSES, type TaskStatus } from "../../modules/tasks/lib/constants"
+import { useMemo, useRef, useState, type DragEvent, type ReactNode } from "react"
+import { Calendar, ChatBubble, CheckCircle, Clock, ExclamationCircle, Fire, ListBullet, ShoppingCart, Tag as TagIcon, User, Users, XMarkMini } from "@medusajs/icons"
+import { Button, Select, Text, clx } from "@medusajs/ui"
+import { STATUSES, isLinkType, type LinkType, type TaskStatus } from "../../modules/tasks/lib/constants"
 import type { TaskDto } from "../../modules/tasks/lib/contract"
 import { personKey } from "../../modules/tasks/lib/people"
 import { PRIORITY_RANK } from "../../modules/tasks/lib/status"
-import { assigneeKey, NO_FILTERS, filtered, type BoardFilters, type MoveArgs } from "./tasks-rules"
+import { applyFilters, assigneeKey, NO_FILTERS, filtered, type BoardFilters, type MoveArgs, type QuickFilter } from "./tasks-rules"
+import { EmptyState, FilterBar, FilterButton, FilterDivider, ToneBadge } from "./tasks-blocks"
 import {
   LinkChip,
   Person,
@@ -38,20 +39,6 @@ import {
 /* The filters live in the URL (deep links from hosts and counters); the rules are in tasks-rules.ts. */
 export { NO_FILTERS, applyFilters, assigneeKey, filtered, type BoardFilters, type QuickFilter } from "./tasks-rules"
 
-/** A filter that came with a link (a record, a kind of record), with a way to drop it. */
-function FilterChip({ label, onClear, clearLabel }: { label: string; onClear: () => void; clearLabel: string }) {
-  return (
-    <span className="inline-flex items-center gap-x-1 rounded-full border border-ui-border-base bg-ui-bg-component py-0.5 pl-2.5 pr-1">
-      <Text size="xsmall" leading="compact" weight="plus">
-        {label}
-      </Text>
-      <button type="button" aria-label={clearLabel} title={clearLabel} onClick={onClear} className="rounded-full p-0.5 text-ui-fg-muted hover:text-ui-fg-base">
-        <XMarkMini />
-      </button>
-    </span>
-  )
-}
-
 export interface AssigneeOption {
   key: string
   who: Who
@@ -73,41 +60,84 @@ export function assigneeOptions(tasks: TaskDto[], index: PeopleIndex): AssigneeO
   return [...out.values()].sort((a, b) => (a.who.name ?? "").localeCompare(b.who.name ?? ""))
 }
 
-export function FilterBar({
+/** The quick filters as buttons, in the order of the bar: the open work, then what needs someone. */
+const QUICK_BUTTONS: Array<{ key: Exclude<QuickFilter, "none">; attention?: boolean }> = [
+  { key: "open" },
+  { key: "mine" },
+  { key: "due_today" },
+  { key: "overdue", attention: true },
+  { key: "urgent", attention: true },
+  { key: "unassigned", attention: true },
+  { key: "review", attention: true },
+]
+
+const QUICK_ICON: Record<Exclude<QuickFilter, "none">, ReactNode> = {
+  open: <ListBullet />,
+  mine: <User />,
+  due_today: <Calendar />,
+  overdue: <ExclamationCircle />,
+  urgent: <Fire />,
+  unassigned: <Users />,
+  review: <CheckCircle />,
+}
+
+const RECORD_ICON: Record<LinkType, ReactNode> = { order: <ShoppingCart />, product: <TagIcon />, customer: <User /> }
+
+/**
+ * The filters of the board and the roadmap, under the section heading: the
+ * quick filters as buttons with their counts (of the tasks loaded, so they
+ * match the cards), then the person, tag and priority, and the record a link
+ * brought. A second click on an active filter clears it.
+ */
+export function TaskFilters({
   value,
   onChange,
   tasks,
   index,
+  today,
+  viewerId,
 }: {
   value: BoardFilters
   onChange: (f: BoardFilters) => void
   tasks: TaskDto[]
   index: PeopleIndex
+  today: string
+  viewerId: string | null
 }) {
   const labels = useLabels()
-  const { t } = labels
+  const { t, lang } = labels
   const people = useMemo(() => assigneeOptions(tasks, index), [tasks, index])
   const tags = useMemo(() => {
     const map = new Map<string, string>()
     for (const task of tasks) for (const tag of task.tags) if (!map.has(tag.toLowerCase())) map.set(tag.toLowerCase(), tag)
     return [...map.values()].sort((a, b) => a.localeCompare(b))
   }, [tasks])
+  const counts = useMemo(() => {
+    const out = {} as Record<Exclude<QuickFilter, "none">, number>
+    for (const b of QUICK_BUTTONS) out[b.key] = applyFilters(tasks, { ...NO_FILTERS, quick: b.key }, today, lang, viewerId).length
+    return out
+  }, [tasks, today, lang, viewerId])
   const set = (patch: Partial<BoardFilters>) => onChange({ ...value, ...patch })
-  /* The record of a deep link (`?record=order:...`), named as the tasks' links name it. */
+  const quick = (q: QuickFilter) => set({ quick: value.quick === q ? "none" : q })
+  /* The record of a deep link (`?record=order:...`), named as the links of the tasks name it. */
   const recordLabel = useMemo(() => {
     if (!value.record) return null
     for (const task of tasks) for (const l of task.links) if (`${l.type}:${l.entity_id}` === value.record && l.label) return l.label
     return value.record.slice(value.record.indexOf(":") + 1)
   }, [tasks, value.record])
+  const recordType = value.record ? value.record.slice(0, value.record.indexOf(":")) : ""
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="w-full sm:w-56">
-        <Input size="small" type="search" placeholder={t("board.search")} value={value.q} onChange={(e) => set({ q: e.target.value })} />
-      </div>
+    <FilterBar>
+      <FilterButton icon={<ListBullet />} label={t("filter.all")} count={tasks.length} active={value.quick === "none"} onClick={() => set({ quick: "none" })} />
+      <FilterDivider />
+      {QUICK_BUTTONS.map((b) => (
+        <FilterButton key={b.key} icon={QUICK_ICON[b.key]} label={t(`filter.${b.key}`)} count={counts[b.key]} attention={b.attention} active={value.quick === b.key} onClick={() => quick(b.key)} />
+      ))}
+      <FilterDivider />
       <div className="w-full sm:w-48">
         <Select size="small" value={value.assignee} onValueChange={(v) => set({ assignee: v })}>
-          <Select.Trigger>
+          <Select.Trigger aria-label={t("board.assignee")}>
             <Select.Value />
           </Select.Trigger>
           <Select.Content>
@@ -127,7 +157,7 @@ export function FilterBar({
       {tags.length > 0 ? (
         <div className="w-full sm:w-40">
           <Select size="small" value={value.tag} onValueChange={(v) => set({ tag: v })}>
-            <Select.Trigger>
+            <Select.Trigger aria-label={t("board.tag")}>
               <Select.Value />
             </Select.Trigger>
             <Select.Content>
@@ -143,7 +173,7 @@ export function FilterBar({
       ) : null}
       <div className="w-full sm:w-40">
         <Select size="small" value={value.priority} onValueChange={(v) => set({ priority: v })}>
-          <Select.Trigger>
+          <Select.Trigger aria-label={t("board.priority")}>
             <Select.Value />
           </Select.Trigger>
           <Select.Content>
@@ -156,14 +186,41 @@ export function FilterBar({
           </Select.Content>
         </Select>
       </div>
-      {value.record ? <FilterChip label={t("board.record", { label: recordLabel ?? "" })} onClear={() => set({ record: null })} clearLabel={t("actions.clear")} /> : null}
-      {value.recordType ? <FilterChip label={t(`board.recordType.${value.recordType}`)} onClear={() => set({ recordType: null })} clearLabel={t("actions.clear")} /> : null}
+      {value.record && isLinkType(recordType) ? (
+        <FilterButton
+          icon={RECORD_ICON[recordType]}
+          label={
+            <>
+              {t("board.record", { label: recordLabel ?? "" })}
+              <XMarkMini />
+            </>
+          }
+          active
+          title={t("actions.clear")}
+          onClick={() => set({ record: null })}
+        />
+      ) : null}
+      {value.recordType ? (
+        <FilterButton
+          icon={RECORD_ICON[value.recordType]}
+          label={
+            <>
+              {t(`board.recordType.${value.recordType}`)}
+              <XMarkMini />
+            </>
+          }
+          active
+          title={t("actions.clear")}
+          onClick={() => set({ recordType: null })}
+        />
+      ) : null}
       {filtered(value) ? (
         <Button size="small" variant="transparent" onClick={() => onChange({ ...NO_FILTERS })}>
+          <XMarkMini />
           {t("actions.clear")}
         </Button>
       ) : null}
-    </div>
+    </FilterBar>
   )
 }
 
@@ -222,15 +279,9 @@ export function TaskCard({
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {showStatus ? <TaskStatusBadge status={task.status} /> : null}
           {tags.map((tag) => (
-            <Badge key={tag} size="2xsmall" color="grey">
-              {tag}
-            </Badge>
+            <ToneBadge key={tag}>{tag}</ToneBadge>
           ))}
-          {task.sample ? (
-            <Badge size="2xsmall" color="purple">
-              {t("card.sample")}
-            </Badge>
-          ) : null}
+          {task.sample ? <ToneBadge tone="purple">{t("card.sample")}</ToneBadge> : null}
         </div>
       ) : null}
       {task.links.length > 0 ? (
@@ -244,9 +295,12 @@ export function TaskCard({
         {who.name ? <Person who={who} /> : <Person who={null} fallback={t("card.unassigned")} muted />}
         <div className="flex shrink-0 items-center gap-x-2">
           {day ? (
-            <Text size="xsmall" leading="compact" className={late ? "text-ui-fg-error" : "text-ui-fg-muted"}>
-              {late ? t("card.overdue", { date: fmtDay(day, lang) }) : t("card.due", { date: fmtDay(day, lang) })}
-            </Text>
+            <span className={clx("inline-flex items-center gap-x-0.5", late ? "text-ui-fg-error" : "text-ui-fg-muted")} title={late ? t("card.overdue", { date: fmtDay(day, lang) }) : t("card.due", { date: fmtDay(day, lang) })}>
+              <Clock />
+              <Text size="xsmall" leading="compact" className="tabular-nums">
+                {fmtDay(day, lang)}
+              </Text>
+            </span>
           ) : null}
           {task.comment_count > 0 ? (
             <span className="flex items-center gap-x-0.5 text-ui-fg-muted" title={t("card.comments")}>
@@ -380,13 +434,7 @@ export function BoardColumns({
               )}
               data-status={status}
             >
-              {column.length === 0 && target === null ? (
-                <div className="flex flex-1 items-center justify-center py-6">
-                  <Text size="xsmall" className="text-ui-fg-muted">
-                    {t("board.empty")}
-                  </Text>
-                </div>
-              ) : null}
+              {column.length === 0 && target === null ? <EmptyState compact title={t("board.empty")} className="flex-1" /> : null}
               {column.map((task) => {
                 const i = shown.indexOf(task)
                 return (
@@ -570,27 +618,19 @@ export function RoadmapView({
                     <Text size="small" weight="plus" leading="compact" className="truncate">
                       {b.label}
                     </Text>
-                    {b.current ? (
-                      <Badge size="2xsmall" color="green">
-                        {t("roadmap.now")}
-                      </Badge>
-                    ) : null}
+                    {b.current ? <ToneBadge tone="blue">{t("roadmap.now")}</ToneBadge> : null}
                   </div>
                   <Text size="xsmall" className="shrink-0 tabular-nums text-ui-fg-muted">
                     {t("roadmap.progress", { done, total })}
                   </Text>
                 </div>
                 <div className="h-1 w-full overflow-hidden rounded-full bg-ui-bg-component" aria-hidden="true">
-                  <div className="h-full rounded-full bg-[#26D07C]" style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} />
+                  <div className="h-full rounded-full bg-ui-tag-green-icon" style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} />
                 </div>
               </div>
               <div className="flex min-h-28 flex-col gap-y-2 rounded-lg bg-ui-bg-subtle p-2">
                 {b.tasks.length === 0 ? (
-                  <div className="flex flex-1 items-center justify-center py-6">
-                    <Text size="xsmall" className="text-ui-fg-muted">
-                      {t("roadmap.empty")}
-                    </Text>
-                  </div>
+                  <EmptyState compact icon={<Calendar />} title={t("roadmap.empty")} className="flex-1" />
                 ) : (
                   b.tasks.map((task) => <TaskCard key={task.id} task={task} today={today} index={index} onOpen={() => onOpen(task.id)} showStatus />)
                 )}

@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, ChartBar, ChatBubbleLeftRight, CheckCircle, CursorArrowRays, ExclamationCircle, PauseSolid, PencilSquare, PlaySolid, Plus, Sparkles, SquareTwoStack, Users } from "@medusajs/icons"
-import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Table, Text, clx, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, Bolt, Calendar, ChartBar, ChatBubbleLeftRight, CheckCircle, Clock, CogSixTooth, CursorArrowRays, ExclamationCircle, ListBullet, PauseSolid, PencilSquare, PlaySolid, Plus, Receipt, Sparkles, SquareTwoStack, Tag, Users, XCircle } from "@medusajs/icons"
+import { Button, Container, Drawer, Heading, InlineTip, Table, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, ListResponse, NameMaps } from "../../../modules/coupons/lib/contract"
 import { errorMessage, useCoupon, useCoupons, useSetStatus } from "../../lib/coupons-api"
-import { CodeBlock, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, communityLabels, usePageNav } from "../../lib/coupons-guide"
+import { GuideIntro, GuideSteps, HelpButtons, IntegrationHeader, ModeBadge, communityLabels, usePageNav, type GuideStep } from "../../lib/coupons-guide"
+import { EmptyState, EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/coupons-blocks"
 import { CouponsIcon } from "../../lib/coupons-icon"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/coupons-kit"
 import { couponSentence } from "../../lib/coupons-sentence"
-import { Segment, StatTile, StatusBadge, useFormat } from "../../lib/coupons-ui"
+import { StatusBadge, useFormat } from "../../lib/coupons-ui"
 import { CreateCouponModal } from "../../lib/coupons-wizard"
 import { EditCouponModal } from "../../lib/coupons-edit"
 import { KIT_META } from "../../lib/coupons-kit-meta"
@@ -23,12 +24,19 @@ announce({ ns: "coupons", name: "Coupons", adminPath: "/coupons", Icon: CouponsI
  * plain sentence, its uses and what it brought), a coupon's detail with its
  * orders, and the creator. Setup guide and Settings behind the tabs.
  *
- * Deep links from the board and the cards: `?status=` (active, scheduled,
- * ended, paused, automatic, expiring) and `?q=` (a code).
+ * Deep links from the board and the cards: `?status=` (or `?filter=`:
+ * active, scheduled, ended, paused, automatic, expiring) and `?q=` (a code).
  */
 
 type Filter = "all" | "active" | "scheduled" | "ended" | "paused" | "automatic" | "expiring"
 const FILTERS: Filter[] = ["all", "active", "scheduled", "ended", "paused", "automatic", "expiring"]
+/* The filter buttons above the list: the states, then the two that need a look. */
+const STATE_FILTERS: Array<{ f: Filter; icon: ReactNode }> = [
+  { f: "active", icon: <CheckCircle /> },
+  { f: "scheduled", icon: <Calendar /> },
+  { f: "paused", icon: <PauseSolid /> },
+  { f: "ended", icon: <XCircle /> },
+]
 const WEEK = 7 * 24 * 3600 * 1000
 
 function matches(c: CouponDto, f: Filter, now: number): boolean {
@@ -71,7 +79,8 @@ const CouponsPage = () => {
       toast.error(errorMessage(err))
     }
   }
-  const filter = (FILTERS as string[]).includes(params.get("status") ?? "") ? (params.get("status") as Filter) : "all"
+  const asked = params.get("status") ?? params.get("filter") ?? ""
+  const filter = (FILTERS as string[]).includes(asked) ? (asked as Filter) : "all"
   const [q, setQ] = useState(params.get("q") ?? "")
 
   useEffect(() => {
@@ -84,6 +93,7 @@ const CouponsPage = () => {
 
   const setFilter = (f: Filter) => {
     const p = new URLSearchParams(params)
+    p.delete("filter")
     if (f === "all") p.delete("status")
     else p.set("status", f)
     setParams(p, { replace: true })
@@ -91,7 +101,15 @@ const CouponsPage = () => {
     requestAnimationFrame(() => document.getElementById("coupons-list")?.scrollIntoView({ behavior: "smooth", block: "start" }))
   }
 
+  /* A second click on the active filter clears it. */
+  const pick = (f: Filter) => setFilter(filter === f ? "all" : f)
   const now = Date.now()
+  const counts = useMemo(() => {
+    const out = {} as Record<Filter, number>
+    for (const f of FILTERS) out[f] = (data?.coupons ?? []).filter((c) => matches(c, f, now)).length
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
   const shown = useMemo(() => {
     const term = q.trim().toUpperCase()
     return (data?.coupons ?? []).filter((c) => matches(c, filter, now) && (!term || c.code.toUpperCase().includes(term)))
@@ -117,7 +135,6 @@ const CouponsPage = () => {
         <IntegrationHeader
           icon={<CouponsIcon width={28} height={28} />}
           title={t("title")}
-          by={t("by")}
           badges={
             <ModeBadge color="green" label={t("mode.live")} title={t("mode.label")}>
               <Text size="small">{t("mode.text")}</Text>
@@ -158,26 +175,29 @@ const CouponsPage = () => {
       </Container>
 
       {nav.view === "panel" ? (
-        <Container id="coupons-list" className="scroll-mt-4 divide-y p-0">
+        <Section
+          id="coupons-list"
+          icon={<Receipt />}
+          title={t("list.title")}
+          pointsLabel={t("list.subtitle")}
+          points={[
+            { icon: <BarsArrowDown />, text: t("list.points.newest") },
+            { icon: <CursorArrowRays />, text: t("list.points.orders") },
+            { icon: <PauseSolid />, text: t("list.points.pause") },
+          ]}
+          actions={<SearchInput className="font-mono uppercase" placeholder={t("list.search")} value={q} onChange={setQ} />}
+        >
+          <FilterBar>
+            <FilterButton icon={<ListBullet />} label={t("list.filter.all")} count={counts.all} active={filter === "all"} onClick={() => setFilter("all")} />
+            <FilterDivider />
+            {STATE_FILTERS.map(({ f, icon }) => (
+              <FilterButton key={f} icon={icon} label={t(`list.filter.${f}`)} count={counts[f]} active={filter === f} onClick={() => pick(f)} />
+            ))}
+            <FilterDivider />
+            <FilterButton icon={<Clock />} label={t("list.filter.expiring")} count={counts.expiring} attention active={filter === "expiring"} onClick={() => pick("expiring")} />
+            <FilterButton icon={<Bolt />} label={t("list.filter.automatic")} count={counts.automatic} active={filter === "automatic"} onClick={() => pick("automatic")} />
+          </FilterBar>
           <KitFetchingBar active={list.isFetching && !list.isLoading} />
-          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
-            <div>
-              <Heading level="h2">{t("list.title")}</Heading>
-              <KeyPoints
-                className="mt-1"
-                label={t("list.subtitle")}
-                items={[
-                  { icon: <BarsArrowDown />, text: t("list.points.newest") },
-                  { icon: <CursorArrowRays />, text: t("list.points.orders") },
-                  { icon: <PauseSolid />, text: t("list.points.pause") },
-                ]}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Segment value={filter} options={FILTERS.map((f) => ({ value: f, label: t(`list.filter.${f}`) }))} onChange={setFilter} />
-              <Input size="small" type="search" className="w-48 font-mono uppercase" placeholder={t("list.search")} value={q} onChange={(e) => setQ(e.target.value)} />
-            </div>
-          </div>
           <Table>
             <Table.Header>
               <Table.Row>
@@ -198,11 +218,7 @@ const CouponsPage = () => {
                       <span className="font-mono txt-compact-small-plus">{c.code || t("list.noCode")}</span>
                       <span className="flex items-center gap-1">
                         <StatusBadge status={c.status} />
-                        {c.automatic ? (
-                          <Badge size="2xsmall" color="blue">
-                            {t("list.automatic")}
-                          </Badge>
-                        ) : null}
+                        {c.automatic ? <ToneBadge tone="blue">{t("list.automatic")}</ToneBadge> : null}
                       </span>
                     </div>
                   </Table.Cell>
@@ -212,11 +228,9 @@ const CouponsPage = () => {
                   <Table.Cell>
                     <Text size="small" className="tabular-nums">
                       {c.automatic && !c.limit ? (
-                        <span title={t("list.automaticUsesHint")}>
-                          <Badge size="2xsmall" color="blue">
-                            {t("list.automaticUses")}
-                          </Badge>
-                        </span>
+                        <ToneBadge tone="blue" title={t("list.automaticUsesHint")}>
+                          {t("list.automaticUses")}
+                        </ToneBadge>
                       ) : c.limit ? (
                         t("detail.usesOf", { used: c.used, limit: c.limit })
                       ) : (
@@ -234,41 +248,51 @@ const CouponsPage = () => {
                     </div>
                   </Table.Cell>
                   <Table.Cell className="text-right">
-                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Button size="small" variant="secondary" title={t("edit.title")} onClick={() => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps })}>
-                        <PencilSquare />
-                        {t("edit.action")}
-                      </Button>
-                      {c.status !== "expired" ? (
-                        <IconButton size="small" variant="transparent" title={c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")} aria-label={c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")} onClick={() => void toggle(c)}>
-                          {c.medusaStatus === "active" ? <PauseSolid /> : <PlaySolid />}
-                        </IconButton>
-                      ) : null}
-                      <IconButton size="small" variant="transparent" title={t("copy.action")} aria-label={t("copy.action")} onClick={() => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps, mode: "copy" })}>
-                        <SquareTwoStack />
-                      </IconButton>
-                      <IconButton size="small" variant="transparent" title={t("detail.openInMedusa")} aria-label={t("detail.openInMedusa")} onClick={() => window.location.assign(`/app/promotions/${c.id}`)}>
-                        <ArrowUpRightOnBox />
-                      </IconButton>
-                    </div>
+                    <RowActions
+                      actions={[
+                        { key: "edit", label: t("edit.title"), icon: <PencilSquare />, onClick: () => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps }) },
+                        {
+                          key: "toggle",
+                          label: c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate"),
+                          icon: c.medusaStatus === "active" ? <PauseSolid /> : <PlaySolid />,
+                          hidden: c.status === "expired",
+                          loading: setStatus.isPending && setStatus.variables?.id === c.id,
+                          onClick: () => void toggle(c),
+                        },
+                        { key: "copy", label: t("copy.action"), icon: <SquareTwoStack />, onClick: () => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps, mode: "copy" }) },
+                        { key: "open", label: t("detail.openInMedusa"), icon: <ArrowUpRightOnBox />, href: `/app/promotions/${c.id}` },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))}
-              {!list.isLoading && shown.length === 0 ? (
-                <Table.Row>
-                  <td colSpan={6} className="px-6">
-                    <Text size="small" className="py-6 text-center text-ui-fg-subtle">
-                      {t("list.empty")}
-                    </Text>
-                  </td>
-                </Table.Row>
+              {!list.isLoading && data && shown.length === 0 ? (
+                <EmptyTableRow
+                  cols={6}
+                  icon={<Receipt />}
+                  title={data.coupons.length ? t("list.empty") : t("list.emptyAll")}
+                  action={
+                    data.coupons.length ? (
+                      filter !== "all" || q ? (
+                        <Button size="small" variant="secondary" onClick={() => (setQ(""), setFilter("all"))}>
+                          {t("list.clear")}
+                        </Button>
+                      ) : null
+                    ) : (
+                      <Button size="small" variant="secondary" onClick={() => setCreating(true)}>
+                        <Plus />
+                        {t("actions.create")}
+                      </Button>
+                    )
+                  }
+                />
               ) : null}
             </Table.Body>
           </Table>
-        </Container>
+        </Section>
       ) : null}
 
-      {nav.view === "guide" ? <Guide /> : null}
+      {nav.view === "guide" ? <Guide count={data?.coupons.length ?? 0} /> : null}
       {nav.view === "settings" && data ? <Settings data={data} /> : null}
 
       <CreateCouponModal
@@ -309,14 +333,14 @@ function Tiles({ data, filter, onFilter }: { data: ListResponse; filter: Filter;
   const fmt = useFormat()
   const x = data.tiles
   return (
-    <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-6">
-      <StatTile label={t("stats.all")} value={fmt.number(data.coupons.length)} tone="blue" active={filter === "all"} onClick={() => onFilter("all")} />
-      <StatTile label={t("stats.active")} value={fmt.number(x.active)} tone="green" active={filter === "active"} onClick={() => onFilter(filter === "active" ? "all" : "active")} />
-      <StatTile label={t("stats.scheduled")} value={fmt.number(x.scheduled)} tone="blue" active={filter === "scheduled"} onClick={() => onFilter(filter === "scheduled" ? "all" : "scheduled")} />
-      <StatTile label={t("stats.orders30d")} value={fmt.number(x.orders30d)} hint={t("stats.discountHint", { amount: fmt.money(x.discount30d, data.currencyCode) })} tone="grey" />
-      <StatTile label={t("stats.expiring")} value={fmt.number(x.expiringSoon)} tone={x.expiringSoon ? "orange" : "grey"} active={filter === "expiring"} onClick={() => onFilter(filter === "expiring" ? "all" : "expiring")} />
-      <StatTile label={t("stats.automatic")} value={fmt.number(x.automaticForEveryone)} tone={x.automaticForEveryone ? "orange" : "grey"} active={filter === "automatic"} onClick={() => onFilter(filter === "automatic" ? "all" : "automatic")} />
-    </div>
+    <StatTiles columns={6}>
+      <StatTile icon={<ListBullet />} label={t("stats.all")} value={fmt.number(data.coupons.length)} active={filter === "all"} onClick={() => onFilter("all")} />
+      <StatTile icon={<CheckCircle />} label={t("stats.active")} value={fmt.number(x.active)} tone="green" active={filter === "active"} onClick={() => onFilter(filter === "active" ? "all" : "active")} />
+      <StatTile icon={<Calendar />} label={t("stats.scheduled")} value={fmt.number(x.scheduled)} tone="blue" active={filter === "scheduled"} onClick={() => onFilter(filter === "scheduled" ? "all" : "scheduled")} />
+      <StatTile icon={<ChartBar />} label={t("stats.orders30d")} value={fmt.number(x.orders30d)} hint={t("stats.discountHint", { amount: fmt.money(x.discount30d, data.currencyCode) })} />
+      <StatTile icon={<Clock />} label={t("stats.expiring")} value={fmt.number(x.expiringSoon)} tone={x.expiringSoon ? "orange" : "grey"} active={filter === "expiring"} onClick={() => onFilter(filter === "expiring" ? "all" : "expiring")} />
+      <StatTile icon={<Bolt />} label={t("stats.automatic")} value={fmt.number(x.automaticForEveryone)} tone={x.automaticForEveryone ? "orange" : "grey"} active={filter === "automatic"} onClick={() => onFilter(filter === "automatic" ? "all" : "automatic")} />
+    </StatTiles>
   )
 }
 
@@ -356,20 +380,18 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
                   {c.terms.note}
                 </InlineTip>
               ) : null}
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <StatTiles columns={3} className="px-0 py-0">
                 <StatTile label={t("detail.uses")} value={c.automatic && !c.limit ? t("list.automaticUses") : c.limit ? t("detail.usesOf", { used: c.used, limit: c.limit }) : fmt.number(c.used)} />
                 <StatTile label={t("detail.orders")} value={fmt.number(c.stats.orders)} />
                 <StatTile label={t("detail.discount")} value={fmt.money(c.stats.discount, currency)} />
                 <StatTile label={t("detail.revenue")} value={fmt.money(c.stats.revenue, currency)} />
-                <StatTile label={t("detail.newCustomers")} value={fmt.number(c.stats.newCustomers)} />
+                <StatTile label={t("detail.newCustomers")} value={fmt.number(c.stats.newCustomers)} tone={c.stats.newCustomers ? "green" : "grey"} />
                 <StatTile label={t("detail.lastUsed")} value={c.stats.lastUsedAt ? fmt.date(c.stats.lastUsedAt) : t("detail.never")} />
-              </div>
+              </StatTiles>
               <div className="flex flex-col gap-y-2">
                 <Heading level="h3">{t("detail.ordersTitle")}</Heading>
                 {detail.data.orders.length === 0 ? (
-                  <Text size="small" className="text-ui-fg-subtle">
-                    {t("detail.noOrders")}
-                  </Text>
+                  <EmptyState compact icon={<Receipt />} title={t("detail.noOrders")} className="rounded-md border border-dashed border-ui-border-base" />
                 ) : (
                   <div className="flex flex-col divide-y rounded-md border border-ui-border-base">
                     {detail.data.orders.map((o) => (
@@ -384,9 +406,7 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
                         </span>
                         <span className="flex items-center gap-2">
                           {o.firstOrder ? (
-                            <Badge size="2xsmall" color="green">
-                              {t("detail.firstOrder")}
-                            </Badge>
+                            <ToneBadge tone="green">{t("detail.firstOrder")}</ToneBadge>
                           ) : null}
                           <Text size="small" className="tabular-nums">
                             -{fmt.money(o.discount, o.currency || currency)}
@@ -398,21 +418,17 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
                 )}
               </div>
             </>
-          ) : (
-            <Text size="small" className="text-ui-fg-subtle">
-              ...
-            </Text>
-          )}
+          ) : null}
         </Drawer.Body>
         <Drawer.Footer>
           {c ? (
             <div className="flex w-full items-center justify-between gap-2">
-              <a href={`/app/promotions/${c.id}`}>
-                <Button size="small" variant="secondary">
+              <Button size="small" variant="secondary" asChild>
+                <a href={`/app/promotions/${c.id}`}>
                   <ArrowUpRightOnBox />
                   {t("detail.openInMedusa")}
-                </Button>
-              </a>
+                </a>
+              </Button>
               <div className="flex items-center gap-2">
                 <Button size="small" variant="secondary" onClick={() => onEdit(c, detail.data?.names ?? ({} as NameMaps), "copy")}>
                   <SquareTwoStack />
@@ -424,6 +440,7 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
                 </Button>
                 {c.status !== "expired" ? (
                   <Button size="small" variant={c.medusaStatus === "active" ? "secondary" : "primary"} isLoading={setStatus.isPending} onClick={() => void toggle()}>
+                    {c.medusaStatus === "active" ? <PauseSolid /> : <PlaySolid />}
                     {c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")}
                   </Button>
                 ) : null}
@@ -452,39 +469,26 @@ const CONFIG = `module.exports = defineConfig({
   ],
 })`
 
-function Guide() {
+function Guide({ count }: { count: number }) {
   const { t } = useTranslation("coupons")
-  const steps = [
-    { title: t("guide.s1Title"), code: "npm install @koda-plus/medusa-plugin-coupons" },
-    { title: t("guide.s2Title"), text: t("guide.s2Text"), code: CONFIG },
-    { title: t("guide.s3Title"), text: t("guide.s3Text") },
-    { title: t("guide.s4Title"), text: t("guide.s4Text") },
+  const steps: GuideStep[] = [
+    { id: "install", title: t("guide.s1Title"), state: "done", body: null, code: "npm install @koda-plus/medusa-plugin-coupons" },
+    { id: "config", title: t("guide.s2Title"), state: "done", body: <p>{t("guide.s2Text")}</p>, code: CONFIG },
+    { id: "first", title: t("guide.s3Title"), state: count > 0 ? "done" : "todo", body: <p>{t("guide.s3Text")}</p>, check: t("guide.s3Check") },
+    { id: "cart", title: t("guide.s4Title"), state: "optional", body: <p>{t("guide.s4Text")}</p>, check: t("guide.s4Check") },
   ]
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("guide.introTitle")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("guide.introText")}
-        </Text>
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("guide.time")} / {t("guide.needs")}
-        </Text>
-      </div>
-      {steps.map((s, i) => (
-        <div key={s.title} className="flex flex-col gap-y-2 px-6 py-4">
-          <Text weight="plus">
-            {i + 1}. {s.title}
-          </Text>
-          {s.text ? (
-            <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-              {s.text}
-            </Text>
-          ) : null}
-          {s.code ? <CodeBlock code={s.code} copyLabel="Copy" copiedLabel="Copied" /> : null}
-        </div>
-      ))}
-    </Container>
+    <>
+      <GuideIntro title={t("guide.introTitle")} text={t("guide.introText")} time={t("guide.time")} needs={[t("guide.needs")]} timeLabel={t("guide.timeLabel")} needsLabel={t("guide.needsLabel")} />
+      <GuideSteps
+        title={t("guide.stepsTitle")}
+        steps={steps}
+        stateLabels={{ done: t("guide.state.done"), todo: t("guide.state.todo"), optional: t("guide.state.optional"), later: t("guide.state.later") }}
+        checkLabel={t("guide.checkLabel")}
+        copyLabel={t("guide.copy")}
+        copiedLabel={t("guide.copied")}
+      />
+    </>
   )
 }
 
@@ -501,10 +505,15 @@ function Settings({ data }: { data: ListResponse }) {
     </div>
   )
   return (
-    <Container className="divide-y p-0">
-      <div className="px-6 py-4">
-        <Heading level="h2">{t("options.title")}</Heading>
-      </div>
+    <Section
+      icon={<CogSixTooth />}
+      title={t("options.title")}
+      points={[
+        { icon: <Tag />, text: t("options.points.config") },
+        { icon: <ArrowPath />, text: t("options.points.restart") },
+        { icon: <Sparkles />, text: t("options.points.noTables"), tone: "blue" },
+      ]}
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
         {fact(t("options.currency"), data.currencyCode.toUpperCase())}
         {fact(t("options.memberGroups"), data.memberGroupIds.length ? data.memberGroupIds.join(", ") : t("options.none"))}
@@ -518,7 +527,7 @@ function Settings({ data }: { data: ListResponse }) {
           </InlineTip>
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }
 

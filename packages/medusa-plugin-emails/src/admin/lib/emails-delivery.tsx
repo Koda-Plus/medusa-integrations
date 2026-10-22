@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { Badge, Button, Container, Heading, InlineTip, Table, Text } from "@medusajs/ui"
+import { ArrowUturnLeft, CheckCircle, Clock, ExclamationCircle, PencilSquare, XCircle } from "@medusajs/icons"
+import { Button, InlineTip, Table, Text } from "@medusajs/ui"
 import type { BouncesResponse } from "../../modules/emails/lib/contract"
+import { EmptyTableRow, Section, ToneBadge, type Tone } from "./emails-blocks"
 import { emailsFetch } from "./emails-api"
 import { KitFetchingBar, KitSkeletonRows } from "./emails-kit"
 import { OrderLink, ResendLink } from "./emails-links"
@@ -13,7 +15,7 @@ import { OrderLink, ResendLink } from "./emails-links"
  * corrected address when the domain is a known typo.
  */
 
-const TONE: Record<string, "green" | "orange" | "red" | "grey" | "blue"> = {
+const TONE: Record<string, Tone> = {
   delivered: "green",
   opened: "green",
   clicked: "green",
@@ -32,9 +34,9 @@ export function DeliveryBadge({ event }: { event: string | null | undefined }) {
   const { t } = useTranslation("emails")
   if (!event) return null
   return (
-    <Badge size="2xsmall" color={TONE[event] ?? "grey"} title={t("delivery.hint")}>
+    <ToneBadge tone={TONE[event] ?? "grey"} title={t("delivery.hint")}>
       {t(`delivery.event.${event}`, { defaultValue: event })}
-    </Badge>
+    </ToneBadge>
   )
 }
 
@@ -44,10 +46,11 @@ export function CampaignBadge({ message, campaigns }: { message: { kind: string;
   if (message.kind !== "campaign") return null
   const key = message.template.replace(/^campaign:/, "")
   const label = campaigns?.find((c) => c.key === key)?.label ?? key
+  /* Purple: a mailing outside the shop is a highlight, not a state. */
   return (
-    <Badge size="2xsmall" color="purple" title={t("delivery.campaignHint")}>
+    <ToneBadge tone="purple" title={t("delivery.campaignHint")}>
       {label}
-    </Badge>
+    </ToneBadge>
   )
 }
 
@@ -66,24 +69,23 @@ export function BouncesSection({ lang, onClose }: { lang: string; onClose: () =>
   const d = q.data
   const fmt = (s: string | null) => (s ? new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(s)) : "")
   return (
-    <Container className="divide-y p-0">
-      <KitFetchingBar active={q.isFetching && !q.isLoading} />
-      <div className="flex flex-wrap items-start justify-between gap-3 px-6 py-4">
-        <div>
-          <Heading level="h2">{t("delivery.title")}</Heading>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {t("delivery.subtitle")}
-          </Text>
-          {d?.readAt ? (
-            <Text size="xsmall" className="text-ui-fg-muted">
-              {t("delivery.readAt", { at: fmt(d.readAt) })}
-            </Text>
-          ) : null}
-        </div>
+    <Section
+      icon={<XCircle />}
+      title={t("delivery.title")}
+      pointsLabel={t("delivery.subtitle")}
+      points={[
+        { icon: <ExclamationCircle />, text: t("delivery.points.blocked"), tone: "orange" },
+        { icon: <PencilSquare />, text: t("delivery.points.fix") },
+        d?.readAt ? { icon: <Clock />, text: t("delivery.readAt", { at: fmt(d.readAt) }) } : null,
+      ]}
+      actions={
         <Button size="small" variant="secondary" onClick={onClose}>
+          <ArrowUturnLeft />
           {t("delivery.back")}
         </Button>
-      </div>
+      }
+    >
+      <KitFetchingBar active={q.isFetching && !q.isLoading} />
       {d && !d.configured ? (
         <div className="px-6 py-4">
           <InlineTip variant="info" label={t("delivery.title")}>
@@ -126,16 +128,14 @@ export function BouncesSection({ lang, onClose }: { lang: string; onClose: () =>
                   </div>
                 </Table.Cell>
                 <Table.Cell>
-                  <Badge size="2xsmall" color={a.origin === "manual" ? "grey" : "red"}>
-                    {t(`delivery.origin.${a.origin}`, { defaultValue: a.origin })}
-                  </Badge>
+                  <ToneBadge tone={a.origin === "manual" ? "grey" : "red"}>{t(`delivery.origin.${a.origin}`, { defaultValue: a.origin })}</ToneBadge>
                 </Table.Cell>
                 <Table.Cell>
                   <div className="flex max-w-xs flex-col items-start gap-y-1">
                     {a.campaign ? (
-                      <Badge size="2xsmall" color="purple" title={t("delivery.campaignHint")}>
+                      <ToneBadge tone="purple" title={t("delivery.campaignHint")}>
                         {a.campaign.label}
-                      </Badge>
+                      </ToneBadge>
                     ) : null}
                     <Text size="small">{a.subject ?? "-"}</Text>
                   </div>
@@ -165,18 +165,10 @@ export function BouncesSection({ lang, onClose }: { lang: string; onClose: () =>
                 <Table.Cell className="text-right">{a.resendUrl ? <ResendLink href={a.resendUrl}>{t("log.openResend")}</ResendLink> : null}</Table.Cell>
               </Table.Row>
             ))}
-            {d && d.configured && !q.isLoading && d.addresses.length === 0 ? (
-              <Table.Row>
-                <td colSpan={6} className="px-6">
-                  <Text size="small" className="py-6 text-center text-ui-fg-subtle">
-                    {t("delivery.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
-            ) : null}
+            {d && d.configured && !q.isLoading && d.addresses.length === 0 ? <EmptyTableRow cols={6} icon={<CheckCircle />} title={t("delivery.empty")} /> : null}
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }

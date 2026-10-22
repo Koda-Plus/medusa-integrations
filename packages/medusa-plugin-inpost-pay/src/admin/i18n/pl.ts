@@ -4,6 +4,20 @@ import { communityPl } from "../lib/inpostpay-kit-community"
 import { integrationPl } from "../../modules/inpostpay/lib/integration-texts"
 
 const pl: typeof en = {
+  points: {
+    button: "Przycisk na produkcie i w koszyku",
+    app: "Potwierdzenie w aplikacji InPost",
+    delivery: "Paczkomat albo kurier z aplikacji",
+    order: "Zamówienie trafia do Medusy",
+    signed: "Podpisane wywołania Merchant API",
+  },
+  pagination: {
+    of: "z",
+    results: "wyników",
+    pages: "stron",
+    prev: "Poprzednia",
+    next: "Następna",
+  },
   title: "InPost Pay",
   by: "by Koda Plus",
   subtitle:
@@ -14,7 +28,7 @@ const pl: typeof en = {
   },
   settings: {
     title: "Ustawienia",
-    subtitle: "Opcja dostawy dla każdej dostawy InPost Pay, miejsca przycisku oraz konto InPost z adresami do panelu sprzedawcy.",
+    subtitle: "Dostawy, przycisk i konto InPost.",
     tab: {
       delivery: "Dostawa",
       button: "Przycisk",
@@ -92,6 +106,13 @@ const pl: typeof en = {
     LOGIN_PAGE: "Logowanie",
   },
   table: {
+    points: {
+      where: "Gdzie był przycisk",
+      app: "Odpowiedź aplikacji",
+      payment: "Status płatności w InPost",
+    },
+    emptyHint: "Pojawią się po kliknięciu przycisku",
+    emptyFiltered: "Brak koszyków",
     title: "Koszyki i zamówienia",
     subtitle: "Każdy koszyk powiązany z InPost Pay, od najnowszych: gdzie był przycisk, co odpowiedziała aplikacja, jakie zamówienie z niego powstało i status płatności w InPost.",
     when: "Powiązano",
@@ -102,7 +123,7 @@ const pl: typeof en = {
     total: "Wartość",
     products: "Produkty",
     order: "Zamówienie",
-    empty: "Nie ma tu jeszcze koszyków. Pojawią się, gdy klient kliknie przycisk InPost Pay.",
+    empty: "Jeszcze bez koszyków",
     search: "Numer zamówienia, id zamówienia, koszyka albo koszyka InPost Pay",
     openOrder: "Otwórz zamówienie",
     noOrder: "Bez zamówienia",
@@ -115,8 +136,8 @@ const pl: typeof en = {
     title: "InPost Pay",
     loading: "Wczytuję InPost Pay",
     failed: "Nie udało się wczytać InPost Pay",
-    none: "To zamówienie nie przyszło przez InPost Pay.",
-    notConfigured: "InPost Pay nie jest skonfigurowany.",
+    none: "Nie z InPost Pay",
+    notConfigured: "InPost Pay bez konfiguracji",
     phone: "Użytkownik aplikacji",
     delivery: "Dostawa",
     point: "Paczkomat",
@@ -125,9 +146,15 @@ const pl: typeof en = {
     orderStatus: "Status zamówienia w InPost",
     more: "Otwórz InPost Pay",
     history: "Historia",
-    demoNote: "Demo: złożone z symulowanego potwierdzenia w aplikacji, nic nie zostało zapłacone.",
+    demoNote: "Demo: nic nie zapłacono",
   },
   delivery_settings: {
+    points: {
+      option: "Opcja dostawy dla każdej dostawy",
+      refused: "Dostawa bez opcji odrzucana",
+      demo: "Demo: pierwsza opcja koszyka",
+    },
+    noOptionsHint: "Ustawienia, Lokalizacje i wysyłka",
     title: "Dostawa",
     subtitle: "Na jaką opcję dostawy sklepu zamienia się dostawa InPost Pay. Aplikacja pokazuje tylko przypisane dostawy, z których koszyk może skorzystać; zamówienie z dostawą bez opcji jest odrzucane (tryb demo bierze wtedy pierwszą opcję koszyka).",
     none: "Nie przypisano",
@@ -136,11 +163,16 @@ const pl: typeof en = {
       COURIER: "Kurier InPost pod adres z aplikacji.",
       DIGITAL: "Bez paczki: produkty cyfrowe.",
     },
-    noOptions: "Sklep nie ma jeszcze opcji dostawy. Utwórz je w Ustawieniach, Lokalizacje i wysyłka.",
+    noOptions: "Jeszcze bez opcji dostawy",
     save: "Zapisz dostawę",
     saved: "Dostawa zapisana",
   },
   button_settings: {
+    points: {
+      config: "Sklep czyta to z API",
+      required: "Wymagane: produkt, koszyk, podziękowanie",
+      audit: "Ukryty do czasu audytu",
+    },
     title: "Przycisk",
     subtitle: "Gdzie sklep pokazuje przycisk InPost Pay. Sklep czyta te przełączniki z GET /store/inpostpay/config. InPost wymaga karty produktu, koszyka i strony podziękowania; do czasu audytu ukryj przycisk przed zwykłymi klientami (konta testowe albo parametr w adresie).",
     product: "Karta produktu",
@@ -152,6 +184,10 @@ const pl: typeof en = {
     saved: "Miejsca zapisane",
   },
   account: {
+    points: {
+      keys: "Klucze z panelu sprzedawcy",
+      masked: "Sekrety zamaskowane, na serwerze",
+    },
     title: "Konto InPost",
     subtitle: "Klucze pochodzą z panelu sprzedawcy InPost (produkcja) albo od InPost (sandbox). Sekrety zostają na serwerze i są pokazywane zamaskowane.",
     merchantApi: "Adres Merchant Backend API",

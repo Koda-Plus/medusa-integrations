@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowUpRightOnBox, Bolt, Buildings, BuildingStorefront, Cash, Gift, Key, PauseSolid, PlaySolid, ReceiptPercent, SquareTwoStack, SquaresPlus, Tag, TruckFast, User, Users, XMark } from "@medusajs/icons"
-import { Badge, Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
+import { Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, CouponKind, CouponPatch, NameMaps, StoreTerms } from "../../modules/coupons/lib/contract"
 import { checkPatch, editWarnings, isPercent, targetsEditable, valueEditable, type NormalizedPatch } from "../../modules/coupons/lib/edit"
 import { cleanCode, nextCode } from "../../modules/coupons/lib/wizard"
@@ -9,6 +9,7 @@ import { CouponsRequestError, errorMessage, useDuplicateCoupon, useLookups, useS
 import { BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, Section, poolsWord } from "./coupons-fields"
 import { couponSentence } from "./coupons-sentence"
 import { StatusBadge, useFormat } from "./coupons-ui"
+import { ToneBadge } from "./coupons-blocks"
 
 /**
  * THE EDIT FORM, full screen, built like the creator: 1. what it gives (and
@@ -538,7 +539,7 @@ export function EditCouponModal({
                   </Text>
                 ) : null}
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-dashed border-ui-border-base pt-3">
-                  {form.mode === "code" ? <span className="rounded-md bg-ui-bg-component px-2 py-1 font-mono txt-compact-small-plus">{cleanCode(form.code)}</span> : <Badge size="2xsmall" color="blue">{t("wizard.mode.automatic")}</Badge>}
+                  {form.mode === "code" ? <span className="rounded-md bg-ui-bg-component px-2 py-1 font-mono txt-compact-small-plus">{cleanCode(form.code)}</span> : <ToneBadge tone="blue">{t("wizard.mode.automatic")}</ToneBadge>}
                   <Text size="xsmall" className="text-ui-fg-muted">
                     {form.mode === "code" ? t("wizard.ui.previewCode") : t("wizard.ui.previewAutomatic")}
                   </Text>

@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath } from "@medusajs/icons"
-import { Badge, Container, InlineTip, toast } from "@medusajs/ui"
+import { ArrowDownTray, ArrowPath, CheckCircle, Clock, ExclamationCircle, History as HistoryIcon, ShieldCheck, ShoppingCart, Sparkles, Tag, TruckFast } from "@medusajs/icons"
+import { Container, InlineTip, toast } from "@medusajs/ui"
 import type { OfferFilter, OrderFilter, StatusResponse } from "../../../modules/vonhalsky/lib/contract"
 import { errorMessage, useImportNow, useRefreshOffers, useSimulateOrder, useVonHalskyStatus, vonHalskyKeys } from "../../lib/vonhalsky-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
@@ -15,7 +15,8 @@ import { LogSection } from "../../lib/vonhalsky-log"
 import { OFFER_FILTERS, OffersSection } from "../../lib/vonhalsky-offers"
 import { ORDER_FILTERS, OrdersSection } from "../../lib/vonhalsky-orders"
 import { AccountSection, OrderSettingsSection, PricingSection, ShippingSection } from "../../lib/vonhalsky-settings"
-import { Chip, StatTile, fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
+import { FilterBar, FilterButton, StatTile, StatTiles, type Tone } from "../../lib/vonhalsky-blocks"
+import { fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
 
 /**
  * InPost Von Halsky by Koda Plus. Three views, switched in the header and
@@ -39,6 +40,7 @@ const SETTINGS_TABS = ["pricing", "orders", "shipping", "account"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
 const SECTIONS = ["offers", "orders", "log"] as const
 type SectionId = (typeof SECTIONS)[number]
+const SECTION_ICON: Record<SectionId, ReactNode> = { offers: <Tag />, orders: <ShoppingCart />, log: <HistoryIcon /> }
 
 const VonHalskyPage = () => {
   const { t, i18n } = useTranslation("vonhalsky")
@@ -63,15 +65,17 @@ const VonHalskyPage = () => {
     seed.mutate()
   }, [s]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tiles: Array<{ key: string; value: string; tone: "default" | "green" | "orange" | "red" | "blue"; go?: () => void; active?: boolean }> = s
+  /* Each counter opens its list; orange and red only while there is something to do. */
+  const tiles: Array<{ key: string; value: string; tone: Tone; icon: ReactNode; go?: () => void; active?: boolean }> = s
     ? [
-        { key: "listed", value: fmtNumber(s.counts.listed, lang), tone: s.counts.listed > 0 ? "green" : "default", go: () => (setSection("offers"), setOfferFilter("listed")), active: section === "offers" && offerFilter === "listed" },
-        { key: "blocked", value: fmtNumber(s.counts.blocked, lang), tone: s.counts.blocked > 0 ? "orange" : "default", go: () => (setSection("offers"), setOfferFilter("blocked")), active: section === "offers" && offerFilter === "blocked" },
-        { key: "orders", value: fmtNumber(s.counts.orders, lang), tone: s.counts.orders > 0 ? "green" : "default", go: () => (setSection("orders"), setOrderFilter("all")), active: section === "orders" && orderFilter === "all" },
-        { key: "awaiting_shipment", value: fmtNumber(s.counts.awaiting_shipment, lang), tone: s.counts.awaiting_shipment > 0 ? "blue" : "default", go: () => (setSection("orders"), setOrderFilter("awaiting_shipment")), active: section === "orders" && orderFilter === "awaiting_shipment" },
-        { key: "errors", value: fmtNumber(s.counts.errors, lang), tone: s.counts.errors > 0 ? "red" : "default", go: () => (setSection("orders"), setOrderFilter("errors")), active: section === "orders" && orderFilter === "errors" },
+        { key: "listed", value: fmtNumber(s.counts.listed, lang), tone: s.counts.listed > 0 ? "green" : "grey", icon: <CheckCircle />, go: () => (setSection("offers"), setOfferFilter("listed")), active: section === "offers" && offerFilter === "listed" },
+        { key: "blocked", value: fmtNumber(s.counts.blocked, lang), tone: s.counts.blocked > 0 ? "orange" : "grey", icon: <ExclamationCircle />, go: () => (setSection("offers"), setOfferFilter("blocked")), active: section === "offers" && offerFilter === "blocked" },
+        { key: "orders", value: fmtNumber(s.counts.orders, lang), tone: s.counts.orders > 0 ? "green" : "grey", icon: <ShoppingCart />, go: () => (setSection("orders"), setOrderFilter("all")), active: section === "orders" && orderFilter === "all" },
+        { key: "awaiting_shipment", value: fmtNumber(s.counts.awaiting_shipment, lang), tone: s.counts.awaiting_shipment > 0 ? "blue" : "grey", icon: <Clock />, go: () => (setSection("orders"), setOrderFilter("awaiting_shipment")), active: section === "orders" && orderFilter === "awaiting_shipment" },
+        { key: "errors", value: fmtNumber(s.counts.errors, lang), tone: s.counts.errors > 0 ? "red" : "grey", icon: <ExclamationCircle />, go: () => (setSection("orders"), setOrderFilter("errors")), active: section === "orders" && orderFilter === "errors" },
       ]
     : []
+  const sectionCount: Record<SectionId, number | undefined> = s ? { offers: s.counts.offers, orders: s.counts.orders, log: undefined } : { offers: undefined, orders: undefined, log: undefined }
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -87,16 +91,16 @@ const VonHalskyPage = () => {
         {s ? <Warnings status={s} /> : null}
         {s && nav.view === "panel" ? (
           <>
-            <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-5">
+            <StatTiles columns={5}>
               {tiles.map((tile) => (
-                <StatTile key={tile.key} label={t(`stats.${tile.key}`)} value={tile.value} tone={tile.tone} active={tile.active} onClick={tile.go} />
+                <StatTile key={tile.key} icon={tile.icon} label={t(`stats.${tile.key}`)} value={tile.value} tone={tile.tone} active={tile.active} onClick={tile.go} />
               ))}
-            </div>
-            <div className="flex flex-wrap gap-1.5 px-6 py-3">
+            </StatTiles>
+            <FilterBar>
               {SECTIONS.map((id) => (
-                <Chip key={id} active={section === id} label={t(`section.${id}`)} onClick={() => setSection(id)} />
+                <FilterButton key={id} icon={SECTION_ICON[id]} label={t(`section.${id}`)} count={sectionCount[id]} active={section === id} onClick={() => setSection(id)} />
               ))}
-            </div>
+            </FilterBar>
           </>
         ) : null}
       </Container>
@@ -138,11 +142,13 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
-  const actions: HeaderAction[] = []
+  /* Refresh first, then what the mode can do. */
+  const actions: HeaderAction[] = [{ key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, onClick: () => void client.invalidateQueries({ queryKey: vonHalskyKeys.all }) }]
   if (status && status.mode !== "off") {
     actions.push({
       key: "refreshOffers",
       label: t("actions.refreshOffers"),
+      icon: <Tag />,
       loading: refresh.isPending,
       onClick: () =>
         void refresh
@@ -155,6 +161,7 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
     actions.push({
       key: "simulate",
       label: t("actions.simulate"),
+      icon: <Sparkles />,
       loading: simulate.isPending,
       onClick: () =>
         void simulate
@@ -166,6 +173,7 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
     actions.push({
       key: "import",
       label: t("actions.importNow"),
+      icon: <ArrowDownTray />,
       loading: importNow.isPending,
       onClick: () =>
         void importNow
@@ -179,31 +187,29 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
     <IntegrationHeader
       icon={<VonHalskyIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         status ? (
           <>
             <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
               {status.mode === "demo" ? <DemoDetails /> : null}
             </ModeBadge>
-            {status.apiPending ? (
-              <Badge size="2xsmall" color="orange">
-                {t("mode.pending")}
-              </Badge>
-            ) : null}
-            <Badge size="2xsmall" color={status.options.sendTracking ? "orange" : "grey"}>
-              {status.options.sendTracking ? t("mode.tracking") : t("mode.noTracking")}
-            </Badge>
+            {status.apiPending ? <ModeBadge color="orange" label={t("mode.pending")} /> : null}
+            <ModeBadge color={status.options.sendTracking ? "orange" : "grey"} label={status.options.sendTracking ? t("mode.tracking") : t("mode.noTracking")} />
           </>
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <Tag />, text: t("points.offers") },
+        { icon: <ShieldCheck />, text: t("points.keys") },
+        { icon: <ShoppingCart />, text: t("points.orders") },
+        { icon: <TruckFast />, text: t("points.tracking") },
+      ]}
       social={<AddStoreButton labels={community.addStore} />}
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}
       labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
-      primary={nav.view !== "guide" ? { key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, onClick: () => void client.invalidateQueries({ queryKey: vonHalskyKeys.all }) } : null}
       actions={nav.view !== "guide" ? actions : []}
     />
   )

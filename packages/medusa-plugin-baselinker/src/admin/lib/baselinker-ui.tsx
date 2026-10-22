@@ -1,7 +1,8 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import { ArrowUpRightMini } from "@medusajs/icons"
-import { Badge, StatusBadge, Text, clx } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
 import type {
   CardConflict,
@@ -17,9 +18,9 @@ import type {
   StatusResponse,
   StockChangeStatus,
 } from "../../modules/baselinker/lib/contract"
+import { ToneBadge, type Tone } from "./baselinker-blocks"
 import type { Reference } from "./baselinker-guide"
-
-type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
+import { kitFetch } from "./baselinker-kit"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -57,7 +58,7 @@ export function fmtDelta(value: number, lang: string): string {
 /** One word for the whole connection: what a person needs to know first. The page shows it in the mode badge of the header. */
 export function connectionState(s: StatusResponse | undefined): { key: string; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
-  if (s.mode === "demo") return { key: "demo", tone: "purple" }
+  if (s.mode === "demo") return { key: "demo", tone: "blue" }
   if (!s.configured) return { key: "notConfigured", tone: "orange" }
   const last = s.lastRuns.catalog
   if (s.lastCheck && !s.lastCheck.ok) return { key: "error", tone: "red" }
@@ -92,13 +93,43 @@ export function MedusaColumn({ label, hint }: { label: string; hint?: string }) 
   )
 }
 
-/** A product or an order in Medusa, one click away: the mark in a tile, the name, a mono key and "Open". */
-export function StoreLink({ to, name, detail, detailTitle, open }: { to: string; name: string; detail?: string | null; detailTitle?: string; open: string }) {
+/**
+ * The pictures of the Medusa products of a list, read once per page from
+ * GET /admin/products with only `id,thumbnail` (BaseLinker rows carry no image).
+ */
+export function useProductThumbs(ids: Array<string | null | undefined>): Record<string, string | null> {
+  const unique = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))].sort().slice(0, 100)
+  const q = useQuery({
+    queryKey: ["baselinker-product-thumbs", unique],
+    queryFn: async () => {
+      const qs = ["fields=id,thumbnail", `limit=${unique.length}`, ...unique.map((id) => `id=${encodeURIComponent(id)}`)].join("&")
+      const r = await kitFetch<{ products?: Array<{ id: string; thumbnail?: string | null }> }>(`/admin/products?${qs}`)
+      return Object.fromEntries((r.products ?? []).map((p) => [p.id, p.thumbnail ?? null])) as Record<string, string | null>
+    },
+    enabled: unique.length > 0,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  return q.data ?? {}
+}
+
+/** A product picture, or the Medusa mark on a tile when there is none. */
+export function Thumb({ src, size = 32 }: { src?: string | null; size?: number }) {
+  if (src) {
+    return <img src={src} alt="" loading="lazy" style={{ width: size, height: size }} className="shrink-0 rounded-md bg-ui-bg-component object-cover shadow-borders-base" />
+  }
+  return (
+    <span style={{ width: size, height: size }} className="flex shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
+      <MedusaMark className="h-4 w-4 text-ui-fg-base" />
+    </span>
+  )
+}
+
+/** A product or an order in Medusa, one click away: its picture (or the mark), the name, a mono key and "Open". */
+export function StoreLink({ to, name, detail, detailTitle, open, thumb }: { to: string; name: string; detail?: string | null; detailTitle?: string; open: string; thumb?: string | null }) {
   return (
     <Link to={to} className="group flex items-center gap-x-2.5" title={open}>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
-        <MedusaMark className="h-4 w-4 text-ui-fg-base" />
-      </span>
+      <Thumb src={thumb} />
       <span className="flex min-w-0 flex-col">
         <span className="txt-compact-small-plus truncate text-ui-fg-base group-hover:text-ui-fg-interactive">{name}</span>
         <span className="flex min-w-0 items-center gap-x-1.5">
@@ -135,49 +166,49 @@ const ORDER_TONE: Record<OrderRowStatus, Tone> = { pending: "blue", sent: "green
 
 export function OrderStatusBadge({ status }: { status: OrderRowStatus }) {
   const { t } = useTranslation("baselinker")
-  return <StatusBadge color={ORDER_TONE[status] ?? "grey"}>{t(`orders.statuses.${status}`)}</StatusBadge>
+  return <ToneBadge tone={ORDER_TONE[status] ?? "grey"}>{t(`orders.statuses.${status}`)}</ToneBadge>
 }
 
 const RUN_TONE: Record<RunStatus, Tone> = { ok: "green", partial: "orange", error: "red" }
 
 export function RunStatusBadge({ status }: { status: RunStatus }) {
   const { t } = useTranslation("baselinker")
-  return <StatusBadge color={RUN_TONE[status] ?? "grey"}>{t(`runs.statuses.${status}`)}</StatusBadge>
+  return <ToneBadge tone={RUN_TONE[status] ?? "grey"}>{t(`runs.statuses.${status}`)}</ToneBadge>
 }
 
 const CHANGE_TONE: Record<StockChangeStatus, Tone> = { planned: "blue", applied: "green", over_cap: "orange", failed: "red" }
 
 export function ChangeStatusBadge({ status }: { status: StockChangeStatus }) {
   const { t } = useTranslation("baselinker")
-  return <StatusBadge color={CHANGE_TONE[status] ?? "grey"}>{t(`stock.statuses.${status}`)}</StatusBadge>
+  return <ToneBadge tone={CHANGE_TONE[status] ?? "grey"}>{t(`stock.statuses.${status}`)}</ToneBadge>
 }
 
-const PLAN_ACTION_TONE: Record<PlanAction, Tone> = { create: "green", update: "blue", draft: "orange", skip: "grey", conflict: "red" }
+const PLAN_ACTION_TONE: Record<PlanAction, Tone> = { create: "green", update: "blue", draft: "grey", skip: "grey", conflict: "red" }
 
 export function PlanActionBadge({ action }: { action: PlanAction }) {
   const { t } = useTranslation("baselinker")
-  return <StatusBadge color={PLAN_ACTION_TONE[action] ?? "grey"}>{t(`plans.actions.${action}`)}</StatusBadge>
+  return <ToneBadge tone={PLAN_ACTION_TONE[action] ?? "grey"}>{t(`plans.actions.${action}`)}</ToneBadge>
 }
 
 const PLAN_STATUS_TONE: Record<PlanStatus, Tone> = { planned: "blue", applied: "green", failed: "red", over_cap: "orange", quarantined: "red", info: "grey" }
 
 export function PlanStatusBadge({ status }: { status: PlanStatus }) {
   const { t } = useTranslation("baselinker")
-  return <StatusBadge color={PLAN_STATUS_TONE[status] ?? "grey"}>{t(`plans.statuses.${status}`)}</StatusBadge>
+  return <ToneBadge tone={PLAN_STATUS_TONE[status] ?? "grey"}>{t(`plans.statuses.${status}`)}</ToneBadge>
 }
 
 const IMPORT_TONE: Record<ImportStatus, Tone> = { pending: "blue", imported: "green", skipped: "grey", failed: "red" }
 
 export function ImportStatusBadge({ status }: { status: ImportStatus }) {
   const { t } = useTranslation("baselinker")
-  return <StatusBadge color={IMPORT_TONE[status] ?? "grey"}>{t(`imports.statuses.${status}`)}</StatusBadge>
+  return <ToneBadge tone={IMPORT_TONE[status] ?? "grey"}>{t(`imports.statuses.${status}`)}</ToneBadge>
 }
 
 const INVOICE_TONE: Record<InvoiceRowStatus, Tone> = { pending: "blue", written: "green", conflict: "red", skipped: "grey", failed: "red" }
 
 export function InvoiceStatusBadge({ status }: { status: InvoiceRowStatus }) {
   const { t } = useTranslation("baselinker")
-  return <StatusBadge color={INVOICE_TONE[status] ?? "grey"}>{t(`invoices.statuses.${status}`)}</StatusBadge>
+  return <ToneBadge tone={INVOICE_TONE[status] ?? "grey"}>{t(`invoices.statuses.${status}`)}</ToneBadge>
 }
 
 export function fmtMoney(value: number | null | undefined, currency: string | null | undefined, lang: string): string {
@@ -222,82 +253,7 @@ export function kitReferences(refs: ReferenceDto[], lang: string): Reference[] {
 
 export function ConflictBadge({ conflict }: { conflict: CardConflict }) {
   const { t } = useTranslation("baselinker")
-  return (
-    <Badge size="2xsmall" color="red">
-      {t(`cards.conflict.${conflict}`)}
-    </Badge>
-  )
-}
-
-export function StatTile({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-}: {
-  label: string
-  value: ReactNode
-  tone?: "default" | "green" | "orange" | "red"
-  active?: boolean
-  onClick?: () => void
-}) {
-  const dot =
-    tone === "green" ? "bg-ui-tag-green-icon" : tone === "orange" ? "bg-ui-tag-orange-icon" : tone === "red" ? "bg-ui-tag-red-icon" : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "hover:bg-ui-bg-component-hover cursor-pointer" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-    </button>
-  )
-}
-
-export function FilterPills<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T
-  options: Array<{ value: T; label: string; count?: number }>
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={clx(
-            "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg",
-            value === o.value
-              ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color"
-              : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-          )}
-        >
-          {o.label}
-          {typeof o.count === "number" ? <span className="tabular-nums opacity-80">{o.count}</span> : null}
-        </button>
-      ))}
-    </div>
-  )
+  return <ToneBadge tone="red">{t(`cards.conflict.${conflict}`)}</ToneBadge>
 }
 
 export function Fact({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
