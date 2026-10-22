@@ -13,7 +13,7 @@
  */
 import { MINIMUM_ATTRIBUTES, RULE } from "./constants"
 import type { CouponDto, CouponPatch, StoreFeature, StoreTerms } from "./contract"
-import { cleanCode, cleanTerms } from "./wizard"
+import { cleanCode, cleanTerms, cleanVariantIds } from "./wizard"
 
 const CODE = /^[A-Z0-9][A-Z0-9_-]{2,39}$/
 const ID = /^[A-Za-z0-9_]{1,80}$/
@@ -28,6 +28,11 @@ export function valueEditable(c: Pick<CouponDto, "shape">): boolean {
 
 export function isPercent(c: Pick<CouponDto, "shape">): boolean {
   return c.shape.kind.startsWith("percent_")
+}
+
+/** Discounts on items (not buy X get Y): single products may be left out of them. */
+export function exclusionsEditable(c: Pick<CouponDto, "shape">): boolean {
+  return c.shape.kind === "percent_items" || c.shape.kind === "fixed_items"
 }
 
 /** Coupons on items: the form may change what the discount lands on. */
@@ -47,6 +52,7 @@ export interface NormalizedPatch {
   excludedGroupIds?: string[]
   categoryIds?: string[]
   poolIds?: string[]
+  excludedVariantIds?: string[]
   buyGet?: { buy: number; free: number }
   /** The store's terms after the save (the current ones with the form's keys on top). */
   terms?: StoreTerms
@@ -176,6 +182,14 @@ export function checkPatch(patch: CouponPatch, current: CouponDto, ctx: PatchCon
     } else if (!sameSet(p, terms.pools ?? [])) out.poolIds = p
   }
 
+  if (patch.excludedVariantIds !== undefined) {
+    const v = cleanVariantIds(patch.excludedVariantIds)
+    const before = current.shape.excludedVariantIds ?? []
+    if (!exclusionsEditable(current)) {
+      if (!sameSet(v, before)) errors.push("targets_fixed")
+    } else if (!sameSet(v, before)) out.excludedVariantIds = v
+  }
+
   if (patch.buyGet !== undefined && patch.buyGet !== null && current.shape.kind === "buy_get" && !storeBuyGet) {
     const buy = Math.floor(Number(patch.buyGet.buy))
     const free = Math.floor(Number(patch.buyGet.free))
@@ -268,6 +282,10 @@ export function targetChanges(
   if (p.poolIds !== undefined) {
     out.delete.push(...targets.filter((r) => pools.attrs.includes(r.attribute) && (r.operator === "in" || r.operator === "eq")).map((r) => r.id))
     out.create.push(...pools.rules)
+  }
+  if (p.excludedVariantIds !== undefined) {
+    out.delete.push(...targets.filter((r) => r.attribute === RULE.variant && r.operator === "ne").map((r) => r.id))
+    if (p.excludedVariantIds.length) out.create.push({ attribute: RULE.variant, operator: "ne", values: p.excludedVariantIds })
   }
   return out
 }

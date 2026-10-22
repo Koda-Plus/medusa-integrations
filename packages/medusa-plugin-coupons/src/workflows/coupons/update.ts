@@ -2,7 +2,7 @@
  * EDITING a coupon, all through Medusa's own promotion workflows: the
  * promotion (code, code or automatic, value, buy X get Y, its own limit),
  * its campaign (dates, a usage budget), its audience and minimum rules, its
- * target rules (categories, the store's pools) and the store's own terms
+ * target rules (categories, the store's pools, products left out) and the store's own terms
  * through the store's adapter. What the form does not show is never written.
  */
 
@@ -95,8 +95,8 @@ export async function applyPatch(scope: Scope, id: string, before: { code?: stri
     await batchPromotionRulesWorkflow(ws).run({ input: { id, rule_type: "rules", create: rules.create, update: [], delete: rules.delete } as never })
   }
 
-  if (p.categoryIds !== undefined || p.poolIds !== undefined) {
-    const { pools } = await storeLookups(scope)
+  if (p.categoryIds !== undefined || p.poolIds !== undefined || p.excludedVariantIds !== undefined) {
+    const { pools } = p.poolIds !== undefined ? await storeLookups(scope) : { pools: [] }
     const poolRules = p.poolIds !== undefined ? (poolTargetRules(p.poolIds, pools) as Array<{ attribute: string; operator: "in"; values: string[] }>) : []
     const changes = targetChanges(p, rows.targets, { attrs: poolAttributes(pools), rules: poolRules })
     if (changes.create.length || changes.delete.length) {
