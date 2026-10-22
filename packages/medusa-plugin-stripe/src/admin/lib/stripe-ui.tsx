@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowUpRightMini, ArrowUpRightOnBox, CheckCircleSolid, EllipseMiniSolid, ExclamationCircleSolid, InformationCircleSolid, XCircleSolid } from "@medusajs/icons"
@@ -20,8 +20,8 @@ import { pickText } from "../../modules/stripe/lib/references"
 import type { Reference } from "./stripe-guide"
 import { MethodName } from "./stripe-method-icon"
 import { StripeIcon } from "./stripe-icon"
+import { StatTile as KitStatTile, type Tone } from "./stripe-blocks"
 
-type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
 /* ------------------------------------------------------------------ */
 /* Formatting                                                          */
@@ -136,59 +136,9 @@ export function MedusaMark({ className }: { className?: string }) {
 /* Small blocks                                                        */
 /* ------------------------------------------------------------------ */
 
-export function StatTile({
-  label,
-  value,
-  hint,
-  tone = "default",
-  onClick,
-  active = false,
-}: {
-  label: string
-  value: ReactNode
-  hint?: ReactNode
-  tone?: "default" | "green" | "orange" | "red" | "blue" | "purple"
-  onClick?: () => void
-  active?: boolean
-}) {
-  const dot =
-    tone === "green"
-      ? "bg-ui-tag-green-icon"
-      : tone === "orange"
-        ? "bg-ui-tag-orange-icon"
-        : tone === "red"
-          ? "bg-ui-tag-red-icon"
-          : tone === "blue"
-            ? "bg-ui-tag-blue-icon"
-            : tone === "purple"
-              ? "bg-ui-tag-purple-icon"
-              : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={clx(
-        "flex h-full min-w-0 flex-col items-start justify-start gap-y-1.5 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "cursor-pointer hover:bg-ui-bg-component-hover" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <span className="txt-large-plus max-w-full break-words tabular-nums text-ui-fg-base">{value}</span>
-      {hint ? (
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {hint}
-        </Text>
-      ) : null}
-    </button>
-  )
+/** The kit's counter tile (stripe-blocks); "default" is the kit's grey. */
+export function StatTile({ tone = "grey", ...props }: Omit<ComponentProps<typeof KitStatTile>, "tone"> & { tone?: Tone | "default" }) {
+  return <KitStatTile tone={tone === "default" ? "grey" : tone} {...props} />
 }
 
 /** Pills with counts, the same look as the other Koda Plus integrations. */

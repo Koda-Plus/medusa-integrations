@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge, StatusBadge, Table, Text, clx } from "@medusajs/ui"
 import type { LocalizedTextDto, MessageDto, ReferenceDto, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { nb, type Reference } from "./emails-guide"
+import { StatTile as KitStatTile, type Tone } from "./emails-blocks"
 
-type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
 /* ------------------------------------------------------------------ */
 /* Formats                                                             */
@@ -120,51 +120,9 @@ export function KindBadge({ kind }: { kind: string }) {
   )
 }
 
-export function StatTile({
-  label,
-  value,
-  hint,
-  tone = "default",
-  active = false,
-  onClick,
-}: {
-  label: string
-  value: ReactNode
-  hint?: string
-  tone?: "default" | "green" | "orange" | "red" | "blue"
-  active?: boolean
-  onClick?: () => void
-}) {
-  const dot =
-    tone === "green" ? "bg-ui-tag-green-icon" : tone === "orange" ? "bg-ui-tag-orange-icon" : tone === "red" ? "bg-ui-tag-red-icon" : tone === "blue" ? "bg-ui-tag-blue-icon" : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "cursor-pointer hover:bg-ui-bg-component-hover" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-      {hint ? (
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {hint}
-        </Text>
-      ) : null}
-    </button>
-  )
+/** The kit's counter tile (emails-blocks); "default" is the kit's grey. */
+export function StatTile({ tone = "grey", ...props }: Omit<ComponentProps<typeof KitStatTile>, "tone"> & { tone?: Tone | "default" }) {
+  return <KitStatTile tone={tone === "default" ? "grey" : tone} {...props} />
 }
 
 export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number; disabled?: boolean }>; onChange: (v: T) => void }) {

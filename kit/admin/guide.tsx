@@ -220,7 +220,12 @@ export type KeyPoint = {
   icon: ReactNode
   text: ReactNode
   tone?: KeyPointTone
+  /** A longer explanation of this one phrase, as its tooltip. */
+  title?: string
 }
+
+/** A list of key points may hold `false`, `null` or "" for a condition written in place: they are left out. */
+export type KeyPointItem = KeyPoint | null | false | undefined | ""
 
 const POINT_TONE: Record<KeyPointTone, string> = {
   grey: "border-ui-border-base bg-ui-bg-subtle text-ui-fg-subtle",
@@ -236,12 +241,13 @@ const POINT_TONE: Record<KeyPointTone, string> = {
  * header (`points`) and under section headings. `label` is the full sentence
  * the phrases stand for: read by screen readers and shown as the tooltip.
  */
-export function KeyPoints({ items, label, className }: { items: KeyPoint[]; label?: string; className?: string }) {
-  if (!items.length) return null
+export function KeyPoints({ items, label, className }: { items: KeyPointItem[]; label?: string; className?: string }) {
+  const shown = items.filter((p): p is KeyPoint => Boolean(p))
+  if (!shown.length) return null
   return (
     <ul aria-label={label} title={label} className={clx("flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)}>
-      {items.map((p, i) => (
-        <li key={i} className={clx("txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5", POINT_TONE[p.tone ?? "grey"])}>
+      {shown.map((p, i) => (
+        <li key={i} title={p.title} className={clx("txt-compact-xsmall-plus inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5", POINT_TONE[p.tone ?? "grey"])}>
           <span aria-hidden className="flex shrink-0 [&_svg]:size-3.5">
             {p.icon}
           </span>
@@ -285,7 +291,7 @@ function OtherActions({ items }: { items: HeaderAction[]; label: string }) {
 /**
  * A store that ships the integrations as its own (an agency's client) turns
  * the Koda Plus marks off for its team with `window.__KODA_KIT__ = { whiteLabel: true }`
- * in the admin's HTML. The header then shows no "by Koda Plus", no setup
+ * in the admin's HTML. The header then shows no setup
  * prompt and Discord help and no store references; everything else stays.
  */
 export function isWhiteLabel(): boolean {
@@ -299,7 +305,7 @@ export function isWhiteLabel(): boolean {
 /**
  * The header of an integration page, the same in all five. Three places, each
  * with one job:
- *   who      icon, name, "by Koda Plus", the state badges; on the right the help
+ *   who      icon, name and the state badges (no "by Koda Plus" since kit 1.3.0); on the right the help
  *            about the integration itself (Copy prompt, Discord)
  *   why      the description (with `points`: short phrases with icons, the description
  *            as their tooltip), then the stores running it and "Add your store"
@@ -309,7 +315,6 @@ export function isWhiteLabel(): boolean {
 export function IntegrationHeader({
   icon,
   title,
-  by,
   badges,
   description,
   points,
@@ -323,11 +328,16 @@ export function IntegrationHeader({
 }: {
   icon: ReactNode
   title: string
-  by: string
+  /**
+   * No longer shown (kit 1.3.0): a module header names the module only, the
+   * "by Koda Plus" line went. Kept so older pages still compile; the setup
+   * prompt and the store request still name the author.
+   */
+  by?: string
   badges?: ReactNode
   description: string
   /** Short phrases with icons shown instead of the description; the description stays as their tooltip and accessible label. */
-  points?: KeyPoint[]
+  points?: KeyPointItem[]
   social?: ReactNode
   help?: ReactNode
   view: PageView
@@ -344,16 +354,11 @@ export function IntegrationHeader({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <span className="flex shrink-0">{icon}</span>
             <Heading level="h1">{title}</Heading>
-            {plain ? null : (
-              <Text size="small" className="text-ui-fg-muted">
-                {by}
-              </Text>
-            )}
             {badges ? <span className="flex flex-wrap items-center gap-1.5">{badges}</span> : null}
           </div>
           {help && !plain ? <div className="flex shrink-0">{help}</div> : null}
         </div>
-        {points && points.length ? (
+        {points && points.some(Boolean) ? (
           <KeyPoints items={points} label={description} />
         ) : (
           <Text size="small" className="max-w-3xl text-ui-fg-subtle">

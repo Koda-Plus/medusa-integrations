@@ -9,6 +9,7 @@
 | `server/guards.ts` | `src/modules/<mod>/lib/kit-guards.ts` | `writeGuard()` (CSRF: writes need JSON or `x-koda-request`) and `reservedMetadataGuard(prefixes, keys)` for the store routes. |
 | `admin/kit.tsx` | `src/admin/lib/<ns>-kit.tsx` | `kitFetch` and `kitRequestInit` (backend URL, session or JWT, the write header), the integration registry, `hostable`, `WidgetFrame`, page slots, page tabs (`hostPageTabs`, `addPageTab`, `hostedNavIcon`). |
 | `admin/guide.tsx` | `src/admin/lib/<ns>-guide.tsx` | The page kit: header (with optional `points`, short phrases with icons), `KeyPoints`, badges, references, setup guide, the setup prompt (pinned version), help on Discord (`https://koda.plus/discord`), `KitTabbedPage` and `KitTabRoute`. |
+| `admin/blocks.tsx` | `src/admin/lib/<ns>-blocks.tsx` | The blocks under the header: `Section`, `SubpageHeader`, `StatTiles`/`StatTile`, `FilterBar`/`FilterButton`/`FilterDivider`, `SearchInput`, `ToneBadge` (one palette of meaning), `RowActions`, `EmptyState`, `StagedLoader`. The rules and the rework checklist: `kit/STYLE.md`. |
 | `admin/community.ts` | `src/admin/lib/<ns>-kit-community.ts` | The `community` block of both dictionaries. |
 | `test/conformance.ts` | `test/kit-conformance.ts` | `conformance({ routes, scope, entity, knownIds, writes })`: the contract checks, run from the package's own test. |
 | (generated) | `src/admin/lib/<ns>-kit-meta.ts`, `src/modules/<mod>/lib/kit-meta.ts` | `KIT_META`: namespace, package, version, kit version, brand, from `package.json`. |
