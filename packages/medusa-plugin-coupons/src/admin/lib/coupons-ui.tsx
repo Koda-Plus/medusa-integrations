@@ -1,8 +1,9 @@
-import type { ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge, Text, clx } from "@medusajs/ui"
 import type { CouponStatus } from "../../modules/coupons/lib/contract"
 import type { SentenceFormat } from "./coupons-sentence"
+import { StatTile as KitStatTile, type Tone } from "./coupons-blocks"
 
 /** Money and dates in the admin's language. */
 export function useFormat(): SentenceFormat & { lang: string; number: (n: number) => string } {
@@ -40,37 +41,9 @@ export function StatusBadge({ status }: { status: CouponStatus }) {
   )
 }
 
-export function StatTile({ label, value, hint, tone = "grey", active, onClick }: { label: string; value: ReactNode; hint?: string; tone?: "green" | "orange" | "red" | "blue" | "grey" | "purple"; active?: boolean; onClick?: () => void }) {
-  const dot = { green: "bg-ui-tag-green-icon", orange: "bg-ui-tag-orange-icon", red: "bg-ui-tag-red-icon", blue: "bg-ui-tag-blue-icon", grey: "bg-ui-tag-neutral-icon", purple: "bg-ui-tag-purple-icon" }[tone]
-  const body = (
-    <>
-      <span className="flex items-center gap-x-2">
-        <span className={clx("size-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums">
-        {value}
-      </Text>
-      {hint ? (
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {hint}
-        </Text>
-      ) : null}
-    </>
-  )
-  const cls = clx(
-    "flex flex-col gap-y-1 rounded-lg border px-4 py-3 text-left",
-    active ? "border-ui-border-interactive bg-ui-bg-base" : "border-ui-border-base bg-ui-bg-subtle",
-  )
-  return onClick ? (
-    <button type="button" onClick={onClick} className={clx(cls, "transition-fg hover:bg-ui-bg-base-hover")}>
-      {body}
-    </button>
-  ) : (
-    <div className={cls}>{body}</div>
-  )
+/** The kit's counter tile (coupons-blocks); "default" is the kit's grey. */
+export function StatTile({ tone = "grey", ...props }: Omit<ComponentProps<typeof KitStatTile>, "tone"> & { tone?: Tone | "default" }) {
+  return <KitStatTile tone={tone === "default" ? "grey" : tone} {...props} />
 }
 
 /** A segmented choice: the options as small buttons, the chosen one filled. */

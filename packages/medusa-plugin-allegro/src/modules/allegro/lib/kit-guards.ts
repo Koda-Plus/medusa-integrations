@@ -1,4 +1,4 @@
-// GENERATED from kit/server/guards.ts (kit 1.2.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/server/guards.ts (kit 1.3.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import type { MedusaNextFunction, MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 
 /**

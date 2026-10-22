@@ -27,6 +27,7 @@ const FILES = [
   ["admin/kit.tsx", "src/admin/lib/{ns}-kit.tsx"],
   ["admin/guide.tsx", "src/admin/lib/{ns}-guide.tsx"],
   ["admin/order-products.tsx", "src/admin/lib/{ns}-order-products.tsx"],
+  ["admin/blocks.tsx", "src/admin/lib/{ns}-blocks.tsx"],
   ["admin/community.ts", "src/admin/lib/{ns}-kit-community.ts"],
   ["test/conformance.ts", "test/kit-conformance.ts"],
 ]
