@@ -1,52 +1,66 @@
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Text, clx } from "@medusajs/ui"
-import type { CheckState } from "../../modules/whitelist/lib/constants"
+import { CogSixTooth, Eye } from "@medusajs/icons"
+import { Text } from "@medusajs/ui"
+import type { StatusResponse } from "../../modules/whitelist/lib/contract"
+import { SOURCES, type CheckState } from "../../modules/whitelist/lib/constants"
+import { Section, ToneBadge, type Tone } from "./whitelist-blocks"
 
-export function StatTile({ label, value, tone = "default", onClick }: { label: string; value: ReactNode; tone?: "default" | "green" | "orange" | "red" | "blue" | "purple"; onClick?: () => void }) {
-  const color = tone === "green" ? "text-ui-tag-green-text" : tone === "orange" ? "text-ui-tag-orange-text" : tone === "red" ? "text-ui-tag-red-text" : tone === "blue" ? "text-ui-tag-blue-text" : tone === "purple" ? "text-ui-tag-purple-text" : "text-ui-fg-base"
-  const content = (
-    <div className={clx("rounded-lg border border-ui-border-base bg-ui-bg-subtle px-4 py-3", onClick ? "cursor-pointer transition-fg hover:bg-ui-bg-base-hover" : "")}>
-      <Text size="xsmall" className="truncate text-ui-fg-muted">
-        {label}
-      </Text>
-      <Text size="large" weight="plus" className={clx("mt-0.5 tabular-nums", color)}>
-        {value}
-      </Text>
-    </div>
-  )
-  return onClick ? (
-    <button type="button" onClick={onClick} className="text-left">
-      {content}
-    </button>
-  ) : (
-    content
-  )
-}
+/** The settings tabs of the page (`?view=settings&tab=`). */
+export const SETTINGS_TABS = ["options"] as const
+export type SettingsTabId = (typeof SETTINGS_TABS)[number]
 
-export function SampleBadge() {
-  const { t } = useTranslation("whitelist")
-  return (
-    <Badge size="2xsmall" color="purple">
-      {t("mode.demo")}
-    </Badge>
-  )
+/** One meaning per colour: active green, exempt orange, not found and invalid red, no answer grey. */
+export const STATE_TONE: Record<CheckState, Tone> = {
+  active: "green",
+  exempt: "orange",
+  not_found: "red",
+  invalid: "red",
+  unavailable: "grey",
 }
 
 export function StateBadge({ state }: { state: CheckState }) {
   const { t } = useTranslation("whitelist")
-  const color = state === "active" ? "green" : state === "exempt" ? "orange" : state === "unavailable" ? "grey" : "red"
+  return <ToneBadge tone={STATE_TONE[state] ?? "grey"}>{t(`state.${state}`)}</ToneBadge>
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Badge size="2xsmall" color={color}>
-      {t(`state.${state}`)}
-    </Badge>
+    <div className="flex flex-col gap-y-1">
+      <Text size="xsmall" className="text-ui-fg-muted">
+        {label}
+      </Text>
+      <div className="txt-small flex flex-wrap items-center gap-1.5 text-ui-fg-base">{children}</div>
+    </div>
   )
 }
 
-export function EmptyLine({ children }: { children: ReactNode }) {
+/** The options in use, read only: they are set in medusa-config.ts. */
+export function OptionsTab({ status }: { status: StatusResponse }) {
+  const { t } = useTranslation("whitelist")
   return (
-    <Text size="small" className="px-6 py-4 text-ui-fg-subtle">
-      {children}
-    </Text>
+    <Section
+      icon={<CogSixTooth />}
+      title={t("settings.tab.options")}
+      points={[
+        { icon: <Eye />, text: t("settings.points.readOnly"), tone: "blue" },
+        { icon: <CogSixTooth />, text: t("settings.points.config") },
+      ]}
+      pointsLabel={t("settings.subtitle")}
+    >
+      <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-3">
+        <Fact label={t("settings.staleHours")}>
+          <span className="tabular-nums">{t("settings.hours", { count: status.staleHours })}</span>
+        </Fact>
+        <Fact label={t("settings.sources")}>
+          {SOURCES.map((s) => (
+            <ToneBadge key={s}>{t(`source.${s}`)}</ToneBadge>
+          ))}
+        </Fact>
+        <Fact label={t("settings.demo")}>
+          <ToneBadge tone={status.demo ? "blue" : "grey"}>{status.demo ? t("settings.on") : t("settings.off")}</ToneBadge>
+        </Fact>
+      </div>
+    </Section>
   )
 }

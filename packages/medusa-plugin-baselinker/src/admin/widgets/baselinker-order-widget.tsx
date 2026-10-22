@@ -1,14 +1,14 @@
 import type { ReactNode } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Heading, Text, toast } from "@medusajs/ui"
+import { ArrowUpRightMini, ArrowUpRightOnBox, PaperPlane } from "@medusajs/icons"
+import { Button, Heading, Text, toast } from "@medusajs/ui"
 import type { ImportDto } from "../../modules/baselinker/lib/contract"
 import { errorMessage, useBaseLinkerOrder, useBaseLinkerSend } from "../lib/baselinker-api"
 import { BaseLinkerIcon } from "../lib/baselinker-icon"
-import { WidgetFrame, hostable } from "../lib/baselinker-kit"
+import { ToneBadge } from "../lib/baselinker-blocks"
+import { KitLoading, WidgetFrame, hostable } from "../lib/baselinker-kit"
 import { ImportStatusBadge, OrderStatusBadge, fmtDateTime } from "../lib/baselinker-ui"
 
 /**
@@ -46,14 +46,14 @@ const BaseLinkerOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> &
 
   const showSend = !imported && Boolean(info?.canSend) && !canceled && (!row || row.status === "failed" || (row.status === "pending" && row.attempts > 0))
 
-  if (q.isLoading) return embedded ? <Quiet>{t("widget.loading")}</Quiet> : null
-  if (q.isError || !info) return <Quiet frame={!embedded}>{t("widget.failed")}</Quiet>
+  if (q.isLoading) return embedded ? <KitLoading label={t("widget.loading")} /> : null
+  if (q.isError || !info) return <Quiet frame={!embedded} error>{t("widget.failed")}</Quiet>
   if (embedded && !row && !imported && !info.marketplaceRef && !info.skipCode && !info.canSend) return <Quiet>{t("widget.none")}</Quiet>
 
   /* The page opens on this order: its import, or its row of the outbox. */
   const more = imported
-    ? `/baselinker?section=imports&q=${encodeURIComponent(imported.blOrderId)}`
-    : `/baselinker?section=orders&q=${encodeURIComponent(String(data.display_id ?? data.id))}`
+    ? `/app/baselinker?section=imports&q=${encodeURIComponent(imported.blOrderId)}`
+    : `/app/baselinker?section=orders&q=${encodeURIComponent(String(data.display_id ?? data.id))}`
 
   return (
     <WidgetFrame
@@ -63,23 +63,18 @@ const BaseLinkerOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> &
           <div className="flex items-center gap-x-2">
             <BaseLinkerIcon width={18} height={18} className="shrink-0" />
             <Heading level="h2">{t("widget.title")}</Heading>
-            {info.mode === "demo" ? (
-              <Badge size="2xsmall" color="purple">
-                {t("widget.demo")}
-              </Badge>
-            ) : null}
+            {info.mode === "demo" ? <ToneBadge tone="blue">{t("widget.demo")}</ToneBadge> : null}
           </div>
-          <Link to={more} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+          <a href={more} className="txt-compact-small-plus inline-flex shrink-0 items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
             {t("widget.more")}
-          </Link>
+            <ArrowUpRightMini />
+          </a>
         </div>
       }
     >
       {embedded && info.mode === "demo" ? (
         <div className="px-6 py-2">
-          <Badge size="2xsmall" color="purple">
-            {t("widget.demo")}
-          </Badge>
+          <ToneBadge tone="blue">{t("widget.demo")}</ToneBadge>
         </div>
       ) : null}
       {imported ? (
@@ -154,6 +149,7 @@ const BaseLinkerOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> &
           {showSend ? (
             <div className="px-6 py-4">
               <Button size="small" variant="secondary" isLoading={send.isPending} onClick={() => void onSend()}>
+                <PaperPlane />
                 {row ? t("actions.sendAgain") : t("actions.sendNow")}
               </Button>
             </div>
@@ -164,11 +160,11 @@ const BaseLinkerOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> &
   )
 }
 
-/** A quiet line instead of nothing: while loading, on an error, or when there is nothing to show. */
-function Quiet({ children, frame = false }: { children: ReactNode; frame?: boolean }) {
+/** A quiet line instead of nothing: on an error, or when there is nothing to show. */
+function Quiet({ children, frame = false, error = false }: { children: ReactNode; frame?: boolean; error?: boolean }) {
   const body = (
     <div className="px-6 py-4">
-      <Text size="small" className="text-ui-fg-subtle">
+      <Text size="small" className={error ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}>
         {children}
       </Text>
     </div>

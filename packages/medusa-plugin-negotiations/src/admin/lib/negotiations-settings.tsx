@@ -1,10 +1,13 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Button, Container, Heading, InlineTip, StatusBadge, Switch, Table, Text, toast } from "@medusajs/ui"
+import { Adjustments, ArrowPath, BarsArrowDown, BellAlert, Clock, CogSixTooth, DocumentSeries, History, PencilSquare, PlaySolid, ShieldCheck } from "@medusajs/icons"
+import { Button, InlineTip, Switch, Table, Text, toast } from "@medusajs/ui"
 import type { PlanItemDto, StatusResponse, WriterDto } from "../../modules/negotiations/lib/contract"
 import { errorCode, errorMessage, useDraftPlan, useExpireNow, useNegotiationRuns, useRunDraftOrders, useSetWriter } from "./negotiations-api"
-import { CodeBlock } from "./negotiations-guide"
-import { EmptyRow, Fact, RunStatusBadge, fmtDateTime, fmtDuration, fmtMoney, fmtNumber, runSummary } from "./negotiations-ui"
+import { CodeBlock, KeyPoints } from "./negotiations-guide"
+import { EmptyTableRow, Section, ToneBadge } from "./negotiations-blocks"
+import { KitSkeletonRows } from "./negotiations-kit"
+import { Fact, RunStatusBadge, fmtDateTime, fmtDuration, fmtMoney, fmtNumber, runSummary } from "./negotiations-ui"
 
 /** The demo note, in the popover of the mode badge. */
 export function DemoDetails({ status, lang }: { status: StatusResponse; lang: string }) {
@@ -31,9 +34,7 @@ export function GeneralSection({ status, lang }: { status: StatusResponse; lang:
   const demo = status.mode === "demo"
   const last = status.lastRuns.expire
   const onOff = (v: boolean) => (
-    <Badge size="2xsmall" color={v ? "green" : "grey"}>
-      {v ? t("general.on") : t("general.off")}
-    </Badge>
+    <ToneBadge tone={v ? "green" : "grey"}>{v ? t("general.on") : t("general.off")}</ToneBadge>
   )
 
   const runExpire = async () => {
@@ -47,13 +48,16 @@ export function GeneralSection({ status, lang }: { status: StatusResponse; lang:
 
   return (
     <>
-      <Container className="divide-y p-0">
-        <div className="flex flex-col gap-1 px-6 py-4">
-          <Heading level="h2">{t("general.title")}</Heading>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {t("general.subtitle")}
-          </Text>
-        </div>
+      <Section
+        icon={<CogSixTooth />}
+        title={t("general.title")}
+        pointsLabel={t("general.subtitle")}
+        points={[
+          { icon: <PencilSquare />, text: t("general.points.config") },
+          { icon: <ShieldCheck />, text: t("general.points.readOnly"), tone: "blue" },
+          { icon: <Adjustments />, text: t("general.points.defaults") },
+        ]}
+      >
         <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
           <Fact label={t("general.mode")}>{demo ? t("mode.demo") : t("mode.live")}</Fact>
           <Fact label={t("general.storeApi")}>{onOff(o.storeApi)}</Fact>
@@ -74,20 +78,25 @@ export function GeneralSection({ status, lang }: { status: StatusResponse; lang:
             {t("general.optionsHint")}
           </Text>
         </div>
-      </Container>
+      </Section>
 
-      <Container className="divide-y p-0">
-        <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-          <div className="flex max-w-3xl flex-col gap-1">
-            <Heading level="h2">{t("expiry.title")}</Heading>
-            <Text size="small" className="text-ui-fg-subtle">
-              {o.expiryDays > 0 ? t("expiry.rule", { count: o.expiryDays }) : t("expiry.off")}
-            </Text>
-          </div>
+      <Section
+        icon={<Clock />}
+        title={t("expiry.title")}
+        pointsLabel={o.expiryDays > 0 ? t("expiry.rule", { count: o.expiryDays }) : t("expiry.off")}
+        points={[
+          o.expiryDays > 0 ? { icon: <Clock />, text: t("expiry.points.days", { count: o.expiryDays }) } : { icon: <Clock />, text: t("expiry.points.off") },
+          o.expiryDays > 0 && { icon: <ArrowPath />, text: t("expiry.points.restart") },
+          o.expiryDays > 0 && { icon: <PencilSquare />, text: t("expiry.points.notes") },
+          demo ? { icon: <ShieldCheck />, text: t("expiry.points.demo"), tone: "blue" } : { icon: <History />, text: t("expiry.points.schedule"), title: t("expiry.schedule") },
+        ]}
+        actions={
           <Button size="small" variant="secondary" isLoading={expire.isPending} disabled={demo} onClick={() => void runExpire()}>
+            <Clock />
             {t("actions.expireNow")}
           </Button>
-        </div>
+        }
+      >
         <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-3">
           <Fact label={t("expiry.days")}>{o.expiryDays > 0 ? t("expiry.daysValue", { count: o.expiryDays }) : t("general.off")}</Fact>
           <Fact label={t("expiry.soon")}>{fmtNumber(status.counts.expiringSoon, lang)}</Fact>
@@ -102,12 +111,7 @@ export function GeneralSection({ status, lang }: { status: StatusResponse; lang:
             )}
           </Fact>
         </div>
-        <div className="px-6 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {demo ? t("expiry.demo") : t("expiry.schedule")}
-          </Text>
-        </div>
-      </Container>
+      </Section>
     </>
   )
 }
@@ -118,8 +122,8 @@ export function GeneralSection({ status, lang }: { status: StatusResponse; lang:
 
 function WriterBadge({ writer }: { writer: WriterDto }) {
   const { t } = useTranslation("negotiations")
-  if (!writer.allowed) return <StatusBadge color="grey">{t("writers.blocked")}</StatusBadge>
-  return <StatusBadge color={writer.armed ? "green" : "orange"}>{writer.armed ? t("writers.armed") : t("writers.off")}</StatusBadge>
+  if (!writer.allowed) return <ToneBadge tone="grey">{t("writers.blocked")}</ToneBadge>
+  return <ToneBadge tone={writer.armed ? "green" : "grey"}>{writer.armed ? t("writers.armed") : t("writers.off")}</ToneBadge>
 }
 
 export function WritersSection({ status, lang }: { status: StatusResponse; lang: string }) {
@@ -159,18 +163,21 @@ export function WritersSection({ status, lang }: { status: StatusResponse; lang:
   }
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("writers.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("writers.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<DocumentSeries />}
+      title={t("writers.title")}
+      pointsLabel={t("writers.subtitle")}
+      points={[
+        { icon: <BellAlert />, text: t("writers.points.event") },
+        { icon: <ShieldCheck />, text: t("writers.points.off") },
+        { icon: <BarsArrowDown />, text: t("writers.points.plan") },
+      ]}
+    >
       {status.mode === "demo" ? (
         <div className="px-6 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
+          <InlineTip variant="info" label={t("mode.demo")}>
             {t("writers.demo")}
-          </Text>
+          </InlineTip>
         </div>
       ) : null}
       <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
@@ -206,19 +213,26 @@ export function WritersSection({ status, lang }: { status: StatusResponse; lang:
       ) : null}
 
       <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex max-w-3xl flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Text size="small" weight="plus" className="text-ui-fg-base">
             {t("plan.title")}
           </Text>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("plan.subtitle", { cap: status.options.draftOrders.maxPerRun })}
-          </Text>
+          <KeyPoints
+            label={t("plan.subtitle", { cap: status.options.draftOrders.maxPerRun })}
+            items={[
+              { icon: <DocumentSeries />, text: t("plan.points.cap", { cap: status.options.draftOrders.maxPerRun }) },
+              { icon: <Clock />, text: t("plan.points.every") },
+              { icon: <ShieldCheck />, text: t("plan.points.dry") },
+            ]}
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="small" variant="secondary" isLoading={runner.isPending && runner.variables?.dryRun === true} onClick={() => void run(true)}>
+            <ShieldCheck />
             {t("plan.dryRun")}
           </Button>
           <Button size="small" variant="primary" disabled={!writer.armed} isLoading={runner.isPending && runner.variables?.dryRun === false} onClick={() => void run(false)}>
+            <PlaySolid />
             {t("plan.run")}
           </Button>
         </div>
@@ -234,8 +248,10 @@ export function WritersSection({ status, lang }: { status: StatusResponse; lang:
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {items.length === 0 ? (
-              <EmptyRow cols={4} text={plan.isLoading ? "" : t("plan.empty")} />
+            {plan.isLoading ? (
+              <KitSkeletonRows cols={4} rows={3} />
+            ) : items.length === 0 ? (
+              <EmptyTableRow cols={4} icon={<DocumentSeries />} title={t("plan.empty")} />
             ) : (
               items.map((i) => (
                 <Table.Row key={i.outboxId} className="align-top [&_td]:py-2.5">
@@ -251,9 +267,7 @@ export function WritersSection({ status, lang }: { status: StatusResponse; lang:
                   </Table.Cell>
                   <Table.Cell className="max-w-md">
                     <span className="flex flex-col items-start gap-y-1">
-                      <Badge size="2xsmall" color={i.ready ? "green" : i.blocked ? "orange" : i.state === "failed" ? "red" : "grey"}>
-                        {i.ready ? t("plan.ready") : t(`draft.states.${i.state}`)}
-                      </Badge>
+                      <ToneBadge tone={i.ready ? "green" : i.blocked ? "orange" : i.state === "failed" ? "red" : "grey"}>{i.ready ? t("plan.ready") : t(`draft.states.${i.state}`)}</ToneBadge>
                       {i.blocked ? (
                         <Text size="xsmall" className="text-ui-fg-subtle">
                           {t(`draft.reasons.${i.blocked}`, { defaultValue: i.blocked })}
@@ -287,7 +301,7 @@ export function WritersSection({ status, lang }: { status: StatusResponse; lang:
           ))}
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }
 
@@ -300,13 +314,15 @@ export function RunsSection({ lang }: { lang: string }) {
   const runs = useNegotiationRuns(true)
   const rows = runs.data?.runs ?? []
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("runs.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("runs.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<History />}
+      title={t("runs.title")}
+      pointsLabel={t("runs.subtitle")}
+      points={[
+        { icon: <BarsArrowDown />, text: t("runs.points.newest") },
+        { icon: <DocumentSeries />, text: t("runs.points.kinds") },
+      ]}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -319,8 +335,10 @@ export function RunsSection({ lang }: { lang: string }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={5} text={runs.isLoading ? "" : t("runs.empty")} />
+            {runs.isLoading ? (
+              <KitSkeletonRows cols={5} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={5} icon={<History />} title={t("runs.empty")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5">
@@ -342,6 +360,6 @@ export function RunsSection({ lang }: { lang: string }) {
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }

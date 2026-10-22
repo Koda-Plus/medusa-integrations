@@ -3,10 +3,18 @@ import { typeset } from "../lib/olx-guide"
 import { communityPl } from "../lib/olx-kit-community"
 
 const pl: typeof en = {
+  loading: "Czytam OLX",
   title: "OLX",
   by: "by Koda Plus",
   subtitle:
     "Łączy ogłoszenia OLX z produktami po SKU, pokazuje, gdzie OLX i sklep się rozjeżdżają, czyta statystyki ogłoszeń i nieprzeczytane wiadomości. Zapisy, wyłączone, dopóki ich nie uzbroisz, kończą i wznawiają ogłoszenia, pilnują cen i wystawiają produkty.",
+  points: {
+    link: "Ogłoszenia połączone po SKU",
+    alerts: "Alerty co 15 minut",
+    stats: "Statystyki i wiadomości",
+    writers: "Zapisy wyłączone do uzbrojenia",
+    never: "Nie kupuje pakietów",
+  },
   view: {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
@@ -106,6 +114,14 @@ const pl: typeof en = {
     lastError: "Ostatni błąd",
     ipBlocked: "OLX odrzuca zapytania z tego serwera po przekroczeniu limitu (4 500 w 5 minut z jednego IP). Wszystko czeka do {{time}}.",
     tokensNote: "Token dostępu żyje dobę, refresh token miesiąc. Oba odnawia cogodzinna synchronizacja i oba są zapisane zaszyfrowane (AES-256-GCM).",
+    points: {
+      oauth: "OAuth 2.0",
+      scope: "Zakres: {{scope}}",
+      demo: "Demo, bez połączenia z OLX",
+      access: "Token dostępu 24 h",
+      refresh: "Refresh token 1 miesiąc",
+      encrypted: "Zapisane zaszyfrowane",
+    },
     demoNote: "W trybie demo wtyczka nie łączy się z OLX. Zarejestruj aplikację w portalu deweloperskim OLX i ustaw opcje wtyczki, aby przejść na prawdziwe konto.",
   },
   disconnect: {
@@ -128,7 +144,12 @@ const pl: typeof en = {
     subtitle: "Miejsca, w których OLX i sklep się rozjeżdżają. Liczone co 15 minut z ostatniego odczytu OLX oraz bieżących stanów, cen i statusów produktów w Medusie.",
     planned: "Ostatni plan {{time}}.",
     stockStale: "W ostatnim planie nie udało się odczytać stanów z Medusy, więc te alerty pochodzą z wcześniejszego.",
-    search: "Szukaj: produkt, SKU, ogłoszenie",
+    search: "Produkt, SKU, ogłoszenie",
+    points: {
+      every: "Co 15 minut",
+      compare: "OLX kontra stan, cena, status",
+      planned: "Plan {{time}}",
+    },
     all: "Wszystkie",
     kind: {
       live_sold_out: "Aktywne, wyprzedane",
@@ -150,7 +171,7 @@ const pl: typeof en = {
     },
     untracked: "bez ewidencji",
     noAdvert: "brak ogłoszenia",
-    empty: "Brak alertów w tym widoku.",
+    empty: "Brak alertów",
   },
   writers: {
     title: "Zapisy",
@@ -176,6 +197,28 @@ const pl: typeof en = {
     changedBy: "Przełączył(a) {{who}}, {{when}}",
     neverSwitched: "Nigdy nie włączony",
     cap: "Najwyżej {{cap}} na przebieg",
+    sectionPoints: {
+      off: "Domyślnie wyłączone",
+      two: "Opcja i przełącznik",
+      dry: "Najpierw przebieg próbny",
+      lookup: "Sprawdzenie na OLX przed zapisem",
+    },
+    points: {
+      lifecycle: {
+        soldOut: "Kończy wyprzedane",
+        overLimit: "Zamyka ponad limit",
+        back: "Wznawia swoje",
+      },
+      price: {
+        base: "Cena bazowa w {{currency}}",
+        approval: "Powyżej {{percent}} % czeka na Ciebie",
+      },
+      publish: {
+        perVariant: "Jedno ogłoszenie na wariant",
+        sku: "SKU w external_id",
+        never: "Nigdy dwa razy",
+      },
+    },
     dryRun: "Przebieg próbny",
     runNow: "Uruchom teraz",
     running: "Trwa",
@@ -274,6 +317,11 @@ const pl: typeof en = {
   plan: {
     title: "Plany",
     subtitle: "Co każdy zapis by zmienił, z czego na co, i jak poszła ostatnia próba. Liczone co 15 minut; wyłączony zapis tylko planuje.",
+    points: {
+      what: "Z czego na co",
+      every: "Co 15 minut",
+      off: "Wyłączony zapis tylko planuje",
+    },
     view: {
       open: "Otwarte",
       held: "Czekają na zgodę",
@@ -326,9 +374,15 @@ const pl: typeof en = {
       no_target: "Brak docelowej ceny.",
       status: "Ogłoszenie ma teraz na OLX status {{status}}.",
     },
-    empty: "Nic w tym widoku.",
+    empty: "Nic tu nie ma",
   },
   publish: {
+    search: "Tytuł produktu, SKU",
+    points: {
+      candidates: "Kandydaci: {{count}}",
+      ready: "Gotowe: {{count}}",
+      blocked: "Zablokowane: {{count}}",
+    },
     view: {
       plan: "Plan",
       ready: "Gotowe",
@@ -365,7 +419,7 @@ const pl: typeof en = {
       error: "Plan wystawiania się nie udał. Szczegóły w logu serwera.",
     },
     summary: "Kandydaci: {{candidates}}, gotowe {{ready}}, zablokowane {{blocked}}.",
-    empty: "Nic w tym widoku.",
+    empty: "Nic tu nie ma",
   },
   problem: {
     category: "Brak kategorii OLX dla tego produktu: przypisz jedną z jego kategorii w publish.categories albo ustaw olx_category_id w metadanych produktu.",
@@ -402,8 +456,13 @@ const pl: typeof en = {
     matching: "Klucz dopasowania: najpierw external_id, potem wiersz z SKU w opisie. Jedno ogłoszenie główne na wariant: aktywne wygrywa z ponad limitem, a to z zakończonym.",
     openProduct: "Otwórz produkt",
     statsLine: "Statystyki aktywnych ogłoszeń: {{count}}, odświeżane co godzinę, każde ogłoszenie najwyżej co 6 godzin. Najstarsze: {{when}}.",
-    statsNone: "Statystyki nie zostały jeszcze odczytane.",
-    search: "Szukaj: tytuł, SKU, numer",
+    statsNone: "Jeszcze bez statystyk",
+    search: "Tytuł, SKU, numer ogłoszenia",
+    points: {
+      hourly: "Odczyt co godzinę",
+      product: "Produkt sklepu jeden klik dalej",
+      stats: "Statystyki {{count}}, najstarsze {{when}}",
+    },
     filter: {
       all: "Wszystkie",
       linked: "Połączone",
@@ -420,7 +479,7 @@ const pl: typeof en = {
       product: "Produkt w sklepie",
       stats: "Wyświetlenia, telefon, obserwujący",
     },
-    empty: "Brak ogłoszeń w tym widoku.",
+    empty: "Brak ogłoszeń",
     primary: "Główne",
     sample: "Przykład",
     keyExternal: "external_id",
@@ -449,18 +508,27 @@ const pl: typeof en = {
       total: "Wiadomości",
       started: "Rozpoczęta",
     },
-    lastRead: "Odczyt {{when}}, co 15 minut.",
-    notRead: "Jeszcze nie odczytano.",
+    points: {
+      counts: "Tylko liczniki",
+      noText: "Bez treści wiadomości",
+      answer: "Odpowiedź na OLX",
+      lastRead: "Odczyt {{when}}",
+    },
+    notRead: "Jeszcze bez odczytu",
     incomplete: "Ostatni odczyt był niepełny: {{message}}",
-    empty: "Brak nieprzeczytanych rozmów.",
-    emptyAll: "Brak rozmów.",
-    disabled: "Wiadomości są wyłączone w opcjach wtyczki (messagesEnabled: false).",
+    empty: "Brak nieprzeczytanych rozmów",
+    emptyAll: "Brak rozmów",
+    disabledTitle: "Wiadomości wyłączone",
     favourite: "Ulubiona",
     unknownAdvert: "Ogłoszenie {{id}}",
   },
   runs: {
     title: "Historia synchronizacji",
     subtitle: "Automatycznie co godzinę, w 30. minucie, oraz uruchomienia ręczne.",
+    points: {
+      hourly: "Co godzinę o :30",
+      manual: "Plus ręczne uruchomienia",
+    },
     col: {
       when: "Kiedy",
       source: "Źródło",
@@ -483,7 +551,7 @@ const pl: typeof en = {
       api: "OLX API",
     },
     changes: "+{{created}} nowe, {{updated}} zmienione, {{removed}} usunięte",
-    empty: "Jeszcze nie było synchronizacji.",
+    empty: "Jeszcze bez synchronizacji",
   },
   pagination: {
     of: "z",
@@ -494,8 +562,11 @@ const pl: typeof en = {
   },
   widget: {
     title: "OLX",
-    empty: "Żadne ogłoszenie OLX nie jest połączone z tym produktem.",
-    hint: "Wpisz SKU wariantu w polu external_id ogłoszenia albo dodaj w opisie wiersz „Kod produktu: {{sku}}”.",
+    empty: "Brak połączonego ogłoszenia",
+    points: {
+      external: "SKU w external_id",
+      description: "„Kod produktu: {{sku}}” w opisie",
+    },
     more: "Wszystkie ogłoszenia",
     demo: "Dane przykładowe",
     alerts: "Alerty",

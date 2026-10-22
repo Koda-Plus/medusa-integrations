@@ -1,10 +1,43 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Button, Container, Copy, Heading, InlineTip, Input, Label, Switch, Table, Text, toast } from "@medusajs/ui"
+import {
+  ArchiveBox,
+  ArrowPath,
+  BarsArrowDown,
+  Beaker,
+  Bolt,
+  BuildingStorefront,
+  Clock,
+  CursorArrowRays,
+  FloppyDisk,
+  History as HistoryIcon,
+  Key,
+  ListBullet,
+  LockClosedSolid,
+  ShieldCheck,
+  TruckFast,
+  User,
+} from "@medusajs/icons"
+import { Button, Copy, InlineTip, Input, Label, Switch, Table, Text, toast } from "@medusajs/ui"
 import type { LabelSize, ParcelSize, SenderDto, StatusResponse, WriterDto, WriterKey } from "../../modules/inpost/lib/contract"
 import { errorMessage, useInpostCheck, useInpostEvents, useInpostSettings, useInpostWriter } from "./inpost-api"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, Section, ToneBadge } from "./inpost-blocks"
 import { nb } from "./inpost-guide"
-import { Chip, Fact, fmtDateTime, fmtDuration, useActorLabel, useEventText, useStatusName } from "./inpost-ui"
+import { KitFetchingBar, KitSkeletonRows } from "./inpost-kit"
+import { Fact, fmtDateTime, fmtDuration, useActorLabel, useEventText, useStatusName } from "./inpost-ui"
+
+/** One choice of a setting (a size, a label format): the chosen one is the dark button. */
+function Choices<T extends string>({ value, options, label, onChange }: { value: T; options: readonly T[]; label: (v: T) => string; onChange: (v: T) => void }) {
+  return (
+    <div role="radiogroup" className="flex flex-wrap gap-2">
+      {options.map((x) => (
+        <Button key={x} type="button" role="radio" aria-checked={value === x} size="small" variant={value === x ? "primary" : "secondary"} onClick={() => onChange(x)}>
+          {label(x)}
+        </Button>
+      ))}
+    </div>
+  )
+}
 
 /* ------------------------------------------------------------------ */
 /* The InPost account                                                  */
@@ -27,23 +60,26 @@ export function AccountSection({ status: s, lang }: { status: StatusResponse; la
   }
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex max-w-3xl flex-col gap-1">
-          <Heading level="h2">{t("account.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {demo ? t("account.demoNote") : t("account.subtitle")}
-          </Text>
-        </div>
+    <Section
+      icon={<Key />}
+      title={t("account.title")}
+      pointsLabel={demo ? t("account.demoNote") : t("account.subtitle")}
+      points={[
+        demo && { icon: <Beaker />, text: t("account.points.demo"), tone: "blue" },
+        { icon: <TruckFast />, text: t("account.points.api") },
+        { icon: <LockClosedSolid />, text: t("account.points.token"), tone: "green" },
+        { icon: <Clock />, text: t("account.points.schedule") },
+      ]}
+      actions={
         <Button size="small" variant="secondary" isLoading={check.isPending} disabled={!s.configured} onClick={() => void onCheck()}>
+          <ShieldCheck />
           {t("actions.check")}
         </Button>
-      </div>
+      }
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
         <Fact label={t("account.mode")}>
-          <Badge size="2xsmall" color={demo ? "purple" : s.sandbox ? "blue" : "green"}>
-            {demo ? t("mode.demo") : s.sandbox ? t("mode.sandbox") : t("mode.live")}
-          </Badge>
+          <ToneBadge tone={demo ? "blue" : s.sandbox ? "orange" : "green"}>{demo ? t("mode.demo") : s.sandbox ? t("mode.sandbox") : t("mode.live")}</ToneBadge>
         </Fact>
         <Fact label={t("account.sandbox")}>
           {s.sandbox ? t("account.sandboxOn") : t("account.sandboxOff")}
@@ -76,7 +112,8 @@ export function AccountSection({ status: s, lang }: { status: StatusResponse; la
         <Fact label={t("account.schedule")}>{t("account.scheduleText")}</Fact>
       </div>
       <div className="flex flex-col gap-3 px-6 py-4">
-        <Text size="small" weight="plus">
+        <Text size="small" weight="plus" className="flex items-center gap-x-1.5">
+          <Bolt className="text-ui-fg-muted" />
           {t("webhook.title")}
         </Text>
         {demo ? (
@@ -103,7 +140,7 @@ export function AccountSection({ status: s, lang }: { status: StatusResponse; la
           </Text>
         )}
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -145,23 +182,22 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
   }
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("shipping.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {s.mode === "demo" ? t("shipping.subtitleDemo") : t("shipping.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<ArchiveBox />}
+      title={t("shipping.title")}
+      pointsLabel={s.mode === "demo" ? t("shipping.subtitleDemo") : t("shipping.subtitle")}
+      points={[
+        s.mode === "demo" && { icon: <Beaker />, text: t("shipping.points.demo"), tone: "blue" },
+        { icon: <FloppyDisk />, text: t("shipping.points.wins") },
+        { icon: <ArchiveBox />, text: t("shipping.points.perShipment") },
+      ]}
+    >
       <div className="grid grid-cols-1 gap-6 px-6 py-4 md:grid-cols-2">
         <div className="flex flex-col gap-y-2">
           <Text size="small" weight="plus">
             {t("shipping.size")}
           </Text>
-          <div className="flex flex-wrap gap-2">
-            {SIZES.map((x) => (
-              <Chip key={x} active={size === x} label={t(`size.long.${x}`)} onClick={() => setSize(x)} />
-            ))}
-          </div>
+          <Choices value={size} options={SIZES} label={(x) => t(`size.long.${x}`)} onChange={setSize} />
           <Text size="xsmall" className="text-ui-fg-muted">
             {t("shipping.sizeHint")}
           </Text>
@@ -170,11 +206,7 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
           <Text size="small" weight="plus">
             {t("shipping.label")}
           </Text>
-          <div className="flex flex-wrap gap-2">
-            {LABELS.map((x) => (
-              <Chip key={x} active={label === x} label={t(`shipping.labels.${x}`)} onClick={() => setLabel(x)} />
-            ))}
-          </div>
+          <Choices value={label} options={LABELS} label={(x) => t(`shipping.labels.${x}`)} onChange={setLabel} />
           <Text size="xsmall" className="text-ui-fg-muted">
             {t("shipping.labelHint")}
           </Text>
@@ -182,15 +214,12 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
       </div>
       <div className="flex flex-col gap-y-3 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Text size="small" weight="plus">
+          <Text size="small" weight="plus" className="flex items-center gap-x-1.5">
+            <BuildingStorefront className="text-ui-fg-muted" />
             {t("shipping.sender")}
           </Text>
-          <Badge size="2xsmall" color={s.settings.senderSent ? "green" : "grey"}>
-            {s.settings.senderSent ? t("shipping.senderSent") : t("shipping.senderOrganization")}
-          </Badge>
-          <Badge size="2xsmall" color="grey">
-            {t(`shipping.source.${s.settings.source.sender}`)}
-          </Badge>
+          <ToneBadge tone={s.settings.senderSent ? "green" : "grey"}>{s.settings.senderSent ? t("shipping.senderSent") : t("shipping.senderOrganization")}</ToneBadge>
+          <ToneBadge>{t(`shipping.source.${s.settings.source.sender}`)}</ToneBadge>
         </div>
         <Text size="xsmall" className="max-w-3xl text-ui-fg-muted">
           {t("shipping.senderHint")}
@@ -211,13 +240,15 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-3">
         <Button size="small" variant="secondary" disabled={s.settings.source.sender !== "admin"} isLoading={save.isPending} onClick={() => void onClearSender()}>
+          <ArrowPath />
           {t("shipping.clearSender")}
         </Button>
         <Button size="small" variant="primary" isLoading={save.isPending} onClick={() => void onSave()}>
+          <FloppyDisk />
           {t("actions.save")}
         </Button>
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -237,9 +268,7 @@ function WriterRow({ writer, lang, busy, onFlip }: { writer: WriterDto; lang: st
           <Text size="small" weight="plus" className="text-ui-fg-base">
             {t(`writers.names.${writer.key}`)}
           </Text>
-          <Badge size="2xsmall" color={writer.armed ? "orange" : writer.allowed ? "grey" : "red"}>
-            {writer.armed ? t("writers.armed") : writer.allowed ? t("writers.disarmed") : t("writers.blocked")}
-          </Badge>
+          <ToneBadge tone={writer.armed ? "orange" : writer.allowed ? "grey" : "red"}>{writer.armed ? t("writers.armed") : writer.allowed ? t("writers.disarmed") : t("writers.blocked")}</ToneBadge>
         </span>
         <Text size="small" className="text-ui-fg-subtle">
           {t(`writers.descriptions.${writer.key}`)}
@@ -269,32 +298,31 @@ export function WritersSection({ status: s, lang }: { status: StatusResponse; la
     }
   }
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("writers.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("writers.subtitle")}
-        </Text>
-      </div>
-      {s.mode === "demo" ? (
-        <div className="px-6 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("writers.demo")}
-          </Text>
-        </div>
-      ) : null}
+    <Section
+      icon={<ShieldCheck />}
+      title={t("writers.title")}
+      pointsLabel={s.mode === "demo" ? `${t("writers.subtitle")} ${t("writers.demo")}` : t("writers.subtitle")}
+      points={[
+        s.mode === "demo" && { icon: <Beaker />, text: t("writers.points.demo"), tone: "blue" },
+        { icon: <LockClosedSolid />, text: t("writers.points.off"), tone: "green" },
+        { icon: <User />, text: t("writers.points.who") },
+      ]}
+    >
       {WRITER_KEYS.map((key) => (
         <WriterRow key={key} writer={s.writers[key]} lang={lang} busy={toggle.isPending && toggle.variables?.writer === key} onFlip={(on) => void flip(key, on)} />
       ))}
       <div className="flex flex-col gap-y-1 px-6 py-4">
-        <Text size="small" weight="plus">
-          {t("writers.autoTitle")}
-        </Text>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
+        <span className="flex flex-wrap items-center gap-2">
+          <Text size="small" weight="plus">
+            {t("writers.autoTitle")}
+          </Text>
+          <ToneBadge tone={s.autoCreate ? "orange" : "grey"}>{s.autoCreate ? t("writers.autoOnBadge") : t("writers.autoOffBadge")}</ToneBadge>
+        </span>
+        <Text size="xsmall" className="text-ui-fg-muted">
           {s.autoCreate ? t("writers.autoOn") : t("writers.autoOff")}
         </Text>
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -303,6 +331,7 @@ export function WritersSection({ status: s, lang }: { status: StatusResponse; la
 /* ------------------------------------------------------------------ */
 
 const KINDS = ["all", "run", "webhook", "action", "status"] as const
+const KIND_ICON: Record<(typeof KINDS)[number], ReactNode> = { all: <ListBullet />, run: <ArrowPath />, webhook: <Bolt />, action: <CursorArrowRays />, status: <TruckFast /> }
 
 export function HistorySection({ lang }: { lang: string }) {
   const { t } = useTranslation("inpost")
@@ -317,18 +346,24 @@ export function HistorySection({ lang }: { lang: string }) {
   const count = q.data?.count ?? 0
   const pageCount = Math.max(1, Math.ceil(count / 20))
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("history.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("history.subtitle")}
-        </Text>
-      </div>
-      <div className="flex flex-wrap gap-2 px-6 py-3">
-        {KINDS.map((k) => (
-          <Chip key={k} active={kind === k} label={t(`history.kinds.${k}`)} onClick={() => setKind(k)} />
+    <Section
+      icon={<HistoryIcon />}
+      title={t("history.title")}
+      pointsLabel={t("history.subtitle")}
+      points={[
+        { icon: <BarsArrowDown />, text: t("history.points.newest") },
+        { icon: <Clock />, text: t("history.points.kept") },
+      ]}
+    >
+      <FilterBar>
+        {KINDS.map((k, i) => (
+          <span key={k} className="contents">
+            {i === 1 ? <FilterDivider /> : null}
+            <FilterButton icon={KIND_ICON[k]} label={t(`history.kinds.${k}`)} active={kind === k} onClick={() => setKind(kind === k ? "all" : k)} />
+          </span>
         ))}
-      </div>
+      </FilterBar>
+      <KitFetchingBar active={q.isFetching && !q.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -340,15 +375,9 @@ export function HistorySection({ lang }: { lang: string }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={4} className="px-6 py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {q.isLoading ? "" : t("history.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
-            ) : (
+            {q.isLoading ? <KitSkeletonRows cols={4} rows={5} /> : null}
+            {!q.isLoading && rows.length === 0 ? <EmptyTableRow cols={4} icon={<HistoryIcon />} title={t("history.empty")} /> : null}
+            {rows.length === 0 ? null : (
               rows.map((e) => {
                 const counts = e.data && typeof e.data === "object" ? (e.data as Record<string, unknown>) : {}
                 const what =
@@ -391,6 +420,6 @@ export function HistorySection({ lang }: { lang: string }) {
         nextPage={() => setPage((x) => x + 1)}
         translations={{ of: t("pagination.of"), results: t("pagination.results"), pages: t("pagination.pages"), prev: t("pagination.prev"), next: t("pagination.next") }}
       />
-    </Container>
+    </Section>
   )
 }

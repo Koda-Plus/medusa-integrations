@@ -1,10 +1,28 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ChatBubbleLeftRight, XMarkMini } from "@medusajs/icons"
-import { Badge, Container, Heading, InlineTip, Input, Table, Text, clx, toast } from "@medusajs/ui"
+import {
+  ArrowPath,
+  ArrowUturnLeft,
+  BarsArrowDown,
+  BellAlert,
+  ChatBubble,
+  ChatBubbleLeftRight,
+  CheckCircle,
+  Clock,
+  CurrencyDollar,
+  CursorArrowRays,
+  DocumentSeries,
+  ListBullet,
+  ShoppingCart,
+  Tag,
+  User,
+  XCircle,
+  XMarkMini,
+} from "@medusajs/icons"
+import { Container, InlineTip, Table, Text, clx, toast } from "@medusajs/ui"
 import type { CurrencyAmountDto, StatusResponse, ThreadDto } from "../../../modules/negotiations/lib/contract"
 import {
   errorCode,
@@ -17,19 +35,18 @@ import {
   useResetDemo,
   useRunDraftOrders,
 } from "../../lib/negotiations-api"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue } from "../../lib/negotiations-blocks"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/negotiations-guide"
 import { GuideView, usePromptSpec } from "../../lib/negotiations-guide-view"
 import { NegotiationsIcon } from "../../lib/negotiations-icon"
+import { KitFetchingBar, KitSkeletonRows } from "../../lib/negotiations-kit"
 import { DemoDetails, GeneralSection, RunsSection, WritersSection } from "../../lib/negotiations-settings"
-import { ThreadDrawer } from "../../lib/negotiations-thread"
+import { ThreadPage } from "../../lib/negotiations-thread"
 import {
   CustomerCell,
   DemoBadge,
-  EmptyRow,
-  FilterPills,
   NegotiationStatusBadge,
   PriceCell,
-  StatTile,
   SubjectCell,
   WaitingDot,
   customerLine,
@@ -40,22 +57,21 @@ import {
   fmtRating,
   fmtRelative,
   referencesFor,
-  useDebounced,
 } from "../../lib/negotiations-ui"
 
 /**
  * Negotiations by Koda Plus. Three views, switched in the header and kept in the URL:
  *
  * - Panel: the business side. Counters (what waits for the team, what is on
- *   the table, what was agreed), the queue with filters and search, and the
- *   thread drawer with the conversation and every move.
+ *   the table, what was agreed) and the queue with filters and search.
  * - Setup guide (`?view=guide`): the storefront calls, events, expiry, the
  *   writer, the go-live checklist.
  * - Settings (`?view=settings&tab=`): the options in use and the expiry, the
  *   draft order writer with its plan, the history of runs.
  *
- * `?thread=<id>` opens a thread (the widgets link here), `?customer=<id>`
- * narrows the queue to one customer.
+ * `?thread=<id>` opens one thread as a page of its own (the widgets link
+ * here), `?customer=<id>` narrows the queue to one customer, `?status=` picks
+ * the filter and `?q=` the search.
  */
 const PAGE_SIZE = 20
 
@@ -78,7 +94,7 @@ const NegotiationsPage = () => {
   const [params, setParams] = useSearchParams()
   const openId = params.get("thread")
   const customerId = params.get("customer")
-  const [filter, setFilter] = useState<QueueFilter>(() => (isFilter(params.get("status")) ? (params.get("status") as QueueFilter) : "all"))
+  const filter: QueueFilter = isFilter(params.get("status")) ? (params.get("status") as QueueFilter) : "all"
   const [preview, setPreview] = useState<ThreadDto | null>(null)
 
   const setParam = (key: string, value: string | null) => {
@@ -87,15 +103,26 @@ const NegotiationsPage = () => {
     else p.delete(key)
     setParams(p, { replace: true })
   }
-  const openThread = (thread: ThreadDto | null, id?: string) => {
+  const setFilter = (f: QueueFilter) => setParam("status", f === "all" ? null : f)
+  const openThread = (thread: ThreadDto) => {
     setPreview(thread)
-    setParam("thread", thread?.id ?? id ?? null)
+    const p = new URLSearchParams(params)
+    p.set("thread", thread.id)
+    setParams(p)
+  }
+
+  /* One thread: its own page with the way back to the queue as it was. */
+  if (openId) {
+    const back = new URLSearchParams(params)
+    back.delete("thread")
+    const query = back.toString()
+    return <ThreadPage id={openId} preview={preview?.id === openId ? preview : null} status={s} backHref={`/app/negotiations${query ? `?${query}` : ""}`} />
   }
 
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} loading={status.isLoading} lang={lang} nav={nav} onOpen={(th) => openThread(th)} />
+        <Header status={s} loading={status.isLoading} lang={lang} nav={nav} onOpen={openThread} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -114,9 +141,10 @@ const NegotiationsPage = () => {
           lang={lang}
           filter={filter}
           onFilter={setFilter}
+          initialQuery={params.get("q") ?? ""}
           customerId={customerId}
           onClearCustomer={() => setParam("customer", null)}
-          onOpen={(th) => openThread(th)}
+          onOpen={openThread}
         />
       ) : null}
 
@@ -137,8 +165,6 @@ const NegotiationsPage = () => {
           {nav.tab === "runs" ? <RunsSection lang={lang} /> : null}
         </SettingsView>
       ) : null}
-
-      {openId ? <ThreadDrawer id={openId} preview={preview?.id === openId ? preview : null} status={s} onClose={() => openThread(null)} /> : null}
     </div>
   )
 }
@@ -176,6 +202,7 @@ function Header({ status, loading, lang, nav, onOpen }: { status: StatusResponse
     actions.push({
       key: "expire",
       label: t("actions.expireNow"),
+      icon: <Clock />,
       loading: expire.isPending,
       onClick: () =>
         void expire
@@ -188,6 +215,7 @@ function Header({ status, loading, lang, nav, onOpen }: { status: StatusResponse
     actions.push({
       key: "drafts",
       label: t("actions.runDrafts"),
+      icon: <DocumentSeries />,
       loading: drafts.isPending,
       onClick: () =>
         void drafts
@@ -200,6 +228,7 @@ function Header({ status, loading, lang, nav, onOpen }: { status: StatusResponse
     actions.push({
       key: "reset",
       label: t("actions.resetDemo"),
+      icon: <ArrowUturnLeft />,
       loading: reset.isPending,
       onClick: () =>
         void reset
@@ -213,7 +242,6 @@ function Header({ status, loading, lang, nav, onOpen }: { status: StatusResponse
     <IntegrationHeader
       icon={<NegotiationsIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         <>
           {!loading ? (
@@ -221,19 +249,18 @@ function Header({ status, loading, lang, nav, onOpen }: { status: StatusResponse
               {status?.mode === "demo" ? <DemoDetails status={status} lang={lang} /> : null}
             </ModeBadge>
           ) : null}
-          {count > 0 ? (
-            <Badge size="2xsmall" color="red">
-              {t("waitingBadge", { count })}
-            </Badge>
-          ) : null}
-          {status?.writers.draftOrders.armed ? (
-            <Badge size="2xsmall" color="orange">
-              {t("mode.writing")}
-            </Badge>
-          ) : null}
+          {count > 0 ? <ToneBadge tone="orange">{t("waitingBadge", { count })}</ToneBadge> : null}
+          {status?.writers.draftOrders.armed ? <ToneBadge tone="blue">{t("mode.writing")}</ToneBadge> : null}
         </>
       }
       description={t("subtitle")}
+      points={[
+        { icon: <User />, text: t("points.requests") },
+        { icon: <ShoppingCart />, text: t("points.subject") },
+        { icon: <ChatBubbleLeftRight />, text: t("points.moves") },
+        { icon: <BellAlert />, text: t("points.events") },
+        { icon: <Clock />, text: t("points.expiry") },
+      ]}
       social={
         <>
           <ReferencesBadge
@@ -293,15 +320,6 @@ function moneyTile(list: CurrencyAmountDto[], fallbackCurrency: string | null, l
   return { value: [...full].length > 16 ? fmtMoneyCompact(list[0], list[0].currencyCode, lang) || full : full, full }
 }
 
-/*
- * The counter grid: at most four columns (two rows of four on a laptop and
- * wider), fewer on a narrower page, a column never under 13rem so a value has
- * room, and never wider than the row on a phone. 2.25rem is the three gaps
- * of gap-3. Inline, so it never depends on which classes the admin build
- * generates.
- */
-const COUNTER_COLUMNS = "repeat(auto-fit, minmax(min(100%, max(13rem, calc((100% - 2.25rem) / 4))), 1fr))"
-
 function Counters({ status, lang, filter, onFilter }: { status: StatusResponse; lang: string; filter: QueueFilter; onFilter: (f: QueueFilter) => void }) {
   const { t } = useTranslation("negotiations")
   const c = status.counts
@@ -310,18 +328,25 @@ function Counters({ status, lang, filter, onFilter }: { status: StatusResponse; 
   const currency = status.options.defaultCurrency ?? status.options.storeCurrency
   const inTalks = moneyTile(status.valueInTalks, currency, lang)
   const agreed = moneyTile(status.acceptedValue30Days, currency, lang)
-  /* The pipeline and what it is worth on top, the outcomes below. */
+  const tip = (full: string, shown: string, hint: string) => [full !== shown ? full : null, hint].filter(Boolean).join("\n")
+  /* The pipeline and what it is worth on top, the outcomes below. Colour only where it means something. */
   return (
-    <div className="grid gap-3 px-6 py-4" style={{ gridTemplateColumns: COUNTER_COLUMNS }}>
-      <StatTile label={t("stats.waiting")} value={fmtNumber(c.waiting, lang)} tone={c.waiting > 0 ? "red" : "default"} {...tile("waiting")} />
-      <StatTile label={t("stats.open")} value={fmtNumber(c.open, lang)} tone="orange" {...tile("open")} />
-      <StatTile label={t("stats.counter")} value={fmtNumber(c.counter_offered, lang)} tone="blue" {...tile("counter_offered")} />
-      <StatTile label={t("stats.value")} value={inTalks.value} fullValue={inTalks.full} tone="purple" hint={more(status.valueInTalks) ?? t("stats.valueHint")} />
-      <StatTile label={t("stats.accepted")} value={fmtNumber(c.accepted, lang)} tone="green" hint={t("stats.acceptedHint", { count: c.acceptedLast30Days })} {...tile("accepted")} />
-      <StatTile label={t("stats.agreed")} value={agreed.value} fullValue={agreed.full} tone="green" hint={more(status.acceptedValue30Days) ?? t("stats.agreedHint")} />
+    <StatTiles columns={4}>
+      <StatTile label={t("stats.waiting")} value={fmtNumber(c.waiting, lang)} tone={c.waiting > 0 ? "orange" : "grey"} {...tile("waiting")} />
+      <StatTile label={t("stats.open")} value={fmtNumber(c.open, lang)} {...tile("open")} />
+      <StatTile label={t("stats.counter")} value={fmtNumber(c.counter_offered, lang)} tone={c.counter_offered > 0 ? "blue" : "grey"} {...tile("counter_offered")} />
+      <StatTile label={t("stats.value")} value={inTalks.value} hint={more(status.valueInTalks)} title={tip(inTalks.full, inTalks.value, t("stats.valueHint"))} />
+      <StatTile label={t("stats.accepted")} value={fmtNumber(c.accepted, lang)} tone={c.accepted > 0 ? "green" : "grey"} hint={t("stats.acceptedHint", { count: c.acceptedLast30Days })} {...tile("accepted")} />
+      <StatTile label={t("stats.agreed")} value={agreed.value} tone={status.acceptedValue30Days.length > 0 ? "green" : "grey"} hint={more(status.acceptedValue30Days)} title={tip(agreed.full, agreed.value, t("stats.agreedHint"))} />
       <StatTile label={t("stats.rejected")} value={fmtNumber(c.rejected, lang)} {...tile("rejected")} />
-      <StatTile label={t("stats.expired")} value={fmtNumber(c.expired, lang)} hint={c.expiringSoon > 0 ? t("stats.expiringSoon", { count: c.expiringSoon }) : undefined} {...tile("expired")} />
-    </div>
+      <StatTile
+        label={t("stats.expired")}
+        value={fmtNumber(c.expired, lang)}
+        tone={c.expiringSoon > 0 ? "orange" : "grey"}
+        hint={c.expiringSoon > 0 ? t("stats.expiringSoon", { count: c.expiringSoon }) : undefined}
+        {...tile("expired")}
+      />
+    </StatTiles>
   )
 }
 
@@ -332,11 +357,25 @@ function filterCount(status: StatusResponse, f: QueueFilter): number {
   return c[f]
 }
 
+const FILTER_ICON: Record<QueueFilter, ReactNode> = {
+  all: <ListBullet />,
+  waiting: <BellAlert />,
+  open: <ChatBubble />,
+  counter_offered: <CurrencyDollar />,
+  accepted: <CheckCircle />,
+  rejected: <XCircle />,
+  expired: <Clock />,
+}
+
+/* All | what waits | on the table | closed. */
+const FILTER_GROUPS: QueueFilter[][] = [["all"], ["waiting"], ["open", "counter_offered"], ["accepted", "rejected", "expired"]]
+
 function QueueSection({
   status,
   lang,
   filter,
   onFilter,
+  initialQuery,
   customerId,
   onClearCustomer,
   onOpen,
@@ -345,13 +384,14 @@ function QueueSection({
   lang: string
   filter: QueueFilter
   onFilter: (f: QueueFilter) => void
+  initialQuery: string
   customerId: string | null
   onClearCustomer: () => void
   onOpen: (thread: ThreadDto) => void
 }) {
   const { t } = useTranslation("negotiations")
-  const [search, setSearch] = useState("")
-  const q = useDebounced(search)
+  const [search, setSearch] = useState(initialQuery)
+  const q = useDebouncedValue(search.trim())
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q, customerId])
   const threads = useNegotiationThreads(filter, q, page * PAGE_SIZE, PAGE_SIZE, customerId)
@@ -359,34 +399,45 @@ function QueueSection({
   const count = threads.data?.count ?? 0
   const pageCount = Math.max(1, Math.ceil(count / PAGE_SIZE))
   const customerChip = useMemo(() => (customerId && rows[0]?.customerId === customerId ? customerLine(rows[0], t, lang).main : customerId), [customerId, rows, t, lang])
+  const filteredView = Boolean(q || filter !== "all" || customerId)
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("queue.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("queue.subtitle")}
-        </Text>
-      </div>
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterPills<QueueFilter> value={filter} onChange={onFilter} options={FILTERS.map((f) => ({ value: f, label: t(`filter.${f}`), count: customerId ? undefined : filterCount(status, f) }))} />
-          {customerId ? (
-            <button
-              type="button"
-              onClick={onClearCustomer}
-              className="txt-compact-small-plus inline-flex items-center gap-x-1 rounded-full border border-ui-border-interactive bg-ui-bg-highlight px-3 py-1 text-ui-fg-interactive"
-              title={t("queue.clearCustomer")}
-            >
-              {t("queue.customerFilter", { name: customerChip })}
-              <XMarkMini />
-            </button>
-          ) : null}
-        </div>
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("queue.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+    <Section
+      id="negotiations-queue"
+      icon={<ChatBubbleLeftRight />}
+      title={t("queue.title")}
+      points={[
+        { icon: <BarsArrowDown />, text: t("queue.points.newest") },
+        { icon: <BellAlert />, text: t("queue.points.waiting"), tone: status.counts.waiting > 0 ? "orange" : undefined },
+        { icon: <CursorArrowRays />, text: t("queue.points.row") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("queue.search")} />}
+    >
+      <FilterBar>
+        {FILTER_GROUPS.map((group, i) => (
+          <span key={group.join()} className="contents">
+            {i > 0 ? <FilterDivider /> : null}
+            {group.map((f) => (
+              <FilterButton
+                key={f}
+                icon={FILTER_ICON[f]}
+                label={t(`filter.${f}`)}
+                count={customerId ? undefined : filterCount(status, f)}
+                attention={f === "waiting"}
+                active={filter === f}
+                onClick={() => onFilter(filter === f ? "all" : f)}
+              />
+            ))}
+          </span>
+        ))}
+        {customerId ? (
+          <>
+            <FilterDivider />
+            <FilterButton icon={<XMarkMini />} label={t("queue.customerFilter", { name: customerChip })} active onClick={onClearCustomer} title={t("queue.clearCustomer")} />
+          </>
+        ) : null}
+      </FilterBar>
+      <KitFetchingBar active={threads.isFetching && !threads.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -402,8 +453,15 @@ function QueueSection({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={8} text={threads.isLoading ? t("queue.loading") : q || filter !== "all" || customerId ? t("queue.emptyFiltered") : t("queue.empty")} />
+            {threads.isLoading ? (
+              <KitSkeletonRows cols={8} rows={5} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow
+                cols={8}
+                icon={<ChatBubbleLeftRight />}
+                title={filteredView ? t("queue.emptyFiltered") : t("queue.empty")}
+                points={filteredView ? undefined : [{ icon: <Tag />, text: t("queue.emptyHint") }]}
+              />
             ) : (
               rows.map((n) => (
                 <Table.Row key={n.id} className={clx("cursor-pointer [&_td]:py-2.5", n.waitingFor === "team" && "bg-ui-bg-highlight")} onClick={() => onOpen(n)}>
@@ -473,7 +531,7 @@ function QueueSection({
         nextPage={() => setPage(page + 1)}
         translations={{ of: t("pagination.of"), results: t("pagination.results"), pages: t("pagination.pages"), prev: t("pagination.prev"), next: t("pagination.next") }}
       />
-    </Container>
+    </Section>
   )
 }
 

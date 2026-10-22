@@ -2,10 +2,12 @@ import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Heading, Text } from "@medusajs/ui"
+import { History as HistoryIcon, ShoppingCart } from "@medusajs/icons"
+import { Button, Heading, Text } from "@medusajs/ui"
 import { useVonHalskyOrigin } from "../lib/vonhalsky-api"
 import { VonHalskyIcon } from "../lib/vonhalsky-icon"
-import { WidgetFrame, hostable } from "../lib/vonhalsky-kit"
+import { EmptyState, ToneBadge } from "../lib/vonhalsky-blocks"
+import { KitLoading, WidgetFrame, hostable } from "../lib/vonhalsky-kit"
 import { EventList, ImportBadge, TrackingBadge } from "../lib/vonhalsky-ui"
 
 /**
@@ -23,9 +25,10 @@ const VonHalskyOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & 
   const q = useVonHalskyOrigin(data.id)
   const [history, setHistory] = useState(false)
   const info = q.data
-  if (q.isLoading || !info) return embedded ? <Quiet>{q.isError ? t("widget.failed") : t("widget.loading")}</Quiet> : null
+  if (q.isLoading) return embedded ? <KitLoading label={t("widget.loading")} /> : null
+  if (!info) return embedded ? <EmptyState compact icon={<ShoppingCart />} title={t("widget.failed")} /> : null
   const o = info.order
-  if (!o) return embedded ? <Quiet>{info.configured ? t("widget.none") : t("widget.notConfigured")}</Quiet> : null
+  if (!o) return embedded ? <EmptyState compact icon={<ShoppingCart />} title={info.configured ? t("widget.none") : t("widget.notConfigured")} /> : null
 
   return (
     <WidgetFrame
@@ -35,11 +38,7 @@ const VonHalskyOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & 
           <div className="flex items-center gap-x-2">
             <VonHalskyIcon width={18} height={18} className="shrink-0" />
             <Heading level="h2">{t("widget.title")}</Heading>
-            {o.demo ? (
-              <Badge size="2xsmall" color="purple">
-                {t("demo.badge")}
-              </Badge>
-            ) : null}
+            {o.demo ? <ToneBadge tone="blue">{t("demo.badge")}</ToneBadge> : null}
           </div>
           <a href={`/app/vonhalsky?section=orders&q=${encodeURIComponent(o.marketplace_order_id)}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
             {t("widget.more")}
@@ -53,9 +52,9 @@ const VonHalskyOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & 
           <TrackingBadge order={o} />
         </div>
         {o.demo ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("widget.demoNote")}
-          </Text>
+          <span className="w-fit">
+            <ToneBadge tone="blue">{t("widget.demoNote")}</ToneBadge>
+          </span>
         ) : null}
         <Line label={t("widget.orderId")}>{o.marketplace_order_id}</Line>
         <Line label={t("widget.delivery")}>{o.delivery_type ? t(`delivery.${o.delivery_type}`, { defaultValue: o.delivery_type }) : t("delivery.none")}</Line>
@@ -68,23 +67,14 @@ const VonHalskyOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & 
           </Text>
         ) : null}
         {o.events.length > 0 ? (
-          <button type="button" className="txt-compact-small self-start text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => setHistory(!history)}>
-            {t("orders.events")}
-          </button>
+          <Button size="small" variant="transparent" className="self-start" onClick={() => setHistory(!history)}>
+            <HistoryIcon />
+            {history ? t("orders.hideEvents") : t("orders.events")}
+          </Button>
         ) : null}
         {history ? <EventList events={o.events} lang={lang} /> : null}
       </div>
     </WidgetFrame>
-  )
-}
-
-function Quiet({ children }: { children: ReactNode }) {
-  return (
-    <div className="px-6 py-4">
-      <Text size="small" className="text-ui-fg-subtle">
-        {children}
-      </Text>
-    </div>
   )
 }
 

@@ -3,12 +3,13 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Copy, Heading, Text, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, CheckCircle, ExclamationCircle } from "@medusajs/icons"
+import { Button, Copy, Heading, Text, toast } from "@medusajs/ui"
+import { RowActions, ToneBadge } from "../lib/allegro-blocks"
 import type { AllegroImportDto } from "../../modules/allegro/lib/contract"
 import { errorMessage, useAllegroImportHandled, useAllegroOrderCard, useAllegroOutboxRetry } from "../lib/allegro-api"
 import { AllegroIcon } from "../lib/allegro-icon"
-import { WidgetFrame, hostable } from "../lib/allegro-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/allegro-kit"
 import { IMPORT_TONE, OUTBOX_TONE, fmtDateTime, fmtMoney } from "../lib/allegro-ui"
 
 /**
@@ -39,7 +40,7 @@ const AllegroOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
   const handled = useAllegroImportHandled()
   const retry = useAllegroOutboxRetry()
   const info = q.data
-  if (q.isLoading || !info) return embedded ? <Quiet>{q.isError ? t("orderWidget.failed") : t("orderWidget.loading")}</Quiet> : null
+  if (q.isLoading || !info) return embedded ? q.isError ? <Quiet>{t("orderWidget.failed")}</Quiet> : <KitLoading label={t("orderWidget.loading")} /> : null
   const imp = info.import
   if (!imp) return embedded ? <Quiet>{t("orderWidget.notAllegro")}</Quiet> : null
   const link = `/allegro?filter=${filterOf(imp)}&q=${encodeURIComponent(imp.checkoutFormId)}`
@@ -60,9 +61,7 @@ const AllegroOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
             <AllegroIcon width={18} height={18} className="shrink-0" />
             <Heading level="h2">{t("orderWidget.title")}</Heading>
             {info.mode === "demo" ? (
-              <Badge size="2xsmall" color="purple">
-                {t("widget.demo")}
-              </Badge>
+              <ToneBadge tone="purple">{t("widget.demo")}</ToneBadge>
             ) : null}
           </div>
           <Link to={link} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
@@ -74,9 +73,7 @@ const AllegroOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
       {embedded ? (
         <div className="flex items-center justify-between gap-2 px-6 py-2">
           {info.mode === "demo" ? (
-            <Badge size="2xsmall" color="purple">
-              {t("widget.demo")}
-            </Badge>
+            <ToneBadge tone="purple">{t("widget.demo")}</ToneBadge>
           ) : (
             <span />
           )}
@@ -87,9 +84,7 @@ const AllegroOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
       ) : null}
       <div className="flex flex-col gap-y-2 px-6 py-4">
         <Line label={t("orderWidget.status")}>
-          <Badge size="2xsmall" color={IMPORT_TONE[imp.status] ?? "grey"}>
-            {t(`imports.status.${imp.status}`)}
-          </Badge>
+          <ToneBadge tone={IMPORT_TONE[imp.status] ?? "grey"}>{t(`imports.status.${imp.status}`)}</ToneBadge>
         </Line>
         <Line label={t("orderWidget.form")}>
           <span className="flex min-w-0 items-center gap-x-1">
@@ -133,14 +128,15 @@ const AllegroOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
         ) : null}
         {imp.attention || imp.totalMismatch ? (
           <div className="flex flex-col gap-y-2 rounded-md bg-ui-bg-subtle px-3 py-2">
-            <Text size="xsmall" weight="plus" className="text-ui-tag-red-text">
+            <ToneBadge tone="orange" icon={<ExclamationCircle />}>
               {t("orderWidget.attention")}
-            </Text>
+            </ToneBadge>
             <Text size="xsmall" className="text-ui-fg-subtle">
               {imp.attention ?? imp.reason}
             </Text>
             <div>
               <Button size="small" variant="secondary" isLoading={handled.isPending} onClick={onHandled}>
+                <CheckCircle />
                 {t("orderWidget.handled")}
               </Button>
             </div>
@@ -172,19 +168,22 @@ const AllegroOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
                 ) : null}
               </div>
               <div className="flex shrink-0 flex-col items-end gap-y-1">
-                <Badge size="2xsmall" color={OUTBOX_TONE[o.status] ?? "grey"}>
-                  {t(`outbox.status.${o.status}`)}
-                </Badge>
-                {o.status === "failed" ? (
-                  <Button
-                    size="small"
-                    variant="transparent"
-                    isLoading={retry.isPending && retry.variables === o.id}
-                    onClick={() => retry.mutate(o.id, { onError: (err) => toast.error(errorMessage(err)) })}
-                  >
-                    {t("actions.retry")}
-                  </Button>
-                ) : o.doneAt ? (
+                <span className="flex items-center gap-x-1">
+                  <ToneBadge tone={OUTBOX_TONE[o.status] ?? "grey"}>{t(`outbox.status.${o.status}`)}</ToneBadge>
+                  <RowActions
+                    actions={[
+                      {
+                        key: "retry",
+                        label: t("actions.retry"),
+                        icon: <ArrowPath />,
+                        hidden: o.status !== "failed",
+                        loading: retry.isPending && retry.variables === o.id,
+                        onClick: () => retry.mutate(o.id, { onError: (err) => toast.error(errorMessage(err)) }),
+                      },
+                    ]}
+                  />
+                </span>
+                {o.status !== "failed" && o.doneAt ? (
                   <Text size="xsmall" className="text-ui-fg-muted">
                     {fmtDateTime(o.doneAt, lang)}
                   </Text>
@@ -202,9 +201,7 @@ const AllegroOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
           {info.issues.map((i) => (
             <div key={i.id} className="flex items-center justify-between gap-x-3">
               <span className="flex items-center gap-x-2">
-                <Badge size="2xsmall" color={i.open ? (i.needsReply ? "orange" : "blue") : "grey"}>
-                  {t(`issues.kind.${i.kind}`)}
-                </Badge>
+                <ToneBadge tone={i.open ? (i.needsReply ? "orange" : "blue") : "grey"}>{t(`issues.kind.${i.kind}`)}</ToneBadge>
                 <Text size="xsmall" className="text-ui-fg-subtle">
                   {i.status}
                 </Text>

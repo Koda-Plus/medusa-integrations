@@ -1,8 +1,26 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightOnBox, PlaySolid } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Input, StatusBadge, Switch, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import {
+  ArrowPath,
+  ArrowUpRightOnBox,
+  Check,
+  CheckCircle,
+  Clock,
+  CurrencyDollar,
+  DocumentText,
+  ExclamationCircle,
+  Hashtag,
+  ListBullet,
+  MagnifyingGlass,
+  Pause,
+  PencilSquare,
+  PlaySolid,
+  ShieldCheck,
+  Tag,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, InlineTip, Switch, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type {
   OlxPlanCountsDto,
   OlxPlanItemDto,
@@ -13,32 +31,53 @@ import type {
   OlxWriterRunDto,
 } from "../../modules/olx/lib/contract"
 import { errorMessage, useOlxArm, useOlxPlan, useOlxPublications, useOlxRelease, useOlxWriterRun } from "./olx-api"
-import { Chip, PlanStateBadge, ProblemList, PublicationStateBadge, WRITER_OPTION, fmtDateTime, fmtPrice } from "./olx-ui"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, ToneBadge, useDebouncedValue, type Tone } from "./olx-blocks"
+import { KeyPoints, type KeyPointItem } from "./olx-guide"
+import { KitFetchingBar, KitSkeletonRows } from "./olx-kit"
+import { PAGE_SIZE, pagination } from "./olx-panel"
+import { PlanStateBadge, ProblemList, PublicationStateBadge, WRITER_OPTION, fmtDateTime, fmtPrice } from "./olx-ui"
 
 /*
  * The writers: one card per writer with both switches, its plan counts and
  * the last runs, and the plans below (what would change, from what to what).
  */
 
-const PAGE_SIZE = 20
 const COUNT_KEYS: Array<keyof OlxPlanCountsDto> = ["pending", "held", "applying", "unknown", "failed", "quarantined", "done"]
-const COUNT_COLOR: Record<keyof OlxPlanCountsDto, "blue" | "orange" | "purple" | "red" | "green" | "grey"> = {
+const COUNT_TONE: Record<keyof OlxPlanCountsDto, Tone> = {
   pending: "blue",
   held: "orange",
   applying: "blue",
-  unknown: "purple",
+  unknown: "orange",
   failed: "orange",
   quarantined: "red",
   done: "green",
 }
 
-const pagination = (t: (k: string) => string) => ({
-  of: t("pagination.of"),
-  results: t("pagination.results"),
-  pages: t("pagination.pages"),
-  prev: t("pagination.prev"),
-  next: t("pagination.next"),
-})
+const RUN_TONE: Record<OlxWriterRunDto["status"], Tone> = {
+  ok: "green",
+  skipped: "grey",
+  held: "orange",
+  partial: "orange",
+  error: "red",
+}
+
+/** What each writer does, as short phrases; the full sentence stays as their tooltip. */
+const WRITER_POINTS: Record<OlxWriterKey, Array<{ key: string; icon: ReactNode }>> = {
+  lifecycle: [
+    { key: "soldOut", icon: <XCircle /> },
+    { key: "overLimit", icon: <Clock /> },
+    { key: "back", icon: <ArrowPath /> },
+  ],
+  price: [
+    { key: "base", icon: <CurrencyDollar /> },
+    { key: "approval", icon: <ShieldCheck /> },
+  ],
+  publish: [
+    { key: "perVariant", icon: <Tag /> },
+    { key: "sku", icon: <Hashtag /> },
+    { key: "never", icon: <MagnifyingGlass /> },
+  ],
+}
 
 /** "stopped:throttled" and friends, as a sentence. */
 function runMessage(t: (k: string, o?: Record<string, unknown>) => string, run: OlxWriterRunDto, lang: string): string | null {
@@ -62,12 +101,11 @@ function runMessage(t: (k: string, o?: Record<string, unknown>) => string, run: 
 function RunLine({ run, lang, dry }: { run: OlxWriterRunDto; lang: string; dry: boolean }) {
   const { t } = useTranslation("olx")
   const when = fmtDateTime(run.startedAt, lang)
-  const color = run.status === "ok" ? "green" : run.status === "skipped" ? "grey" : run.status === "held" ? "orange" : run.status === "partial" ? "orange" : "red"
   const message = runMessage(t, run, lang)
   return (
     <div className="flex flex-col gap-y-1">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge color={color}>{t(`writers.runStatus.${run.status}`)}</StatusBadge>
+        <ToneBadge tone={RUN_TONE[run.status] ?? "grey"}>{t(`writers.runStatus.${run.status}`)}</ToneBadge>
         <Text size="xsmall" className="text-ui-fg-subtle">
           {dry ? t("writers.lastDryRun", { when }) : t("writers.lastRun", { when })}
           {": "}
@@ -127,6 +165,7 @@ function WriterCard({ writer: w, status, lang }: { writer: OlxWriterDto; status:
   const demo = status.mode === "demo"
   const counts = w.writer === "publish" ? "writers.publishCounts" : "writers.counts"
   const guardHeld = w.writer === "lifecycle" && status.plan.guard.held
+  const vars = { currency: status.settings.currency, percent: status.settings.maxPriceChangePercent }
 
   const onToggle = async (next: boolean) => {
     if (next) {
@@ -179,18 +218,22 @@ function WriterCard({ writer: w, status, lang }: { writer: OlxWriterDto; status:
   }
 
   const stateBadge = w.active ? (
-    <StatusBadge color="green">{t("writers.active")}</StatusBadge>
+    <ToneBadge tone="green">{t("writers.active")}</ToneBadge>
   ) : w.armed ? (
-    <StatusBadge color="orange">{t("writers.armed")}</StatusBadge>
+    <ToneBadge tone="orange">{t("writers.armed")}</ToneBadge>
   ) : (
-    <StatusBadge color="grey">{t("writers.off")}</StatusBadge>
+    <ToneBadge tone="grey">{t("writers.off")}</ToneBadge>
   )
   const blockers = w.blockers.filter((b) => b !== "not_armed")
+  const points: KeyPointItem[] = [
+    ...WRITER_POINTS[w.writer].map((p) => ({ icon: p.icon, text: t(`writers.points.${w.writer}.${p.key}`, vars) })),
+    { icon: <ListBullet />, text: t("writers.cap", { cap: w.cap }) },
+  ]
 
   return (
-    <div className={clx("flex flex-col gap-y-3 rounded-lg border px-4 py-4", w.active ? "border-ui-border-interactive" : "border-ui-border-base", "bg-ui-bg-component")}>
+    <div className={clx("flex flex-col gap-y-3 rounded-lg border bg-ui-bg-component px-4 py-4", w.active ? "border-ui-border-interactive" : "border-ui-border-base")}>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-y-1">
+        <div className="flex min-w-0 flex-col gap-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Text size="base" weight="plus" className="text-ui-fg-base">
               {name}
@@ -208,9 +251,7 @@ function WriterCard({ writer: w, status, lang }: { writer: OlxWriterDto; status:
           aria-label={w.armed ? t("writers.disarm") : t("writers.arm")}
         />
       </div>
-      <Text size="small" className="text-ui-fg-subtle">
-        {t(`writers.desc.${w.writer}`, { currency: status.settings.currency, percent: status.settings.maxPriceChangePercent })}
-      </Text>
+      <KeyPoints items={points} label={t(`writers.desc.${w.writer}`, vars)} className="flex-wrap" />
       {blockers.length > 0 ? (
         <div className="flex flex-col gap-y-1">
           {blockers.map((b) => (
@@ -222,18 +263,17 @@ function WriterCard({ writer: w, status, lang }: { writer: OlxWriterDto; status:
       ) : null}
       <Text size="xsmall" className="text-ui-fg-muted">
         {w.changedAt ? t("writers.changedBy", { who: w.changedBy ?? "?", when: fmtDateTime(w.changedAt, lang) }) : t("writers.neverSwitched")}
-        {" "}
-        {t("writers.cap", { cap: w.cap })}
       </Text>
       <div className="flex flex-wrap gap-1.5">
         {COUNT_KEYS.filter((k) => w.counts[k] > 0).map((k) => (
-          <Badge key={k} size="2xsmall" color={COUNT_COLOR[k]}>
+          <ToneBadge key={k} tone={COUNT_TONE[k]}>
             <span className="tabular-nums">{w.counts[k]}</span>&nbsp;{t(`${counts}.${k}`)}
-          </Badge>
+          </ToneBadge>
         ))}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button size="small" variant="secondary" isLoading={run.isPending && run.variables?.dryRun === true} onClick={() => void onDryRun()}>
+          <DocumentText />
           {t("writers.dryRun")}
         </Button>
         <Button size="small" variant="primary" disabled={!w.active || w.running} isLoading={w.running || (run.isPending && run.variables?.dryRun === false)} onClick={() => void onRun()}>
@@ -242,7 +282,13 @@ function WriterCard({ writer: w, status, lang }: { writer: OlxWriterDto; status:
         </Button>
       </div>
       <div className="flex flex-col gap-y-2 border-t border-ui-border-base pt-3">
-        {w.lastRun ? <RunLine run={w.lastRun} lang={lang} dry={false} /> : <Text size="xsmall" className="text-ui-fg-muted">{t("writers.noRun")}</Text>}
+        {w.lastRun ? (
+          <RunLine run={w.lastRun} lang={lang} dry={false} />
+        ) : (
+          <Text size="xsmall" className="text-ui-fg-muted">
+            {t("writers.noRun")}
+          </Text>
+        )}
         {w.lastDryRun ? (
           <>
             <RunLine run={w.lastDryRun} lang={lang} dry />
@@ -258,13 +304,18 @@ export function WritersSection({ status, lang }: { status: OlxStatusResponse; la
   const { t } = useTranslation("olx")
   const g = status.plan.guard
   return (
-    <Container className="divide-y p-0" id="olx-writers">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("writers.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("writers.subtitle")}
-        </Text>
-      </div>
+    <Section
+      id="olx-writers"
+      icon={<PencilSquare />}
+      title={t("writers.title")}
+      pointsLabel={t("writers.subtitle")}
+      points={[
+        { icon: <Pause />, text: t("writers.sectionPoints.off") },
+        { icon: <ShieldCheck />, text: t("writers.sectionPoints.two") },
+        { icon: <DocumentText />, text: t("writers.sectionPoints.dry") },
+        { icon: <MagnifyingGlass />, text: t("writers.sectionPoints.lookup") },
+      ]}
+    >
       {g.held || status.plan.lifecycleSkipped ? (
         <div className="flex flex-col gap-2 px-6 py-4">
           {g.held ? (
@@ -284,7 +335,7 @@ export function WritersSection({ status, lang }: { status: OlxStatusResponse; la
           <WriterCard key={w.writer} writer={w} status={status} lang={lang} />
         ))}
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -336,6 +387,19 @@ function NoteText({ item, lang }: { item: OlxPlanItemDto; lang: string }) {
   )
 }
 
+const VIEW_ICON: Record<string, ReactNode> = {
+  open: <Clock />,
+  held: <Pause />,
+  quarantined: <ExclamationCircle />,
+  done: <CheckCircle />,
+  all: <ListBullet />,
+  plan: <DocumentText />,
+  ready: <Check />,
+  blocked: <XCircle />,
+  problems: <ExclamationCircle />,
+  published: <CheckCircle />,
+}
+
 function PlanTable({ writer, lang }: { writer: "lifecycle" | "price"; lang: string }) {
   const { t } = useTranslation("olx")
   const [view, setView] = useState("open")
@@ -359,11 +423,12 @@ function PlanTable({ writer, lang }: { writer: "lifecycle" | "price"; lang: stri
 
   return (
     <>
-      <div className="flex flex-wrap gap-2 px-6 py-4">
+      <FilterBar>
         {views.map((v) => (
-          <Chip key={v} active={view === v} label={t(`plan.view.${v}`)} onClick={() => setView(v)} />
+          <FilterButton key={v} icon={VIEW_ICON[v]} label={t(`plan.view.${v}`)} active={view === v} onClick={() => setView(view === v && v !== "open" ? "open" : v)} />
         ))}
-      </div>
+      </FilterBar>
+      <KitFetchingBar active={plan.isFetching && !plan.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -373,17 +438,14 @@ function PlanTable({ writer, lang }: { writer: "lifecycle" | "price"; lang: stri
               <Table.HeaderCell>{t("plan.col.change")}</Table.HeaderCell>
               <Table.HeaderCell>{t("plan.col.state")}</Table.HeaderCell>
               <Table.HeaderCell>{t("plan.col.note")}</Table.HeaderCell>
+              <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={5} className="py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {plan.isLoading ? "" : t("plan.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {plan.isLoading ? (
+              <KitSkeletonRows cols={6} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={6} icon={<DocumentText />} title={t("plan.empty")} />
             ) : (
               rows.map((item) => (
                 <Table.Row key={item.id} className="[&_td]:py-2.5">
@@ -426,14 +488,21 @@ function PlanTable({ writer, lang }: { writer: "lifecycle" | "price"; lang: stri
                     </div>
                   </Table.Cell>
                   <Table.Cell className="max-w-[320px]">
-                    <div className="flex flex-col items-start gap-y-2">
-                      <NoteText item={item} lang={lang} />
-                      {item.state === "quarantined" || item.state === "held" ? (
-                        <Button size="small" variant="secondary" isLoading={release.isPending && release.variables?.id === item.id} onClick={() => void onRelease(item)}>
-                          {item.state === "held" ? t("plan.approve") : t("plan.release")}
-                        </Button>
-                      ) : null}
-                    </div>
+                    <NoteText item={item} lang={lang} />
+                  </Table.Cell>
+                  <Table.Cell className="text-right">
+                    <RowActions
+                      actions={[
+                        {
+                          key: "release",
+                          label: item.state === "held" ? t("plan.approve") : t("plan.release"),
+                          icon: item.state === "held" ? <Check /> : <ArrowPath />,
+                          loading: release.isPending && release.variables?.id === item.id,
+                          hidden: item.state !== "quarantined" && item.state !== "held",
+                          onClick: () => void onRelease(item),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -502,21 +571,7 @@ function PayloadToggle({ payload }: { payload: Record<string, unknown> }) {
 function PublicationDetails({ p }: { p: OlxPublicationDto }) {
   const { t } = useTranslation("olx")
   if (p.state === "published") {
-    return (
-      <div className="flex flex-col gap-y-1">
-        {p.olxUrl ? (
-          <a href={p.olxUrl} target="_blank" rel="noreferrer" className="txt-compact-small inline-flex w-fit items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-            {t("publish.openAdvert")} #{p.olxId}
-            <ArrowUpRightOnBox />
-          </a>
-        ) : null}
-        {p.adopted ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("publish.adopted")}
-          </Text>
-        ) : null}
-      </div>
-    )
+    return p.adopted ? <ToneBadge tone="blue">{t("publish.adopted")}</ToneBadge> : null
   }
   return (
     <div className="flex flex-col items-start gap-y-2">
@@ -536,12 +591,8 @@ function PublicationsTable({ status }: { status: OlxStatusResponse }) {
   const { t } = useTranslation("olx")
   const [view, setView] = useState("plan")
   const [search, setSearch] = useState("")
-  const [q, setQ] = useState("")
+  const q = useDebouncedValue(search.trim())
   const [page, setPage] = useState(0)
-  useEffect(() => {
-    const id = window.setTimeout(() => setQ(search.trim()), 300)
-    return () => window.clearTimeout(id)
-  }, [search])
   useEffect(() => setPage(0), [view, q])
   const pubs = useOlxPublications(view, q, page * PAGE_SIZE, PAGE_SIZE)
   const release = useOlxRelease()
@@ -561,26 +612,33 @@ function PublicationsTable({ status }: { status: OlxStatusResponse }) {
 
   return (
     <>
-      <div className="flex flex-col gap-2 px-6 py-4">
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("publish.summary", { candidates: p.candidates, ready: p.ready, blocked: p.blocked })}
-        </Text>
-        {p.reason ? (
+      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
+        <KeyPoints
+          label={t("publish.summary", { candidates: p.candidates, ready: p.ready, blocked: p.blocked })}
+          items={[
+            { icon: <ListBullet />, text: t("publish.points.candidates", { count: p.candidates }) },
+            { icon: <Check />, text: t("publish.points.ready", { count: p.ready }), tone: p.ready > 0 ? "green" : "grey" },
+            { icon: <XCircle />, text: t("publish.points.blocked", { count: p.blocked }), tone: p.blocked > 0 ? "orange" : "grey" },
+          ]}
+        />
+        <SearchInput value={search} onChange={setSearch} placeholder={t("publish.search")} />
+      </div>
+      {p.reason ? (
+        <div className="px-6 py-4">
           <InlineTip variant="info" label={t("writers.name.publish")}>
             {t(`publish.reason.${p.reason}`)}
           </InlineTip>
-        ) : null}
-      </div>
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {["plan", "ready", "blocked", "problems", "published", "all"].map((v) => (
-            <Chip key={v} active={view === v} label={t(`publish.view.${v}`)} onClick={() => setView(v)} />
-          ))}
         </div>
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("adverts.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+      ) : null}
+      <FilterBar>
+        {["plan", "ready", "blocked", "problems", "published", "all"].map((v, i) => (
+          <span key={v} className="contents">
+            {i === 4 ? <FilterDivider /> : null}
+            <FilterButton icon={VIEW_ICON[v]} label={t(`publish.view.${v}`)} active={view === v} onClick={() => setView(view === v && v !== "plan" ? "plan" : v)} />
+          </span>
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={pubs.isFetching && !pubs.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -589,17 +647,14 @@ function PublicationsTable({ status }: { status: OlxStatusResponse }) {
               <Table.HeaderCell>{t("publish.col.category")}</Table.HeaderCell>
               <Table.HeaderCell>{t("publish.col.state")}</Table.HeaderCell>
               <Table.HeaderCell>{t("publish.col.details")}</Table.HeaderCell>
+              <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <Table.Row>
-                <td colSpan={4} className="py-6 text-center">
-                  <Text size="small" className="text-ui-fg-muted">
-                    {pubs.isLoading ? "" : t("publish.empty")}
-                  </Text>
-                </td>
-              </Table.Row>
+            {pubs.isLoading ? (
+              <KitSkeletonRows cols={5} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={5} icon={<Tag />} title={t("publish.empty")} />
             ) : (
               rows.map((row) => (
                 <Table.Row key={row.id} className="[&_td]:py-2.5 [&_td]:align-top">
@@ -618,15 +673,32 @@ function PublicationsTable({ status }: { status: OlxStatusResponse }) {
                           {t("plan.attempts", { count: row.attempts })}
                         </Text>
                       ) : null}
-                      {row.state === "quarantined" || row.state === "failed" ? (
-                        <Button size="small" variant="secondary" isLoading={release.isPending && release.variables?.id === row.id} onClick={() => void onRelease(row.id)}>
-                          {t("plan.release")}
-                        </Button>
-                      ) : null}
                     </div>
                   </Table.Cell>
                   <Table.Cell className="max-w-[560px]">
                     <PublicationDetails p={row} />
+                  </Table.Cell>
+                  <Table.Cell className="text-right">
+                    <RowActions
+                      actions={[
+                        {
+                          key: "release",
+                          label: t("plan.release"),
+                          icon: <ArrowPath />,
+                          loading: release.isPending && release.variables?.id === row.id,
+                          hidden: row.state !== "quarantined" && row.state !== "failed",
+                          onClick: () => void onRelease(row.id),
+                        },
+                        {
+                          key: "olx",
+                          label: `${t("publish.openAdvert")} #${row.olxId ?? ""}`,
+                          icon: <ArrowUpRightOnBox />,
+                          href: row.olxUrl ?? undefined,
+                          external: true,
+                          hidden: !(row.state === "published" && row.olxUrl),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -649,6 +721,12 @@ function PublicationsTable({ status }: { status: OlxStatusResponse }) {
   )
 }
 
+const WRITER_ICON: Record<OlxWriterKey, ReactNode> = {
+  lifecycle: <ArrowPath />,
+  price: <CurrencyDollar />,
+  publish: <Tag />,
+}
+
 export function PlansSection({ status, lang }: { status: OlxStatusResponse; lang: string }) {
   const { t } = useTranslation("olx")
   const [tab, setTab] = useState<OlxWriterKey>("lifecycle")
@@ -658,19 +736,23 @@ export function PlansSection({ status, lang }: { status: OlxStatusResponse; lang
     return c.pending + c.held + c.failed + c.quarantined + c.unknown + c.applying
   }
   return (
-    <Container className="divide-y p-0" id="olx-plans">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("plan.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("plan.subtitle")}
-        </Text>
-      </div>
-      <div className="flex flex-wrap gap-2 px-6 py-4">
+    <Section
+      id="olx-plans"
+      icon={<DocumentText />}
+      title={t("plan.title")}
+      pointsLabel={t("plan.subtitle")}
+      points={[
+        { icon: <ArrowPath />, text: t("plan.points.what") },
+        { icon: <Clock />, text: t("plan.points.every") },
+        { icon: <Pause />, text: t("plan.points.off") },
+      ]}
+    >
+      <FilterBar>
         {(["lifecycle", "price", "publish"] as const).map((w) => (
-          <Chip key={w} active={tab === w} label={t(`writers.name.${w}`)} count={total(w)} onClick={() => setTab(w)} />
+          <FilterButton key={w} icon={WRITER_ICON[w]} label={t(`writers.name.${w}`)} count={total(w)} attention active={tab === w} onClick={() => setTab(w)} />
         ))}
-      </div>
+      </FilterBar>
       {tab === "publish" ? <PublicationsTable status={status} /> : <PlanTable writer={tab} lang={lang} />}
-    </Container>
+    </Section>
   )
 }

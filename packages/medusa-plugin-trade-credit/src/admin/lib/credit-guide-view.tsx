@@ -1,8 +1,7 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import { CheckCircleSolid, ChevronDownMini } from "@medusajs/icons"
-import { Badge, Container, Heading, Text, clx } from "@medusajs/ui"
-import type { SetupPromptSpec } from "./credit-guide"
+import type { StatusResponse } from "../../modules/credit/lib/contract"
+import { GuideChecklist, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec } from "./credit-guide"
 import { KIT_META } from "./credit-kit-meta"
 import { typeset } from "./credit-typeset"
 
@@ -32,8 +31,15 @@ const COPY = {
     introText: "Zainstalujesz wtyczkę, zarejestrujesz ją w medusa-config.ts, uruchomisz migracje i otworzysz panel. Limity kredytowe podepniesz pod kasę, żeby klient widział swój kredyt przy składaniu zamówienia, a ekipa widziała przeterminowania w panelu.",
     time: "ok. 15 minut",
     needs: "Medusa 2.12 lub nowsza; limity nadaje handlowiec w panelu",
+    needsList: ["Medusa 2.12 lub nowsza", "Handlowiec nadaje limity"],
+    needsLabel: "Potrzebne",
+    timeLabel: "Czas",
+    state: { done: "gotowe", todo: "do zrobienia", optional: "opcjonalnie", later: "później" },
+    checkLabel: "Sprawdź",
+    copy: "Kopiuj",
+    copied: "Skopiowano",
     stepsTitle: "Kroki",
-    stepsSub: "Wszystko, co trzeba zrobić, żeby panel działał w Twoim sklepie.",
+    stepsSub: "Od instalacji do kasy",
     s1Title: "Zainstaluj wtyczkę",
     s1Text: "Menedżerem pakietów swojego projektu:",
     s2Title: "Zarejestruj w medusa-config.ts",
@@ -45,7 +51,7 @@ const COPY = {
     s5Title: "Podepnij sklep",
     s5Text: "Trasa /store/credit/me zwraca limit, wykorzystanie i termin klienta, a otwarte zamówienia kredytowe widnieją na jego koncie. W sklepie demo Koda Plus kasa pokazuje je przy płatności.",
     checkTitle: "Lista przed startem",
-    checkSub: "Wszystko odhaczone znaczy, że sprzedaż na kredyt działa bez ryzyka dla sklepu.",
+    checkSub: "Przed sprzedażą na kredyt",
     checklist: [
       "Każdy kontrahent z kredytem ma limit i termin płatności w panelu",
       "Wykorzystanie liczy się z nieopłaconych zamówień automatycznie",
@@ -64,8 +70,15 @@ const COPY = {
     introText: "Install the plugin, register it in medusa-config.ts, run the migrations and open the panel. The credit limits plug into the checkout, so the customer sees their credit when placing an order and the team sees overdue orders in the admin.",
     time: "about 15 minutes",
     needs: "Medusa 2.12 or newer; limits are granted by a rep in the panel",
+    needsList: ["Medusa 2.12 or newer", "A rep grants the limits"],
+    needsLabel: "Needs",
+    timeLabel: "Time",
+    state: { done: "done", todo: "to do", optional: "optional", later: "later" },
+    checkLabel: "Check",
+    copy: "Copy",
+    copied: "Copied",
     stepsTitle: "Steps",
-    stepsSub: "Everything it takes for the panel to work in your store.",
+    stepsSub: "From install to checkout",
     s1Title: "Install the plugin",
     s1Text: "With your project's package manager:",
     s2Title: "Register it in medusa-config.ts",
@@ -77,7 +90,7 @@ const COPY = {
     s5Title: "Wire the storefront",
     s5Text: "The /store/credit/me route returns the customer's limit, usage and terms, and the open credit orders show on their account. In the Koda Plus demo store the checkout shows them next to the payment.",
     checkTitle: "The go-live checklist",
-    checkSub: "All ticked means selling on credit works without risk to the store.",
+    checkSub: "Before selling on credit",
     checklist: [
       "Every counterparty on credit has a limit and payment terms in the panel",
       "Usage is counted from unpaid orders automatically",
@@ -111,113 +124,24 @@ export function usePromptSpec(): SetupPromptSpec {
   )
 }
 
-function Step({ n, title, text, code }: { n: number; title: string; text: string; code?: string }) {
-  return (
-    <li className="flex flex-col gap-y-2 px-6 py-4">
-      <div className="flex items-center gap-x-2">
-        <span className="txt-compact-small-plus flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ui-bg-component text-ui-fg-subtle tabular-nums">{n}</span>
-        <Text size="small" weight="plus">
-          {title}
-        </Text>
-      </div>
-      <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-        {text}
-      </Text>
-      {code ? <pre className="overflow-x-auto rounded-lg bg-ui-bg-subtle px-3 py-2.5 font-mono text-[11px] leading-[18px] text-ui-fg-subtle">{code}</pre> : null}
-    </li>
-  )
-}
-
-function FaqRow({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="px-6 py-3">
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center justify-between gap-x-3 text-left">
-        <Text size="small" weight="plus">
-          {q}
-        </Text>
-        <ChevronDownMini className={clx("shrink-0 text-ui-fg-muted transition-transform", open && "rotate-180")} />
-      </button>
-      {open ? (
-        <Text size="small" className="mt-2 max-w-3xl text-ui-fg-subtle">
-          {a}
-        </Text>
-      ) : null}
-    </div>
-  )
-}
-
-export function GuideView() {
+export function GuideView({ status }: { status?: StatusResponse }) {
   const { i18n } = useTranslation()
   const C = i18n.language?.startsWith("pl") ? COPY.pl : COPY.en
-  const steps = [
-    { title: C.s1Title, text: C.s1Text, code: "npm install @koda-plus/medusa-plugin-trade-credit" },
-    { title: C.s2Title, text: C.s2Text, code: CONFIG },
-    { title: C.s3Title, text: C.s3Text },
-    { title: C.s4Title, text: C.s4Text },
-    { title: C.s5Title, text: C.s5Text },
+  const text = (body: string) => <p>{body}</p>
+  const steps: GuideStep[] = [
+    { id: "install", title: C.s1Title, state: "done", body: text(C.s1Text), code: "npm install @koda-plus/medusa-plugin-trade-credit" },
+    { id: "register", title: C.s2Title, state: "done", body: text(C.s2Text), code: CONFIG },
+    { id: "enforce", title: C.s3Title, state: status?.enforce ? "done" : "optional", body: text(C.s3Text) },
+    { id: "start", title: C.s4Title, state: status && status.counts.limits > 0 ? "done" : "todo", body: text(C.s4Text) },
+    { id: "storefront", title: C.s5Title, state: "optional", body: text(C.s5Text) },
   ]
-
+  const done = [Boolean(status && status.counts.limits > 0), Boolean(status), Boolean(status), Boolean(status?.enforce)]
   return (
     <div className="flex flex-col gap-y-3">
-      <Container className="p-0">
-        <div className="flex flex-col gap-y-1 px-6 py-4">
-          <Heading level="h2">{C.introTitle}</Heading>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {C.introText}
-          </Text>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-ui-border-base px-6 py-3">
-          <Badge size="2xsmall" color="blue">
-            {C.time}
-          </Badge>
-          <Badge size="2xsmall" color="grey">
-            {C.needs}
-          </Badge>
-        </div>
-      </Container>
-
-      <Container className="p-0">
-        <div className="flex flex-col gap-y-1 border-b border-ui-border-base px-6 py-4">
-          <Heading level="h2">{C.stepsTitle}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {C.stepsSub}
-          </Text>
-        </div>
-        <ol className="divide-y divide-ui-border-base">
-          {steps.map((s, i) => (
-            <Step key={i} n={i + 1} title={s.title} text={s.text} code={s.code} />
-          ))}
-        </ol>
-      </Container>
-
-      <Container className="p-0">
-        <div className="flex flex-col gap-y-1 border-b border-ui-border-base px-6 py-4">
-          <Heading level="h2">{C.checkTitle}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {C.checkSub}
-          </Text>
-        </div>
-        <ul className="grid grid-cols-1 gap-x-6 gap-y-2 px-6 py-4 md:grid-cols-2">
-          {C.checklist.map((row) => (
-            <li key={row} className="flex items-start gap-x-2">
-              <CheckCircleSolid className="mt-px shrink-0 text-ui-tag-green-text" />
-              <Text size="small" className="text-ui-fg-subtle">
-                {row}
-              </Text>
-            </li>
-          ))}
-        </ul>
-      </Container>
-
-      <Container className="divide-y divide-ui-border-base p-0">
-        <div className="flex flex-col gap-y-1 px-6 py-4">
-          <Heading level="h2">{C.faqTitle}</Heading>
-        </div>
-        {C.faq.map((row) => (
-          <FaqRow key={row.q} q={row.q} a={row.a} />
-        ))}
-      </Container>
+      <GuideIntro title={C.introTitle} text={C.introText} time={C.time} needs={C.needsList} needsLabel={C.needsLabel} timeLabel={C.timeLabel} />
+      <GuideSteps title={C.stepsTitle} subtitle={C.stepsSub} steps={steps} stateLabels={C.state} checkLabel={C.checkLabel} copyLabel={C.copy} copiedLabel={C.copied} />
+      <GuideChecklist title={C.checkTitle} subtitle={C.checkSub} items={C.checklist.map((label, i) => ({ label, done: done[i] ?? false }))} />
+      <GuideFaq title={C.faqTitle} items={C.faq} />
     </div>
   )
 }

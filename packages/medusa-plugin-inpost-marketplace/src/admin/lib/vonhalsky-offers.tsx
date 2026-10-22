@@ -1,34 +1,45 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { MagnifyingGlass, Photo } from "@medusajs/icons"
-import { Badge, Button, Checkbox, Input, Table, Text, toast } from "@medusajs/ui"
+import { ArrowUturnLeft, CheckCircle, CurrencyDollar, ExclamationCircle, FloppyDisk, ListBullet, MinusCircle, PaperPlane, Pencil, Photo, ShieldCheck, Tag, XCircle, XMark } from "@medusajs/icons"
+import { Button, Checkbox, Input, Table, Text, toast } from "@medusajs/ui"
 import type { OfferDto, OfferFilter, StatusResponse } from "../../modules/vonhalsky/lib/contract"
 import { errorMessage, useListOffers, useReopenOffers, useSetPrice, useUnlistOffers, useVonHalskyOffers } from "./vonhalsky-api"
-import { KitLoading } from "./vonhalsky-kit"
-import { Chip, OfferStatusBadge, Pager, Section, fmtMoney, fmtNumber } from "./vonhalsky-ui"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, ToneBadge, useDebouncedValue } from "./vonhalsky-blocks"
+import { KitFetchingBar, KitSkeletonRows } from "./vonhalsky-kit"
+import { OfferStatusBadge, fmtMoney, fmtNumber } from "./vonhalsky-ui"
 
 export const OFFER_FILTERS: OfferFilter[] = ["all", "draft", "listed", "blocked", "closed"]
 const PAGE = 50
+
+const FILTER_ICON: Record<OfferFilter, ReactNode> = {
+  all: <ListBullet />,
+  draft: <PaperPlane />,
+  listed: <CheckCircle />,
+  blocked: <ExclamationCircle />,
+  closed: <MinusCircle />,
+}
+const FILTER_GROUPS: OfferFilter[][] = [["all"], ["draft", "listed"], ["blocked"], ["closed"]]
+
+function filterCount(s: StatusResponse, f: OfferFilter): number {
+  return f === "all" ? s.counts.offers : s.counts[f]
+}
 
 /** The offers with their photo, status and reasons, matching keys, GPSR, channel price and stock; bulk list, take off, back to draft. */
 export function OffersSection({ status: s, lang, filter, onFilter, initialQuery }: { status: StatusResponse; lang: string; filter: OfferFilter; onFilter: (f: OfferFilter) => void; initialQuery: string }) {
   const { t } = useTranslation("vonhalsky")
   const [input, setInput] = useState(initialQuery)
-  const [q, setQ] = useState(initialQuery)
+  const q = useDebouncedValue(input.trim())
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   useEffect(() => {
     setOffset(0)
     setSelected(new Set())
   }, [filter, q])
-  useEffect(() => {
-    const id = setTimeout(() => setQ(input.trim()), 300)
-    return () => clearTimeout(id)
-  }, [input])
 
   const list = useVonHalskyOffers(filter, q, offset, PAGE)
   const rows = list.data?.offers ?? []
+  const count = list.data?.count ?? 0
   const listOffers = useListOffers()
   const unlist = useUnlistOffers()
   const reopen = useReopenOffers()
@@ -40,6 +51,9 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
     else next.add(id)
     setSelected(next)
   }
+  /* A second click on the active filter clears it. */
+  const pick = (f: OfferFilter) => onFilter(filter === f ? "all" : f)
+  const fresh = filter === "all" && !q
 
   const onList = async () => {
     try {
@@ -73,111 +87,129 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
 
   return (
     <Section
+      id="vonhalsky-offers"
+      icon={<Tag />}
       title={t("offers.title")}
-      subtitle={t("offers.subtitle")}
-      actions={
-        selected.size > 0 ? (
-          <>
-            <Text size="small" className="self-center text-ui-fg-subtle">
-              {t("offers.selected", { count: selected.size })}
-            </Text>
-            <Button size="small" variant="primary" isLoading={listOffers.isPending} disabled={!s.configured} onClick={() => void onList()}>
-              {t("actions.listSelected")}
-            </Button>
-            <Button size="small" variant="secondary" isLoading={unlist.isPending} onClick={() => void onUnlist()}>
-              {t("actions.unlistSelected")}
-            </Button>
-            <Button size="small" variant="secondary" isLoading={reopen.isPending} onClick={() => void onReopen()}>
-              {t("actions.reopenSelected")}
-            </Button>
-          </>
-        ) : null
-      }
+      pointsLabel={t("offers.subtitle")}
+      points={[
+        { icon: <Tag />, text: t("offers.points.variant") },
+        { icon: <ShieldCheck />, text: t("offers.points.keys") },
+        { icon: <CurrencyDollar />, text: t("offers.points.price") },
+      ]}
+      actions={<SearchInput value={input} onChange={setInput} placeholder={t("offers.search")} className="sm:w-72" />}
     >
-      <div className="flex flex-col gap-3 px-6 py-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {OFFER_FILTERS.map((f) => (
-            <Chip key={f} active={filter === f} label={t(`offerFilter.${f}`)} onClick={() => onFilter(f)} />
-          ))}
-        </div>
-        <div className="relative w-full md:w-72">
-          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ui-fg-muted">
-            <MagnifyingGlass />
+      <FilterBar>
+        {FILTER_GROUPS.map((group, i) => (
+          <span key={group.join()} className="contents">
+            {i > 0 ? <FilterDivider /> : null}
+            {group.map((f) => (
+              <FilterButton key={f} icon={FILTER_ICON[f]} label={t(`offerFilter.${f}`)} count={filterCount(s, f)} attention={f === "blocked"} active={filter === f} onClick={() => pick(f)} />
+            ))}
           </span>
-          <Input size="small" className="pl-8" value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("offers.search")} />
+        ))}
+      </FilterBar>
+      {selected.size > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 px-6 py-2.5">
+          <Text size="small" weight="plus" className="text-ui-fg-subtle">
+            {t("offers.selected", { count: selected.size })}
+          </Text>
+          <Button size="small" variant="primary" isLoading={listOffers.isPending} disabled={!s.configured} onClick={() => void onList()}>
+            <PaperPlane />
+            {t("actions.listSelected")}
+          </Button>
+          <Button size="small" variant="secondary" isLoading={unlist.isPending} onClick={() => void onUnlist()}>
+            <XCircle />
+            {t("actions.unlistSelected")}
+          </Button>
+          <Button size="small" variant="secondary" isLoading={reopen.isPending} onClick={() => void onReopen()}>
+            <ArrowUturnLeft />
+            {t("actions.reopenSelected")}
+          </Button>
+          <Button size="small" variant="transparent" onClick={() => setSelected(new Set())}>
+            <XMark />
+            {t("actions.clearSelection")}
+          </Button>
         </div>
-      </div>
-      {list.isLoading ? (
-        <KitLoading label={t("widget.loading")} />
-      ) : rows.length === 0 ? (
-        <Text size="small" className="px-6 py-6 text-ui-fg-subtle">
-          {t("offers.empty")}
-        </Text>
-      ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <Table.Header>
-              <Table.Row>
-                <Table.HeaderCell className="w-8">
-                  <Checkbox
-                    aria-label={t("offers.selectAll")}
-                    checked={allOnPage}
-                    onCheckedChange={() => {
-                      const next = new Set(selected)
-                      for (const r of rows) {
-                        if (allOnPage) next.delete(r.id)
-                        else next.add(r.id)
-                      }
-                      setSelected(next)
-                    }}
-                  />
-                </Table.HeaderCell>
-                <Table.HeaderCell>{t("offers.product")}</Table.HeaderCell>
-                <Table.HeaderCell>{t("offers.status")}</Table.HeaderCell>
-                <Table.HeaderCell>{t("offers.keys")}</Table.HeaderCell>
-                <Table.HeaderCell>{t("offers.gpsr")}</Table.HeaderCell>
-                <Table.HeaderCell className="text-right">{t("offers.price")}</Table.HeaderCell>
-                <Table.HeaderCell className="text-right">{t("offers.stock")}</Table.HeaderCell>
+      ) : null}
+      <KitFetchingBar active={list.isFetching && !list.isLoading} />
+      <div className="overflow-x-auto">
+        <Table>
+          <Table.Header>
+            <Table.Row>
+              <Table.HeaderCell className="w-8">
+                <Checkbox
+                  aria-label={t("offers.selectAll")}
+                  checked={allOnPage}
+                  disabled={rows.length === 0}
+                  onCheckedChange={() => {
+                    const next = new Set(selected)
+                    for (const r of rows) {
+                      if (allOnPage) next.delete(r.id)
+                      else next.add(r.id)
+                    }
+                    setSelected(next)
+                  }}
+                />
+              </Table.HeaderCell>
+              <Table.HeaderCell>{t("offers.product")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("offers.status")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("offers.keys")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("offers.gpsr")}</Table.HeaderCell>
+              <Table.HeaderCell className="text-right">{t("offers.price")}</Table.HeaderCell>
+              <Table.HeaderCell className="text-right">{t("offers.stock")}</Table.HeaderCell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {list.isLoading ? <KitSkeletonRows cols={7} rows={5} /> : null}
+            {!list.isLoading && rows.length === 0 ? (
+              <EmptyTableRow cols={7} icon={FILTER_ICON[filter]} title={fresh ? t("offers.empty") : t("offers.emptyFiltered")} points={fresh ? [{ icon: <Tag />, text: t("offers.emptyHint") }] : undefined} />
+            ) : null}
+            {rows.map((o) => (
+              <Table.Row key={o.id} className="align-top">
+                <Table.Cell>
+                  <Checkbox aria-label={o.sku ?? o.id} checked={selected.has(o.id)} onCheckedChange={() => toggle(o.id)} />
+                </Table.Cell>
+                <Table.Cell>
+                  <ProductCell offer={o} />
+                </Table.Cell>
+                <Table.Cell>
+                  <StatusCell offer={o} status={s} />
+                </Table.Cell>
+                <Table.Cell>
+                  <KeysCell offer={o} />
+                </Table.Cell>
+                <Table.Cell>
+                  {o.manufacturer ? (
+                    <span className="flex flex-col">
+                      <span className="txt-compact-small text-ui-fg-base">{o.manufacturer}</span>
+                      <span className="txt-compact-xsmall text-ui-fg-muted">{o.gpsr_source === "compliance" ? t("offers.fromCompliance") : t("offers.fromMetadata")}</span>
+                    </span>
+                  ) : (
+                    <ToneBadge tone="orange">{t("offers.noValue")}</ToneBadge>
+                  )}
+                </Table.Cell>
+                <Table.Cell className="text-right">
+                  <PriceCell offer={o} lang={lang} />
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtNumber(o.stock, lang)}</Table.Cell>
               </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {rows.map((o) => (
-                <Table.Row key={o.id} className="align-top">
-                  <Table.Cell>
-                    <Checkbox aria-label={o.sku ?? o.id} checked={selected.has(o.id)} onCheckedChange={() => toggle(o.id)} />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <ProductCell offer={o} />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <StatusCell offer={o} status={s} />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <KeysCell offer={o} />
-                  </Table.Cell>
-                  <Table.Cell>
-                    {o.manufacturer ? (
-                      <span className="flex flex-col">
-                        <span className="txt-compact-small text-ui-fg-base">{o.manufacturer}</span>
-                        <span className="txt-compact-xsmall text-ui-fg-muted">{o.gpsr_source === "compliance" ? t("offers.fromCompliance") : t("offers.fromMetadata")}</span>
-                      </span>
-                    ) : (
-                      <Text size="xsmall" className="text-ui-tag-orange-text">
-                        {t("offers.noValue")}
-                      </Text>
-                    )}
-                  </Table.Cell>
-                  <Table.Cell className="text-right">
-                    <PriceCell offer={o} lang={lang} />
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtNumber(o.stock, lang)}</Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table>
-        </div>
-      )}
-      <Pager offset={offset} page={PAGE} count={list.data?.count ?? 0} onChange={setOffset} />
+            ))}
+          </Table.Body>
+        </Table>
+      </div>
+      {count > PAGE ? (
+        <Table.Pagination
+          count={count}
+          pageSize={PAGE}
+          pageIndex={Math.floor(offset / PAGE)}
+          pageCount={Math.max(1, Math.ceil(count / PAGE))}
+          canPreviousPage={offset > 0}
+          canNextPage={offset + PAGE < count}
+          previousPage={() => setOffset(Math.max(0, offset - PAGE))}
+          nextPage={() => setOffset(offset + PAGE)}
+          translations={{ of: t("pagination.of"), results: t("pagination.results"), pages: t("pagination.pages"), prev: t("pagination.prev"), next: t("pagination.next") }}
+        />
+      ) : null}
     </Section>
   )
 }
@@ -189,19 +221,13 @@ function ProductCell({ offer: o }: { offer: OfferDto }) {
       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-ui-border-base bg-ui-bg-subtle">
         {o.thumbnail ? <img src={o.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" /> : <Photo className="text-ui-fg-muted" />}
       </div>
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-col items-start">
         <Link to={`/products/${o.product_id}`} className="txt-compact-small-plus text-ui-fg-base hover:text-ui-fg-interactive">
           {o.title ?? o.sku ?? o.variant_id}
         </Link>
         <span className="txt-compact-xsmall font-mono text-ui-fg-muted">{o.sku ?? o.variant_id}</span>
         {o.remote_id ? <span className="txt-compact-xsmall text-ui-fg-muted">{t("offers.remote", { id: o.remote_id })}</span> : null}
-        {o.demo ? (
-          <span>
-            <Badge size="2xsmall" color="purple">
-              {t("demo.badge")}
-            </Badge>
-          </span>
-        ) : null}
+        {o.demo ? <ToneBadge tone="purple">{t("demo.badge")}</ToneBadge> : null}
       </div>
     </div>
   )
@@ -245,7 +271,7 @@ function StatusCell({ offer: o, status: s }: { offer: OfferDto; status: StatusRe
 
 function KeysCell({ offer: o }: { offer: OfferDto }) {
   const { t } = useTranslation("vonhalsky")
-  const v = (x: string | null) => (x ? <span className="font-mono">{x}</span> : <span className="text-ui-fg-muted">{t("offers.noValue")}</span>)
+  const v = (x: string | null) => (x ? <span className="font-mono">{x}</span> : <span className="text-ui-tag-orange-text">{t("offers.noValue")}</span>)
   return (
     <div className="txt-compact-xsmall flex flex-col gap-y-0.5 text-ui-fg-subtle">
       <span>EAN {v(o.ean)}</span>
@@ -272,9 +298,10 @@ function PriceCell({ offer: o, lang }: { offer: OfferDto; lang: string }) {
   if (editing) {
     return (
       <div className="flex min-w-[160px] flex-col items-end gap-1">
-        <Input size="small" className="w-28 text-right" value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("offers.overridePlaceholder")} />
+        <Input size="small" className="w-28 text-right" aria-label={t("actions.setOverride")} value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("offers.overridePlaceholder")} />
         <div className="flex gap-1">
           <Button size="small" variant="primary" isLoading={save.isPending} onClick={() => void submit(value.trim() || null)}>
+            <FloppyDisk />
             {t("actions.save")}
           </Button>
           <Button size="small" variant="transparent" onClick={() => setEditing(false)}>
@@ -286,19 +313,17 @@ function PriceCell({ offer: o, lang }: { offer: OfferDto; lang: string }) {
   }
   return (
     <div className="flex flex-col items-end gap-y-0.5">
-      <span className="txt-compact-small-plus whitespace-nowrap tabular-nums text-ui-fg-base">{o.price ? fmtMoney(o.price, o.currency_code, lang) : t("offers.noValue")}</span>
-      {o.price_override ? <span className="txt-compact-xsmall text-ui-fg-muted">{t("offers.override")}</span> : null}
-      {o.base_price ? <span className="txt-compact-xsmall whitespace-nowrap text-ui-fg-muted">{t("offers.base", { price: fmtMoney(o.base_price, o.currency_code, lang) })}</span> : null}
-      <span className="flex gap-x-2">
-        <button type="button" className="txt-compact-xsmall text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => setEditing(true)}>
-          {t("actions.setOverride")}
-        </button>
-        {o.price_override ? (
-          <button type="button" className="txt-compact-xsmall text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => void submit(null)}>
-            {t("actions.clearOverride")}
-          </button>
-        ) : null}
+      <span className="flex items-center gap-x-1">
+        <span className="txt-compact-small-plus whitespace-nowrap tabular-nums text-ui-fg-base">{o.price ? fmtMoney(o.price, o.currency_code, lang) : t("offers.noValue")}</span>
+        <RowActions
+          actions={[
+            { key: "set", label: t("actions.setOverride"), icon: <Pencil />, onClick: () => setEditing(true) },
+            { key: "clear", label: t("actions.clearOverride"), icon: <ArrowUturnLeft />, hidden: !o.price_override, loading: save.isPending, onClick: () => void submit(null) },
+          ]}
+        />
       </span>
+      {o.price_override ? <ToneBadge tone="blue">{t("offers.override")}</ToneBadge> : null}
+      {o.base_price ? <span className="txt-compact-xsmall whitespace-nowrap text-ui-fg-muted">{t("offers.base", { price: fmtMoney(o.base_price, o.currency_code, lang) })}</span> : null}
     </div>
   )
 }

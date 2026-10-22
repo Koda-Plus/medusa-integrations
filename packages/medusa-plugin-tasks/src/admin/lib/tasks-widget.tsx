@@ -1,12 +1,12 @@
-import { useState, type ReactNode } from "react"
-import { Link } from "react-router-dom"
-import { Plus } from "@medusajs/icons"
-import { Badge, Button, Heading, Text } from "@medusajs/ui"
+import { useState } from "react"
+import { ArrowUpRightOnBox, Clock, ListBullet, Plus } from "@medusajs/icons"
+import { Button, Heading, Text, clx } from "@medusajs/ui"
 import type { LinkType } from "../../modules/tasks/lib/constants"
 import { localDay, useEntityTasks, useTasksStatus } from "./tasks-api"
+import { EmptyState, ToneBadge } from "./tasks-blocks"
 import { CreateTaskModal } from "./tasks-form"
 import { TasksIcon } from "./tasks-icon"
-import { WidgetFrame } from "./tasks-kit"
+import { KitLoading, WidgetFrame } from "./tasks-kit"
 import { PersonAvatar, TaskStatusBadge, assigneeOf, dueDayOf, fmtDay, overdue, taskTitle, useLabels, usePeopleIndex } from "./tasks-ui"
 
 /**
@@ -18,9 +18,9 @@ import { PersonAvatar, TaskStatusBadge, assigneeOf, dueDayOf, fmtDay, overdue, t
  *
  * One read (`GET /admin/tasks/<type>s/:id`, with the assignees' faces), once
  * a minute. A host (an app that shows every integration as tabs of one
- * card) embeds it with `embedded`: no frame and header of its own, a quiet
- * line while loading and when nothing is linked, the actions in a bar under
- * the list.
+ * card) embeds it with `embedded`: no frame and header of its own, the
+ * actions in a bar under the list. Links are plain anchors: a react-router
+ * Link inside a widget breaks in some admins.
  */
 export function EntityTasksWidget({ type, id, label, embedded }: { type: LinkType; id: string; label: string; embedded?: boolean }) {
   const labels = useLabels()
@@ -33,13 +33,17 @@ export function EntityTasksWidget({ type, id, label, embedded }: { type: LinkTyp
   const tasks = q.data?.tasks ?? []
   const count = q.data?.count ?? 0
   const today = localDay()
-  const boardHref = `/tasks?record=${encodeURIComponent(`${type}:${id}`)}`
+  const late = tasks.filter((task) => overdue(task, today)).length
+  const boardHref = `/app/tasks?record=${encodeURIComponent(`${type}:${id}`)}`
 
   const actions = (
     <div className="flex items-center gap-x-2">
-      <Link to={boardHref} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-        {embedded ? t(`widget.allOf.${type}`) : t("widget.all")}
-      </Link>
+      <Button size="small" variant="secondary" asChild>
+        <a href={boardHref}>
+          <ArrowUpRightOnBox />
+          {embedded ? t(`widget.allOf.${type}`) : t("widget.all")}
+        </a>
+      </Button>
       <Button size="small" variant="secondary" onClick={() => setCreating(true)}>
         <Plus />
         {t("widget.newTask")}
@@ -50,15 +54,6 @@ export function EntityTasksWidget({ type, id, label, embedded }: { type: LinkTyp
     <CreateTaskModal open={creating} onOpenChange={setCreating} status={status.data} initialLinks={[{ type, id, label }]} onCreated={() => setCreating(false)} />
   )
 
-  if (embedded && (q.isLoading || q.isError || tasks.length === 0)) {
-    return (
-      <>
-        <Quiet action={q.isLoading || q.isError ? null : actions}>{q.isLoading ? t("widget.loading") : q.isError ? t("widget.failed") : t(`widget.empty.${type}`)}</Quiet>
-        {modal}
-      </>
-    )
-  }
-
   return (
     <WidgetFrame
       embedded={embedded}
@@ -68,35 +63,32 @@ export function EntityTasksWidget({ type, id, label, embedded }: { type: LinkTyp
             <TasksIcon width={18} height={18} className="shrink-0" />
             <Heading level="h2">{t("widget.title")}</Heading>
             {count > 0 ? (
-              <Badge size="2xsmall" color="grey">
+              <ToneBadge>
                 <span className="tabular-nums">{count}</span>
-              </Badge>
+              </ToneBadge>
             ) : null}
-            {q.data?.sandbox ? (
-              <Badge size="2xsmall" color="purple">
-                {t("mode.sandbox")}
-              </Badge>
-            ) : null}
+            {late > 0 ? <ToneBadge tone="red">{t("mode.overdue", { count: late })}</ToneBadge> : null}
+            {q.data?.sandbox ? <ToneBadge tone="blue">{t("mode.sandbox")}</ToneBadge> : null}
           </div>
           {actions}
         </div>
       }
     >
-      {q.isLoading ? null : tasks.length === 0 ? (
-        <div className="px-6 py-4">
-          <Text size="small" className="text-ui-fg-subtle">
-            {q.isError ? t("widget.failed") : t(`widget.empty.${type}`)}
-          </Text>
-        </div>
+      {q.isLoading ? (
+        <KitLoading label={t("widget.loading")} className="min-h-0 py-5" />
+      ) : q.isError ? (
+        <EmptyState compact icon={<ListBullet />} title={t("widget.failed")} />
+      ) : tasks.length === 0 ? (
+        <EmptyState compact icon={<ListBullet />} title={t(`widget.empty.${type}`)} />
       ) : (
         <ul className="flex flex-col divide-y divide-ui-border-base">
           {tasks.map((task) => {
             const who = assigneeOf(task, index)
             const day = dueDayOf(task)
-            const late = overdue(task, today)
+            const isLate = overdue(task, today)
             return (
               <li key={task.id}>
-                <Link to={`/tasks?task=${encodeURIComponent(task.id)}`} className="flex items-start gap-x-3 px-6 py-3 transition-fg hover:bg-ui-bg-component-hover">
+                <a href={`/app/tasks?task=${encodeURIComponent(task.id)}`} className="flex items-start gap-x-3 px-6 py-3 transition-fg hover:bg-ui-bg-component-hover">
                   <span className="pt-0.5">
                     <PersonAvatar who={who.name ? who : null} />
                   </span>
@@ -107,13 +99,24 @@ export function EntityTasksWidget({ type, id, label, embedded }: { type: LinkTyp
                       </Text>
                       <TaskStatusBadge status={task.status} />
                     </span>
-                    <Text size="xsmall" leading="compact" className={late ? "text-ui-fg-error" : "text-ui-fg-muted"}>
-                      {[who.name ?? t("card.unassigned"), day ? (late ? t("card.overdue", { date: fmtDay(day, lang) }) : t("card.due", { date: fmtDay(day, lang) })) : null]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </Text>
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      <Text size="xsmall" leading="compact" className="text-ui-fg-muted">
+                        {who.name ?? t("card.unassigned")}
+                      </Text>
+                      {day ? (
+                        <span
+                          className={clx("inline-flex items-center gap-x-0.5", isLate ? "text-ui-fg-error" : "text-ui-fg-muted")}
+                          title={isLate ? t("card.overdue", { date: fmtDay(day, lang) }) : t("card.due", { date: fmtDay(day, lang) })}
+                        >
+                          <Clock />
+                          <Text size="xsmall" leading="compact" className="tabular-nums">
+                            {fmtDay(day, lang)}
+                          </Text>
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
-                </Link>
+                </a>
               </li>
             )
           })}
@@ -121,25 +124,13 @@ export function EntityTasksWidget({ type, id, label, embedded }: { type: LinkTyp
       )}
       {count > tasks.length ? (
         <div className="px-6 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
+          <a href={boardHref} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
             {t("widget.more", { count: count - tasks.length })}
-          </Text>
+          </a>
         </div>
       ) : null}
       {embedded ? <div className="flex justify-end px-6 py-3">{actions}</div> : null}
       {modal}
     </WidgetFrame>
-  )
-}
-
-/** The line an embedded card shows instead of nothing. */
-function Quiet({ children, action }: { children: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-4">
-      <Text size="small" className="text-ui-fg-subtle">
-        {children}
-      </Text>
-      {action}
-    </div>
   )
 }

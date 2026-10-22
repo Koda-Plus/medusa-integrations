@@ -1,9 +1,8 @@
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { StatusBadge, Text, clx } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 import type { BasketDto, StatusResponse } from "../../modules/inpostpay/lib/contract"
-
-type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
+import { ToneBadge, type Tone } from "./inpostpay-blocks"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -41,20 +40,20 @@ export function fmtMoney(amount: string | null | undefined, currency: string | n
 /** The mode of the plugin in one word, for the header badge. */
 export function modeOf(s: StatusResponse | undefined): { key: string; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
-  if (s.mode === "demo") return { key: "demo", tone: "purple" }
+  if (s.mode === "demo") return { key: "demo", tone: "blue" }
   if (s.mode === "off") return { key: "notConfigured", tone: "orange" }
-  if (s.mode === "sandbox") return { key: "sandbox", tone: "blue" }
+  if (s.mode === "sandbox") return { key: "sandbox", tone: "orange" }
   return { key: "live", tone: "green" }
 }
 
-const STATUS_TONE: Record<BasketDto["status"], Tone> = { created: "grey", linked: "blue", rejected: "orange", ordered: "green", failed: "red", unbound: "grey" }
+const STATUS_TONE: Record<BasketDto["status"], Tone> = { created: "blue", linked: "blue", rejected: "grey", ordered: "green", failed: "red", unbound: "grey" }
 
 export function BasketStatusBadge({ basket }: { basket: Pick<BasketDto, "status"> }) {
   const { t } = useTranslation("inpostpay")
-  return <StatusBadge color={STATUS_TONE[basket.status] ?? "grey"}>{t(`status.${basket.status}`)}</StatusBadge>
+  return <ToneBadge tone={STATUS_TONE[basket.status] ?? "grey"}>{t(`status.${basket.status}`)}</ToneBadge>
 }
 
-const PAYMENT_TONE: Record<string, Tone> = { AUTHORIZED: "green", COD: "purple", UNPAID: "orange", STARTED: "blue", PENDING: "blue", DECLINED: "red", CANCELLED: "red", ERROR: "red" }
+const PAYMENT_TONE: Record<string, Tone> = { AUTHORIZED: "green", COD: "blue", UNPAID: "orange", STARTED: "blue", PENDING: "blue", DECLINED: "red", CANCELLED: "red", ERROR: "red" }
 
 export function PaymentBadge({ status }: { status: string | null }) {
   const { t } = useTranslation("inpostpay")
@@ -66,75 +65,9 @@ export function PaymentBadge({ status }: { status: string | null }) {
     )
   }
   return (
-    <span title={status}>
-      <StatusBadge color={PAYMENT_TONE[status] ?? "grey"}>{t(`payment.${status}`, { defaultValue: status })}</StatusBadge>
-    </span>
-  )
-}
-
-export function StatTile({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-}: {
-  label: string
-  value: ReactNode
-  tone?: "default" | "green" | "orange" | "red" | "blue" | "purple"
-  active?: boolean
-  onClick?: () => void
-}) {
-  const dot =
-    tone === "green"
-      ? "bg-ui-tag-green-icon"
-      : tone === "orange"
-        ? "bg-ui-tag-orange-icon"
-        : tone === "red"
-          ? "bg-ui-tag-red-icon"
-          : tone === "blue"
-            ? "bg-ui-tag-blue-icon"
-            : tone === "purple"
-              ? "bg-ui-tag-purple-icon"
-              : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "cursor-pointer hover:bg-ui-bg-component-hover" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-    </button>
-  )
-}
-
-/** A filter chip with a count. */
-export function Chip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clx(
-        "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg",
-        active ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color" : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-      )}
-    >
-      {label}
-    </button>
+    <ToneBadge tone={PAYMENT_TONE[status] ?? "grey"} title={status}>
+      {t(`payment.${status}`, { defaultValue: status })}
+    </ToneBadge>
   )
 }
 
@@ -163,11 +96,7 @@ export function EventList({ events, lang }: { events: BasketDto["events"]; lang:
           <Text size="xsmall" className={clx(e.kind === "failed" ? "text-ui-tag-red-text" : "text-ui-fg-subtle")}>
             {e.message}
           </Text>
-          {e.demo ? (
-            <StatusBadge color="purple" className="scale-90">
-              {t("demo.badge")}
-            </StatusBadge>
-          ) : null}
+          {e.demo ? <ToneBadge tone="purple">{t("demo.badge")}</ToneBadge> : null}
         </li>
       ))}
     </ol>

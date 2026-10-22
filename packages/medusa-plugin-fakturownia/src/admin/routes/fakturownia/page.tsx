@@ -1,11 +1,31 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
-import type { CheckResult, DocumentFilter, PlanFilter, StatusResponse } from "../../../modules/fakturownia/lib/contract"
+import {
+  ArrowPath,
+  ArrowUpRightOnBox,
+  ArrowUturnLeft,
+  Beaker,
+  BuildingTax,
+  CheckCircle,
+  CheckCircleSolid,
+  Clock,
+  CurrencyDollar,
+  DocumentText,
+  ExclamationCircle,
+  EyeSlash,
+  History,
+  Key,
+  ListBullet,
+  ShieldCheck,
+  User,
+  XCircle,
+  XMarkMini,
+} from "@medusajs/icons"
+import { Button, Container, InlineTip, Table, Text, toast } from "@medusajs/ui"
+import type { CheckResult, DocumentDto, DocumentFilter, PlanFilter, StatusResponse } from "../../../modules/fakturownia/lib/contract"
 import {
   errorMessage,
   fakturowniaKeys,
@@ -16,25 +36,23 @@ import {
   useFakturowniaStatus,
   useFakturowniaSync,
 } from "../../lib/fakturownia-api"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue } from "../../lib/fakturownia-blocks"
 import { CorrectionsSection } from "../../lib/fakturownia-corrections"
 import { DocumentDrawer } from "../../lib/fakturownia-document"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/fakturownia-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/fakturownia-guide"
 import { GuideView, usePromptSpec } from "../../lib/fakturownia-guide-view"
 import { FakturowniaIcon } from "../../lib/fakturownia-icon"
+import { KitLoading, KitSkeletonRows } from "../../lib/fakturownia-kit"
 import { DemoDetails, MailboxSection, SummarySection, UnpaidSection, WritersSection } from "../../lib/fakturownia-panels"
 import {
   BuyerWarningText,
-  DocumentActions,
-  DocumentLinks,
   DocumentStatusBadge,
   Fact,
-  FilterPills,
   KindBadge,
   KsefBadge,
   MedusaMark,
   PaidBadge,
   RunStatusBadge,
-  StatTile,
   StoreOrderCell,
   connectionState,
   fmtDateTime,
@@ -44,18 +62,20 @@ import {
   fmtRating,
   referencesFor,
   runSummary,
+  useDocumentActions,
 } from "../../lib/fakturownia-ui"
 
 /**
- * Fakturownia by Koda Plus. Three views, switched in the header and kept in the URL:
+ * Fakturownia. Three views, switched in the header and kept in the URL:
  *
- * - Panel: the business side. Counters, the documents next to the store
- *   orders they belong to (one click to each order), the corrections waiting
- *   for a person, the unpaid documents with reminders, the monthly summary.
+ * - Panel: the business side. Counters (each a filter of the documents), the
+ *   documents next to the store orders they belong to (one click to each
+ *   order), the corrections waiting for a person, the unpaid documents with
+ *   reminders, the monthly summary.
  * - Setup guide (`?view=guide`).
- * - Settings (`?view=settings&tab=`), behind the cog: the technical side.
- *   The Fakturownia account with the options in use, the writers, the e-mails
- *   and the history of background runs.
+ * - Settings (`?view=settings&tab=`): the technical side. The Fakturownia
+ *   account with the options in use, the writers, the e-mails and the
+ *   history of background runs.
  *
  * The demo note and the stores running the integration sit in header badges.
  * The document drawer opens from every list.
@@ -71,6 +91,23 @@ const PLAN_FILTERS: readonly PlanFilter[] = ["open", "approved", "issued", "clos
 
 const SETTINGS_TABS = ["account", "writers", "mailbox", "runs"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
+
+const FILTERS: DocumentFilter[] = ["all", "pending", "issued", "attention", "unpaid", "ksef", "corrections", "canceled"]
+
+const FILTER_ICON: Record<DocumentFilter, ReactNode> = {
+  all: <ListBullet />,
+  pending: <Clock />,
+  issued: <CheckCircle />,
+  canceled: <XCircle />,
+  attention: <ExclamationCircle />,
+  unpaid: <CurrencyDollar />,
+  ksef: <ShieldCheck />,
+  corrections: <ArrowUturnLeft />,
+}
+
+function scrollToSection(id: string): void {
+  requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }))
+}
 
 const FakturowniaPage = () => {
   const { t, i18n } = useTranslation("fakturownia")
@@ -119,10 +156,17 @@ const FakturowniaPage = () => {
 
   const poll = () => setPollUntil(Date.now() + 30_000)
 
+  /* A tile filters the documents below; a second click on the active one clears it. */
+  const pick = (f: DocumentFilter) => {
+    setFilter(filter === f && f !== "all" ? "all" : f)
+    scrollToSection("fakturownia-documents")
+  }
+  const n = s?.counts
+
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0">
-        <Header status={s} lang={lang} nav={nav} onAction={poll} />
+        <Header status={s} fetching={status.isFetching} lang={lang} nav={nav} onAction={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label={t("title")}>
@@ -131,48 +175,26 @@ const FakturowniaPage = () => {
           </div>
         ) : null}
         {s ? <Warnings status={s} /> : null}
-        {seed.isPending ? (
-          <div className="px-6 py-4">
-            <Text size="small" className="text-ui-fg-subtle">
-              {t("demo.preparing")}
-            </Text>
-          </div>
-        ) : null}
-        {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
-            <StatTile label={t("stats.issued24h")} value={fmtNumber(s.counts.issued24h, lang)} tone="green" active={filter === "issued"} onClick={() => setFilter("issued")} />
+        {seed.isPending ? <KitLoading label={t("demo.preparing")} /> : null}
+        {!s && status.isLoading ? <KitLoading /> : null}
+        {s && n && nav.view === "panel" ? (
+          <StatTiles columns={4}>
+            <StatTile icon={<CheckCircle />} label={t("stats.issued24h")} value={fmtNumber(n.issued24h, lang)} tone="green" active={filter === "issued"} onClick={() => pick("issued")} title={t("stats.filterHint")} />
+            <StatTile icon={<Clock />} label={t("stats.pending")} value={fmtNumber(n.pending, lang)} tone={n.pending > 0 ? "blue" : "grey"} active={filter === "pending"} onClick={() => pick("pending")} title={t("stats.filterHint")} />
+            <StatTile icon={<ExclamationCircle />} label={t("stats.attention")} value={fmtNumber(n.attention, lang)} tone={n.attention > 0 ? "red" : "grey"} active={filter === "attention"} onClick={() => pick("attention")} title={t("stats.filterHint")} />
+            <StatTile icon={<CurrencyDollar />} label={t("stats.unpaid")} value={fmtNumber(n.unpaid, lang)} tone={n.unpaid > 0 ? "orange" : "grey"} active={filter === "unpaid"} onClick={() => pick("unpaid")} title={t("stats.filterHint")} />
+            <StatTile icon={<ShieldCheck />} label={t("stats.ksefAccepted")} value={fmtNumber(n.ksefAccepted, lang)} tone="green" />
+            <StatTile icon={<Clock />} label={t("stats.ksefProcessing")} value={fmtNumber(n.ksefProcessing, lang)} tone={n.ksefProcessing > 0 ? "blue" : "grey"} />
+            <StatTile icon={<XCircle />} label={t("stats.ksefRejected")} value={fmtNumber(n.ksefProblems, lang)} tone={n.ksefProblems > 0 ? "red" : "grey"} active={filter === "ksef"} onClick={() => pick("ksef")} title={t("stats.filterHint")} />
             <StatTile
-              label={t("stats.pending")}
-              value={fmtNumber(s.counts.pending, lang)}
-              tone={s.counts.pending > 0 ? "orange" : "default"}
-              active={filter === "pending"}
-              onClick={() => setFilter("pending")}
+              icon={<ArrowUturnLeft />}
+              label={t("stats.corrections")}
+              value={fmtNumber(n.correctionsOpen, lang)}
+              tone={n.correctionsOpen > 0 ? "orange" : "grey"}
+              onClick={() => scrollToSection("fakturownia-corrections")}
+              title={t("stats.correctionsHint")}
             />
-            <StatTile
-              label={t("stats.attention")}
-              value={fmtNumber(s.counts.attention, lang)}
-              tone={s.counts.attention > 0 ? "red" : "default"}
-              active={filter === "attention"}
-              onClick={() => setFilter("attention")}
-            />
-            <StatTile
-              label={t("stats.unpaid")}
-              value={fmtNumber(s.counts.unpaid, lang)}
-              tone={s.counts.unpaid > 0 ? "orange" : "default"}
-              active={filter === "unpaid"}
-              onClick={() => setFilter("unpaid")}
-            />
-            <StatTile label={t("stats.ksefAccepted")} value={fmtNumber(s.counts.ksefAccepted, lang)} tone="green" />
-            <StatTile label={t("stats.ksefProcessing")} value={fmtNumber(s.counts.ksefProcessing, lang)} tone={s.counts.ksefProcessing > 0 ? "orange" : "default"} />
-            <StatTile
-              label={t("stats.ksefRejected")}
-              value={fmtNumber(s.counts.ksefProblems, lang)}
-              tone={s.counts.ksefProblems > 0 ? "red" : "default"}
-              active={filter === "ksef"}
-              onClick={() => setFilter("ksef")}
-            />
-            <StatTile label={t("stats.corrections")} value={fmtNumber(s.counts.correctionsOpen, lang)} tone={s.counts.correctionsOpen > 0 ? "orange" : "default"} />
-          </div>
+          </StatTiles>
         ) : null}
       </Container>
 
@@ -225,12 +247,14 @@ const FakturowniaPage = () => {
 
 /* ------------------------------------------------------------------ */
 
-function Header({ status, lang, nav, onAction }: { status: StatusResponse | undefined; lang: string; nav: PageNav<SettingsTabId>; onAction: () => void }) {
+function Header({ status, fetching, lang, nav, onAction }: { status: StatusResponse | undefined; fetching: boolean; lang: string; nav: PageNav<SettingsTabId>; onAction: () => void }) {
   const { t } = useTranslation("fakturownia")
+  const client = useQueryClient()
   const sync = useFakturowniaSync()
   const running = new Set(status?.running ?? [])
   const ready = Boolean(status?.configured)
   const mode = connectionState(status)
+  const demo = status?.mode === "demo"
   const references = status ? referencesFor(status.references, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
@@ -252,15 +276,22 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
     <IntegrationHeader
       icon={<FakturowniaIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         status ? (
           <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
-            {status.mode === "demo" ? <DemoDetails status={status} /> : null}
+            {demo ? <DemoDetails status={status} /> : null}
           </ModeBadge>
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <DocumentText />, text: t("points.documents") },
+        { icon: <ShieldCheck />, text: t("points.once"), tone: "green" },
+        { icon: <BuildingTax />, text: t("points.ksef") },
+        { icon: <CurrencyDollar />, text: t("points.payments") },
+        { icon: <EyeSlash />, text: t("points.noBuyerData") },
+        demo && { icon: <Beaker />, text: t("points.demo"), tone: "blue" },
+      ]}
       social={
         <>
           <ReferencesBadge
@@ -295,25 +326,43 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
           ? {
               key: "issue",
               label: running.has("issue") ? t("actions.running") : t("actions.issuePending"),
-              icon: <ArrowPath />,
+              icon: <DocumentText />,
               loading: sync.isPending && sync.variables === "issue",
               disabled: !ready || running.has("issue"),
               onClick: () => void start("issue"),
             }
           : null
       }
-      actions={
-        panel
+      actions={[
+        {
+          key: "refresh",
+          label: t("actions.refresh"),
+          icon: <ArrowPath />,
+          loading: fetching,
+          onClick: () => void client.invalidateQueries({ queryKey: fakturowniaKeys.all }),
+        },
+        ...(panel
           ? [
               {
                 key: "statuses",
                 label: running.has("statuses") ? t("actions.running") : t("actions.refreshStatuses"),
+                icon: <ShieldCheck />,
                 disabled: !ready || running.has("statuses"),
                 onClick: () => void start("statuses"),
               },
             ]
-          : []
-      }
+          : []),
+        ...(status?.accountUrl && !demo
+          ? [
+              {
+                key: "open",
+                label: t("actions.open"),
+                icon: <ArrowUpRightOnBox />,
+                onClick: () => window.open(status.accountUrl ?? "", "_blank", "noopener"),
+              },
+            ]
+          : []),
+      ]}
     />
   )
 }
@@ -396,25 +445,29 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
     }
   }
 
-  const onOff = (v: boolean) => (
-    <Badge size="2xsmall" color={v ? "green" : "grey"}>
-      {v ? t("connection.on") : t("connection.off")}
-    </Badge>
-  )
+  const onOff = (v: boolean) => <ToneBadge tone={v ? "green" : "grey"}>{v ? t("connection.on") : t("connection.off")}</ToneBadge>
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-1">
-          <Heading level="h2">{t("connection.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {demo ? t("connection.demoNote") : t("connection.subtitle")}
-          </Text>
-        </div>
+    <Section
+      icon={<Key />}
+      title={t("connection.title")}
+      pointsLabel={demo ? t("connection.demoNote") : t("connection.subtitle")}
+      points={
+        demo
+          ? [{ icon: <Beaker />, text: t("connection.points.demo"), tone: "blue" }]
+          : [
+              { icon: <Key />, text: t("connection.points.header") },
+              { icon: <EyeSlash />, text: t("connection.points.masked") },
+              { icon: <ShieldCheck />, text: t("connection.points.checkReads"), tone: "green" },
+            ]
+      }
+      actions={
         <Button size="small" variant="secondary" isLoading={check.isPending} disabled={!status.configured} onClick={() => void onCheck()}>
+          <CheckCircleSolid />
           {t("actions.check")}
         </Button>
-      </div>
+      }
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
         <Fact label={t("connection.account")} mono>
           {demo ? (
@@ -429,7 +482,7 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
         </Fact>
         {!demo ? (
           <Fact label={t("connection.token")}>
-            {status.tokenSet ? t("connection.tokenSet") : <span className="text-ui-tag-red-text">{t("connection.tokenMissing")}</span>}
+            {status.tokenSet ? <ToneBadge tone="green">{t("connection.tokenSet")}</ToneBadge> : <ToneBadge tone="red">{t("connection.tokenMissing")}</ToneBadge>}
           </Fact>
         ) : null}
         <Fact label={t("connection.flow")}>{t(`connection.flows.${o.documentFlow}`)}</Fact>
@@ -481,11 +534,17 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
         </div>
       ) : null}
       <div className="px-6 py-3">
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("connection.schedule")}
-        </Text>
+        <KeyPoints
+          label={t("connection.schedule")}
+          items={[
+            { icon: <Clock />, text: t("connection.every.issue") },
+            { icon: <Clock />, text: t("connection.every.payments") },
+            { icon: <Clock />, text: t("connection.every.statuses") },
+            { icon: <Clock />, text: t("connection.every.corrections") },
+          ]}
+        />
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -515,29 +574,6 @@ function Pagination({ count, page, onPage }: { count: number; page: number; onPa
   )
 }
 
-function useDebounced(value: string, ms = 300): string {
-  const [out, setOut] = useState(value)
-  useEffect(() => {
-    const id = window.setTimeout(() => setOut(value.trim()), ms)
-    return () => window.clearTimeout(id)
-  }, [value, ms])
-  return out
-}
-
-function EmptyRow({ cols, text }: { cols: number; text: string }) {
-  return (
-    <Table.Row>
-      <td colSpan={cols} className="px-6 py-6 text-center">
-        <Text size="small" className="text-ui-fg-muted">
-          {text}
-        </Text>
-      </td>
-    </Table.Row>
-  )
-}
-
-const FILTERS: DocumentFilter[] = ["all", "pending", "issued", "attention", "unpaid", "ksef", "corrections", "canceled"]
-
 function filterCount(status: StatusResponse, f: DocumentFilter): number | undefined {
   const c = status.counts
   switch (f) {
@@ -558,6 +594,17 @@ function filterCount(status: StatusResponse, f: DocumentFilter): number | undefi
     case "corrections":
       return c.corrections
   }
+}
+
+/** The actions of one row: the writes it may need, then PDF, Fakturownia and the details. */
+function DocumentRowActions({ doc, onDone, onOpen }: { doc: DocumentDto; onDone: () => void; onOpen: () => void }) {
+  const { actions, extra } = useDocumentActions(doc, { onDone, onOpen, links: true })
+  return (
+    <>
+      <RowActions actions={actions} />
+      {extra}
+    </>
+  )
 }
 
 function DocumentsSection({
@@ -586,42 +633,62 @@ function DocumentsSection({
 }) {
   const { t } = useTranslation("fakturownia")
   const [search, setSearch] = useState(initialQuery)
-  const q = useDebounced(search)
+  const q = useDebouncedValue(search.trim())
   const [page, setPage] = useState(0)
   useEffect(() => setPage(0), [filter, q, customer])
   const documents = useFakturowniaDocuments(filter, q, page * PAGE_SIZE, PAGE_SIZE, poll, customer)
   const rows = documents.data?.documents ?? []
+  /* A second click on the active filter clears it. */
+  const pick = (f: DocumentFilter) => onFilter(filter === f && f !== "all" ? "all" : f)
+  const button = (f: DocumentFilter, attention = false) => (
+    <FilterButton
+      key={f}
+      icon={FILTER_ICON[f]}
+      label={t(`documents.filter.${f}`)}
+      count={customer ? undefined : filterCount(status, f)}
+      attention={attention}
+      active={filter === f}
+      onClick={() => pick(f)}
+    />
+  )
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("documents.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("documents.subtitle")}
-        </Text>
-      </div>
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <span className="flex flex-wrap items-center gap-2">
-          <FilterPills<DocumentFilter>
-            value={filter}
-            onChange={onFilter}
-            options={FILTERS.map((f) => ({ value: f, label: t(`documents.filter.${f}`), count: customer ? undefined : filterCount(status, f) }))}
-          />
-          {customer ? (
-            <Badge size="2xsmall" color="blue">
-              <span className="inline-flex items-center gap-x-1">
-                {t("documents.customer", { id: customer })}
-                <button type="button" className="text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={onClearCustomer} aria-label={t("documents.showAll")}>
-                  {t("documents.showAll")}
-                </button>
-              </span>
-            </Badge>
-          ) : null}
-        </span>
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("documents.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+    <Section
+      id="fakturownia-documents"
+      icon={<DocumentText />}
+      title={t("documents.title")}
+      pointsLabel={t("documents.subtitle")}
+      points={[
+        { icon: <MedusaMark className="size-3.5" />, text: t("documents.points.order") },
+        { icon: <ShieldCheck />, text: t("documents.points.once"), tone: "green", title: t("documents.exactlyOnce") },
+        { icon: <DocumentText />, text: t("documents.points.number") },
+        { icon: <History />, text: t("documents.points.history") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("documents.search")} />}
+    >
+      <FilterBar>
+        {button("all")}
+        <FilterDivider />
+        {button("pending")}
+        {button("issued")}
+        {button("canceled")}
+        <FilterDivider />
+        {button("attention", true)}
+        {button("unpaid", true)}
+        {button("ksef", true)}
+        <FilterDivider />
+        {button("corrections")}
+        {customer ? (
+          <>
+            <FilterDivider />
+            <Button size="small" variant="secondary" onClick={onClearCustomer} title={t("documents.showAll")} className="gap-x-1.5">
+              <User />
+              <span className="max-w-[16rem] truncate font-mono">{t("documents.customer", { id: customer })}</span>
+              <XMarkMini />
+            </Button>
+          </>
+        ) : null}
+      </FilterBar>
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -643,94 +710,86 @@ function DocumentsSection({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={9} text={documents.isLoading ? "" : t("documents.empty")} />
-            ) : (
-              rows.map((d) => (
-                <Table.Row key={d.id} className="[&_td]:py-2.5 align-top">
-                  <Table.Cell className="max-w-[260px]">
-                    <StoreOrderCell orderId={d.orderId} displayId={d.displayId} />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex flex-col items-start gap-y-1">
-                      <KindBadge kind={d.kind} />
-                      {d.buyerType ? (
-                        <Text size="xsmall" className="text-ui-fg-muted">
-                          {t(d.buyerType === "company" ? "documents.company" : "documents.person")}
-                        </Text>
-                      ) : null}
-                      {d.fromFakturowniaId && d.kind !== "correction" ? (
-                        <Text size="xsmall" className="text-ui-fg-muted">
-                          {t("documents.fromProforma")}
-                        </Text>
-                      ) : null}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap">
-                    <div className="flex flex-col items-start gap-y-0.5">
-                      {d.number ? (
-                        <button type="button" className="txt-compact-small font-mono text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => onOpen(d.id)}>
-                          {d.number}
-                        </button>
-                      ) : null}
-                      {d.emailStatus ? (
-                        <Text size="xsmall" className={d.emailStatus === "failed" ? "text-ui-tag-red-text" : "text-ui-fg-muted"} title={d.emailError ?? undefined}>
-                          {t(`documents.email.${d.emailStatus}`, { time: fmtDateTime(d.emailedAt, lang) })}
-                        </Text>
-                      ) : d.emailedAt ? (
-                        <Text size="xsmall" className="text-ui-fg-muted">
-                          {t("documents.email.sent", { time: fmtDateTime(d.emailedAt, lang) })}
-                        </Text>
-                      ) : null}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="max-w-md">
-                    <div className="flex flex-col items-start gap-y-1">
-                      <DocumentStatusBadge status={d.status} />
-                      {d.error && d.errorCode !== "adopted" ? (
-                        <Text size="xsmall" className={d.status === "failed" || d.status === "unknown" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}>
-                          {d.errorCode && /^(HTTP_|API_|ERROR_|conflict|unknown_result)/.test(d.errorCode) ? <span className="font-mono">[{d.errorCode}] </span> : null}
-                          {d.error}
-                        </Text>
-                      ) : null}
-                      {d.errorCode === "adopted" ? (
-                        <Text size="xsmall" className="text-ui-fg-muted">
-                          {t("documents.adopted")}
-                        </Text>
-                      ) : null}
-                      <BuyerWarningText warning={d.buyerWarning} />
-                      {d.status === "pending" && d.nextAttemptAt && d.attempts > 0 ? (
-                        <Text size="xsmall" className="text-ui-fg-muted">
-                          {t("documents.nextAttempt", { time: fmtDateTime(d.nextAttemptAt, lang) })}
-                        </Text>
-                      ) : null}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtMoney(d.totalGross, d.currency, lang)}</Table.Cell>
-                  <Table.Cell>{(d.status === "issued" || d.status === "needs_correction") && d.kind !== "correction" ? <PaidBadge paid={d.paid} /> : null}</Table.Cell>
-                  <Table.Cell>
-                    <KsefBadge doc={d} />
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap">{fmtDateTime(d.issuedAt, lang)}</Table.Cell>
-                  <Table.Cell className="text-right">
-                    <div className="flex flex-col items-end gap-y-2">
-                      <DocumentActions doc={d} onDone={onAction} />
-                      <span className="inline-flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                        <DocumentLinks doc={d} />
-                        <Button size="small" variant="transparent" onClick={() => onOpen(d.id)}>
-                          {t("documents.details")}
-                        </Button>
-                      </span>
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              ))
-            )}
+            {documents.isLoading ? <KitSkeletonRows cols={9} rows={5} /> : null}
+            {!documents.isLoading && rows.length === 0 ? (
+              <EmptyTableRow cols={9} icon={filter === "attention" || filter === "ksef" ? <CheckCircleSolid /> : FILTER_ICON[filter]} title={t(`documents.emptyBy.${filter}`)} />
+            ) : null}
+            {rows.map((d) => (
+              <Table.Row key={d.id} className="[&_td]:py-2.5 align-top">
+                <Table.Cell className="max-w-[260px]">
+                  <StoreOrderCell orderId={d.orderId} displayId={d.displayId} />
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex flex-col items-start gap-y-1">
+                    <KindBadge kind={d.kind} />
+                    {d.buyerType ? (
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t(d.buyerType === "company" ? "documents.company" : "documents.person")}
+                      </Text>
+                    ) : null}
+                    {d.fromFakturowniaId && d.kind !== "correction" ? (
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t("documents.fromProforma")}
+                      </Text>
+                    ) : null}
+                  </div>
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap">
+                  <div className="flex flex-col items-start gap-y-0.5">
+                    {d.number ? (
+                      <button type="button" className="txt-compact-small font-mono text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => onOpen(d.id)}>
+                        {d.number}
+                      </button>
+                    ) : null}
+                    {d.emailStatus ? (
+                      <Text size="xsmall" className={d.emailStatus === "failed" ? "text-ui-tag-red-text" : "text-ui-fg-muted"} title={d.emailError ?? undefined}>
+                        {t(`documents.email.${d.emailStatus}`, { time: fmtDateTime(d.emailedAt, lang) })}
+                      </Text>
+                    ) : d.emailedAt ? (
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t("documents.email.sent", { time: fmtDateTime(d.emailedAt, lang) })}
+                      </Text>
+                    ) : null}
+                  </div>
+                </Table.Cell>
+                <Table.Cell className="max-w-md">
+                  <div className="flex flex-col items-start gap-y-1">
+                    <DocumentStatusBadge status={d.status} />
+                    {d.error && d.errorCode !== "adopted" ? (
+                      <Text size="xsmall" className={d.status === "failed" || d.status === "unknown" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}>
+                        {d.errorCode && /^(HTTP_|API_|ERROR_|conflict|unknown_result)/.test(d.errorCode) ? <span className="font-mono">[{d.errorCode}] </span> : null}
+                        {d.error}
+                      </Text>
+                    ) : null}
+                    {d.errorCode === "adopted" ? (
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t("documents.adopted")}
+                      </Text>
+                    ) : null}
+                    <BuyerWarningText warning={d.buyerWarning} />
+                    {d.status === "pending" && d.nextAttemptAt && d.attempts > 0 ? (
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t("documents.nextAttempt", { time: fmtDateTime(d.nextAttemptAt, lang) })}
+                      </Text>
+                    ) : null}
+                  </div>
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap text-right tabular-nums">{fmtMoney(d.totalGross, d.currency, lang)}</Table.Cell>
+                <Table.Cell>{(d.status === "issued" || d.status === "needs_correction") && d.kind !== "correction" ? <PaidBadge paid={d.paid} /> : null}</Table.Cell>
+                <Table.Cell>
+                  <KsefBadge doc={d} />
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap">{fmtDateTime(d.issuedAt, lang)}</Table.Cell>
+                <Table.Cell className="text-right">
+                  <DocumentRowActions doc={d} onDone={onAction} onOpen={() => onOpen(d.id)} />
+                </Table.Cell>
+              </Table.Row>
+            ))}
           </Table.Body>
         </Table>
       </div>
       <Pagination count={documents.data?.count ?? 0} page={page} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }
 
@@ -741,13 +800,15 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
   const runs = useFakturowniaRuns(poll)
   const rows = runs.data?.runs ?? []
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("runs.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("runs.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<History />}
+      title={t("runs.title")}
+      pointsLabel={t("runs.subtitle")}
+      points={[
+        { icon: <Clock />, text: t("runs.points.background") },
+        { icon: <ListBullet />, text: t("runs.points.newest") },
+      ]}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -760,30 +821,28 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow cols={5} text={runs.isLoading ? "" : t("runs.empty")} />
-            ) : (
-              rows.map((r) => (
-                <Table.Row key={r.id} className="[&_td]:py-2.5" title={r.message ?? undefined}>
-                  <Table.Cell className="whitespace-nowrap">{fmtDateTime(r.startedAt, lang)}</Table.Cell>
-                  <Table.Cell className="whitespace-nowrap">
-                    {t(`runs.kinds.${r.kind}`)}
-                    <span className="text-ui-fg-muted"> / {t(`runs.triggers.${r.trigger}`)}</span>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <RunStatusBadge status={r.status} />
-                  </Table.Cell>
-                  <Table.Cell className="max-w-xl">
-                    <Text size="small">{runSummary(r, t)}</Text>
-                  </Table.Cell>
-                  <Table.Cell className="text-right tabular-nums">{fmtDuration(r.durationMs)}</Table.Cell>
-                </Table.Row>
-              ))
-            )}
+            {runs.isLoading ? <KitSkeletonRows cols={5} rows={4} /> : null}
+            {!runs.isLoading && rows.length === 0 ? <EmptyTableRow cols={5} icon={<History />} title={t("runs.empty")} /> : null}
+            {rows.map((r) => (
+              <Table.Row key={r.id} className="[&_td]:py-2.5" title={r.message ?? undefined}>
+                <Table.Cell className="whitespace-nowrap">{fmtDateTime(r.startedAt, lang)}</Table.Cell>
+                <Table.Cell className="whitespace-nowrap">
+                  {t(`runs.kinds.${r.kind}`)}
+                  <span className="text-ui-fg-muted"> / {t(`runs.triggers.${r.trigger}`)}</span>
+                </Table.Cell>
+                <Table.Cell>
+                  <RunStatusBadge status={r.status} />
+                </Table.Cell>
+                <Table.Cell className="max-w-xl">
+                  <Text size="small">{runSummary(r, t)}</Text>
+                </Table.Cell>
+                <Table.Cell className="text-right tabular-nums">{fmtDuration(r.durationMs)}</Table.Cell>
+              </Table.Row>
+            ))}
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 

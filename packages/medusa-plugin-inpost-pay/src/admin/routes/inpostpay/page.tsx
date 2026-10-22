@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath } from "@medusajs/icons"
-import { Badge, Container, InlineTip, toast } from "@medusajs/ui"
+import { ArrowPath, ChartBar, CheckCircle, CreditCard, CursorArrowRays, ExclamationCircle, MapPin, Phone, ShieldCheck, ShoppingCart, Sparkles } from "@medusajs/icons"
+import { Container, InlineTip, toast } from "@medusajs/ui"
 import type { BasketFilter, StatusResponse } from "../../../modules/inpostpay/lib/contract"
 import { errorMessage, inpostPayKeys, useInpostPaySeed, useInpostPayStatus } from "../../lib/inpostpay-api"
 import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpostpay-guide"
@@ -13,7 +13,8 @@ import { InpostPayIcon } from "../../lib/inpostpay-icon"
 import { addPageTab, hostedNavIcon } from "../../lib/inpostpay-kit"
 import { BasketsSection, DemoDetails, FILTERS } from "../../lib/inpostpay-panel"
 import { AccountSection, ButtonSection, DeliverySection } from "../../lib/inpostpay-settings"
-import { StatTile, fmtNumber, modeOf } from "../../lib/inpostpay-ui"
+import { StatTile, StatTiles, type Tone } from "../../lib/inpostpay-blocks"
+import { fmtNumber, modeOf } from "../../lib/inpostpay-ui"
 
 /**
  * InPost Pay by Koda Plus. Three views, switched in the header and kept in
@@ -59,14 +60,15 @@ const InpostPayPage = () => {
     seed.mutate()
   }, [s]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tiles: Array<{ key: string; value: string; tone: "default" | "green" | "orange" | "red" | "blue" | "purple"; filter?: BasketFilter }> = s
+  /* Each counter is a filter of the list below (conversion only counts); orange and red only while there is something to do. */
+  const tiles: Array<{ key: string; value: string; tone: Tone; icon: ReactNode; filter?: BasketFilter }> = s
     ? [
-        { key: "baskets", value: fmtNumber(s.counts.baskets, lang), tone: "default", filter: "all" },
-        { key: "linked", value: fmtNumber(s.counts.linked, lang), tone: s.counts.linked > 0 ? "blue" : "default", filter: "linked" },
-        { key: "orders", value: fmtNumber(s.counts.orders, lang), tone: s.counts.orders > 0 ? "green" : "default", filter: "ordered" },
-        { key: "conversion", value: `${fmtNumber(s.counts.conversion, lang)}%`, tone: "default" },
-        { key: "failed", value: fmtNumber(s.counts.failed, lang), tone: s.counts.failed > 0 ? "orange" : "default", filter: "failed" },
-        { key: "payment_problems", value: fmtNumber(s.counts.payment_problems, lang), tone: s.counts.payment_problems > 0 ? "red" : "default", filter: "payment_problems" },
+        { key: "baskets", value: fmtNumber(s.counts.baskets, lang), tone: "grey", icon: <ShoppingCart />, filter: "all" },
+        { key: "linked", value: fmtNumber(s.counts.linked, lang), tone: s.counts.linked > 0 ? "blue" : "grey", icon: <Phone />, filter: "linked" },
+        { key: "orders", value: fmtNumber(s.counts.orders, lang), tone: s.counts.orders > 0 ? "green" : "grey", icon: <CheckCircle />, filter: "ordered" },
+        { key: "conversion", value: `${fmtNumber(s.counts.conversion, lang)}%`, tone: "grey", icon: <ChartBar /> },
+        { key: "failed", value: fmtNumber(s.counts.failed, lang), tone: s.counts.failed > 0 ? "orange" : "grey", icon: <ExclamationCircle />, filter: "failed" },
+        { key: "payment_problems", value: fmtNumber(s.counts.payment_problems, lang), tone: s.counts.payment_problems > 0 ? "red" : "grey", icon: <CreditCard />, filter: "payment_problems" },
       ]
     : []
 
@@ -83,10 +85,11 @@ const InpostPayPage = () => {
         ) : null}
         {s ? <Warnings status={s} /> : null}
         {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-6">
+          <StatTiles columns={6}>
             {tiles.map((tile) => (
               <StatTile
                 key={tile.key}
+                icon={tile.icon}
                 label={t(`stats.${tile.key}`)}
                 value={tile.value}
                 tone={tile.tone}
@@ -94,7 +97,7 @@ const InpostPayPage = () => {
                 onClick={tile.filter ? () => setFilter(filter === tile.filter ? "all" : tile.filter!) : undefined}
               />
             ))}
-          </div>
+          </StatTiles>
         ) : null}
       </Container>
 
@@ -129,11 +132,13 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
-  const actions: HeaderAction[] = []
+  /* Refresh first; the demo adds its sample rows next to it. */
+  const actions: HeaderAction[] = [{ key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, onClick: () => void client.invalidateQueries({ queryKey: inpostPayKeys.all }) }]
   if (status?.mode === "demo") {
     actions.push({
       key: "seed",
       label: t("actions.seed"),
+      icon: <Sparkles />,
       loading: seed.isPending,
       onClick: () =>
         void seed
@@ -147,30 +152,29 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
     <IntegrationHeader
       icon={<InpostPayIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         status ? (
           <>
             <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
               {status.mode === "demo" ? <DemoDetails /> : null}
             </ModeBadge>
-            <Badge size="2xsmall" color={status.options.sendOrderEvents ? "orange" : "grey"}>
-              {status.options.sendOrderEvents ? t("mode.events") : t("mode.noEvents")}
-            </Badge>
+            <ModeBadge color={status.options.sendOrderEvents ? "orange" : "grey"} label={status.options.sendOrderEvents ? t("mode.events") : t("mode.noEvents")} />
           </>
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <CursorArrowRays />, text: t("points.button") },
+        { icon: <Phone />, text: t("points.app") },
+        { icon: <MapPin />, text: t("points.delivery") },
+        { icon: <ShoppingCart />, text: t("points.order") },
+        { icon: <ShieldCheck />, text: t("points.signed"), tone: "green" },
+      ]}
       social={<AddStoreButton labels={community.addStore} />}
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}
       labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
-      primary={
-        nav.view !== "guide"
-          ? { key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, onClick: () => void client.invalidateQueries({ queryKey: inpostPayKeys.all }) }
-          : null
-      }
       actions={nav.view !== "guide" ? actions : []}
     />
   )

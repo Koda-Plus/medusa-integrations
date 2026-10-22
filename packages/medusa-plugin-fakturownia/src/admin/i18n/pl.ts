@@ -8,6 +8,14 @@ const pl: typeof en = {
   by: "by Koda Plus",
   subtitle:
     "Faktury VAT, proformy, paragony i korekty do zamówień, wystawiane w Fakturowni dokładnie raz. Płatność, status KSeF, e-maile i PDF wracają do panelu, a w Medusie nie zostają żadne dane nabywcy.",
+  points: {
+    documents: "Faktury, proformy, paragony",
+    once: "Dokładnie raz na zamówienie",
+    ksef: "KSeF przez Fakturownię",
+    payments: "Płatności wracają do panelu",
+    noBuyerData: "Bez danych nabywcy w Medusie",
+    demo: "Symulowane konto",
+  },
   view: {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
@@ -31,6 +39,7 @@ const pl: typeof en = {
   },
   actions: {
     moreActions: "Więcej akcji",
+    refresh: "Odśwież",
     issuePending: "Wystaw oczekujące teraz",
     refreshStatuses: "Odśwież statusy",
     running: "Trwa",
@@ -65,6 +74,8 @@ const pl: typeof en = {
     ksefProcessing: "W KSeF w toku",
     ksefRejected: "Odrzucone przez KSeF",
     corrections: "Korekty do decyzji",
+    filterHint: "Filtruje dokumenty niżej; drugi klik zdejmuje filtr",
+    correctionsHint: "Przewija do korekt",
   },
   references: {
     title: "Działa w sklepach wdrożonych przez Koda Plus",
@@ -83,7 +94,12 @@ const pl: typeof en = {
     title: "Zapis do Fakturowni",
     subtitle:
       "To, co wersja 0.2.0 może zapisać, jest wyłączone, dopóki ktoś nie włączy tego tutaj, a każdy zapis można zablokować na stałe w opcjach wtyczki (writers.<nazwa>: false), czego ta strona nie obejdzie. Wystawianie dokumentów, oznaczanie opłaconych i automatyczny e-mail mają własne opcje.",
-    demo: "Tryb demo: zapisy trafiają wyłącznie do symulowanego konta.",
+    demoBadge: "Tylko symulowane konto",
+    points: {
+      offByDefault: "Wyłączone, dopóki ktoś nie włączy",
+      option: "Opcja może zabronić",
+      beta: "Beta: najpierw konto testowe",
+    },
     names: {
       corrections: "Korekty",
       emails: "E-maile",
@@ -163,13 +179,32 @@ const pl: typeof en = {
     channelMissing: "Kanał sprzedaży {{channel}}: działu {{id}} nie ma na tym koncie.",
     categoryFound: "Kategoria {{id}} znaleziona: {{name}}.",
     categoryMissing: "Kategorii {{id}} nie ma na tym koncie.",
+    points: {
+      demo: "Symulowane konto we wtyczce",
+      header: "Token w nagłówku",
+      masked: "Maskowany w logach",
+      checkReads: "Sprawdzenie tylko czyta",
+    },
+    every: {
+      issue: "Dokumenty i korekty: co 2 min",
+      payments: "Płatności: co 10 min",
+      statuses: "KSeF i e-maile: co 15 min",
+      corrections: "Plany korekt: co 30 min",
+    },
     schedule: "Oczekujące dokumenty i zatwierdzone korekty co 2 minuty, płatności co 10 minut, status KSeF i czekające e-maile co 15 minut, plany korekt co 30 minut.",
   },
   corrections: {
     title: "Korekty",
     subtitle:
       "Gdy zamówienie zmieni się po wystawieniu dokumentu (zwrot towaru, zwrot pieniędzy, edycja zamówienia, anulowanie), korekta czeka tutaj na Twoją decyzję: pozycje przed i po, netto, VAT i brutto. Zatwierdź ją taką, jaką widzisz, a faktura korygująca zostanie wystawiona raz.",
-    off: "Korekty są wyłączone (corrections: \"off\" w opcjach wtyczki): faktura anulowanego zamówienia jest tylko oznaczana, jak w 0.1.0.",
+    offTitle: "Korekty są wyłączone",
+    offPoint: "corrections: \"off\" w opcjach",
+    points: {
+      changes: "Zwroty, refundacje, edycje, anulowania",
+      beforeAfter: "Pozycje przed i po",
+      approve: "Decyduje człowiek",
+      once: "Wystawiane dokładnie raz",
+    },
     waitingForWriter: "Zatwierdzone korekty czekające na zapis korekt: {{count}}. Włącz go w Ustawieniach, w zakładce Zapisy.",
     search: "Numer dokumentu lub numer zamówienia",
     filter: {
@@ -278,6 +313,12 @@ const pl: typeof en = {
     exactlyOnce:
       "Jeden wiersz na zamówienie i rodzaj dokumentu (korekty: jedna na zmianę); drugiego takiego samego odmawia sama baza danych. Przed utworzeniem dokument jest szukany w Fakturowni po numerze zamówienia, a zgubiona odpowiedź nigdy nie jest wysyłana ponownie na ślepo: najpierw wyszukanie.",
     openOrder: "Otwórz zamówienie",
+    points: {
+      order: "Obok swojego zamówienia",
+      once: "Dokładnie raz",
+      number: "Numer otwiera szczegóły",
+      history: "KSeF, e-maile, korekty",
+    },
     search: "Numer dokumentu lub numer zamówienia",
     filter: {
       all: "Wszystkie",
@@ -346,7 +387,16 @@ const pl: typeof en = {
       sent: "Wysłano e-mailem {{time}}",
       failed: "E-mail nieudany",
     },
-    empty: "Brak dokumentów w tym widoku.",
+    emptyBy: {
+      all: "Jeszcze nie ma dokumentów",
+      pending: "Nic nie czeka w kolejce",
+      issued: "Jeszcze nic nie wystawiono",
+      attention: "Nic nie wymaga uwagi",
+      unpaid: "Wszystko opłacone",
+      ksef: "Bez problemów z KSeF",
+      corrections: "Brak faktur korygujących",
+      canceled: "Nic nie anulowano",
+    },
   },
   drawer: {
     loading: "Wczytywanie",
@@ -425,6 +475,12 @@ const pl: typeof en = {
     noApi:
       "API Fakturowni nie ma wywołania przypomnienia ani pola na treść e-maila: przypomnienie wysyła dokument ponownie z szablonem e-maila konta, najwyżej raz dziennie. Przypomnienia z własną treścią ustawisz w automatycznych przypomnieniach o płatności w ustawieniach Fakturowni.",
     reminders: "Przypomnienia",
+    points: {
+      age_one: "Wystawione min. {{count}} dzień temu",
+      age: "Wystawione min. {{count}} dni temu",
+      oldest: "Od najstarszych",
+      daily: "Przypomnienie najwyżej raz dziennie",
+    },
     age_one: "{{count}} dzień temu",
     age: "{{count}} dni temu",
     sentCount: "wysłane: {{count}}",
@@ -440,10 +496,21 @@ const pl: typeof en = {
     demoTitle: "Symulowana skrzynka",
     demoSubtitle: "Tryb demo: e-maile, które by wyszły. Do nikogo nic nie wysłano.",
     simulated: "Symulacja",
+    points: {
+      newest: "Od najnowszych",
+      masked: "Adresy zamaskowane",
+      nothingSent: "Nic nie zostało wysłane",
+    },
   },
   summary: {
     title: "Podsumowanie miesięczne",
     subtitle: "Dokumenty według miesiąca wystawienia: ile ich jest i jaka ich wartość brutto w każdej walucie, co jest jeszcze nieopłacone i jaki odsetek dokumentów przyjął KSeF.",
+    points: {
+      months: "12 miesięcy wg daty wystawienia",
+      currency: "Brutto w każdej walucie",
+      unpaid: "Co jeszcze nieopłacone",
+      ksef: "Odsetek przyjętych przez KSeF",
+    },
     month: "Miesiąc",
     kinds: {
       vat: "Faktury VAT",
@@ -488,6 +555,10 @@ const pl: typeof en = {
   runs: {
     title: "Historia",
     subtitle: "Przebiegi w tle w tym trybie, od najnowszych.",
+    points: {
+      background: "Przebiegi w tle",
+      newest: "Od najnowszych",
+    },
     col: {
       when: "Kiedy",
       kind: "Zadanie",
@@ -534,9 +605,18 @@ const pl: typeof en = {
     failed: "Nie udało się wczytać dokumentów tego zamówienia.",
     none: "To zamówienie nie ma jeszcze dokumentu.",
     notConfigured: "Wtyczka nie jest jeszcze skonfigurowana do wystawiania dokumentów.",
-    waiting: "Dokument zostanie wystawiony automatycznie: {{when}}.",
-    whenCaptured: "po pobraniu płatności",
-    whenPlaced: "zaraz po złożeniu zamówienia",
+    points: {
+      whenCaptured: "Wystawi się po pobraniu płatności",
+      whenPlaced: "Wystawi się zaraz po zamówieniu",
+    },
+    state: {
+      none: "Brak dokumentu",
+      pending: "W kolejce",
+      failed: "Błąd",
+      attention: "Wymaga uwagi",
+      canceled: "Anulowany",
+      issued: "Wystawiony",
+    },
     queued: "W kolejce. Numer pojawi się tu za kilka sekund.",
     correctionQueued: "Zatwierdzona i w kolejce. Wyjdzie, gdy zapis korekt jest włączony.",
     nextKind: "Wystaw teraz utworzy: {{kind}}.",

@@ -1,9 +1,11 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Button, InlineTip, Input, Switch, Text, toast } from "@medusajs/ui"
+import { Beaker, Clock, CurrencyDollar, FloppyDisk, Key, LockClosedSolid, MapPin, ShoppingCart, Tag, TruckFast } from "@medusajs/icons"
+import { Button, InlineTip, Input, Switch, Text, toast } from "@medusajs/ui"
 import type { StatusResponse, VonHalskySettings } from "../../modules/vonhalsky/lib/contract"
 import { errorMessage, useSaveSettings } from "./vonhalsky-api"
-import { Fact, Section, fmtMoney } from "./vonhalsky-ui"
+import { EmptyState, Section, ToneBadge } from "./vonhalsky-blocks"
+import { Fact, fmtMoney } from "./vonhalsky-ui"
 
 const TYPES = ["APM", "COURIER"] as const
 const SELECT = "w-full max-w-md rounded-md border border-ui-border-base bg-ui-bg-field px-3 py-1.5 text-sm text-ui-fg-base"
@@ -33,7 +35,21 @@ export function PricingSection({ status: s, lang }: { status: StatusResponse; la
     }
   }
   return (
-    <Section title={t("pricing.title")} subtitle={t("pricing.subtitle")}>
+    <Section
+      icon={<CurrencyDollar />}
+      title={t("pricing.title")}
+      pointsLabel={t("pricing.subtitle")}
+      points={[
+        { icon: <CurrencyDollar />, text: t("pricing.points.gross") },
+        { icon: <Tag />, text: t("pricing.points.fixed") },
+      ]}
+      actions={
+        <Button size="small" variant="primary" isLoading={save.isPending} disabled={draft === null || !valid} onClick={() => void onSave()}>
+          <FloppyDisk />
+          {t("actions.save")}
+        </Button>
+      }
+    >
       <div className="flex flex-col gap-y-3 px-6 py-4">
         <label className="flex max-w-xs flex-col gap-y-1">
           <Text size="small" weight="plus">
@@ -55,11 +71,6 @@ export function PricingSection({ status: s, lang }: { status: StatusResponse; la
             {t("pricing.example", { price: fmtMoney(example(n, s), "pln", lang) })}
           </Text>
         ) : null}
-        <div>
-          <Button size="small" variant="primary" isLoading={save.isPending} disabled={draft === null || !valid} onClick={() => void onSave()}>
-            {t("actions.save")}
-          </Button>
-        </div>
       </div>
     </Section>
   )
@@ -82,7 +93,21 @@ export function OrderSettingsSection({ status: s }: { status: StatusResponse }) 
     }
   }
   return (
-    <Section title={t("orderSettings.title")} subtitle={t("orderSettings.subtitle")}>
+    <Section
+      icon={<ShoppingCart />}
+      title={t("orderSettings.title")}
+      pointsLabel={t("orderSettings.subtitle")}
+      points={[
+        { icon: <ShoppingCart />, text: t("orderSettings.points.where") },
+        { icon: <Clock />, text: t("orderSettings.points.auto") },
+      ]}
+      actions={
+        <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
+          <FloppyDisk />
+          {t("actions.save")}
+        </Button>
+      }
+    >
       <div className="flex flex-col gap-y-4 px-6 py-4">
         <label className="flex flex-col gap-y-1">
           <Text size="small" weight="plus">
@@ -122,11 +147,6 @@ export function OrderSettingsSection({ status: s }: { status: StatusResponse }) 
           </span>
           <Switch checked={v.autoImport} onCheckedChange={(on) => setDraft({ ...v, autoImport: on })} />
         </label>
-        <div>
-          <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
-            {t("actions.save")}
-          </Button>
-        </div>
       </div>
     </Section>
   )
@@ -148,11 +168,26 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
     }
   }
   return (
-    <Section title={t("shipping.title")} subtitle={t("shipping.subtitle")}>
+    <Section
+      icon={<TruckFast />}
+      title={t("shipping.title")}
+      pointsLabel={t("shipping.subtitle")}
+      points={[
+        { icon: <TruckFast />, text: t("shipping.points.option") },
+        { icon: <MapPin />, text: t("shipping.points.locker") },
+        s.mode === "demo" && { icon: <Beaker />, text: t("shipping.points.demo"), tone: "blue" },
+      ]}
+      actions={
+        s.shippingOptions.length > 0 ? (
+          <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
+            <FloppyDisk />
+            {t("actions.save")}
+          </Button>
+        ) : null
+      }
+    >
       {s.shippingOptions.length === 0 ? (
-        <Text size="small" className="px-6 py-4 text-ui-fg-subtle">
-          {t("shipping.noOptions")}
-        </Text>
+        <EmptyState icon={<TruckFast />} title={t("shipping.noOptions")} />
       ) : (
         <div className="flex flex-col gap-y-4 px-6 py-4">
           {TYPES.map((type) => (
@@ -181,11 +216,6 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
               </div>
             </div>
           ))}
-          <div>
-            <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
-              {t("actions.save")}
-            </Button>
-          </div>
         </div>
       )}
     </Section>
@@ -197,7 +227,16 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
   const { t } = useTranslation("vonhalsky")
   const value = (v: string) => (v ? <span className="font-mono">{v}</span> : <span className="text-ui-fg-muted">{t("account.notSet")}</span>)
   return (
-    <Section title={t("account.title")} subtitle={t("account.subtitle")}>
+    <Section
+      icon={<Key />}
+      title={t("account.title")}
+      pointsLabel={t("account.subtitle")}
+      points={[
+        { icon: <Key />, text: t("account.points.config") },
+        { icon: <LockClosedSolid />, text: t("account.points.masked"), tone: "green" },
+        s.apiPending && { icon: <Clock />, text: t("mode.pending"), tone: "orange" },
+      ]}
+    >
       {s.apiPending ? (
         <div className="px-6 py-4">
           <InlineTip variant="info" label={t("account.pendingTitle")}>
@@ -207,9 +246,7 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
       ) : null}
       <div className="grid grid-cols-1 gap-4 px-6 py-4 md:grid-cols-2">
         <Fact label={t("account.environment")}>
-          <Badge size="2xsmall" color={s.environment === "live" ? "green" : "blue"}>
-            {t(`mode.${s.environment}`)}
-          </Badge>
+          <ToneBadge tone={s.environment === "live" ? "green" : "orange"}>{t(`mode.${s.environment}`)}</ToneBadge>
         </Fact>
         <Fact label={t("account.apiUrl")} mono>
           {value(s.options.apiUrl)}

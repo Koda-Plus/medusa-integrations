@@ -1,10 +1,32 @@
-﻿import { useEffect, useRef, useState } from "react"
+﻿import { Fragment, useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
+import {
+  ArrowDownTray,
+  ArrowPath,
+  ArrowUpRightOnBox,
+  ArrowUturnLeft,
+  Beaker,
+  CheckCircle,
+  Clock,
+  CloudArrowDown,
+  CubeSolid,
+  DocumentText,
+  ExclamationCircle,
+  EyeSlash,
+  Key,
+  Link as LinkIcon,
+  ListBullet,
+  LockClosedSolid,
+  PaperPlane,
+  ShieldCheck,
+  ShoppingCart,
+  Tag,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, Container, InlineTip, Table, Text, toast } from "@medusajs/ui"
 import type { CardDto, CardFilter, CheckResult, OrderFilter, StatusResponse, SyncWhat } from "../../../modules/baselinker/lib/contract"
 import {
   baselinkerKeys,
@@ -20,20 +42,23 @@ import {
   useBaseLinkerStock,
   useBaseLinkerSync,
 } from "../../lib/baselinker-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/baselinker-guide"
+import { FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/baselinker-blocks"
+import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/baselinker-guide"
 import { GuideView, usePromptSpec } from "../../lib/baselinker-guide-view"
 import { BaseLinkerIcon } from "../../lib/baselinker-icon"
+import { KitFetchingBar, KitLoading } from "../../lib/baselinker-kit"
 import {
   DemoDetails,
   DirectionsSection,
-  EmptyRow,
   ImportsSection,
   InvoicesSection,
   PAGE_SIZE,
   Pagination,
   PlanSection,
   ReturnsSection,
+  TableBodyState,
   pick,
+  toggleFilter,
   useDebounced,
   useDeepLink,
 } from "../../lib/baselinker-panel"
@@ -41,13 +66,12 @@ import {
   ChangeStatusBadge,
   ConflictBadge,
   Fact,
-  FilterPills,
   MedusaColumn,
   OrderStatusBadge,
   RunStatusBadge,
-  StatTile,
   StoreLink,
   StoreOrderCell,
+  Thumb,
   connectionState,
   fmtDateTime,
   fmtDelta,
@@ -56,6 +80,7 @@ import {
   fmtRating,
   kitReferences,
   runSummary,
+  useProductThumbs,
 } from "../../lib/baselinker-ui"
 
 /**
@@ -102,8 +127,21 @@ const BaseLinkerPage = () => {
 
   /* A deep link (a board counter, a summary, a widget) opens one list: its section scrolls into view,
      and the sections start over with the filter and search of the address when it changes. */
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const deepKey = ["section", "filter", "q", "tab"].map((k) => params.get(k) ?? "").join("|")
+  /* A tile is a filter of the cards below; a second click on the active one clears it. */
+  const tileFilter = (next: CardFilter) => {
+    setCardFilter((cur) => toggleFilter(cur, next, "all"))
+    document.getElementById("baselinker-cards")?.scrollIntoView({ block: "start", behavior: "smooth" })
+  }
+  /* The failed orders tile opens the orders list on that filter, like a deep link. */
+  const openOrders = (filter: OrderFilter) => {
+    const p = new URLSearchParams(params)
+    p.set("section", "orders")
+    p.set("filter", filter)
+    p.delete("q")
+    setParams(p, { replace: true })
+  }
   const section = params.get("section")
   useEffect(() => {
     if (!section || !s) return
@@ -135,33 +173,29 @@ const BaseLinkerPage = () => {
         ) : null}
         {s ? <Warnings status={s} /> : null}
         {s?.demo && !s.demo.prepared ? <DemoPreparing onDone={() => setPollUntil(Date.now() + 30_000)} /> : null}
+        {!s && status.isLoading ? <KitLoading label={t("loading")} /> : null}
         {s && nav.view === "panel" ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4 xl:grid-cols-8">
-            <StatTile label={t("stats.cards")} value={fmtNumber(s.counts.cards, lang)} active={cardFilter === "all"} onClick={() => setCardFilter("all")} />
-            <StatTile label={t("stats.linked")} value={fmtNumber(s.counts.linked, lang)} tone="green" active={cardFilter === "linked"} onClick={() => setCardFilter("linked")} />
-            <StatTile
-              label={t("stats.unmatched")}
-              value={fmtNumber(s.counts.unmatched, lang)}
-              active={cardFilter === "unmatched"}
-              onClick={() => setCardFilter("unmatched")}
-            />
+          <StatTiles columns={4}>
+            <StatTile label={t("stats.cards")} value={fmtNumber(s.counts.cards, lang)} active={cardFilter === "all"} onClick={() => tileFilter("all")} />
+            <StatTile label={t("stats.linked")} value={fmtNumber(s.counts.linked, lang)} tone="green" active={cardFilter === "linked"} onClick={() => tileFilter("linked")} />
+            <StatTile label={t("stats.unmatched")} value={fmtNumber(s.counts.unmatched, lang)} tone="blue" active={cardFilter === "unmatched"} onClick={() => tileFilter("unmatched")} />
             <StatTile
               label={t("stats.conflicts")}
               value={fmtNumber(s.counts.conflicts, lang)}
-              tone={s.counts.conflicts > 0 ? "red" : "default"}
+              tone={s.counts.conflicts > 0 ? "red" : "grey"}
               active={cardFilter === "conflicts"}
-              onClick={() => setCardFilter("conflicts")}
+              onClick={() => tileFilter("conflicts")}
             />
-            <StatTile label={t("stats.onlyInMedusa")} value={fmtNumber(s.counts.onlyInMedusa, lang)} tone={s.counts.onlyInMedusa > 0 ? "orange" : "default"} />
+            <StatTile label={t("stats.onlyInMedusa")} value={fmtNumber(s.counts.onlyInMedusa, lang)} tone={s.counts.onlyInMedusa > 0 ? "orange" : "grey"} />
             <StatTile
               label={t("stats.stockChanges")}
               value={fmtNumber(s.counts.stockChanges, lang)}
-              tone={s.counts.stockChanges > 0 ? "orange" : "default"}
+              tone={s.counts.stockChanges > 0 ? "orange" : "grey"}
               onClick={s.options.stockSync !== "off" ? () => nav.go("settings", "plans") : undefined}
             />
             <StatTile label={t("stats.sent24h")} value={fmtNumber(s.counts.ordersSent24h, lang)} tone="green" />
-            <StatTile label={t("stats.failed")} value={fmtNumber(s.counts.ordersFailed, lang)} tone={s.counts.ordersFailed > 0 ? "red" : "default"} />
-          </div>
+            <StatTile label={t("stats.failed")} value={fmtNumber(s.counts.ordersFailed, lang)} tone={s.counts.ordersFailed > 0 ? "red" : "grey"} onClick={() => openOrders("failed")} />
+          </StatTiles>
         ) : null}
       </Container>
 
@@ -242,6 +276,8 @@ function Header({
 }) {
   const { t } = useTranslation("baselinker")
   const sync = useBaseLinkerSync()
+  const client = useQueryClient()
+  const [refreshing, setRefreshing] = useState(false)
   const running = new Set(status?.running ?? [])
   const f = status?.features
   const f2 = status?.features2
@@ -261,28 +297,42 @@ function Header({
     }
   }
 
+  const refresh = async () => {
+    setRefreshing(true)
+    try {
+      await client.invalidateQueries({ queryKey: baselinkerKeys.all })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const panel = nav.view !== "guide"
-  /* One main action (the card sync); the order runs, statuses and returns wait under "More actions". */
-  const step = (what: SyncWhat, label: string, enabled = true): HeaderAction => ({
+  /* One main action (the card sync); Refresh first, then the order runs, statuses and returns, each its own button. */
+  const step = (what: SyncWhat, label: string, icon: ReactNode, enabled = true): HeaderAction => ({
     key: what,
     label: running.has(what) ? t("actions.running") : label,
+    icon,
+    loading: sync.isPending && sync.variables === what,
     disabled: !enabled || running.has(what),
     onClick: () => void start(what),
   })
-  const more: HeaderAction[] = panel
-    ? [
-        step("orders", t("actions.sendQueue"), Boolean(f?.orders)),
-        ...(f2?.orderImport ? [step("imports", t("actions.importOrders"))] : []),
-        step("statuses", t("actions.syncStatuses"), Boolean(f?.statuses)),
-        ...(f2?.returns ? [step("returns", t("actions.readReturns"))] : []),
-      ]
-    : []
+  const more: HeaderAction[] = [
+    { key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, loading: refreshing, onClick: () => void refresh() },
+    ...(panel
+      ? [
+          step("orders", t("actions.sendQueue"), <PaperPlane />, Boolean(f?.orders)),
+          ...(f2?.orderImport ? [step("imports", t("actions.importOrders"), <ArrowDownTray />)] : []),
+          step("statuses", t("actions.syncStatuses"), <Clock />, Boolean(f?.statuses)),
+          ...(f2?.returns ? [step("returns", t("actions.readReturns"), <ArrowUturnLeft />)] : []),
+        ]
+      : []),
+  ]
+  const live = status?.writers.filter((w) => w.live).length ?? 0
 
   return (
     <IntegrationHeader
       icon={<BaseLinkerIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         status ? (
           <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>
@@ -291,6 +341,14 @@ function Header({
         ) : null
       }
       description={t("subtitle")}
+      points={[
+        { icon: <LinkIcon />, text: t("points.cards") },
+        { icon: <CubeSolid />, text: t("points.stock") },
+        { icon: <PaperPlane />, text: t("points.ordersOut") },
+        { icon: <ShoppingCart />, text: t("points.ordersIn") },
+        { icon: <LockClosedSolid />, text: t("points.plans"), tone: live > 0 ? "orange" : "green" },
+        status?.mode === "demo" && { icon: <Beaker />, text: t("points.demo"), tone: "blue" },
+      ]}
       social={
         <>
           <ReferencesBadge
@@ -325,7 +383,7 @@ function Header({
           ? {
               key: "catalog",
               label: running.has("catalog") ? t("actions.running") : t("actions.syncCatalog"),
-              icon: <ArrowPath />,
+              icon: <CloudArrowDown />,
               loading: sync.isPending && sync.variables === "catalog",
               disabled: !f?.catalog || running.has("catalog"),
               onClick: () => void start("catalog"),
@@ -484,18 +542,22 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
 
   const stockTone = o.stockSync === "write" ? "green" : o.stockSync === "plan" ? "blue" : "grey"
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-1">
-          <Heading level="h2">{t("connection.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {demo ? t("connection.demoNote") : t("connection.subtitle")}
-          </Text>
-        </div>
+    <Section
+      icon={<Key />}
+      title={t("connection.title")}
+      pointsLabel={demo ? t("connection.demoNote") : t("connection.subtitle")}
+      points={[
+        demo ? { icon: <Beaker />, text: t("connection.points.demo"), tone: "blue" } : { icon: <EyeSlash />, text: t("connection.points.token"), tone: "green" },
+        { icon: <CloudArrowDown />, text: t("connection.points.reads") },
+        { icon: <LockClosedSolid />, text: t("connection.points.writes") },
+      ]}
+      actions={
         <Button size="small" variant="secondary" isLoading={check.isPending} disabled={!demo && !status.tokenSet} onClick={() => void onCheck()}>
+          <ShieldCheck />
           {t("actions.check")}
         </Button>
-      </div>
+      }
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
         {!demo ? (
           <Fact label={t("connection.token")}>
@@ -522,14 +584,10 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
           {o.stockLocationId ?? <span className="font-sans">{t("connection.locationAuto")}</span>}
         </Fact>
         <Fact label={t("connection.stockMode")}>
-          <Badge size="2xsmall" color={stockTone}>
-            {t(`connection.stockModes.${o.stockSync}`)}
-          </Badge>
+          <ToneBadge tone={stockTone}>{t(`connection.stockModes.${o.stockSync}`)}</ToneBadge>
         </Fact>
         <Fact label={t("connection.ordersMode")}>
-          <Badge size="2xsmall" color={o.exportOrders ? "green" : "grey"}>
-            {o.exportOrders ? t("connection.ordersOn") : t("connection.ordersOff")}
-          </Badge>
+          <ToneBadge tone={o.exportOrders ? "green" : "grey"}>{o.exportOrders ? t("connection.ordersOn") : t("connection.ordersOff")}</ToneBadge>
         </Fact>
         <Fact label={t("connection.fulfillOn")} mono>
           {ids(o.fulfillOnStatusIds, t("connection.none"))}
@@ -548,11 +606,18 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
       ) : null}
       {result ? <CheckLists result={result} /> : null}
       <div className="px-6 py-3">
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("connection.schedule")}
-        </Text>
+        <KeyPoints
+          label={t("connection.schedule")}
+          items={[
+            { icon: <Clock />, text: t("connection.schedulePoints.cards") },
+            { icon: <Clock />, text: t("connection.schedulePoints.queue") },
+            { icon: <Clock />, text: t("connection.schedulePoints.imports") },
+            { icon: <Clock />, text: t("connection.schedulePoints.statuses") },
+            { icon: <Clock />, text: t("connection.schedulePoints.returns") },
+          ]}
+        />
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -576,13 +641,10 @@ function StockSection({ status, lang }: { status: StatusResponse; lang: string }
   const o = status.options
   const writer = status.writers.find((w) => w.key === "stockToMedusa")
 
-  const modeText = demo
-    ? t("stock.modeDemo")
-    : o.stockSync === "off"
-      ? t("stock.modeOff")
-      : writer?.live
-        ? t("stock.modeWrite", { max: fmtNumber(o.maxStockChangesPerRun, lang) })
-        : t("stock.modePlan")
+  const modeKey = demo ? "demo" : o.stockSync === "off" ? "off" : writer?.live ? "write" : "plan"
+  const max = fmtNumber(o.maxStockChangesPerRun, lang)
+  const modeText = modeKey === "demo" ? t("stock.modeDemo") : modeKey === "off" ? t("stock.modeOff") : modeKey === "write" ? t("stock.modeWrite", { max }) : t("stock.modePlan")
+  const thumbs = useProductThumbs(rows.map((c) => c.productId))
 
   const summary: Array<[string, string]> = data
     ? [
@@ -598,43 +660,32 @@ function StockSection({ status, lang }: { status: StatusResponse; lang: string }
     : []
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex flex-col gap-1">
-          <Heading level="h2">{t("stock.title")}</Heading>
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {t("stock.subtitle")}
-          </Text>
-        </div>
-        <div className="flex shrink-0 items-center gap-x-2">{run ? <RunStatusBadge status={run.status} /> : null}</div>
-      </div>
-      <div className="flex flex-col gap-y-2 px-6 py-4">
-        <InlineTip variant={writer?.live && !demo ? "warning" : "info"} label={t("directions.writers.stockToMedusa")}>
-          {modeText}
-        </InlineTip>
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {run ? `${t("stock.plannedAt", { time: fmtDateTime(run.startedAt, lang) })}. ${runSummary(run, t)}` : t("stock.never")}
-        </Text>
-      </div>
+    <Section
+      icon={<CubeSolid />}
+      title={t("stock.title")}
+      badges={run ? <RunStatusBadge status={run.status} /> : null}
+      pointsLabel={t("stock.subtitle")}
+      points={[
+        {
+          icon: <LockClosedSolid />,
+          text: modeKey === "write" ? t("stock.modeShort.write", { max }) : t(`stock.modeShort.${modeKey}`),
+          tone: modeKey === "write" ? "orange" : modeKey === "demo" ? "blue" : "grey",
+          title: modeText,
+        },
+        run ? { icon: <Clock />, text: t("stock.plannedAt", { time: fmtDateTime(run.startedAt, lang) }), title: runSummary(run, t) } : { icon: <Clock />, text: t("stock.never") },
+        { icon: <CloudArrowDown />, text: t("stock.points.formula") },
+        { icon: <ShieldCheck />, text: t("stock.points.noZero"), tone: "green" },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("stock.search")} />}
+    >
       {summary.length > 0 ? (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 px-6 py-4 sm:grid-cols-4 xl:grid-cols-8">
+        <StatTiles columns={4}>
           {summary.map(([label, value]) => (
-            <div key={label} className="flex flex-col">
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                {label}
-              </Text>
-              <Text size="small" weight="plus" className="tabular-nums">
-                {value}
-              </Text>
-            </div>
+            <StatTile key={label} label={label} value={value} />
           ))}
-        </div>
+        </StatTiles>
       ) : null}
-      <div className="flex justify-end px-6 py-3">
-        <div className="w-full md:w-72">
-          <Input size="small" type="search" placeholder={t("stock.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+      <KitFetchingBar active={stock.isFetching && !stock.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -649,15 +700,18 @@ function StockSection({ status, lang }: { status: StatusResponse; lang: string }
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={6} text={stock.isLoading ? "" : run ? t("stock.empty") : t("stock.never")} />
+              <TableBodyState cols={6} loading={stock.isLoading} icon={<CubeSolid />} title={run ? t("stock.empty") : t("stock.never")} />
             ) : (
               rows.map((c) => (
                 <Table.Row key={c.id} className="[&_td]:py-2.5">
-                  <Table.Cell className="max-w-[320px]">
+                  <Table.Cell className="max-w-[340px]">
                     {c.productId ? (
-                      <Link to={`/products/${c.productId}`} className="flex flex-col gap-y-0.5 hover:text-ui-fg-interactive">
-                        <span className="txt-compact-small-plus truncate text-ui-fg-base">{c.productTitle ?? c.productId}</span>
-                        <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{c.sku}</span>
+                      <Link to={`/products/${c.productId}`} className="group flex items-center gap-x-2.5 hover:text-ui-fg-interactive">
+                        <Thumb src={thumbs[c.productId]} />
+                        <span className="flex min-w-0 flex-col gap-y-0.5">
+                          <span className="txt-compact-small-plus truncate text-ui-fg-base">{c.productTitle ?? c.productId}</span>
+                          <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{c.sku}</span>
+                        </span>
                       </Link>
                     ) : (
                       <span className="font-mono txt-compact-small">{c.sku ?? c.variantId}</span>
@@ -685,13 +739,21 @@ function StockSection({ status, lang }: { status: StatusResponse; lang: string }
         </Table>
       </div>
       <Pagination count={data?.count ?? 0} page={page} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
 const CARD_FILTERS: CardFilter[] = ["all", "linked", "unmatched", "conflicts", "nosku"]
+
+const CARD_FILTER_ICON: Record<CardFilter, ReactNode> = {
+  all: <ListBullet />,
+  linked: <LinkIcon />,
+  unmatched: <CloudArrowDown />,
+  conflicts: <ExclamationCircle />,
+  nosku: <XCircle />,
+}
 
 function cardCount(status: StatusResponse, f: CardFilter): number {
   const c = status.counts
@@ -718,26 +780,37 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
   useEffect(() => setPage(0), [filter, q])
   const cards = useBaseLinkerCards(filter, q, page * PAGE_SIZE, PAGE_SIZE)
   const rows = cards.data?.cards ?? []
+  const thumbs = useProductThumbs(rows.map((c) => c.productId))
   const onlyInMedusa = (status.lastRuns.catalog?.counts?.onlyInMedusaSkus ?? []) as string[]
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("cards.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("cards.subtitle")}
-        </Text>
-      </div>
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<CardFilter>
-          value={filter}
-          onChange={onFilter}
-          options={CARD_FILTERS.map((f) => ({ value: f, label: t(`cards.filter.${f}`), count: cardCount(status, f) }))}
-        />
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("cards.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+    <Section
+      icon={<Tag />}
+      title={t("cards.title")}
+      pointsLabel={`${t("cards.subtitle")} ${t("cards.matching")}`}
+      points={[
+        { icon: <LinkIcon />, text: t("cards.points.key") },
+        { icon: <ExclamationCircle />, text: t("cards.points.duplicates") },
+        { icon: <EyeSlash />, text: t("cards.points.nothing") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("cards.search")} />}
+    >
+      <FilterBar>
+        {CARD_FILTERS.map((f, i) => (
+          <Fragment key={f}>
+            {i === 1 ? <FilterDivider /> : null}
+            <FilterButton
+              icon={CARD_FILTER_ICON[f]}
+              label={t(`cards.filter.${f}`)}
+              count={cardCount(status, f)}
+              attention={f === "conflicts"}
+              active={filter === f}
+              onClick={() => onFilter(toggleFilter(filter, f, "all"))}
+            />
+          </Fragment>
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={cards.isFetching && !cards.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -751,7 +824,7 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={3} text={cards.isLoading ? "" : t("cards.empty")} />
+              <TableBodyState cols={3} loading={cards.isLoading} icon={<Tag />} title={t("cards.empty")} />
             ) : (
               rows.map((c) => (
                 <Table.Row key={c.id} className="[&_td]:py-2.5">
@@ -771,16 +844,8 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
                           </span>
                         ) : null}
                         {c.parentId ? <span className="text-ui-fg-muted txt-compact-xsmall">{t("cards.variantOf", { id: c.parentId })}</span> : null}
-                        {c.isContainer ? (
-                          <Badge size="2xsmall" color="blue">
-                            {t("productWidget.container")}
-                          </Badge>
-                        ) : null}
-                        {c.demo ? (
-                          <Badge size="2xsmall" color="purple">
-                            {t("cards.sample")}
-                          </Badge>
-                        ) : null}
+                        {c.isContainer ? <ToneBadge tone="blue">{t("productWidget.container")}</ToneBadge> : null}
+                        {c.demo ? <ToneBadge tone="purple">{t("cards.sample")}</ToneBadge> : null}
                       </span>
                     </div>
                   </Table.Cell>
@@ -788,7 +853,7 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
                     {c.stock === null ? "" : fmtNumber(c.stock, lang)}
                   </Table.Cell>
                   <Table.Cell className="max-w-[300px]">
-                    <StoreProductCell card={c} />
+                    <StoreProductCell card={c} thumb={c.productId ? thumbs[c.productId] : null} />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -805,12 +870,12 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
           </Text>
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }
 
-/** The store side of a card: the Medusa product of its variant, one click away, or why there is none. */
-function StoreProductCell({ card: c }: { card: CardDto }) {
+/** The store side of a card: the Medusa product of its variant (with its picture), one click away, or why there is none. */
+function StoreProductCell({ card: c, thumb }: { card: CardDto; thumb?: string | null }) {
   const { t } = useTranslation("baselinker")
   const keyTitle = c.matchKey ? `${c.matchKey}${c.matchSource ? ` (${t(`cards.source.${c.matchSource}`)})` : ""}` : undefined
   if (c.productId) {
@@ -821,6 +886,7 @@ function StoreProductCell({ card: c }: { card: CardDto }) {
         detail={c.variantSku ?? c.matchKey}
         detailTitle={keyTitle}
         open={t("actions.openProduct")}
+        thumb={thumb}
       />
     )
   }
@@ -834,13 +900,7 @@ function StoreProductCell({ card: c }: { card: CardDto }) {
   if (c.conflict || c.matchKey) {
     return (
       <div className="flex flex-col items-start gap-y-1">
-        {c.conflict ? (
-          <ConflictBadge conflict={c.conflict} />
-        ) : (
-          <Badge size="2xsmall" color="orange">
-            {t("cards.noVariant")}
-          </Badge>
-        )}
+        {c.conflict ? <ConflictBadge conflict={c.conflict} /> : <ToneBadge tone="orange">{t("cards.noVariant")}</ToneBadge>}
         {c.matchKey ? (
           <span className="font-mono text-ui-fg-muted txt-compact-xsmall" title={keyTitle}>
             {c.matchKey}
@@ -859,6 +919,14 @@ function StoreProductCell({ card: c }: { card: CardDto }) {
 /* ------------------------------------------------------------------ */
 
 const ORDER_FILTERS: OrderFilter[] = ["all", "pending", "sent", "failed", "skipped"]
+
+const ORDER_FILTER_ICON: Record<OrderFilter, ReactNode> = {
+  all: <ListBullet />,
+  pending: <Clock />,
+  sent: <CheckCircle />,
+  failed: <ExclamationCircle />,
+  skipped: <XCircle />,
+}
 
 function orderCount(status: StatusResponse, f: OrderFilter): number {
   const c = status.counts
@@ -899,30 +967,33 @@ function OrdersSection({ status, lang, poll, onAction }: { status: StatusRespons
   }
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("orders.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("orders.subtitle")}
-        </Text>
-      </div>
-      {!status.options.exportOrders ? (
-        <div className="px-6 py-4">
-          <InlineTip variant="info" label={t("connection.ordersMode")}>
-            {t("orders.exportOff")}
-          </InlineTip>
-        </div>
-      ) : null}
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<OrderFilter>
-          value={filter}
-          onChange={setFilter}
-          options={ORDER_FILTERS.map((f) => ({ value: f, label: t(`orders.filter.${f}`), count: orderCount(status, f) }))}
-        />
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("orders.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+    <Section
+      icon={<PaperPlane />}
+      title={t("orders.title")}
+      pointsLabel={`${t("orders.subtitle")} ${t("orders.how")}`}
+      points={[
+        { icon: <ShieldCheck />, text: t("orders.points.once"), tone: "green" },
+        { icon: <ArrowPath />, text: t("orders.points.retry") },
+        !status.options.exportOrders && { icon: <XCircle />, text: t("orders.points.exportOff"), tone: "orange", title: t("orders.exportOff") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("orders.search")} />}
+    >
+      <FilterBar>
+        {ORDER_FILTERS.map((f, i) => (
+          <Fragment key={f}>
+            {i === 1 ? <FilterDivider /> : null}
+            <FilterButton
+              icon={ORDER_FILTER_ICON[f]}
+              label={t(`orders.filter.${f}`)}
+              count={orderCount(status, f)}
+              attention={f === "failed"}
+              active={filter === f}
+              onClick={() => setFilter(toggleFilter(filter, f, "all"))}
+            />
+          </Fragment>
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={orders.isFetching && !orders.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -941,7 +1012,7 @@ function OrdersSection({ status, lang, poll, onAction }: { status: StatusRespons
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={8} text={orders.isLoading ? "" : t("orders.empty")} />
+              <TableBodyState cols={8} loading={orders.isLoading} icon={<PaperPlane />} title={t("orders.empty")} />
             ) : (
               rows.map((o) => (
                 <Table.Row key={o.id} className="[&_td]:py-2.5">
@@ -997,11 +1068,18 @@ function OrdersSection({ status, lang, poll, onAction }: { status: StatusRespons
                     ) : null}
                   </Table.Cell>
                   <Table.Cell className="text-right">
-                    {status.features.orders && (o.status === "failed" || (o.status === "pending" && o.attempts > 0)) ? (
-                      <Button size="small" variant="secondary" isLoading={send.isPending && send.variables === o.orderId} onClick={() => void onSend(o.orderId)}>
-                        {t("actions.sendAgain")}
-                      </Button>
-                    ) : null}
+                    <RowActions
+                      actions={[
+                        {
+                          key: "send",
+                          label: t("actions.sendAgain"),
+                          icon: <PaperPlane />,
+                          hidden: !(status.features.orders && (o.status === "failed" || (o.status === "pending" && o.attempts > 0))),
+                          loading: send.isPending && send.variables === o.orderId,
+                          onClick: () => void onSend(o.orderId),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -1010,7 +1088,7 @@ function OrdersSection({ status, lang, poll, onAction }: { status: StatusRespons
         </Table>
       </div>
       <Pagination count={orders.data?.count ?? 0} page={page} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }
 
@@ -1021,13 +1099,16 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
   const runs = useBaseLinkerRuns(poll)
   const rows = runs.data?.runs ?? []
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("runs.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("runs.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<Clock />}
+      title={t("runs.title")}
+      pointsLabel={t("runs.subtitle")}
+      points={[
+        { icon: <ArrowPath />, text: t("runs.points.background") },
+        { icon: <DocumentText />, text: t("runs.points.newest") },
+      ]}
+    >
+      <KitFetchingBar active={runs.isFetching && !runs.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -1041,7 +1122,7 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={5} text={runs.isLoading ? "" : t("runs.empty")} />
+              <TableBodyState cols={5} loading={runs.isLoading} icon={<Clock />} title={t("runs.empty")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5" title={r.message ?? undefined}>
@@ -1063,7 +1144,7 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 

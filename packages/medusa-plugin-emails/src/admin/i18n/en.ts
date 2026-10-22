@@ -11,9 +11,10 @@ const en = {
     title: "Rejected addresses",
     subtitle: "Addresses Resend no longer sends to (its suppression list): the recipient's server rejected a message or the recipient reported spam. Fix the address with the customer (often a typo in the domain) and remove it from the list in Resend.",
     readAt: "Read from Resend: {{at}}",
+    points: { blocked: "Resend sends no more", fix: "Fix the address, unblock in Resend" },
     back: "Back to the log",
     notConfigured: "The plugin does not read delivery: set the option deliveryKey (a Resend key with read access).",
-    empty: "Resend blocks no address.",
+    empty: "Resend blocks no address",
     noLast: "no message in this store",
     typo: "A typo in the domain? Probably {{fixed}}",
     hint: "What happened after sending, according to Resend",
@@ -138,11 +139,22 @@ const en = {
     latestNote: "With Newest order the preview uses the products, amounts and number of your newest order or cart; the customer's name, company and address are replaced by the sample ones.",
     sampleNote: "This template shows sample data. A test send goes to the address you type, with a subject starting with [Test].",
     sendThis: "Send a test of this template",
+    points: {
+      devices: "Desktop and phone",
+      modes: "Light and dark",
+      languages: "Polish and English",
+      data: "Sample data or newest order",
+      latestOrder: "Your newest order",
+      personReplaced: "Person replaced by a sample",
+      sampleData: "Sample data",
+      testSubject: "Test subject starts with [Test]",
+    },
   },
   templates: {
     title: "Templates",
     subtitle:
       "A template sends when the options allow it and it is on here. The optional ones (abandoned carts, negotiations) start off. A template turned off in the plugin options (templates: { key: false }) cannot be turned on here. A test send works for every template.",
+    points: { switch: "On and off here", optional: "Optional ones start off", blocked: "Off in the options stays off", test: "Tests work for every template" },
     on: "On",
     off: "Off",
     blocked: "Off in the options",
@@ -167,7 +179,9 @@ const en = {
   log: {
     group: {
       all: "All templates",
+      title: "Templates of this group",
     },
+    emptyPoints: { order: "Appear with orders and accounts", test: "Or send a test" },
     openOrder: "Open the order",
     openResend: "Open in Resend",
     title: "Sent e-mails",
@@ -193,8 +207,8 @@ const en = {
     },
     search: "Search subject, template, order, or a full address",
     searchAddresses: "Search by e-mail (or part of it), subject, template or order number",
-    empty: "No e-mails yet. They appear here as orders, shipments and accounts come in, or after a test send.",
-    demoEmpty: "The outbox is empty. Place an order in the storefront or send a test.",
+    empty: "No e-mails here",
+    demoEmpty: "The outbox is empty",
     details: "Details",
     col: {
       when: "When",
@@ -265,8 +279,8 @@ const en = {
     requestedBy: "Sent by",
     retriedTimes: "Retried: {{count}}",
     body: "The message",
-    noBody: "Live messages are not kept: open the template in the gallery to see how it looks.",
-    noBodyDemo: "This message was not rendered (it failed before).",
+    noBody: "Live messages are not kept",
+    noBodyDemo: "Not rendered, it failed before",
     medusaHistory: "A message from Medusa's history: your provider sent it, and Medusa kept the recipient, the template and the outcome. The log does not show the body.",
     medusaFailed: "A message from Medusa's history: the provider did not send it. Medusa keeps no error text; the server logs of that moment have the details.",
     retry: "Send again",
@@ -278,6 +292,7 @@ const en = {
   test: {
     title: "Send a test",
     subtitle: "One template to one address, through the same path as every e-mail of the store, so it also proves the setup. The subject starts with [Test].",
+    points: { one: "One template, one address", path: "Same path as real e-mails", subject: "Subject starts with [Test]" },
     template: "Template",
     offNote: "This template is off: the test goes out anyway, customers get nothing.",
     locale: "Language",
@@ -304,6 +319,7 @@ const en = {
     subtitle:
       "The store name, the live-text logo, the colours and the footer of every message. Left empty, a field uses the plugin options. Messages carry no images: the name is text, products are tiles, so nothing breaks when a mail app blocks images.",
     demoSubtitle: "The store name, the live-text logo, the colours and the footer of every message. In demo mode changes are forgotten after a day.",
+    points: { name: "Name, logo, footer", colours: "Accent and band colour", noImages: "No images to block", options: "Empty field: plugin options", demo: "Demo: forgotten after a day" },
     changedBy: "Changed by {{who}}, {{time}}",
     overridden: "Changed here",
     name: "Store name",
@@ -334,6 +350,7 @@ const en = {
   provider: {
     title: "Provider",
     subtitle: "The notification provider that renders and sends, the options it got, and the links in messages. Read only: everything here comes from medusa-config.ts.",
+    points: { sends: "Renders and sends", links: "Links in messages", readOnly: "Read only, from medusa-config.ts" },
     yes: "Yes",
     no: "No",
     mode: "Mode",
@@ -378,6 +395,7 @@ const en = {
       sender: "Sends",
       serving: "Serves the email channel",
       recorded: "Recorded in 30 days",
+      points: { sender: "Sent by {{id}}", channel: "Email channel in Medusa" },
     },
     notLoaded: {
       label: "Provider",
@@ -397,9 +415,9 @@ const en = {
   widget: {
     title: "E-mails",
     all: "Open in E-mails",
-    empty: "No e-mails for this order yet.",
+    empty: "No e-mails for this order",
     loading: "Loading the e-mails of this order",
-    failed: "The e-mails of this order could not be read.",
+    failed: "E-mails not read",
   },
   languages: {
     en: "English",

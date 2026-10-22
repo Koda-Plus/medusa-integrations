@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { User, XMark } from "@medusajs/icons"
-import { Badge, Checkbox, Input, Label, Select, Text, Textarea, clx } from "@medusajs/ui"
+import { Checkbox, Input, Label, Select, Text, Textarea, clx } from "@medusajs/ui"
 import type { CouponDto, StoreLookups } from "../../modules/coupons/lib/contract"
 import { useCustomerSearch } from "./coupons-api"
+import { SearchInput, ToneBadge, useDebouncedValue } from "./coupons-blocks"
 
 /**
  * The fields the creator and the edit form share, so a coupon is built and
@@ -130,16 +131,14 @@ export function PickList({ items, selected, onChange, search, empty }: { items: 
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
   return (
     <div className="flex flex-col gap-y-2">
-      {search && items.length > 8 ? <Input size="small" placeholder={search} value={q} onChange={(e) => setQ(e.target.value)} /> : null}
+      {search && items.length > 8 ? <SearchInput className="sm:w-full" placeholder={search} value={q} onChange={setQ} /> : null}
       <div className="grid max-h-64 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
         {shown.map((i) => (
           <label key={i.id} className={clx("flex cursor-pointer items-center gap-x-2 rounded-md border px-2.5 py-1.5", selected.includes(i.id) ? "border-ui-border-interactive bg-ui-bg-highlight" : "border-transparent hover:bg-ui-bg-base-hover")}>
             <Checkbox checked={selected.includes(i.id)} onCheckedChange={() => toggle(i.id)} />
             <Text size="small">{i.name}</Text>
             {i.badge ? (
-              <Badge size="2xsmall" color="orange">
-                {i.badge}
-              </Badge>
+              <ToneBadge tone="blue">{i.badge}</ToneBadge>
             ) : null}
           </label>
         ))}
@@ -157,7 +156,7 @@ export function PickList({ items, selected, onChange, search, empty }: { items: 
 export function CustomerPicker({ selected, names, nobody, onChange, onName }: { selected: string[]; names: Record<string, string>; nobody?: string | null; onChange: (ids: string[]) => void; onName: (id: string, name: string) => void }) {
   const { t } = useTranslation("coupons")
   const [q, setQ] = useState("")
-  const customers = useCustomerSearch(q)
+  const customers = useCustomerSearch(useDebouncedValue(q))
   const real = selected.filter((id) => id !== nobody)
   return (
     <div className="flex flex-col gap-y-2">
@@ -178,7 +177,7 @@ export function CustomerPicker({ selected, names, nobody, onChange, onName }: { 
           ))
         )}
       </div>
-      <Input size="small" placeholder={t("wizard.customerSearch")} value={q} onChange={(e) => setQ(e.target.value)} />
+      <SearchInput className="sm:w-full" placeholder={t("wizard.customerSearch")} value={q} onChange={setQ} />
       <div className="flex flex-col gap-y-1">
         {(customers.data?.customers ?? []).map((c) => {
           const on = selected.includes(c.id)

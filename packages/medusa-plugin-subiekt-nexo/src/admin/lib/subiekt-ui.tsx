@@ -1,10 +1,11 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { ArrowUpRightMini } from "@medusajs/icons"
-import { Badge, Button, StatusBadge, Text, clx } from "@medusajs/ui"
+import { Button, Text } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
 import type { CatalogChangeStatus, ReferenceDto, RunDto, RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
 import type { Reference } from "./subiekt-guide"
+import { ToneBadge, type Tone } from "./subiekt-blocks"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -32,10 +33,13 @@ export function fmtNumber(value: unknown, lang: string): string {
   }
 }
 
-type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
-
+/*
+ * States in the kit's palette (ToneBadge): green done, orange a person should
+ * look, red failed, blue running or informational (demo too), grey neutral.
+ * Purple is never a state. Tables use the quiet dot form.
+ */
 const TASK_TONE: Record<TaskStatus, Tone> = {
-  waiting: "purple",
+  waiting: "grey",
   pending: "blue",
   running: "blue",
   unknown: "orange",
@@ -44,28 +48,44 @@ const TASK_TONE: Record<TaskStatus, Tone> = {
   canceled: "grey",
 }
 
-export function TaskStatusBadge({ status }: { status: TaskStatus }) {
+export function taskTone(status: TaskStatus): Tone {
+  return TASK_TONE[status] ?? "grey"
+}
+
+export function TaskStatusBadge({ status, dot = false }: { status: TaskStatus; dot?: boolean }) {
   const { t } = useTranslation("subiekt")
-  return <StatusBadge color={TASK_TONE[status] ?? "grey"}>{t(`tasks.statuses.${status}`)}</StatusBadge>
+  return (
+    <ToneBadge tone={taskTone(status)} dot={dot}>
+      {t(`tasks.statuses.${status}`)}
+    </ToneBadge>
+  )
 }
 
 const RUN_TONE: Record<RunStatus, Tone> = { success: "green", partial: "orange", error: "red", skipped: "grey" }
 
-export function RunStatusBadge({ status }: { status: RunStatus }) {
+export function RunStatusBadge({ status, dot = false }: { status: RunStatus; dot?: boolean }) {
   const { t } = useTranslation("subiekt")
-  return <StatusBadge color={RUN_TONE[status] ?? "grey"}>{t(`runs.statuses.${status}`)}</StatusBadge>
+  return (
+    <ToneBadge tone={RUN_TONE[status] ?? "grey"} dot={dot}>
+      {t(`runs.statuses.${status}`)}
+    </ToneBadge>
+  )
 }
 
-export function DocumentStatusBadge({ status }: { status: string }) {
+export function DocumentStatusBadge({ status, dot = false }: { status: string; dot?: boolean }) {
   const { t } = useTranslation("subiekt")
   const tone: Tone = status === "canceled" ? "grey" : status === "completed" ? "green" : "blue"
-  return <StatusBadge color={tone}>{t(`documents.statuses.${status}`, { defaultValue: status })}</StatusBadge>
+  return (
+    <ToneBadge tone={tone} dot={dot}>
+      {t(`documents.statuses.${status}`, { defaultValue: status })}
+    </ToneBadge>
+  )
 }
 
 const CATALOG_TONE: Record<CatalogChangeStatus, Tone> = {
   planned: "blue",
   applied: "green",
-  simulated: "purple",
+  simulated: "blue",
   over_cap: "grey",
   stale: "orange",
   failed: "red",
@@ -73,9 +93,13 @@ const CATALOG_TONE: Record<CatalogChangeStatus, Tone> = {
   skipped: "grey",
 }
 
-export function CatalogStatusBadge({ status }: { status: CatalogChangeStatus }) {
+export function CatalogStatusBadge({ status, dot = false }: { status: CatalogChangeStatus; dot?: boolean }) {
   const { t } = useTranslation("subiekt")
-  return <StatusBadge color={CATALOG_TONE[status] ?? "grey"}>{t(`products.statuses.${status}`, { defaultValue: status })}</StatusBadge>
+  return (
+    <ToneBadge tone={CATALOG_TONE[status] ?? "grey"} dot={dot}>
+      {t(`products.statuses.${status}`, { defaultValue: status })}
+    </ToneBadge>
+  )
 }
 
 /** A labelled row of short codes: SKUs, symbols, conflicts. */
@@ -87,9 +111,9 @@ export function SampleList({ label, items }: { label: string; items: string[] })
       </Text>
       <div className="flex flex-wrap gap-1">
         {items.map((item) => (
-          <Badge key={item} size="2xsmall" className="font-mono">
-            {item}
-          </Badge>
+          <ToneBadge key={item}>
+            <span className="font-mono">{item}</span>
+          </ToneBadge>
         ))}
       </div>
     </div>
@@ -117,7 +141,7 @@ export function RichText({ text }: { text: string }) {
 /** One word for the whole connection: what a person needs to know first. */
 export function connectionState(s: SubiektStatusResponse | undefined): { key: string; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
-  if (s.mode === "demo") return { key: "demo", tone: "purple" }
+  if (s.mode === "demo") return { key: "demo", tone: "blue" }
   if (!s.configured) return { key: "notConfigured", tone: "orange" }
   if (!s.connection.checkedAt && !s.connection.lastErrorAt) return { key: "unknown", tone: "grey" }
   if (!s.connection.reachable) return { key: "unreachable", tone: "red" }
@@ -129,25 +153,7 @@ export function connectionState(s: SubiektStatusResponse | undefined): { key: st
 export function ConnectionBadge({ status }: { status: SubiektStatusResponse | undefined }) {
   const { t } = useTranslation("subiekt")
   const state = connectionState(status)
-  return <StatusBadge color={state.tone}>{t(`mode.${state.key}`)}</StatusBadge>
-}
-
-export function StatTile({ label, value, tone }: { label: string; value: ReactNode; tone?: "attention" | "muted" }) {
-  return (
-    <div className="flex flex-col gap-y-1 px-6 py-4">
-      <Text size="xsmall" leading="compact" className="text-ui-fg-subtle">
-        {label}
-      </Text>
-      <Text
-        size="xlarge"
-        weight="plus"
-        leading="compact"
-        className={clx("tabular-nums", tone === "attention" ? "text-ui-tag-red-text" : tone === "muted" ? "text-ui-fg-muted" : "text-ui-fg-base")}
-      >
-        {value}
-      </Text>
-    </div>
-  )
+  return <ToneBadge tone={state.tone}>{t(`mode.${state.key}`)}</ToneBadge>
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -157,31 +163,6 @@ export function Field({ label, children }: { label: string; children: ReactNode 
         {label}
       </Text>
       <div className="txt-compact-small text-ui-fg-base min-w-0 break-words">{children}</div>
-    </div>
-  )
-}
-
-export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number }>; onChange: (v: T) => void }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={clx(
-            "txt-compact-small-plus rounded-full border px-3 py-1 transition-colors",
-            value === o.value ? "border-ui-border-interactive bg-ui-bg-highlight text-ui-fg-interactive" : "border-ui-border-base text-ui-fg-subtle hover:bg-ui-bg-base-hover",
-          )}
-        >
-          {o.label}
-          {typeof o.count === "number" && o.count > 0 ? (
-            <Badge size="2xsmall" className="ml-2">
-              {o.count}
-            </Badge>
-          ) : null}
-        </button>
-      ))}
     </div>
   )
 }
@@ -349,9 +330,7 @@ export function StoreLink({ to, title, mono, monoTitle, action }: { to: string; 
 export function StoreUnlinked({ label, hint, mono }: { label: string; hint?: string; mono?: string | null }) {
   return (
     <div className="flex flex-col items-start gap-y-1" title={hint}>
-      <Badge size="2xsmall" color="orange">
-        {label}
-      </Badge>
+      <ToneBadge tone="orange">{label}</ToneBadge>
       {mono ? <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{mono}</span> : null}
     </div>
   )

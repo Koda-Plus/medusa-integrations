@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
-import { MagnifyingGlass, Plus, XMarkMini } from "@medusajs/icons"
+import { Beaker, MagnifyingGlass, Plus, SquaresPlus, XMarkMini } from "@medusajs/icons"
 import { Button, FocusModal, Heading, Input, Label, Select, Text, Textarea, toast } from "@medusajs/ui"
 import { LINK_TYPES, PRIORITIES, STATUSES, TAGS_MAX, type LinkType, type TaskPriority, type TaskStatus } from "../../modules/tasks/lib/constants"
 import type { PersonDto, StatusResponse } from "../../modules/tasks/lib/contract"
 import { errorCode, errorMessage, fieldErrorCode, useCreateTask, useRecordSearch, type FoundRecord } from "./tasks-api"
 import { errorKeys } from "./tasks-rules"
 import { TasksIcon } from "./tasks-icon"
+import { EmptyState, SearchInput, useDebouncedValue } from "./tasks-blocks"
+import { KeyPoints } from "./tasks-guide"
 import { personKey } from "../../modules/tasks/lib/people"
-import { LinkIcon, Person, roleLine, useDebounced, useLabels, usePeopleIndex, type Labels, type PeopleIndex } from "./tasks-ui"
+import { LinkIcon, Person, roleLine, useLabels, usePeopleIndex, type Labels, type PeopleIndex } from "./tasks-ui"
 
 /*
  * Creating a task: the "New task" modal (also opened by the widgets with a
@@ -134,7 +136,7 @@ export function RecordPicker({ onPick, exclude = [], busy = false }: { onPick: (
   const { t } = labels
   const [type, setType] = useState<LinkType>("order")
   const [q, setQ] = useState("")
-  const term = useDebounced(q, 300)
+  const term = useDebouncedValue(q, 300)
   const search = useRecordSearch(type, term, true)
   const rows = (search.data ?? []).filter((r) => !exclude.includes(`${type}:${r.id}`))
 
@@ -156,7 +158,7 @@ export function RecordPicker({ onPick, exclude = [], busy = false }: { onPick: (
           </Select>
         </div>
         <div className="flex-1">
-          <Input size="small" type="search" placeholder={t(`links.searchPlaceholder.${type}`)} value={q} onChange={(e) => setQ(e.target.value)} />
+          <SearchInput value={q} onChange={setQ} placeholder={t(`links.searchPlaceholder.${type}`)} className="sm:w-full" autoFocus />
         </div>
       </div>
       <div className="flex max-h-48 flex-col overflow-y-auto">
@@ -165,9 +167,7 @@ export function RecordPicker({ onPick, exclude = [], busy = false }: { onPick: (
             {t("links.searching")}
           </Text>
         ) : rows.length === 0 ? (
-          <Text size="xsmall" className="px-1 py-2 text-ui-fg-muted">
-            {t("links.none")}
-          </Text>
+          <EmptyState compact icon={<MagnifyingGlass />} title={t("links.none")} />
         ) : (
           rows.map((r: FoundRecord) => (
             <button
@@ -246,7 +246,7 @@ export function CreateTaskModal({
 
   const people = status?.people ?? []
   const index = usePeopleIndex(status?.people, status?.named_people)
-  const board = status?.sandbox ? t("form.boardSandbox") : t("form.boardMain")
+
   const taken = useMemo(() => form.links.map((l) => `${l.type}:${l.id}`), [form.links])
 
   const submit = async () => {
@@ -301,9 +301,12 @@ export function CreateTaskModal({
                   <Heading level="h2">{t("form.title")}</Heading>
                 )}
               </div>
-              <Text size="small" className="text-ui-fg-subtle">
-                {t("form.subtitle", { board })}
-              </Text>
+              <KeyPoints
+                items={[
+                  status?.sandbox ? { icon: <Beaker />, text: t("form.onSandbox"), tone: "blue" } : { icon: <SquaresPlus />, text: t("form.onMain") },
+                  { icon: <Plus />, text: t("form.points.links") },
+                ]}
+              />
             </div>
             <div className="flex flex-col gap-y-2">
               <Label size="small" weight="plus" htmlFor="tasks-new-title">

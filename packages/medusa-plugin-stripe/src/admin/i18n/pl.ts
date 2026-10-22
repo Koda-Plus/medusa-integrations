@@ -4,7 +4,7 @@ import { integrationPl } from "../../modules/stripe/lib/integration-texts"
 import { communityPl } from "../lib/stripe-kit-community"
 
 const pl: typeof en = {
-  loading: "Czytam Stripe: płatności, zwroty, spory i saldo z 30 dni. Pierwsze wczytanie trwa kilka sekund, potem dane są od razu, a nowe dochodzą w tle.",
+  loading: "Czytam Stripe, 30 dni",
   title: "Stripe",
   by: "by Koda Plus",
   subtitle:
@@ -23,7 +23,7 @@ const pl: typeof en = {
   },
   settings: {
     title: "Ustawienia",
-    subtitle: "Używane opcje (tylko do odczytu: ustawia się je w medusa-config.ts), kontrole uruchamiane przez panel i dostęp, którego potrzebuje klucz.",
+    subtitle: "Tylko do odczytu, z medusa-config.ts",
     tab: {
       options: "Opcje",
       checks: "Kontrole",
@@ -86,6 +86,7 @@ const pl: typeof en = {
   period: {
     d7: "Ostatnie 7 dni",
     d30: "Ostatnie 30 dni",
+    label: "Okres",
     partial: "Odczyt zatrzymał się na {{count}} najnowszych płatnościach, więc brakuje początku tego okresu (opcja maxPages).",
   },
   stats: {
@@ -132,7 +133,7 @@ const pl: typeof en = {
       declined: "Odrzucone",
       success: "Skuteczność",
     },
-    empty: "Brak płatności w tym okresie.",
+    empty: "Brak płatności w tym okresie",
   },
   health: {
     title: "Kontrola konfiguracji",
@@ -141,7 +142,13 @@ const pl: typeof en = {
     checkedAt: "Sprawdzono {{when}}",
     fix: "Jak naprawić:",
     open: "Otwórz",
-    allGood: "Wszystko, co sprawdzono, jest w porządku.",
+    allGood: "Wszystko w porządku",
+    loading: "Sprawdzam konfigurację",
+    points: {
+      reads: "Czyta Stripe i Medusę",
+      fix: "Jak naprawić każdą",
+      cached: "Pamięć razem z panelem",
+    },
     verdict: {
       pass: "W porządku",
       warn: "Ostrzeżenie",
@@ -400,8 +407,8 @@ const pl: typeof en = {
       not_assessed: "Ryzyko: nieoceniane",
       unknown: "Ryzyko: nieznane",
     },
-    empty: "Brak płatności w tym widoku.",
-    emptyRead: "Brak płatności w ostatnich 30 dniach.",
+    empty: "Brak płatności w tym widoku",
+    emptyRead: "Brak płatności w 30 dni",
   },
   disputes: {
     title: "Otwarte spory",
@@ -450,8 +457,8 @@ const pl: typeof en = {
     overdue: "Termin minął",
     waiting: "Czeka na bank",
     evidence: "Dowody wysłane",
-    none: "Brak otwartych sporów.",
-    closed: "Zamknięte w 30 dni: wygrane {{won}}, przegrane {{lost}}.",
+    none: "Brak otwartych sporów",
+    closed: "Zamknięte w 30 dni: wygrane {{won}}, przegrane {{lost}}",
   },
   /* Stripe's decline and error codes, said the same way in every language; any other code shows Stripe's own message. */
   declines: {
@@ -510,7 +517,7 @@ const pl: typeof en = {
       merchant_request: "Anulowany na prośbę sklepu.",
       unknown: "Stripe nie podał powodu.",
     },
-    none: "Brak zwrotów w ostatnich 30 dniach.",
+    none: "Brak zwrotów w 30 dni",
   },
   balance: {
     title: "Saldo i wypłaty",
@@ -521,7 +528,7 @@ const pl: typeof en = {
     },
     available: "Dostępne",
     pending: "Oczekujące",
-    none: "Nie odczytano salda.",
+    none: "Saldo nieodczytane",
     upcoming: "W drodze",
     past: "Ostatnie wypłaty",
     col: {
@@ -541,12 +548,22 @@ const pl: typeof en = {
       standard: "Standardowa",
       instant: "Natychmiastowa",
     },
-    noUpcoming: "Żadna wypłata nie jest w drodze.",
-    noPast: "Jeszcze nie było wypłat.",
+    noUpcoming: "Brak wypłat w drodze",
+    noPast: "Jeszcze bez wypłat",
   },
   options: {
     title: "Używane opcje",
     subtitle: "Tylko do odczytu. Zmieniasz je w medusa-config.ts i uruchamiasz serwer ponownie.",
+    points: {
+      readOnly: "Tylko odczyt",
+      config: "Ustawiane w medusa-config.ts",
+      restart: "Po zmianie restart serwera",
+    },
+    readsPoints: {
+      open: "Czyta tylko przy otwarciu",
+      cache: "Trzyma przez cacheSeconds",
+      limit: "Około 500 odczytów na płatność",
+    },
     apiKey: "Klucz API (apiKey)",
     demo: "Tryb demo (demo)",
     providerId: "Wpis dostawcy (providerId)",
@@ -586,6 +603,10 @@ const pl: typeof en = {
   checksTab: {
     title: "Kontrole",
     subtitle: "Każda kontrola działa, dopóki opcja jej nie wyłączy. Wyłączona kontrola pomija swój odczyt.",
+    points: {
+      on: "Domyślnie wszystkie włączone",
+      off: "Wyłączona nic nie czyta",
+    },
     col: {
       check: "Kontrola",
       state: "Stan",
@@ -642,6 +663,12 @@ const pl: typeof en = {
       account: "kraj, waluta, możliwości konta",
     },
     create: "Klucz utworzysz w panelu Stripe: Developers, API keys, Create restricted key.",
+    createPath: "Panel Stripe: Developers, API keys, Create restricted key",
+    points: {
+      get: "Tylko zapytania GET",
+      restricted: "Wystarczy klucz ograniczony",
+      permission: "Odmowa podaje uprawnienie",
+    },
   },
   references: {
     title: "Działa w sklepach wdrożonych przez Koda Plus",
@@ -668,7 +695,11 @@ const pl: typeof en = {
     title: "Stripe",
     more: "Wszystkie płatności",
     demo: "Przykładowe dane",
-    none: "To zamówienie nie było opłacone przez Stripe.",
+    none: "Nieopłacone przez Stripe",
+    points: {
+      readOnly: "Tylko odczyt",
+      medusa: "Pobranie i zwroty w Medusie",
+    },
     unconfigured: "Stripe by Koda Plus nie ma jeszcze klucza, więc nie odczyta {{id}}.",
     notFound: "Stripe nie zna {{id}} pod kluczem wtyczki: inne konto albo pomylony tryb testowy i na żywo.",
     forbidden: "Klucz nie może odczytać {{id}}: dodaj do niego {{permission}}.",
@@ -705,7 +736,7 @@ const pl: typeof en = {
     refresh: "Odczytaj ponownie",
     readAt: "Odczyt {{time}}",
     stale: "Stripe nie odpowiedział: ostatni odczyt, z {{time}}.",
-    loading: "Czytam Stripe...",
+    loading: "Czytam Stripe",
     failed: "Nie udało się odczytać Stripe dla tego zamówienia.",
   },
   guide: {

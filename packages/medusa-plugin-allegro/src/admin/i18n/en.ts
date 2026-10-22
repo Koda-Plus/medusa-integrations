@@ -6,6 +6,13 @@ const en = {
   by: "by Koda Plus",
   subtitle:
     "Link Allegro offers to products by signature, catch stock gaps before buyers do, import Allegro orders into Medusa exactly once and send stock, parcels and invoices back, each writer armed by a person.",
+  points: {
+    offers: "Offers linked by signature",
+    stock: "Stock gaps before buyers",
+    orders: "Orders imported once",
+    back: "Parcels and invoices back",
+    armed: "Each writer armed by a person",
+  },
   view: {
     panel: "Panel",
     guide: "Setup guide",
@@ -32,6 +39,8 @@ const en = {
     writersArmed: "Writers armed: {{count}}",
   },
   actions: {
+    reload: "Refresh",
+    sellerPanel: "Seller panel",
     moreActions: "More actions",
     sync: "Sync now",
     syncing: "Syncing",
@@ -96,6 +105,13 @@ const en = {
   },
   community: communityEn,
   connection: {
+    points: {
+      device: "Device login, no redirect",
+      scopes: "Only the scopes in use",
+      encrypted: "Tokens encrypted",
+      refresh: "Tokens refresh themselves",
+      demo: "Demo: no Allegro connection",
+    },
     title: "Allegro account",
     subtitle: "Seller account on {{host}}. Device login, no redirect URI. The consent asks only for the scopes the options need.",
     sandbox: "Sandbox",
@@ -156,6 +172,12 @@ const en = {
     unknown: "No quantity",
   },
   writers: {
+    points: {
+      twoSwitches: "Options plus a person",
+      off: "Off by default",
+      breaker: "Disarms after failures",
+      demo: "Demo: nothing reaches Allegro",
+    },
     title: "Writers",
     subtitle:
       "Every write belongs to a writer. A writer works only when the plugin options allow it (writes) and a person armed it here; both are off by default. A writer that fails again and again disarms itself and says why.",
@@ -210,6 +232,15 @@ const en = {
     cancel: "Cancel",
   },
   plans: {
+    points: {
+      mode: "Mode: {{mode}}",
+      cap: "At most {{cap}} a run",
+      bounds: "Bounds {{min}}, {{max}}",
+      drafts: "Drafts only",
+      planned: "Planned {{when}}",
+      applied: "Applied {{applied}}, failed {{failed}}",
+      notArmed: "Writer not armed",
+    },
     stock: {
       title: "Stock push plan",
       subtitle: "The Medusa available quantity of every linked variant against its primary Allegro offer. Mode: {{mode}}. At most {{cap}} offers a run.",
@@ -303,7 +334,7 @@ const en = {
       failed: "Failed",
       unknown: "Checking",
     },
-    empty: "Nothing in this view.",
+    empty: "Nothing in this view",
     demoBounds: "demo bounds",
     simulatedEan: "simulated EAN",
     floorCeiling: "bounds {{min}} to {{max}}",
@@ -314,6 +345,16 @@ const en = {
     notArmed: "Arm the writer to apply the plan.",
   },
   imports: {
+    points: {
+      once: "Each order exactly once",
+      held: "Held with a reason",
+      target: "{{channel}}, {{region}}",
+      noTarget: "Target not set",
+      cursor: "Journal {{when}}",
+      noCursor: "Journal not started",
+      lastOk: "Last import {{when}}",
+      notArmed: "Import not armed",
+    },
     title: "Imported orders",
     subtitle: "Allegro purchases as orders in your store, each exactly once. A held order says why: fix the cause and click Retry.",
     how: "Allegro checkout forms into Medusa orders, exactly once: a row per form before anything happens, a lookup in Medusa before every create, and a reason for every order held.",
@@ -416,7 +457,7 @@ const en = {
     notPaid: "Not paid",
     cod: "Cash on delivery",
     mismatch: "Medusa: {{total}}",
-    empty: "No imports in this view.",
+    empty: "No imports in this view",
     window: {
       title: "Catch-up import",
       text: "Queue Allegro orders bought between two dates, at most 62 days at once: orders from before the import was armed, or from a pause longer than the 60 days Allegro keeps order events.",
@@ -436,6 +477,11 @@ const en = {
     },
   },
   outbox: {
+    points: {
+      once: "Sent once each",
+      lookup: "Checked before a resend",
+      notArmed: "Writer not armed",
+    },
     title: "Parcels, statuses and invoices",
     subtitle: "Sent to Allegro once each, after a lookup on the order. An unclear answer is checked on Allegro before anything is sent again.",
     writer: {
@@ -469,10 +515,17 @@ const en = {
       unknown: "Checking",
       skipped: "Skipped",
     },
-    empty: "Nothing in this view.",
+    empty: "Nothing in this view",
     fakturowniaMissing: "The Fakturownia module is not installed: invoices can still come in through the allegro.invoice.attach.requested event.",
   },
   issues: {
+    points: {
+      kinds: "Returns, disputes, claims",
+      reply: "Reply in the seller panel",
+      checked: "Checked {{when}}",
+      offDisputes: "Disputes not tracked",
+      offMessages: "Messages not counted",
+    },
     title: "Customer issues",
     subtitle: "Returns, disputes and claims of your Allegro buyers, and their unread messages. You reply in the Allegro seller panel, linked below.",
     tiles: {
@@ -577,9 +630,14 @@ const en = {
       CLAIM_REJECTED: "Rejected",
     },
     needsReply: "Waiting for you",
-    empty: "Nothing in this view.",
+    empty: "Nothing in this view",
   },
   offers: {
+    points: {
+      signature: "Linked by signature",
+      qty: "Quantity Allegro / Medusa",
+      check: "The check only labels",
+    },
     title: "Offers",
     subtitle: "Your Allegro offers next to the store products they sell. A linked offer shows its product in Medusa, one click away. Quantity shows Allegro / Medusa.",
     matching:
@@ -602,7 +660,7 @@ const en = {
       stock: "Quantity",
       product: "Product in the store",
     },
-    empty: "No offers in this view.",
+    empty: "No offers in this view",
     primary: "Primary",
     sample: "Sample",
     noProduct: "No product with this signature",
@@ -612,6 +670,11 @@ const en = {
       "The stock check labels; the stock writer acts on it only when armed. A sale on Allegro that Medusa has not heard of yet looks like an oversell, which is why the order import comes first.",
   },
   orders: {
+    points: {
+      journal: "Journal every 10 min",
+      lines: "Items with their products",
+      store: "Store order next to it",
+    },
     title: "Allegro orders",
     subtitle: "Orders placed on Allegro, what they contain and whether each one has reached your store.",
     journal: "The journal, refreshed every ten minutes, with the import of every order into Medusa. The journal itself stores no buyer data.",
@@ -649,11 +712,15 @@ const en = {
       SUSPENDED: "Suspended",
       RETURNED: "Returned",
     },
-    empty: "No orders in this view.",
+    empty: "No orders in this view",
     notImported: "Not imported",
     inStore: "Order in the store",
   },
   runs: {
+    points: {
+      what: "Syncs, plans, writers",
+      when: "Scheduled and manual",
+    },
     title: "History",
     subtitle: "Every sync, plan and writer run, scheduled and manual.",
     col: {
@@ -693,7 +760,7 @@ const en = {
       api: "Allegro API",
     },
     changes: "+{{created}} new, {{updated}} changed, {{removed}} removed",
-    empty: "No runs yet.",
+    empty: "No runs yet",
   },
   pagination: {
     of: "of",
@@ -704,7 +771,7 @@ const en = {
   },
   widget: {
     title: "Allegro",
-    empty: "No Allegro offer is linked to this product.",
+    empty: "No linked offer",
     hint: "Put the variant SKU in the offer signature (external.id), for example {{sku}}.",
     more: "All offers",
     demo: "Sample data",
@@ -732,7 +799,7 @@ const en = {
     handled: "Mark as handled",
     handledToast: "Marked as handled",
     sent: "Sent to Allegro",
-    noneSent: "Nothing sent to Allegro yet.",
+    noneSent: "Nothing sent yet",
     issues: "Returns and disputes",
     panel: "Seller panel",
   },

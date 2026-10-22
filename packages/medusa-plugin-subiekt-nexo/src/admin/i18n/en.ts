@@ -5,10 +5,18 @@ const en = {
   by: "by Koda Plus",
   subtitle:
     "Orders become ZK documents in Subiekt nexo PRO, the WZ issued in the warehouse comes back to the order, sales documents carry their KSeF number, and stock and prices flow from Subiekt to Medusa.",
+  points: {
+    orders: "Order becomes a ZK",
+    wz: "WZ back from the warehouse",
+    sales: "Invoices with KSeF numbers",
+    stock: "Stock from Subiekt",
+    prices: "Prices as a plan first",
+    safe: "Writes only once armed",
+  },
   view: { panel: "Panel", guide: "Setup guide" },
   settings: {
     title: "Settings",
-    subtitle: "The technical side of the integration: the connection to the bridge and its diagnostics, the writers, the stock sync and the history of background jobs.",
+    subtitle: "The technical side of the integration",
     tab: {
       connection: "Connection",
       bridge: "Bridge",
@@ -27,6 +35,7 @@ const en = {
   },
   actions: {
     moreActions: "More actions",
+    refresh: "Refresh",
     check: "Check connection",
     checking: "Checking",
     stock: "Sync stock",
@@ -59,6 +68,8 @@ const en = {
     zk: "ZK documents",
     wz: "WZ documents",
     sales: "FS and PA",
+    hintAttention: "Send again below",
+    hintWaiting: "Sent after payment",
   },
   store: {
     openOrder: "Open order",
@@ -86,11 +97,12 @@ const en = {
     never: "never",
     none: "none",
     eventsReadAt: "Documents read",
-    schedule: "Queue every minute, documents every 2 minutes, stock every 10 minutes, products every hour.",
+    points: { queue: "Queue every minute", documents: "Documents every 2 min", stock: "Stock every 10 min", products: "Products every hour" },
   },
   bridge: {
     title: "Bridge",
     subtitle: "What the last check of the bridge said. Click Check connection for a fresh one.",
+    points: { last: "From the last check", fresh: "Check connection reads again" },
     versions: "Versions",
     versionsValue: "bridge {{bridge}}, contract {{contract}}, plugin {{plugin}}",
     sdk: "nexo SDK and database",
@@ -169,6 +181,7 @@ const en = {
   writers: {
     title: "Writers",
     subtitle: "Every write added in 0.2.0 needs its option in medusa-config.ts and a person arming it here. An option set to false wins.",
+    points: { option: "Option in medusa-config.ts", person: "Armed here by a person", falseWins: "Option false wins" },
     demoNote: "Demo: armed writers only simulate. Nothing in this store changes.",
     names: {
       prices: "Prices from Subiekt",
@@ -215,6 +228,7 @@ const en = {
   products: {
     title: "Products from Subiekt",
     subtitle: "Prices from Subiekt next to the store products they update, and Subiekt products the store does not sell yet. Everything is a plan first: nothing changes until someone switches its writer on in Settings.",
+    points: { plan: "A plan first", match: "EAN first, then SKU", writer: "Changes after arming" },
     matching: "Subiekt products are matched to store variants by EAN first, then by the SKU against the Subiekt symbol. A code used twice is a conflict and is never guessed.",
     matchedKey: "Matched by {{by}}: {{code}}",
     settings: "Prices from {{level}} ({{type}}) to {{target}}, in {{currency}}.",
@@ -250,10 +264,11 @@ const en = {
     columns: { product: "Product in Subiekt", change: "Change", store: "Product in the store", matched: "Matched by", status: "Status", details: "Details" },
     matchedBy: { ean: "EAN", sku: "SKU" },
     newProduct: "new, {{price}}",
-    empty: "Nothing in this plan.",
+    empty: "Nothing in this plan",
     search: "Symbol, SKU or EAN",
     quarantine: "Quarantined after repeated failures",
     quarantineHint: "The writer skips these until you release them. Fix the cause first (the last error says what failed).",
+    quarantinePoints: { skipped: "Skipped until released", fix: "Fix the cause first" },
     samples: { conflicts: "Conflicts, never guessed", unmatchedVariants: "Variants without a match (SKU)", noPrice: "Without a price in this level" },
     blocked: {
       currency_mismatch: "The price level is in another currency than priceCurrency: nothing was planned.",
@@ -263,10 +278,10 @@ const en = {
   tasks: {
     title: "Queue",
     subtitle: "Orders on their way to Subiekt: every ZK, WZ, invoice or receipt the store asked for, and how it went. A send that failed waits here for you, with a Send again button.",
-    technical: "Every call Medusa owes the bridge, with retries. A failed task waits for a person.",
+    points: { order: "One row per call", retries: "Retries by itself", failed: "Failed waits for you" },
+    emptyBy: { attention: "Nothing needs attention", open: "Nothing on its way", done: "Nothing sent yet", all: "Queue empty" },
     filters: { attention: "Need attention", open: "Open", done: "Done", all: "All" },
     search: "Order number",
-    empty: "Nothing here.",
     columns: { order: "Order in the store", operation: "Operation", status: "Status", attempts: "Attempts", document: "Document in Subiekt", details: "Details", actions: "" },
     kinds: { "order.create": "Create ZK", "order.cancel": "Cancel ZK", "order.fulfill": "Issue WZ", "order.document": "Issue sales document" },
     documentKinds: { fs: "Issue FS", pa: "Issue PA" },
@@ -290,8 +305,10 @@ const en = {
   documents: {
     title: "Documents",
     subtitle: "What Subiekt issued for your orders: ZK, WZ, invoices and receipts, each next to its order in the store.",
+    points: { tag: "Order tag in the notes", warehouse: "WZ from the warehouse", ksef: "KSeF number on FS" },
+    search: "Document or order number",
     filters: { all: "All", ZK: "ZK", WZ: "WZ", FS: "FS", PA: "PA" },
-    empty: "No documents yet.",
+    empty: "No documents yet",
     columns: { number: "Number", order: "Order in the store", issued: "Issued", source: "Source", status: "Status", ksef: "KSeF number" },
     sources: { bridge: "Medusa", subiekt: "Warehouse", demo: "Demo" },
     statuses: { open: "Open", canceled: "Canceled", completed: "Completed" },
@@ -300,7 +317,8 @@ const en = {
   stock: {
     title: "Stock",
     subtitle: "Subiekt to Medusa, by EAN first, then SKU against the product symbol.",
-    never: "No stock sync yet.",
+    points: { direction: "Subiekt to Medusa", match: "EAN first, then SKU" },
+    never: "No stock sync yet",
     dryRun: "Dry run",
     counters: {
       subiektProducts: "Products in Subiekt",
@@ -321,7 +339,8 @@ const en = {
   },
   runs: {
     title: "History",
-    empty: "No runs yet.",
+    empty: "No runs yet",
+    points: { newest: "Newest first", jobs: "Background jobs and clicks" },
     columns: { kind: "Job", trigger: "Trigger", status: "Result", message: "Summary", started: "Started", duration: "Time" },
     kinds: { stock: "Stock", events: "Documents", tasks: "Queue", health: "Connection", products: "Products" },
     triggers: { schedule: "Schedule", manual: "Manual", webhook: "Webhook", event: "Event", auto: "Automatic" },
@@ -342,8 +361,18 @@ const en = {
     title: "Subiekt nexo",
     demo: "Demo",
     more: "Panel",
-    none: "This order has not been sent to Subiekt.",
-    waiting: "The ZK will be created when the payment is captured.",
+    none: "Not sent to Subiekt",
+    waiting: "ZK after the payment capture",
+    state: { notSent: "Not sent", waiting: "Waiting for payment", sending: "Sending", attention: "Needs attention", inSubiekt: "In Subiekt" },
+    run: {
+      queue: "Waiting in the Medusa queue",
+      queueShort: "Queue",
+      bridge: "The bridge issues the document",
+      bridgeShort: "Bridge",
+      document: "The number comes back",
+      documentShort: "Number",
+      done: "In Subiekt",
+    },
     send: "Send to Subiekt now",
     sent: "Queued. The ZK appears here in a few seconds.",
     ksef: "KSeF {{number}}",

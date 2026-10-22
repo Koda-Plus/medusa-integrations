@@ -1,7 +1,21 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowPath, ArrowUpRightOnBox, EllipsisHorizontal, MagnifyingGlass } from "@medusajs/icons"
-import { Badge, Button, Copy, Drawer, DropdownMenu, IconButton, InlineTip, Input, Label, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import {
+  ArrowDownTray,
+  ArrowPath,
+  ArrowRightOnRectangle,
+  ArrowUturnLeft,
+  CreditCard,
+  DocumentText,
+  Eye,
+  History as HistoryIcon,
+  Link,
+  MagnifyingGlass,
+  MapPin,
+  PaperPlane,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, Copy, Drawer, InlineTip, Input, Label, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { ParcelDto, ParcelEventDto, ParcelSize, PlanDto, WriterDto } from "../../modules/inpost/lib/contract"
 import {
   errorMessage,
@@ -20,14 +34,17 @@ import {
   useInpostSize,
   useInpostSkip,
 } from "./inpost-api"
+import { EmptyState, RowActions, SearchInput, ToneBadge, useDebouncedValue, type RowAction } from "./inpost-blocks"
 import { nb } from "./inpost-guide"
+import { KitLoading } from "./inpost-kit"
 import { Fact, KindBadges, LockerLines, ParcelStatus, ProblemList, TrackingCell, fmtDateTime, fmtMoney, useActorLabel, useEventText } from "./inpost-ui"
 
 /* ------------------------------------------------------------------ */
 /* The plan: read it, then create                                      */
 /* ------------------------------------------------------------------ */
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** One part of the plan in a drawer: a small heading over its facts. */
+function PlanPart({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-y-2 rounded-lg border border-ui-border-base px-4 py-3">
       <Text size="xsmall" weight="plus" className="text-ui-fg-muted">
@@ -50,7 +67,7 @@ function PlanBody({ plan, lang }: { plan: PlanDto; lang: string }) {
           <ProblemList items={plan.problems} />
         </InlineTip>
       ) : null}
-      <Section title={t("plan.receiver")}>
+      <PlanPart title={t("plan.receiver")}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Fact label={t("plan.name")}>{r.name || <span className="text-ui-fg-muted">{t("plan.none")}</span>}</Fact>
           <Fact label={t("plan.phone")} mono>
@@ -62,12 +79,12 @@ function PlanBody({ plan, lang }: { plan: PlanDto; lang: string }) {
           {plan.kind === "courier" ? <Fact label={t("plan.address")}>{address ?? <span className="text-ui-tag-red-text">{t("plan.missing")}</span>}</Fact> : null}
         </div>
         {r.sample ? (
-          <Badge size="2xsmall" color="purple" className="w-fit">
-            {t("plan.sampleContact")}
-          </Badge>
+          <span className="w-fit">
+            <ToneBadge tone="purple">{t("plan.sampleContact")}</ToneBadge>
+          </span>
         ) : null}
-      </Section>
-      <Section title={plan.kind === "locker" ? t("plan.locker") : t("plan.courier")}>
+      </PlanPart>
+      <PlanPart title={plan.kind === "locker" ? t("plan.locker") : t("plan.courier")}>
         {plan.kind === "locker" ? (
           plan.locker ? (
             <LockerLines locker={{ ...plan.locker, mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`Paczkomat ${plan.locker.code} ${plan.locker.address?.line1 ?? ""} ${plan.locker.address?.line2 ?? ""}`)}` }} />
@@ -79,8 +96,8 @@ function PlanBody({ plan, lang }: { plan: PlanDto; lang: string }) {
         ) : (
           <Text size="small">{t("plan.courierText")}</Text>
         )}
-      </Section>
-      <Section title={t("plan.parcel")}>
+      </PlanPart>
+      <PlanPart title={t("plan.parcel")}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Fact label={t("plan.size")}>{t(`size.long.${plan.parcel.size}`)}</Fact>
           <Fact label={t("plan.weight")}>
@@ -90,8 +107,8 @@ function PlanBody({ plan, lang }: { plan: PlanDto; lang: string }) {
           <Fact label={t("plan.cod")}>{plan.cod ? <span className="font-medium">{fmtMoney(plan.cod.amount, plan.cod.currency, lang)}</span> : <span className="text-ui-fg-muted">{t("plan.noCod")}</span>}</Fact>
           <Fact label={t("plan.insurance")}>{plan.insurance ? fmtMoney(plan.insurance.amount, plan.insurance.currency, lang) : <span className="text-ui-fg-muted">{t("plan.none")}</span>}</Fact>
         </div>
-      </Section>
-      <Section title={t("plan.sending")}>
+      </PlanPart>
+      <PlanPart title={t("plan.sending")}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Fact label={t("plan.reference")} mono>
             {plan.reference}
@@ -108,11 +125,11 @@ function PlanBody({ plan, lang }: { plan: PlanDto; lang: string }) {
         <Text size="xsmall" className="text-ui-fg-muted">
           {t("plan.buysOffer")}
         </Text>
-      </Section>
+      </PlanPart>
       {plan.warnings.length > 0 ? (
-        <Section title={t("plan.warnings")}>
+        <PlanPart title={t("plan.warnings")}>
           <ProblemList items={plan.warnings} tone="warning" kind="warning" />
-        </Section>
+        </PlanPart>
       ) : null}
       {plan.request ? (
         <div className="flex flex-col gap-y-2">
@@ -156,16 +173,12 @@ export function PlanDrawer({ parcelId, lang, onClose, onSettings }: { parcelId: 
           <Drawer.Title className="flex flex-wrap items-center gap-2">
             {t("plan.title")}
             {data ? <KindBadges parcel={data.parcel} /> : null}
-            {data?.mode === "demo" ? (
-              <Badge size="2xsmall" color="purple">
-                {t("demo.badge")}
-              </Badge>
-            ) : null}
+            {data?.mode === "demo" ? <ToneBadge tone="blue">{t("demo.badge")}</ToneBadge> : null}
           </Drawer.Title>
           <Drawer.Description>{data ? t("plan.subtitle", { order: data.parcel.displayId ?? data.parcel.orderId }) : ""}</Drawer.Description>
         </Drawer.Header>
         <Drawer.Body className="flex flex-col gap-y-3 overflow-y-auto">
-          {q.isLoading ? <Text size="small" className="text-ui-fg-muted">{t("plan.loading")}</Text> : null}
+          {q.isLoading ? <KitLoading label={t("plan.loading")} /> : null}
           {q.isError ? (
             <InlineTip variant="error" label={t("plan.title")}>
               {errorMessage(q.error)}
@@ -192,6 +205,7 @@ export function PlanDrawer({ parcelId, lang, onClose, onSettings }: { parcelId: 
             </Button>
           </Drawer.Close>
           <Button size="small" variant="primary" disabled={!canCreate} isLoading={create.isPending} onClick={() => void onCreate()}>
+            <PaperPlane />
             {data?.mode === "demo" ? t("plan.confirmDemo") : t("plan.confirm")}
           </Button>
         </Drawer.Footer>
@@ -204,20 +218,11 @@ export function PlanDrawer({ parcelId, lang, onClose, onSettings }: { parcelId: 
 /* Lockers: search, and pick one for a shipment not sent yet           */
 /* ------------------------------------------------------------------ */
 
-function useDebounced(value: string, ms = 350): string {
-  const [out, setOut] = useState(value)
-  useEffect(() => {
-    const id = window.setTimeout(() => setOut(value.trim()), ms)
-    return () => window.clearTimeout(id)
-  }, [value, ms])
-  return out
-}
-
 /** The locker search. With `parcelId` each result can become the shipment's locker; without it, it is a lookup. */
 export function LockerDrawer({ parcelId, current, onClose }: { parcelId?: string | null; current?: string | null; onClose: () => void }) {
   const { t } = useTranslation("inpost")
   const [text, setText] = useState("")
-  const q = useDebounced(text)
+  const q = useDebouncedValue(text.trim(), 350)
   const points = useInpostPoints(q)
   const change = useInpostLocker()
   const list = points.data?.points ?? []
@@ -242,10 +247,7 @@ export function LockerDrawer({ parcelId, current, onClose }: { parcelId?: string
         </Drawer.Header>
         <Drawer.Body className="flex flex-col gap-y-3 overflow-y-auto">
           <div className="flex flex-col gap-y-1.5">
-            <Label size="xsmall" weight="plus" htmlFor="inpost-locker-search">
-              {t("lockers.label")}
-            </Label>
-            <Input id="inpost-locker-search" size="small" type="search" autoFocus placeholder={t("lockers.placeholder")} value={text} onChange={(e) => setText(e.target.value)} />
+            <SearchInput value={text} onChange={setText} autoFocus label={t("lockers.label")} placeholder={t("lockers.placeholder")} className="sm:w-full" />
             <Text size="xsmall" className="text-ui-fg-muted">
               {points.data?.demo ? t("lockers.demoNote") : t("lockers.hint")}
             </Text>
@@ -255,33 +257,18 @@ export function LockerDrawer({ parcelId, current, onClose }: { parcelId?: string
               {errorMessage(points.error)}
             </InlineTip>
           ) : null}
-          {q.length >= 2 && !points.isLoading && list.length === 0 && !points.isError ? (
-            <Text size="small" className="text-ui-fg-muted">
-              {t("lockers.empty")}
-            </Text>
-          ) : null}
-          <ul className="flex flex-col divide-y divide-ui-border-base rounded-lg border border-ui-border-base">
+          {q.length >= 2 && !points.isLoading && list.length === 0 && !points.isError ? <EmptyState compact icon={<MapPin />} title={t("lockers.empty")} /> : null}
+          {points.isLoading && q.length >= 2 ? <KitLoading /> : null}
+          <ul className={clx("flex flex-col divide-y divide-ui-border-base rounded-lg border border-ui-border-base", list.length === 0 && "hidden")}>
             {list.map((p) => (
               <li key={p.code} className="flex items-start justify-between gap-3 px-3 py-2.5">
                 <div className="flex min-w-0 flex-col gap-y-0.5">
                   <span className="flex flex-wrap items-center gap-1.5">
                     <span className="txt-compact-small-plus font-mono text-ui-fg-base">{p.code}</span>
-                    {p.is_24_7 ? (
-                      <Badge size="2xsmall" color="green">
-                        24/7
-                      </Badge>
-                    ) : null}
-                    {p.payment_available ? (
-                      <Badge size="2xsmall" color="grey">
-                        {t("lockers.payment")}
-                      </Badge>
-                    ) : null}
+                    {p.is_24_7 ? <ToneBadge tone="green">24/7</ToneBadge> : null}
+                    {p.payment_available ? <ToneBadge icon={<CreditCard />}>{t("lockers.payment")}</ToneBadge> : null}
                     {p.distance !== null ? <span className="txt-compact-xsmall text-ui-fg-muted">{t("lockers.distance", { m: p.distance })}</span> : null}
-                    {p.code === current ? (
-                      <Badge size="2xsmall" color="blue">
-                        {t("lockers.current")}
-                      </Badge>
-                    ) : null}
+                    {p.code === current ? <ToneBadge tone="blue">{t("lockers.current")}</ToneBadge> : null}
                   </span>
                   <Text size="xsmall" className="text-ui-fg-subtle">
                     {nb([p.address.line1, p.address.line2].filter(Boolean).join(", "))}
@@ -296,6 +283,7 @@ export function LockerDrawer({ parcelId, current, onClose }: { parcelId?: string
                   <Copy content={p.code} className="text-ui-fg-muted" />
                   {parcelId ? (
                     <Button size="small" variant="secondary" disabled={p.code === current} isLoading={change.isPending && change.variables?.code === p.code} onClick={() => void onUse(p.code)}>
+                      <MapPin />
                       {t("lockers.use")}
                     </Button>
                   ) : null}
@@ -370,18 +358,12 @@ export function History({ events, lang }: { events: ParcelEventDto[]; lang: stri
   const { t } = useTranslation("inpost")
   const eventText = useEventText()
   const actorLabel = useActorLabel()
-  if (events.length === 0) {
-    return (
-      <Text size="small" className="text-ui-fg-muted">
-        {t("detail.noHistory")}
-      </Text>
-    )
-  }
+  if (events.length === 0) return <EmptyState compact icon={<HistoryIcon />} title={t("detail.noHistory")} />
   return (
     <ol className="flex flex-col gap-y-2">
       {events.map((e) => (
         <li key={e.id} className="flex gap-x-2.5">
-          <span className={clx("mt-1.5 h-2 w-2 shrink-0 rounded-full", e.kind === "status" ? "bg-ui-tag-blue-icon" : e.kind === "webhook" ? "bg-ui-tag-purple-icon" : "bg-ui-fg-muted")} />
+          <span className={clx("mt-1.5 h-2 w-2 shrink-0 rounded-full", e.kind === "status" || e.kind === "webhook" ? "bg-ui-tag-blue-icon" : "bg-ui-tag-neutral-icon")} />
           <div className="flex min-w-0 flex-col">
             <Text size="small" className="text-ui-fg-base">
               {nb(eventText(e))}
@@ -414,6 +396,12 @@ export function ParcelDrawer({ parcelId, lang, writers, onClose, onSettings }: {
           <Drawer.Description>{p ? <KindBadges parcel={p} /> : null}</Drawer.Description>
         </Drawer.Header>
         <Drawer.Body className="flex flex-col gap-y-4 overflow-y-auto">
+          {q.isLoading ? <KitLoading label={t("detail.loading")} /> : null}
+          {q.isError ? (
+            <InlineTip variant="error" label={t("detail.history")}>
+              {errorMessage(q.error)}
+            </InlineTip>
+          ) : null}
           {p ? (
             <>
               {p.error ? (
@@ -462,12 +450,13 @@ export function ParcelDrawer({ parcelId, lang, writers, onClose, onSettings }: {
                   </Fact>
                 ) : null}
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ui-border-base pt-3">
-                <Text size="small" weight="plus">
-                  {t("detail.history")}
-                </Text>
-                <ParcelActions parcel={p} lang={lang} writers={writers} onSettings={onSettings} />
+              <div className="border-t border-ui-border-base pt-3">
+                <ParcelActions parcel={p} lang={lang} writers={writers} onSettings={onSettings} layout="buttons" />
               </div>
+              <Text size="small" weight="plus" className="flex items-center gap-x-1.5">
+                <HistoryIcon className="text-ui-fg-muted" />
+                {t("detail.history")}
+              </Text>
               <History events={q.data?.events ?? []} lang={lang} />
             </>
           ) : null}
@@ -488,13 +477,21 @@ export function ParcelDrawer({ parcelId, lang, writers, onClose, onSettings }: {
 /* What a person can do with a shipment                                */
 /* ------------------------------------------------------------------ */
 
+
 const SIZES: ParcelSize[] = ["small", "medium", "large"]
 
+/** A format or a size letter as the icon of an action (A6, A4, B): a letter says it better than a picture. */
+function Glyph({ children }: { children: string }) {
+  return <span className="txt-compact-xsmall-plus flex h-[15px] min-w-[15px] items-center justify-center leading-none">{children}</span>
+}
+
 /**
- * The actions of one shipment: the main one as a button (read the plan and
- * create, the label, look up, try again, pay the offer), the rest in a menu.
- * Writes need the shipment writer armed: their buttons say so instead of
- * failing.
+ * The actions of one shipment, every one visible (never a menu). In a row
+ * (`layout="row"`) the main one (read the plan and create, the label, look
+ * up, try again, pay the offer) is a button with its name and the others are
+ * icons with their names as tooltips; in a drawer (`layout="buttons"`) each
+ * is a button with its icon and name. Writes need the shipment writer armed:
+ * their buttons say so instead of failing.
  */
 export function ParcelActions({
   parcel: p,
@@ -502,14 +499,14 @@ export function ParcelActions({
   writers,
   onOpen,
   onSettings,
-  compact = false,
+  layout = "row",
 }: {
   parcel: ParcelDto
   lang: string
   writers: Record<string, WriterDto> | undefined
   onOpen?: () => void
   onSettings?: () => void
-  compact?: boolean
+  layout?: "row" | "buttons"
 }) {
   const { t } = useTranslation("inpost")
   const prompt = usePrompt()
@@ -544,93 +541,77 @@ export function ParcelActions({
   }
   const openLabel = (labelSize?: "A6" | "A4") => window.open(labelUrl(p.id, labelSize), "_blank", "noopener")
 
-  const main = p.actions.create ? (
-    <Button size="small" variant={compact ? "secondary" : "primary"} onClick={() => setPlanOpen(true)}>
-      {t("actions.plan")}
-    </Button>
-  ) : p.actions.label ? (
-    <Button size="small" variant="secondary" onClick={() => openLabel()}>
-      {t("actions.label")}
-    </Button>
-  ) : p.actions.lookup ? (
-    <Button size="small" variant="secondary" isLoading={lookup.isPending} onClick={() => void run(() => lookup.mutateAsync({ id: p.id }), t("toast.lookedUp"))}>
-      {t("actions.lookup")}
-    </Button>
-  ) : p.actions.retry ? (
-    <Button size="small" variant="secondary" isLoading={retry.isPending} onClick={() => void run(() => retry.mutateAsync({ id: p.id }), t("toast.retried"))}>
-      {t("actions.retry")}
-    </Button>
-  ) : p.actions.buy ? (
-    <Button size="small" variant="secondary" disabled={!armed} title={!armed ? t("plan.notArmed") : undefined} isLoading={buy.isPending} onClick={() => void run(() => buy.mutateAsync({ id: p.id }), t("toast.bought"))}>
-      {t("actions.buy")}
-    </Button>
-  ) : null
+  const actions: RowAction[] = [
+    { key: "create", label: t("actions.plan"), icon: <PaperPlane />, hidden: !p.actions.create, onClick: () => setPlanOpen(true) },
+    { key: "plan", label: t("actions.planOnly"), icon: <DocumentText />, hidden: !p.actions.plan || p.actions.create, onClick: () => setPlanOpen(true) },
+    { key: "label", label: t("actions.label"), icon: <ArrowDownTray />, hidden: !p.actions.label, onClick: () => openLabel() },
+    { key: "labelA6", label: t("actions.labelA6"), icon: <Glyph>A6</Glyph>, hidden: !p.actions.label, onClick: () => openLabel("A6") },
+    { key: "labelA4", label: t("actions.labelA4"), icon: <Glyph>A4</Glyph>, hidden: !p.actions.label || p.kind !== "locker", onClick: () => openLabel("A4") },
+    { key: "lookup", label: t("actions.lookup"), icon: <MagnifyingGlass />, hidden: !p.actions.lookup, loading: lookup.isPending, onClick: () => void run(() => lookup.mutateAsync({ id: p.id }), t("toast.lookedUp")) },
+    { key: "retry", label: t("actions.retry"), icon: <ArrowUturnLeft />, hidden: !p.actions.retry, loading: retry.isPending, onClick: () => void run(() => retry.mutateAsync({ id: p.id }), t("toast.retried")) },
+    {
+      key: "buy",
+      label: armed ? t("actions.buy") : t("actions.buyNotArmed"),
+      icon: <CreditCard />,
+      hidden: !p.actions.buy,
+      disabled: !armed,
+      loading: buy.isPending,
+      onClick: () => void run(() => buy.mutateAsync({ id: p.id }), t("toast.bought")),
+    },
+    { key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, hidden: !p.actions.refresh, loading: refresh.isPending, onClick: () => void run(() => refresh.mutateAsync({ id: p.id }), t("toast.refreshed")) },
+    { key: "locker", label: t("actions.changeLocker"), icon: <MapPin />, hidden: !p.actions.changeLocker, onClick: () => setLockerOpen(true) },
+    ...SIZES.map(
+      (s): RowAction => ({
+        key: `size-${s}`,
+        label: t("actions.setSize", { size: t(`size.long.${s}`) }),
+        icon: <Glyph>{t(`size.letter.${s}`)}</Glyph>,
+        hidden: !p.actions.changeSize || s === p.size,
+        loading: size.isPending && size.variables?.size === s,
+        onClick: () => void run(() => size.mutateAsync({ id: p.id, size: s }), t("toast.sizeChanged", { size: t(`size.letter.${s}`) })),
+      }),
+    ),
+    { key: "link", label: t("actions.link"), icon: <Link />, hidden: !p.actions.link, onClick: () => setLinkOpen(true) },
+    { key: "details", label: t("actions.details"), icon: <Eye />, hidden: !onOpen, onClick: () => onOpen?.() },
+    { key: "skip", label: t("actions.skip"), icon: <ArrowRightOnRectangle />, hidden: !p.actions.skip, onClick: () => void onSkip() },
+    { key: "cancel", label: armed ? t("actions.cancel") : t("actions.cancelNotArmed"), icon: <XCircle />, danger: true, hidden: !p.actions.cancel, disabled: !armed, loading: cancel.isPending, onClick: () => void onCancel() },
+  ]
+  const shown = actions.filter((a) => !a.hidden)
+  /* The one a warehouse needs next, in this order; the others stay icons beside it. */
+  const main = ["create", "label", "lookup", "retry", "buy"].map((k) => shown.find((a) => a.key === k)).find(Boolean)
 
   return (
-    <div className="flex items-center justify-end gap-1.5">
-      {main}
-      <DropdownMenu>
-        <DropdownMenu.Trigger asChild>
-          <IconButton size="small" variant="transparent" aria-label={t("actions.moreActions")}>
-            <EllipsisHorizontal />
-          </IconButton>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end">
-          {onOpen ? <DropdownMenu.Item onClick={onOpen}>{t("actions.details")}</DropdownMenu.Item> : null}
-          {p.actions.plan && !p.actions.create ? <DropdownMenu.Item onClick={() => setPlanOpen(true)}>{t("actions.planOnly")}</DropdownMenu.Item> : null}
-          {p.actions.refresh ? (
-            <DropdownMenu.Item className="gap-x-2" onClick={() => void run(() => refresh.mutateAsync({ id: p.id }), t("toast.refreshed"))}>
-              <ArrowPath />
-              {t("actions.refresh")}
-            </DropdownMenu.Item>
+    <>
+      {layout === "buttons" ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {shown.map((a) => (
+            <Button
+              key={a.key}
+              size="small"
+              variant={a === main ? "primary" : "secondary"}
+              disabled={a.disabled}
+              isLoading={a.loading}
+              onClick={a.onClick}
+              className={clx("whitespace-nowrap", a.danger && "text-ui-tag-red-text")}
+            >
+              {a.icon}
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center justify-end gap-1.5">
+          {main ? (
+            <Button size="small" variant="secondary" disabled={main.disabled} isLoading={main.loading} title={main.label} onClick={main.onClick} className="whitespace-nowrap">
+              {main.icon}
+              {main.key === "create" ? t("actions.create") : main.label}
+            </Button>
           ) : null}
-          {p.actions.label ? (
-            <>
-              <DropdownMenu.Item className="gap-x-2" onClick={() => openLabel("A6")}>
-                <ArrowUpRightOnBox />
-                {t("actions.labelA6")}
-              </DropdownMenu.Item>
-              {p.kind === "locker" ? (
-                <DropdownMenu.Item className="gap-x-2" onClick={() => openLabel("A4")}>
-                  <ArrowUpRightOnBox />
-                  {t("actions.labelA4")}
-                </DropdownMenu.Item>
-              ) : null}
-            </>
-          ) : null}
-          {p.actions.changeLocker ? (
-            <DropdownMenu.Item className="gap-x-2" onClick={() => setLockerOpen(true)}>
-              <MagnifyingGlass />
-              {t("actions.changeLocker")}
-            </DropdownMenu.Item>
-          ) : null}
-          {p.actions.changeSize
-            ? SIZES.filter((s) => s !== p.size).map((s) => (
-                <DropdownMenu.Item key={s} onClick={() => void run(() => size.mutateAsync({ id: p.id, size: s }), t("toast.sizeChanged", { size: t(`size.letter.${s}`) }))}>
-                  {t("actions.setSize", { size: t(`size.long.${s}`) })}
-                </DropdownMenu.Item>
-              ))
-            : null}
-          {p.actions.buy ? (
-            <DropdownMenu.Item disabled={!armed} onClick={() => void run(() => buy.mutateAsync({ id: p.id }), t("toast.bought"))}>
-              {t("actions.buy")}
-            </DropdownMenu.Item>
-          ) : null}
-          {p.actions.lookup ? <DropdownMenu.Item onClick={() => void run(() => lookup.mutateAsync({ id: p.id }), t("toast.lookedUp"))}>{t("actions.lookup")}</DropdownMenu.Item> : null}
-          {p.actions.retry ? <DropdownMenu.Item onClick={() => void run(() => retry.mutateAsync({ id: p.id }), t("toast.retried"))}>{t("actions.retry")}</DropdownMenu.Item> : null}
-          {p.actions.link ? <DropdownMenu.Item onClick={() => setLinkOpen(true)}>{t("actions.link")}</DropdownMenu.Item> : null}
-          {p.actions.skip || p.actions.cancel ? <DropdownMenu.Separator /> : null}
-          {p.actions.skip ? <DropdownMenu.Item onClick={() => void onSkip()}>{t("actions.skip")}</DropdownMenu.Item> : null}
-          {p.actions.cancel ? (
-            <DropdownMenu.Item disabled={!armed} onClick={() => void onCancel()}>
-              {armed ? t("actions.cancel") : t("actions.cancelNotArmed")}
-            </DropdownMenu.Item>
-          ) : null}
-        </DropdownMenu.Content>
-      </DropdownMenu>
+          <RowActions actions={shown.filter((a) => a !== main)} />
+        </div>
+      )}
       {planOpen ? <PlanDrawer parcelId={p.id} lang={lang} onClose={() => setPlanOpen(false)} onSettings={onSettings} /> : null}
       {lockerOpen ? <LockerDrawer parcelId={p.id} current={p.locker?.code ?? null} onClose={() => setLockerOpen(false)} /> : null}
       {linkOpen ? <LinkDrawer parcel={p} onClose={() => setLinkOpen(false)} /> : null}
-    </div>
+    </>
   )
 }

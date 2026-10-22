@@ -2,9 +2,12 @@ import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminProduct, DetailWidgetProps } from "@medusajs/framework/types"
 import { Heading, Text } from "@medusajs/ui"
+import { CheckCircle, Receipt } from "@medusajs/icons"
 import { useProductCoupons } from "../lib/coupons-api"
 import { CouponsIcon } from "../lib/coupons-icon"
-import { WidgetFrame, hostable } from "../lib/coupons-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/coupons-kit"
+import { EmptyState } from "../lib/coupons-blocks"
+import { KeyPoints } from "../lib/coupons-guide"
 import { couponSentence } from "../lib/coupons-sentence"
 import { useFormat } from "../lib/coupons-ui"
 
@@ -19,26 +22,30 @@ const CouponsProductCard = ({ data, embedded }: DetailWidgetProps<AdminProduct> 
   const q = useProductCoupons(data?.id)
   const r = q.data
   if (!embedded && (!r || r.coupons.length === 0)) return null
+  /* Embedded in a host: a loader first, never "none" before the data came. */
+  if (embedded && q.isLoading) return <KitLoading />
   return (
     <WidgetFrame
       embedded={embedded}
       header={
-        <div className="flex flex-col gap-y-0.5 px-6 py-4">
-          <div className="flex items-center gap-x-2">
-            <CouponsIcon width={18} height={18} />
-            <Heading level="h2">{t("widget.product.title")}</Heading>
+        <div className="flex flex-col gap-y-1.5 px-6 py-4">
+          <div className="flex items-center justify-between gap-x-2">
+            <div className="flex items-center gap-x-2">
+              <CouponsIcon width={18} height={18} />
+              <Heading level="h2">{t("widget.product.title")}</Heading>
+              
+            </div>
+            <a href="/app/coupons" className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+              {t("widget.open")}
+            </a>
           </div>
-          <Text size="xsmall" className="text-ui-fg-subtle">
-            {t("widget.product.hint")}
-          </Text>
+          <KeyPoints label={t("widget.product.hint")} items={[{ icon: <CheckCircle />, text: t("widget.product.point") }]} />
         </div>
       }
     >
       <div className="flex flex-col gap-y-3 px-6 py-4">
         {!r || r.coupons.length === 0 ? (
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("widget.product.none")}
-          </Text>
+          <EmptyState compact icon={<Receipt />} title={t("widget.product.none")} />
         ) : (
           r.coupons.map((c) => (
             <div key={c.id} className="flex flex-col gap-y-0.5">

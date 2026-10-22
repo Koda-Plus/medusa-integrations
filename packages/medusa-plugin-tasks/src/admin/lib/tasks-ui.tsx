@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useMemo, type ReactNode } from "react"
 import { Link as RouterLink } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Avatar, Badge, StatusBadge, Text, clx } from "@medusajs/ui"
+import { Avatar, Text, clx } from "@medusajs/ui"
 import { ArrowUpRightMini, ShoppingCart, Sparkles, Tag as TagIcon, User, XMarkMini } from "@medusajs/icons"
 import type { ActivityDto, CommentDto, LinkDto, NamedPersonDto, PersonDto, SampleText, TaskDto } from "../../modules/tasks/lib/contract"
 import type { LinkType, TaskPriority, TaskStatus } from "../../modules/tasks/lib/constants"
@@ -11,13 +11,13 @@ import { personKey } from "../../modules/tasks/lib/people"
 import { safeAvatarUrl } from "./tasks-rules"
 import { pickText, type TasksReference } from "../../modules/tasks/lib/references"
 import { nb, type Reference } from "./tasks-guide"
+import { ToneBadge, type Tone } from "./tasks-blocks"
 
 /*
  * Shared pieces of the Tasks page and widgets: formatting, labels in the
- * admin's language, avatars, badges, tiles and chips.
+ * admin's language, avatars, badges and chips. Tiles, filters, empty states
+ * and the search field come from the kit blocks (tasks-blocks.tsx).
  */
-
-export type Tone = "grey" | "blue" | "orange" | "purple" | "green" | "red"
 
 /* ------------------------------------------------------------------ */
 /* Formatting                                                          */
@@ -117,15 +117,6 @@ export function kitReferences(refs: TasksReference[], lang: string): Reference[]
   }))
 }
 
-export function useDebounced<T>(value: T, ms = 250): T {
-  const [v, setV] = useState(value)
-  useEffect(() => {
-    const id = window.setTimeout(() => setV(value), ms)
-    return () => window.clearTimeout(id)
-  }, [value, ms])
-  return v
-}
-
 /* ------------------------------------------------------------------ */
 /* Tasks in the admin's language                                       */
 /* ------------------------------------------------------------------ */
@@ -160,16 +151,17 @@ export function overdue(task: Pick<TaskDto, "status" | "due_date">, today: strin
   return isOverdue(task, today)
 }
 
+/* One meaning of colour in the whole plugin: blue is work running, orange waits for someone, green is done; the rest stays grey. */
 export const STATUS_COLOR: Record<TaskStatus, Tone> = {
   backlog: "grey",
-  todo: "blue",
-  in_progress: "orange",
-  review: "purple",
+  todo: "grey",
+  in_progress: "blue",
+  review: "orange",
   done: "green",
-  rejected: "red",
+  rejected: "grey",
 }
 
-export const PRIORITY_COLOR: Record<TaskPriority, Tone> = { low: "grey", medium: "blue", high: "orange", urgent: "red" }
+export const PRIORITY_COLOR: Record<TaskPriority, Tone> = { low: "grey", medium: "grey", high: "orange", urgent: "red" }
 
 export function useLabels() {
   const { t, i18n } = useTranslation("tasks")
@@ -329,27 +321,24 @@ export function Person({ who, fallback, muted = false, plain = false }: { who: W
 
 export function TaskStatusBadge({ status }: { status: TaskStatus }) {
   const { status: label } = useLabels()
-  return <StatusBadge color={STATUS_COLOR[status] ?? "grey"}>{label(status)}</StatusBadge>
+  return <ToneBadge tone={STATUS_COLOR[status] ?? "grey"}>{label(status)}</ToneBadge>
 }
 
 export function PriorityBadge({ priority }: { priority: TaskPriority }) {
   const { priority: label } = useLabels()
   return (
-    <Badge size="2xsmall" color={PRIORITY_COLOR[priority] ?? "grey"} className="shrink-0">
-      {label(priority)}
-    </Badge>
+    <span className="shrink-0">
+      <ToneBadge tone={PRIORITY_COLOR[priority] ?? "grey"}>{label(priority)}</ToneBadge>
+    </span>
   )
 }
 
-export const ROLE_COLOR: Record<string, Tone> = { agency: "blue", client: "green", claude: "purple" }
+/* Purple marks the AI agent only (the same mark as its avatar), never a state. */
+export const ROLE_COLOR: Record<string, Tone> = { agency: "blue", client: "grey", claude: "purple" }
 
 export function RoleBadge({ role }: { role: string }) {
   const labels = useLabels()
-  return (
-    <Badge size="2xsmall" color={ROLE_COLOR[role] ?? "grey"}>
-      {labels.role(role)}
-    </Badge>
-  )
+  return <ToneBadge tone={ROLE_COLOR[role] ?? "grey"}>{labels.role(role)}</ToneBadge>
 }
 
 /* ------------------------------------------------------------------ */
@@ -464,57 +453,6 @@ export function activityText(a: Pick<ActivityDto, "type" | "message" | "metadata
 /* Layout pieces                                                       */
 /* ------------------------------------------------------------------ */
 
-export function StatTile({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-}: {
-  label: string
-  value: number | string
-  tone?: "default" | "green" | "orange" | "red" | "blue" | "purple"
-  active?: boolean
-  onClick?: () => void
-}) {
-  const dot =
-    tone === "green"
-      ? "bg-ui-tag-green-icon"
-      : tone === "orange"
-        ? "bg-ui-tag-orange-icon"
-        : tone === "red"
-          ? "bg-ui-tag-red-icon"
-          : tone === "blue"
-            ? "bg-ui-tag-blue-icon"
-            : tone === "purple"
-              ? "bg-ui-tag-purple-icon"
-              : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      aria-pressed={onClick ? active : undefined}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "cursor-pointer hover:bg-ui-bg-component-hover" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-    </button>
-  )
-}
-
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-y-1.5">
@@ -522,39 +460,6 @@ export function Field({ label, children }: { label: string; children: ReactNode 
         {label}
       </Text>
       {children}
-    </div>
-  )
-}
-
-export function Empty({ text }: { text: string }) {
-  return (
-    <div className="px-6 py-8 text-center">
-      <Text size="small" className="text-ui-fg-muted">
-        {text}
-      </Text>
-    </div>
-  )
-}
-
-/** A pill switch, the same look as Panel | Setup guide elsewhere. */
-export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string }>; onChange: (v: T) => void }) {
-  return (
-    <div className="inline-flex shrink-0 rounded-full border border-ui-border-base bg-ui-bg-component p-0.5" role="tablist">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={value === o.value}
-          onClick={() => onChange(o.value)}
-          className={clx(
-            "txt-compact-small-plus rounded-full px-3 py-1 transition-fg",
-            value === o.value ? "bg-ui-bg-interactive text-ui-fg-on-color" : "text-ui-fg-subtle hover:text-ui-fg-base",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
     </div>
   )
 }

@@ -1,10 +1,12 @@
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Heading, Text } from "@medusajs/ui"
+import { Heading, Text } from "@medusajs/ui"
+import { Receipt } from "@medusajs/icons"
 import { useOrderCoupons } from "../lib/coupons-api"
 import { CouponsIcon } from "../lib/coupons-icon"
-import { WidgetFrame, hostable } from "../lib/coupons-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/coupons-kit"
+import { EmptyState, ToneBadge } from "../lib/coupons-blocks"
 import { useFormat } from "../lib/coupons-ui"
 
 /**
@@ -19,21 +21,29 @@ const CouponsOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
   const q = useOrderCoupons(data?.id)
   const r = q.data
   if (!embedded && (!r || r.applied.length === 0)) return null
+  /* Embedded in a host: a loader first, never "none" before the data came. */
+  if (embedded && q.isLoading) return <KitLoading />
   return (
     <WidgetFrame
       embedded={embedded}
       header={
-        <div className="flex items-center gap-x-2 px-6 py-4">
-          <CouponsIcon width={18} height={18} />
-          <Heading level="h2">{t("widget.order.title")}</Heading>
+        <div className="flex flex-col gap-y-1.5 px-6 py-4">
+          <div className="flex items-center justify-between gap-x-2">
+            <div className="flex items-center gap-x-2">
+              <CouponsIcon width={18} height={18} />
+              <Heading level="h2">{t("widget.order.title")}</Heading>
+              {r?.applied.length ? <ToneBadge tone="green">{r.applied.length}</ToneBadge> : null}
+            </div>
+            <a href="/app/coupons" className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+              {t("widget.open")}
+            </a>
+          </div>
         </div>
       }
     >
       <div className="flex flex-col gap-y-2 px-6 py-4">
         {!r || r.applied.length === 0 ? (
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("widget.order.none")}
-          </Text>
+          <EmptyState compact icon={<Receipt />} title={t("widget.order.none")} />
         ) : (
           <>
             {r.applied.map((a, i) => (
@@ -44,14 +54,10 @@ const CouponsOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { 
                       {a.code}
                     </a>
                   ) : (
-                    <Badge size="2xsmall" color="blue">
-                      {t("widget.order.automatic")}
-                    </Badge>
+                    <ToneBadge tone="blue">{t("widget.order.automatic")}</ToneBadge>
                   )}
                   {a.on === "shipping" ? (
-                    <Badge size="2xsmall" color="grey">
-                      {t("widget.order.shipping")}
-                    </Badge>
+                    <ToneBadge>{t("widget.order.shipping")}</ToneBadge>
                   ) : null}
                 </span>
                 <Text size="small" className="tabular-nums">

@@ -1,8 +1,9 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Checkbox, Copy, Drawer, Input, Label, StatusBadge, Text, toast } from "@medusajs/ui"
-import type { DocumentDetailResponse, DocumentDto, EmailDto, GovState, KsefEventDto, WriterDto } from "../../modules/fakturownia/lib/contract"
+import { ArrowDownTray, ArrowUpRightOnBox, ArrowUturnLeft, DocumentText, Envelope, PaperPlane, ShieldCheck } from "@medusajs/icons"
+import { Button, Checkbox, Copy, Drawer, Input, Label, Text, toast } from "@medusajs/ui"
+import { EmptyState, ToneBadge } from "./fakturownia-blocks"
+import type { DocumentDetailResponse, DocumentDto, EmailDto, KsefEventDto, WriterDto } from "../../modules/fakturownia/lib/contract"
 import { errorMessage, ksefFilePath, saveFile, useFakturowniaDocument, useFakturowniaEmail, useFakturowniaKsefResend } from "./fakturownia-api"
 import { PlanCard } from "./fakturownia-corrections"
 import {
@@ -14,22 +15,14 @@ import {
   KindBadge,
   KsefBadge,
   PaidBadge,
-  Section,
+  DrawerBlock,
   StoreOrderCell,
   WriterBadge,
   fmtDate,
   fmtDateTime,
   fmtMoney,
+  govTone,
 } from "./fakturownia-ui"
-
-const GOV_TONE: Record<GovState, "green" | "orange" | "red" | "grey" | "blue"> = {
-  none: "grey",
-  processing: "blue",
-  accepted: "green",
-  problem: "red",
-  not_applicable: "grey",
-  offline: "orange",
-}
 
 /**
  * One document in a drawer: what it is, its KSeF story (number, dates, the
@@ -81,7 +74,7 @@ export function DocumentDrawer({ documentId, onClose }: { documentId: string; on
 function Overview({ doc, corrected, lang }: { doc: DocumentDto; corrected: DocumentDto | null; lang: string }) {
   const { t } = useTranslation("fakturownia")
   return (
-    <Section title={t("drawer.overview")} aside={<DocumentStatusBadge status={doc.status} />}>
+    <DrawerBlock icon={<DocumentText />} title={t("drawer.overview")} aside={<DocumentStatusBadge status={doc.status} />}>
       <div className="grid grid-cols-2 gap-3">
         <Fact label={t("documents.col.order")}>
           <StoreOrderCell orderId={doc.orderId} displayId={doc.displayId} />
@@ -106,7 +99,7 @@ function Overview({ doc, corrected, lang }: { doc: DocumentDto; corrected: Docum
         <DocumentLinks doc={doc} />
         <DocumentActions doc={doc} />
       </div>
-    </Section>
+    </DrawerBlock>
   )
 }
 
@@ -125,7 +118,7 @@ function KsefPanel({ doc, events, writer, lang }: { doc: DocumentDto; events: Ks
     }
   }
   return (
-    <Section title={t("ksef.title")} aside={<KsefBadge doc={doc} />}>
+    <DrawerBlock icon={<ShieldCheck />} title={t("ksef.title")} aside={<KsefBadge doc={doc} />}>
       {doc.demo ? (
         <Text size="xsmall" className="text-ui-fg-muted">
           {t("ksef.demo")}
@@ -162,35 +155,39 @@ function KsefPanel({ doc, events, writer, lang }: { doc: DocumentDto; events: Ks
           ))}
         </div>
       ) : null}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {doc.govVerificationLink ? (
-          <a href={doc.govVerificationLink} target="_blank" rel="noreferrer" className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-            {t("ksef.verify")}
-            <ArrowUpRightOnBox />
-          </a>
-        ) : null}
-        {doc.actions.ksefFiles ? (
-          <>
-            {(["upo", "xml"] as const).map((file) => (
-              <button
-                key={file}
-                type="button"
-                className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover"
-                onClick={() =>
-                  void saveFile(ksefFilePath(doc.id, file), `${file === "upo" ? "UPO" : "KSeF"}-${doc.id}.xml`).catch((err: unknown) =>
-                    toast.error(t("toast.error", { error: errorMessage(err) })),
-                  )
-                }
-              >
-                {t(file === "upo" ? "ksef.upo" : "ksef.xml")}
-              </button>
-            ))}
-          </>
-        ) : null}
-      </div>
+      {doc.govVerificationLink || doc.actions.ksefFiles ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {doc.govVerificationLink ? (
+            <Button size="small" variant="secondary" asChild>
+              <a href={doc.govVerificationLink} target="_blank" rel="noreferrer">
+                <ArrowUpRightOnBox />
+                {t("ksef.verify")}
+              </a>
+            </Button>
+          ) : null}
+          {doc.actions.ksefFiles
+            ? (["upo", "xml"] as const).map((file) => (
+                <Button
+                  key={file}
+                  size="small"
+                  variant="secondary"
+                  onClick={() =>
+                    void saveFile(ksefFilePath(doc.id, file), `${file === "upo" ? "UPO" : "KSeF"}-${doc.id}.xml`).catch((err: unknown) =>
+                      toast.error(t("toast.error", { error: errorMessage(err) })),
+                    )
+                  }
+                >
+                  <ArrowDownTray />
+                  {t(file === "upo" ? "ksef.upo" : "ksef.xml")}
+                </Button>
+              ))
+            : null}
+        </div>
+      ) : null}
       {doc.actions.ksefResend ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="small" variant="secondary" isLoading={resend.isPending} disabled={!writer.armed} onClick={() => void onResend()}>
+            <PaperPlane />
             {t("ksef.resend")}
           </Button>
           <WriterBadge writer={writer} />
@@ -211,15 +208,13 @@ function KsefPanel({ doc, events, writer, lang }: { doc: DocumentDto; events: Ks
           {t("ksef.history")}
         </Text>
         {events.length === 0 ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("ksef.noHistory")}
-          </Text>
+          <EmptyState compact icon={<ShieldCheck />} title={t("ksef.noHistory")} />
         ) : (
           <ol className="flex flex-col gap-y-2 border-l border-ui-border-base pl-3">
             {events.map((e) => (
               <li key={e.id} className="flex flex-col gap-y-0.5">
                 <span className="flex flex-wrap items-center gap-2">
-                  <StatusBadge color={GOV_TONE[e.govState] ?? "grey"}>{e.govStatus ? t(`documents.ksefStates.${e.govState}`) : t("ksef.statusNone")}</StatusBadge>
+                  <ToneBadge tone={govTone(e.govState)}>{e.govStatus ? t(`documents.ksefStates.${e.govState}`) : t("ksef.statusNone")}</ToneBadge>
                   <Text size="xsmall" className="text-ui-fg-subtle">
                     {t(`ksef.sources.${e.source}`)}
                     {e.requestedBy ? `, ${e.requestedBy === "system" ? t("ksef.system") : e.requestedBy}` : ""}
@@ -244,7 +239,7 @@ function KsefPanel({ doc, events, writer, lang }: { doc: DocumentDto; events: Ks
           </ol>
         )}
       </div>
-    </Section>
+    </DrawerBlock>
   )
 }
 
@@ -264,7 +259,7 @@ function EmailPanel({ doc, emails, writer, lang }: { doc: DocumentDto; emails: E
     }
   }
   return (
-    <Section title={t("email.title")} aside={<WriterBadge writer={writer} />}>
+    <DrawerBlock icon={<Envelope />} title={t("email.title")} aside={<WriterBadge writer={writer} />}>
       {doc.actions.email ? (
         <div className="flex flex-col gap-y-3">
           <div className="flex flex-col gap-y-1">
@@ -284,10 +279,12 @@ function EmailPanel({ doc, emails, writer, lang }: { doc: DocumentDto; emails: E
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="small" variant="secondary" isLoading={send.isPending && send.variables?.kind === "manual"} disabled={!writer.armed} onClick={() => void go("manual")}>
+              <PaperPlane />
               {t("email.send")}
             </Button>
             {unpaidForReminder ? (
               <Button size="small" variant="secondary" isLoading={send.isPending && send.variables?.kind === "reminder"} disabled={!writer.armed} onClick={() => void go("reminder")}>
+                <Envelope />
                 {t("email.remind")}
               </Button>
             ) : null}
@@ -309,7 +306,7 @@ function EmailPanel({ doc, emails, writer, lang }: { doc: DocumentDto; emails: E
         </Text>
       )}
       <EmailHistory emails={emails} lang={lang} />
-    </Section>
+    </DrawerBlock>
   )
 }
 
@@ -317,22 +314,14 @@ const EMAIL_TONE: Record<EmailDto["status"], "green" | "orange" | "red"> = { sen
 
 export function EmailHistory({ emails, lang, showDocument = false }: { emails: EmailDto[]; lang: string; showDocument?: boolean }) {
   const { t } = useTranslation("fakturownia")
-  if (emails.length === 0) {
-    return (
-      <Text size="xsmall" className="text-ui-fg-muted">
-        {t("email.none")}
-      </Text>
-    )
-  }
+  if (emails.length === 0) return <EmptyState compact icon={<Envelope />} title={t("email.none")} />
   return (
     <ul className="flex flex-col divide-y divide-ui-border-base">
       {emails.map((e) => (
         <li key={e.id} className="flex flex-col gap-y-0.5 py-2">
           <span className="flex flex-wrap items-center gap-2">
-            <StatusBadge color={EMAIL_TONE[e.status]}>{t(`email.statuses.${e.status}`)}</StatusBadge>
-            <Badge size="2xsmall" color="grey">
-              {t(`email.kinds.${e.kind}`)}
-            </Badge>
+            <ToneBadge tone={EMAIL_TONE[e.status]}>{t(`email.statuses.${e.status}`)}</ToneBadge>
+            <ToneBadge tone="grey">{t(`email.kinds.${e.kind}`)}</ToneBadge>
             {showDocument && e.documentNumber ? <span className="txt-compact-xsmall font-mono text-ui-fg-subtle">{e.documentNumber}</span> : null}
             <Text size="xsmall" className="text-ui-fg-muted">
               {fmtDateTime(e.createdAt, lang)}
@@ -364,7 +353,7 @@ export function EmailHistory({ emails, lang, showDocument = false }: { emails: E
 function CorrectionsPanel({ data, lang }: { data: DocumentDetailResponse; lang: string }) {
   const { t } = useTranslation("fakturownia")
   return (
-    <Section title={t("drawer.corrections")}>
+    <DrawerBlock icon={<ArrowUturnLeft />} title={t("drawer.corrections")}>
       {data.corrections.map((c) => (
         <div key={c.id} className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-x-2">
@@ -377,6 +366,6 @@ function CorrectionsPanel({ data, lang }: { data: DocumentDetailResponse; lang: 
       {data.plans.map((p) => (
         <PlanCard key={p.id} plan={p} lang={lang} writer={data.writers.corrections} compact />
       ))}
-    </Section>
+    </DrawerBlock>
   )
 }

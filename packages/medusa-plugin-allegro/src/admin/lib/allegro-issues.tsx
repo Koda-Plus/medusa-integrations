@@ -1,24 +1,21 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightOnBox, InformationCircleSolid } from "@medusajs/icons"
-import { Badge, Button, Container, StatusBadge, Table, Text, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, ArrowUturnLeft, ChatBubbleLeftRight, Clock, ExclamationCircle, EyeSlash, ListBullet, ShieldCheck, TriangleRightMini } from "@medusajs/icons"
+import { Button, Table, Text, toast } from "@medusajs/ui"
 import type { AllegroIssueFilter, AllegroStatusResponse } from "../../modules/allegro/lib/contract"
 import { errorMessage, useAllegroIssues, useAllegroIssuesSync } from "./allegro-api"
-import { EmptyRow, OrderLink, Pager, Pills, SectionHeader, StatTile, StoreColumn, fmtDate, fmtDateTime, shortId } from "./allegro-ui"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, Section, StatTile, StatTiles, ToneBadge } from "./allegro-blocks"
+import { KitFetchingBar, KitSkeletonRows } from "./allegro-kit"
+import { OrderLink, Pager, StoreColumn, fmtDate, fmtDateTime, shortId } from "./allegro-ui"
 
 const PAGE = 10
-const FILTERS: AllegroIssueFilter[] = ["open", "needs_reply", "returns", "disputes", "claims", "all"]
-
-/** A short note for the store owner; the technical detail (options, scopes) on hover. */
-function OffNote({ text, detail }: { text: string; detail: string }) {
-  return (
-    <span className="inline-flex w-fit cursor-help items-center gap-x-1 text-ui-fg-muted" title={detail}>
-      <Text size="xsmall" className="text-ui-fg-muted">
-        {text}
-      </Text>
-      <InformationCircleSolid className="h-3.5 w-3.5 shrink-0" />
-    </span>
-  )
+const FILTER_ICON: Record<AllegroIssueFilter, ReactNode> = {
+  open: <ChatBubbleLeftRight />,
+  needs_reply: <ExclamationCircle />,
+  returns: <ArrowUturnLeft />,
+  disputes: <ChatBubbleLeftRight />,
+  claims: <ShieldCheck />,
+  all: <ListBullet />,
 }
 
 /** Allegro's reason (returns) or subject (disputes, claims) in words; the code itself stays in the tooltip. */
@@ -37,7 +34,8 @@ function IssueReason({ code }: { code: string | null }) {
 /**
  * Returns, disputes and claims of Allegro buyers, each next to the store
  * order it concerns. The filter lives on the page, so the "Waiting for you"
- * counter above can open the ones that need a reply.
+ * counter above can open the ones that need a reply. A second click on the
+ * active filter goes back to the open ones.
  */
 export function IssuesSection({
   status,
@@ -58,6 +56,7 @@ export function IssuesSection({
   const i = status.issues
   const s = status.settings.issues
   const canRead = status.mode === "demo" || status.connection.connected
+  const toggle = (f: AllegroIssueFilter) => onFilter(filter === f && f !== "open" ? "open" : f)
 
   const onRefresh = async () => {
     try {
@@ -75,51 +74,65 @@ export function IssuesSection({
     [t("issues.panel.discussions"), status.panel.discussions],
     [t("issues.panel.messages"), status.panel.messages],
   ]
+  const counts: Partial<Record<AllegroIssueFilter, number>> = {
+    open: i.returnsOpen + i.disputesOpen + i.claimsOpen,
+    needs_reply: i.needReply,
+  }
 
   return (
-    <Container className="divide-y p-0" id="allegro-issues">
-      <SectionHeader
-        title={t("issues.title")}
-        subtitle={t("issues.subtitle")}
-        actions={
-          <Button size="small" variant="secondary" isLoading={status.running.issues || sync.isPending} disabled={!canRead} onClick={() => void onRefresh()}>
-            {t("actions.refresh")}
-          </Button>
-        }
-      />
-      <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile label={t("issues.tiles.returnsOpen")} value={i.returnsOpen} tone="orange" onClick={() => onFilter("returns")} active={filter === "returns"} />
-        <StatTile label={t("issues.tiles.disputesOpen")} value={i.disputesOpen} tone="orange" onClick={() => onFilter("disputes")} active={filter === "disputes"} />
-        <StatTile label={t("issues.tiles.claimsOpen")} value={i.claimsOpen} tone="orange" onClick={() => onFilter("claims")} active={filter === "claims"} />
-        <StatTile label={t("issues.tiles.needReply")} value={i.needReply} tone="red" onClick={() => onFilter("needs_reply")} active={filter === "needs_reply"} />
-        <StatTile label={t("issues.tiles.dueSoon")} value={i.dueSoon} tone="red" />
+    <Section
+      id="allegro-issues"
+      icon={<ChatBubbleLeftRight />}
+      title={t("issues.title")}
+      pointsLabel={t("issues.subtitle")}
+      points={[
+        { icon: <ArrowUturnLeft />, text: t("issues.points.kinds") },
+        { icon: <ArrowUpRightOnBox />, text: t("issues.points.reply") },
+        i.checkedAt ? { icon: <Clock />, text: t("issues.points.checked", { when: fmtDateTime(i.checkedAt, lang) }) } : null,
+        !s.disputes ? { icon: <EyeSlash />, text: t("issues.points.offDisputes"), title: t("issues.off.disputes") } : null,
+        !s.messages ? { icon: <EyeSlash />, text: t("issues.points.offMessages"), title: t("issues.off.messages") } : null,
+      ]}
+      actions={
+        <Button size="small" variant="secondary" isLoading={status.running.issues || sync.isPending} disabled={!canRead} onClick={() => void onRefresh()}>
+          <ArrowPath />
+          {t("actions.refresh")}
+        </Button>
+      }
+    >
+      <StatTiles columns={6}>
+        <StatTile label={t("issues.tiles.returnsOpen")} value={i.returnsOpen} tone={i.returnsOpen > 0 ? "orange" : "grey"} onClick={() => toggle("returns")} active={filter === "returns"} />
+        <StatTile label={t("issues.tiles.disputesOpen")} value={i.disputesOpen} tone={i.disputesOpen > 0 ? "orange" : "grey"} onClick={() => toggle("disputes")} active={filter === "disputes"} />
+        <StatTile label={t("issues.tiles.claimsOpen")} value={i.claimsOpen} tone={i.claimsOpen > 0 ? "orange" : "grey"} onClick={() => toggle("claims")} active={filter === "claims"} />
+        <StatTile label={t("issues.tiles.needReply")} value={i.needReply} tone={i.needReply > 0 ? "red" : "grey"} onClick={() => toggle("needs_reply")} active={filter === "needs_reply"} />
+        <StatTile label={t("issues.tiles.dueSoon")} value={i.dueSoon} tone={i.dueSoon > 0 ? "red" : "grey"} />
         <StatTile
           label={t("issues.tiles.unread")}
           value={i.unreadThreads ?? "?"}
-          tone="blue"
+          tone={i.unreadThreads ? "blue" : "grey"}
           hint={i.threadsScanned > 0 ? t("issues.unreadOf", { count: i.threadsScanned }) : undefined}
         />
-      </div>
-      <div className="flex flex-col gap-2 px-6 py-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {panelLinks.map(([label, href]) => (
-            <a key={label} href={href} target="_blank" rel="noreferrer" className="txt-compact-small inline-flex items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-              {label}
+      </StatTiles>
+      <div className="flex flex-wrap items-center gap-2 px-6 py-3">
+        {panelLinks.map(([label, href]) => (
+          <Button key={label} size="small" variant="secondary" asChild>
+            <a href={href} target="_blank" rel="noreferrer">
               <ArrowUpRightOnBox />
+              {label}
             </a>
-          ))}
-        </div>
-        {i.checkedAt ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("issues.checked", { when: fmtDateTime(i.checkedAt, lang) })}
-          </Text>
-        ) : null}
-        {!s.disputes ? <OffNote text={t("issues.offShort.disputes")} detail={t("issues.off.disputes")} /> : null}
-        {!s.messages ? <OffNote text={t("issues.offShort.messages")} detail={t("issues.off.messages")} /> : null}
+          </Button>
+        ))}
       </div>
-      <div className="px-6 py-4">
-        <Pills filters={FILTERS} value={filter} onChange={onFilter} label={(f) => t(`issues.filter.${f}`)} />
-      </div>
+      <FilterBar>
+        <FilterButton icon={FILTER_ICON.open} label={t("issues.filter.open")} count={counts.open} active={filter === "open"} onClick={() => onFilter("open")} />
+        <FilterButton icon={FILTER_ICON.needs_reply} label={t("issues.filter.needs_reply")} count={counts.needs_reply} attention active={filter === "needs_reply"} onClick={() => toggle("needs_reply")} />
+        <FilterDivider />
+        {(["returns", "disputes", "claims"] as const).map((f) => (
+          <FilterButton key={f} icon={FILTER_ICON[f]} label={t(`issues.filter.${f}`)} active={filter === f} onClick={() => toggle(f)} />
+        ))}
+        <FilterDivider />
+        <FilterButton icon={FILTER_ICON.all} label={t("issues.filter.all")} active={filter === "all"} onClick={() => toggle("all")} />
+      </FilterBar>
+      <KitFetchingBar active={list.isFetching && !list.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -135,8 +148,10 @@ export function IssuesSection({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow span={6} loading={list.isLoading} text={t("issues.empty")} />
+            {list.isLoading ? (
+              <KitSkeletonRows cols={6} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={6} icon={<ChatBubbleLeftRight />} title={t("issues.empty")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5 align-top">
@@ -147,23 +162,18 @@ export function IssuesSection({
                         <ArrowUpRightOnBox className="text-ui-fg-muted" />
                       </a>
                       {r.referenceNumber ? <span className="font-mono txt-compact-xsmall text-ui-fg-muted">{r.referenceNumber}</span> : null}
-                      {r.demo ? (
-                        <Badge size="2xsmall" color="purple">
-                          {t("offers.sample")}
-                        </Badge>
-                      ) : null}
+                      {r.demo ? <ToneBadge tone="purple">{t("offers.sample")}</ToneBadge> : null}
                     </div>
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDateTime(r.openedAt, lang)}</Table.Cell>
                   <Table.Cell>
                     <div className="flex flex-col items-start gap-y-1">
-                      <StatusBadge color={r.open ? (r.needsReply ? "red" : "orange") : "grey"}>
-                        {t(`issues.statusLabel.${r.status}`, { defaultValue: r.status })}
-                      </StatusBadge>
+                      <ToneBadge tone={r.open ? (r.needsReply ? "red" : "orange") : "grey"}>{t(`issues.statusLabel.${r.status}`, { defaultValue: r.status })}</ToneBadge>
                       {r.needsReply ? (
-                        <Text size="xsmall" className="text-ui-tag-red-text">
+                        <span className="txt-compact-xsmall inline-flex items-center gap-x-0.5 text-ui-tag-red-text">
+                          <TriangleRightMini />
                           {t("issues.needsReply")}
-                        </Text>
+                        </span>
                       ) : null}
                     </div>
                   </Table.Cell>
@@ -197,6 +207,6 @@ export function IssuesSection({
         </Table>
       </div>
       <Pager count={list.data?.count ?? 0} page={page} size={PAGE} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }

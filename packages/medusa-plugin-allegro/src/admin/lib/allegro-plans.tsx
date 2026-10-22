@@ -1,15 +1,37 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Container, InlineTip, Input, StatusBadge, Table, Text, toast, usePrompt } from "@medusajs/ui"
+import {
+  AdjustmentsDone,
+  ArchiveBox,
+  ArrowUpRightOnBox,
+  ArrowsPointingOut,
+  Beaker,
+  Calendar,
+  CheckCircle,
+  CheckCircleSolid,
+  Clock,
+  CurrencyDollar,
+  ExclamationCircle,
+  ListBullet,
+  ListCheckbox,
+  LockClosedSolid,
+  LockOpenSolid,
+  MinusCircle,
+  PencilSquare,
+  Sparkles,
+  Stopwatch,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, InlineTip, Table, Text, toast, usePrompt } from "@medusajs/ui"
 import type { AllegroPlanItemDto, AllegroPlanKind, AllegroStatusResponse } from "../../modules/allegro/lib/contract"
 import { errorMessage, useAllegroPlan, useAllegroPlanRelease, useAllegroPlanRun } from "./allegro-api"
-import { EmptyRow, PLAN_TONE, Pager, Pills, SectionHeader, fmtDateTime, fmtMoney, useDebounced } from "./allegro-ui"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, ToneBadge } from "./allegro-blocks"
+import { KitFetchingBar, KitSkeletonRows } from "./allegro-kit"
+import { PLAN_TONE, Pager, Thumb, fmtDateTime, fmtMoney, useDebounced, useProductThumbs } from "./allegro-ui"
 
 const PAGE = 15
-const FILTERS = ["changes", "planned", "deferred", "quarantined", "skipped", "in_sync", "applied", "failed", "all"] as const
-type Filter = (typeof FILTERS)[number]
+type Filter = "changes" | "planned" | "deferred" | "quarantined" | "skipped" | "in_sync" | "applied" | "failed" | "all"
 
 const WRITER: Record<AllegroPlanKind, "stock" | "prices" | "publish"> = { stock: "stock", prices: "prices", publish: "publish" }
 
@@ -84,6 +106,20 @@ function TargetCell({ item, lang }: { item: AllegroPlanItemDto; lang: string }) 
   )
 }
 
+const FILTER_ICON: Record<Filter, ReactNode> = {
+  changes: <ArrowsPointingOut />,
+  planned: <Calendar />,
+  deferred: <Clock />,
+  quarantined: <ExclamationCircle />,
+  skipped: <MinusCircle />,
+  in_sync: <CheckCircle />,
+  applied: <CheckCircleSolid />,
+  failed: <XCircle />,
+  all: <ListBullet />,
+}
+
+const KIND_ICON: Record<AllegroPlanKind, ReactNode> = { stock: <ArchiveBox />, prices: <CurrencyDollar />, publish: <Sparkles /> }
+
 export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; status: AllegroStatusResponse; lang: string }) {
   const { t } = useTranslation("allegro")
   const prompt = usePrompt()
@@ -100,7 +136,9 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
   const armed = Boolean(writer?.effective)
   const running = status.running[kind]
   const rows = plan.data?.items ?? []
+  const thumbs = useProductThumbs(rows.map((r) => r.productId))
   const counts = summary.counts
+  const toggle = (f: Filter) => setFilter(filter === f && f !== "changes" ? "changes" : f)
 
   const subtitle =
     kind === "stock"
@@ -108,6 +146,7 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
       : kind === "prices"
         ? t("plans.prices.subtitle", { min: status.settings.prices.minKey, max: status.settings.prices.maxKey, cap: status.settings.prices.cap })
         : t("plans.publish.subtitle", { cap: status.settings.publish.cap })
+  const cap = kind === "stock" ? status.settings.stockPushCap : kind === "prices" ? status.settings.prices.cap : status.settings.publish.cap
 
   const onDryRun = async () => {
     try {
@@ -139,62 +178,83 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
     }
   }
 
-  const total = (f: Filter): number | null => {
+  const total = (f: Filter): number => {
     if (f === "all") return Object.values(counts).reduce((a, b) => a + b, 0)
     if (f === "changes") return (counts.planned ?? 0) + (counts.deferred ?? 0) + (counts.quarantined ?? 0) + (counts.applied ?? 0) + (counts.failed ?? 0) + (counts.unknown ?? 0)
     return counts[f] ?? 0
   }
 
   return (
-    <Container className="divide-y p-0">
-      <SectionHeader
-        title={t(`plans.${kind}.title`)}
-        subtitle={subtitle}
-        actions={
-          <>
-            <Button size="small" variant="secondary" isLoading={run.isPending && run.variables?.mode === "plan"} disabled={running} onClick={() => void onDryRun()}>
-              {t("actions.dryRun")}
-            </Button>
-            <Button size="small" variant="primary" isLoading={running} disabled={!armed || running} onClick={() => void onApply()} title={armed ? undefined : t("plans.notArmed")}>
-              {t("actions.applyNow")}
-            </Button>
-          </>
-        }
-      />
-      <div className="flex flex-col gap-2 px-6 py-3">
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {summary.plannedAt ? t("plans.plannedAt", { when: fmtDateTime(summary.plannedAt, lang) }) : t("plans.never")}
-          {summary.lastApply?.at
-            ? ` | ${t("plans.lastApply", { when: fmtDateTime(summary.lastApply.at, lang), applied: summary.lastApply.applied, failed: summary.lastApply.failed })}`
-            : ""}
-        </Text>
-        {summary.refused ? (
-          <InlineTip variant="error" label={t("plans.refused")}>
-            {summary.refusedCode === "tax_exclusive_prices" ? t("plans.taxExclusive") : summary.refused}
-          </InlineTip>
-        ) : null}
-        {summary.lastApply?.message ? (
-          <Text size="xsmall" className="text-ui-fg-subtle">
-            {summary.lastApply.message}
-          </Text>
-        ) : null}
-        {kind === "publish" && !status.settings.publish.ready ? (
-          <InlineTip variant="warning" label={t("plans.publish.title")}>
-            {t("plans.optionsMissing", { missing: status.settings.publish.missing.join(", ") })}
-          </InlineTip>
-        ) : null}
-        {!armed ? (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("plans.notArmed")}
-          </Text>
-        ) : null}
-      </div>
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <Pills filters={FILTERS} value={filter} onChange={setFilter} label={(f) => t(`plans.filter.${f}`)} count={total} />
-        <div className="w-full lg:w-64">
-          <Input size="small" type="search" placeholder={t("offers.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+    <Section
+      icon={KIND_ICON[kind]}
+      title={t(`plans.${kind}.title`)}
+      pointsLabel={subtitle}
+      points={[
+        kind === "stock" ? { icon: <AdjustmentsDone />, text: t("plans.points.mode", { mode: t(`plans.mode.${status.settings.stockPush}`) }) } : null,
+        kind === "prices" ? { icon: <AdjustmentsDone />, text: t("plans.points.bounds", { min: status.settings.prices.minKey, max: status.settings.prices.maxKey }) } : null,
+        kind === "publish" ? { icon: <PencilSquare />, text: t("plans.points.drafts") } : null,
+        { icon: <Stopwatch />, text: t("plans.points.cap", { cap }) },
+        { icon: <Clock />, text: summary.plannedAt ? t("plans.points.planned", { when: fmtDateTime(summary.plannedAt, lang) }) : t("plans.never") },
+        summary.lastApply?.at
+          ? {
+              icon: <CheckCircle />,
+              text: t("plans.points.applied", { applied: summary.lastApply.applied, failed: summary.lastApply.failed }),
+              title: t("plans.lastApply", { when: fmtDateTime(summary.lastApply.at, lang), applied: summary.lastApply.applied, failed: summary.lastApply.failed }),
+              tone: summary.lastApply.failed > 0 ? "red" : undefined,
+            }
+          : null,
+        !armed ? { icon: <LockClosedSolid />, text: t("plans.points.notArmed"), tone: "orange", title: t("plans.notArmed") } : null,
+      ]}
+      actions={
+        <>
+          <SearchInput value={search} onChange={setSearch} placeholder={t("offers.search")} />
+          <Button size="small" variant="secondary" isLoading={run.isPending && run.variables?.mode === "plan"} disabled={running} onClick={() => void onDryRun()}>
+            <Beaker />
+            {t("actions.dryRun")}
+          </Button>
+          <Button size="small" variant="primary" isLoading={running} disabled={!armed || running} onClick={() => void onApply()} title={armed ? undefined : t("plans.notArmed")}>
+            {t("actions.applyNow")}
+          </Button>
+        </>
+      }
+    >
+      {summary.refused || summary.lastApply?.message || (kind === "publish" && !status.settings.publish.ready) ? (
+        <div className="flex flex-col gap-2 px-6 py-3">
+          {summary.refused ? (
+            <InlineTip variant="error" label={t("plans.refused")}>
+              {summary.refusedCode === "tax_exclusive_prices" ? t("plans.taxExclusive") : summary.refused}
+            </InlineTip>
+          ) : null}
+          {summary.lastApply?.message ? (
+            <Text size="xsmall" className="text-ui-fg-subtle">
+              {summary.lastApply.message}
+            </Text>
+          ) : null}
+          {kind === "publish" && !status.settings.publish.ready ? (
+            <InlineTip variant="warning" label={t("plans.publish.title")}>
+              {t("plans.optionsMissing", { missing: status.settings.publish.missing.join(", ") })}
+            </InlineTip>
+          ) : null}
         </div>
-      </div>
+      ) : null}
+      <FilterBar>
+        <FilterButton icon={FILTER_ICON.changes} label={t("plans.filter.changes")} count={total("changes")} active={filter === "changes"} onClick={() => setFilter("changes")} />
+        <FilterDivider />
+        {(["planned", "deferred", "quarantined", "failed", "applied", "in_sync", "skipped"] as const).map((f) => (
+          <FilterButton
+            key={f}
+            icon={FILTER_ICON[f]}
+            label={t(`plans.filter.${f}`)}
+            count={total(f)}
+            attention={f === "quarantined" || f === "failed"}
+            active={filter === f}
+            onClick={() => toggle(f)}
+          />
+        ))}
+        <FilterDivider />
+        <FilterButton icon={FILTER_ICON.all} label={t("plans.filter.all")} count={total("all")} active={filter === "all"} onClick={() => toggle("all")} />
+      </FilterBar>
+      <KitFetchingBar active={plan.isFetching && !plan.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -205,37 +265,39 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
               <Table.HeaderCell>{t("plans.col.action")}</Table.HeaderCell>
               <Table.HeaderCell>{t("plans.col.reason")}</Table.HeaderCell>
               <Table.HeaderCell>{t("plans.col.status")}</Table.HeaderCell>
+              <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow span={6} loading={plan.isLoading} text={t("plans.empty")} />
+            {plan.isLoading ? (
+              <KitSkeletonRows cols={7} rows={5} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={7} icon={<ListCheckbox />} title={t("plans.empty")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5 align-top">
-                  <Table.Cell className="max-w-[300px]">
-                    <div className="flex flex-col gap-y-1">
-                      {r.productId ? (
-                        <Link to={`/products/${r.productId}`} className="txt-compact-small-plus truncate text-ui-fg-base hover:text-ui-fg-interactive">
-                          {r.title}
-                        </Link>
-                      ) : (
-                        <span className="txt-compact-small-plus truncate text-ui-fg-base">{r.title}</span>
-                      )}
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{r.sku}</span>
-                        {r.url ? (
-                          <a href={r.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-0.5 font-mono text-ui-fg-muted txt-compact-xsmall hover:text-ui-fg-interactive">
-                            #{r.allegroId}
-                            <ArrowUpRightOnBox />
-                          </a>
-                        ) : null}
-                        {r.demo ? (
-                          <Badge size="2xsmall" color="purple">
-                            {t("offers.sample")}
-                          </Badge>
-                        ) : null}
-                      </span>
+                  <Table.Cell className="max-w-[320px]">
+                    <div className="flex items-center gap-x-2.5">
+                      <Thumb src={r.productId ? thumbs[r.productId] : null} />
+                      <div className="flex min-w-0 flex-col gap-y-1">
+                        {r.productId ? (
+                          <Link to={`/products/${r.productId}`} className="txt-compact-small-plus truncate text-ui-fg-base hover:text-ui-fg-interactive">
+                            {r.title}
+                          </Link>
+                        ) : (
+                          <span className="txt-compact-small-plus truncate text-ui-fg-base">{r.title}</span>
+                        )}
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{r.sku}</span>
+                          {r.url ? (
+                            <a href={r.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-x-0.5 font-mono text-ui-fg-muted txt-compact-xsmall hover:text-ui-fg-interactive">
+                              #{r.allegroId}
+                              <ArrowUpRightOnBox />
+                            </a>
+                          ) : null}
+                          {r.demo ? <ToneBadge tone="purple">{t("offers.sample")}</ToneBadge> : null}
+                        </span>
+                      </div>
                     </div>
                   </Table.Cell>
                   <Table.Cell>
@@ -261,18 +323,27 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
                   </Table.Cell>
                   <Table.Cell>
                     <div className="flex flex-col items-start gap-y-1">
-                      <StatusBadge color={PLAN_TONE[r.status] ?? "grey"}>{t(`plans.status.${r.status}`)}</StatusBadge>
+                      <ToneBadge tone={PLAN_TONE[r.status] ?? "grey"}>{t(`plans.status.${r.status}`)}</ToneBadge>
                       {r.failures > 0 ? (
                         <Text size="xsmall" className="text-ui-fg-muted">
                           {t("plans.failures", { count: r.failures })}
                         </Text>
                       ) : null}
-                      {r.status === "quarantined" ? (
-                        <Button size="small" variant="transparent" onClick={() => void onRelease(r.id)} isLoading={release.isPending && release.variables === r.id}>
-                          {t("actions.release")}
-                        </Button>
-                      ) : null}
                     </div>
+                  </Table.Cell>
+                  <Table.Cell className="text-right">
+                    <RowActions
+                      actions={[
+                        {
+                          key: "release",
+                          label: t("actions.release"),
+                          icon: <LockOpenSolid />,
+                          hidden: r.status !== "quarantined",
+                          loading: release.isPending && release.variables === r.id,
+                          onClick: () => void onRelease(r.id),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -281,6 +352,6 @@ export function PlanSection({ kind, status, lang }: { kind: AllegroPlanKind; sta
         </Table>
       </div>
       <Pager count={plan.data?.count ?? 0} page={page} size={PAGE} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }

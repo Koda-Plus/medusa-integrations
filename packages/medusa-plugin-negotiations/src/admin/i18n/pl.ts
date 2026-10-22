@@ -9,13 +9,38 @@ const pl: typeof en = {
   subtitle:
     "Negocjacje cen B2B między zalogowanymi klientami a Twoim zespołem. Klient prosi o cenę produktu albo całego koszyka, Ty odpowiadasz, wysyłasz kontrofertę, akceptujesz albo odrzucasz, a każdy ruch trafia do innych wtyczek jako zdarzenie.",
   error: "Nie udało się wczytać negocjacji: {{message}}",
+  points: {
+    requests: "Zapytania o cenę B2B",
+    subject: "Produkt albo cały koszyk",
+    moves: "Odpowiedź, kontroferta, akceptacja",
+    events: "Każdy ruch to zdarzenie",
+    expiry: "Nieaktywne wątki wygasają",
+  },
+  thread: {
+    back: "Wszystkie negocjacje",
+    facts: "Szczegóły",
+    answer: "Twój ruch",
+    expires: "Wygasa {{time}}",
+    noExpiry: "Bez wygasania",
+    value: "Wartość {{value}}",
+    points: {
+      left: "Klient po lewej",
+      right: "Zespół po prawej",
+      notes: "Notatki na pomarańczowo",
+      reply: "Odpowiedź do klienta",
+      counter: "Kontroferta z ceną",
+      note: "Notatki tylko dla zespołu",
+      closed: "Wątek zamknięty",
+      notesStill: "Notatki dalej działają",
+    },
+  },
   view: {
     panel: "Panel",
     guide: "Przewodnik wdrożenia",
   },
   settings: {
     title: "Ustawienia",
-    subtitle: "Strona techniczna: opcje w użyciu i wygasanie nieaktywnych wątków, zapis szkiców zamówień z planem, historia zadań w tle.",
+    subtitle: "Opcje, wygasanie, szkice zamówień, historia przebiegów",
     tab: {
       general: "Ogólne",
       writers: "Zapisy",
@@ -62,11 +87,17 @@ const pl: typeof en = {
     moreCurrencies: "Do tego jeszcze waluty ({{count}}): {{list}}",
   },
   queue: {
+    points: {
+      newest: "Najnowsza aktywność na górze",
+      waiting: "Czerwona kropka: Twój ruch",
+      row: "Kliknij, by otworzyć",
+    },
+    emptyHint: "Klienci pytają o cenę w sklepie",
     title: "Wątki",
     subtitle: "Najświeższa aktywność na górze. Czerwona kropka oznacza wątek, w którym ostatni ruch zrobił klient, a odpowiedź należy do zespołu.",
     search: "Numer, produkt, SKU albo klient",
-    empty: "Nie ma jeszcze negocjacji. Pojawią się tu, gdy klienci poproszą w sklepie o cenę.",
-    emptyFiltered: "Brak wątków w tym widoku.",
+    empty: "Nie ma jeszcze negocjacji",
+    emptyFiltered: "Brak wątków w tym widoku",
     loading: "Wczytuję wątki",
     col: {
       thread: "Wątek",
@@ -169,7 +200,7 @@ const pl: typeof en = {
     currency: "Waluta",
     currencyAssumed: "Domyślna waluta sklepu; ten starszy wątek nie zapisał żadnej",
     conversation: "Rozmowa",
-    noMessages: "Brak wiadomości w tym wątku.",
+    noMessages: "Jeszcze bez wiadomości",
     closedTip: "Ten wątek jest zamknięty. Rozmowa zostaje tu na pamiątkę ustaleń, a notatki wewnętrzne wciąż można dodawać.",
     close: "Zamknij",
     cartLines: "Koszyk w chwili wysłania",
@@ -284,6 +315,11 @@ const pl: typeof en = {
     conflict: "Wątek zmienił się w międzyczasie. Wczytaj go jeszcze raz.",
   },
   general: {
+    points: {
+      config: "Ustawione w medusa-config.ts",
+      readOnly: "Tu tylko podgląd",
+      defaults: "Każda opcja ma wartość domyślną",
+    },
     title: "Opcje w użyciu",
     subtitle: "Ustawiane w medusa-config.ts, w opcjach wtyczki. Ta strona je pokazuje, ale ich nie zmienia.",
     on: "Włączone",
@@ -305,6 +341,14 @@ const pl: typeof en = {
     optionsHint: "Każda opcja ma wartość domyślną i nic tutaj nie zatrzyma startu Medusy. Wszystkie opcje są w Przewodniku wdrożenia.",
   },
   expiry: {
+    points: {
+      days: "Dni bez ruchu: {{count}}",
+      off: "Wygasanie wyłączone",
+      restart: "Każdy ruch liczy od nowa",
+      notes: "Notatki się nie liczą",
+      schedule: "Co godzinę o :15",
+      demo: "Wątki demo nie wygasają",
+    },
     title: "Wygasanie",
     rule: "Otwarty wątek albo wątek z kontrofertą wygasa po tylu dniach bez ruchu: {{count}}. Każda wiadomość, oferta albo nowa cena docelowa liczy czas od nowa, notatki wewnętrzne nie. Kontroferta może zamiast tego mieć własny termin ważności.",
     off: "Wygasanie jest wyłączone (expiryDays: 0). Wygasają tylko kontroferty z własnym terminem ważności.",
@@ -317,6 +361,11 @@ const pl: typeof en = {
     schedule: "Przebieg wygasania rusza co godzinę w 15. minucie; każdy wygasły wątek dostaje wiadomość systemową i wysyła negotiation.expired.",
   },
   writers: {
+    points: {
+      event: "Akceptacja wysyła zdarzenie",
+      off: "Domyślnie wyłączone",
+      plan: "Plan przed zapisem",
+    },
     title: "Zapisy w Medusie",
     subtitle:
       "Akceptacja negocjacji zapisuje uzgodnioną cenę i wysyła negotiation.accepted; nic innego w sklepie się nie zmienia. Zapis poniżej może zrobić więcej. Jest wyłączony, dopóki opcje wtyczki na niego nie pozwolą, a człowiek go tutaj nie uzbroi.",
@@ -339,6 +388,11 @@ const pl: typeof en = {
     turnedOff: "Zapis szkiców zamówień rozbrojony",
   },
   plan: {
+    points: {
+      cap: "Szkiców na przebieg: {{cap}}",
+      every: "Co 10 minut, gdy włączone",
+      dry: "Próba niczego nie zapisuje",
+    },
     title: "Plan",
     subtitle: "Wątki w kolejce i to, czym każdy się stanie. Jeden przebieg tworzy najwyżej tyle szkiców: {{cap}}. Zadanie rusza co 10 minut, dopóki zapis jest uzbrojony.",
     dryRun: "Próba na sucho",
@@ -346,7 +400,7 @@ const pl: typeof en = {
     dryDone: "Próba na sucho: gotowych {{count}}",
     run: "Utwórz teraz",
     busy: "Przebieg już trwa",
-    empty: "Nic nie czeka w kolejce.",
+    empty: "Nic nie czeka w kolejce",
     ready: "Gotowy",
     col: {
       thread: "Wątek",
@@ -356,9 +410,13 @@ const pl: typeof en = {
     },
   },
   runs: {
+    points: {
+      newest: "Najnowsze na górze",
+      kinds: "Wygasanie, szkice, demo",
+    },
     title: "Historia",
     subtitle: "Zadania w tle w bieżącym trybie, od najnowszych: przebiegi wygasania, przebiegi szkiców zamówień i odbudowy historii demo.",
-    empty: "Jeszcze nie było przebiegów.",
+    empty: "Jeszcze nie było przebiegów",
     col: {
       when: "Kiedy",
       kind: "Rodzaj",
@@ -393,7 +451,7 @@ const pl: typeof en = {
     more: "I jeszcze {{count}} na stronie Negocjacji.",
     product: {
       title: "Negocjacje",
-      empty: "Żaden klient nie negocjował jeszcze ceny tego produktu.",
+      empty: "Brak negocjacji o ten produkt",
       line: "{{qty}} szt. po {{price}}",
     },
     customer: {
@@ -401,6 +459,10 @@ const pl: typeof en = {
       all: "Wszystkie tego klienta",
     },
     orders: {
+      points: {
+        last: "Ostatni ruch klienta",
+        answer: "Odpowiedz na stronie Negocjacji",
+      },
       title: "Negocjacje czekające na Ciebie",
       subtitle: "Zapytania cenowe, w których ostatni ruch zrobił klient. Odpowiedz, wyślij kontrofertę, zaakceptuj albo odrzuć na stronie Negocjacji.",
     },
@@ -486,7 +548,7 @@ const pl: typeof en = {
       },
       answer: {
         title: "Odpowiadaj z kolejki",
-        p1: "Panel pokazuje każdy wątek, a liczniki zaczynają od tych, które czekają na Ciebie. W szufladzie wątku jest cała rozmowa, fakty (cena katalogowa, cena docelowa klienta, Twoja oferta, wartość) i ruchy: odpowiedź, kontroferta z opcjonalnym terminem ważności, akceptacja ceny na stole, odrzucenie z powodem, notatka wewnętrzna.",
+        p1: "Panel pokazuje każdy wątek, a liczniki zaczynają od tych, które czekają na Ciebie. Na stronie wątku jest cała rozmowa, fakty (cena katalogowa, cena docelowa klienta, Twoja oferta, wartość) i ruchy: odpowiedź, kontroferta z opcjonalnym terminem ważności, akceptacja ceny na stole, odrzucenie z powodem, notatka wewnętrzna.",
         p2: "Karty produktów i klientów pokazują swoje wątki w widżecie, a lista zamówień to, co czeka na Ciebie, więc zapytania widać tam, gdzie zespół już pracuje.",
         check: "Kontroferta zmienia status wątku na Kontroferta, a klient ją widzi.",
       },

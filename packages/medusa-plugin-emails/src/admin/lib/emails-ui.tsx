@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, StatusBadge, Table, Text, clx } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 import type { LocalizedTextDto, MessageDto, ReferenceDto, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { nb, type Reference } from "./emails-guide"
-import { StatTile as KitStatTile, type Tone } from "./emails-blocks"
-
+import { ToneBadge, useDebouncedValue, type Tone } from "./emails-blocks"
 
 /* ------------------------------------------------------------------ */
 /* Formats                                                             */
@@ -90,7 +89,7 @@ export function modeState(s: StatusResponse | undefined): { key: "demo" | "live"
   /* App mode: the store's own provider sends; red only when Medusa has it off the email channel. */
   if (s.mode === "app") return s.provider.app?.serving === false ? { key: "appMissing", tone: "red" } : { key: "app", tone: "green" }
   if (s.provider.loaded && s.provider.mode && s.provider.mode !== s.mode) return { key: "mismatch", tone: "red" }
-  if (s.mode === "demo") return { key: "demo", tone: "purple" }
+  if (s.mode === "demo") return { key: "demo", tone: "blue" }
   if (s.mode === "dev") return { key: "dev", tone: "orange" }
   if (!s.configured || !s.provider.loaded) return { key: "notConfigured", tone: "red" }
   return { key: "live", tone: "green" }
@@ -105,46 +104,16 @@ const STATUS_TONE: Record<string, Tone> = { sent: "green", sending: "blue", fail
 export function MessageStatusBadge({ message, demo }: { message: Pick<MessageDto, "status" | "kind">; demo: boolean }) {
   const { t } = useTranslation("emails")
   const key = demo && message.status === "sent" ? "simulated" : message.status
-  return <StatusBadge color={STATUS_TONE[message.status] ?? "grey"}>{t(`log.statuses.${key}`, { defaultValue: message.status })}</StatusBadge>
+  return <ToneBadge tone={STATUS_TONE[message.status] ?? "grey"}>{t(`log.statuses.${key}`, { defaultValue: message.status })}</ToneBadge>
 }
 
 export function KindBadge({ kind }: { kind: string }) {
   const { t } = useTranslation("emails")
   /* Where a message came from (the store's provider, Medusa's history) says nothing to the office: only test and demo sends are marked. */
   if (kind === "event" || kind === "app" || kind === "medusa") return null
-  const tone: Record<string, "blue" | "purple" | "grey" | "orange"> = { test: "blue", seed: "purple", job: "grey", app: "orange", medusa: "grey" }
-  return (
-    <Badge size="2xsmall" color={tone[kind] ?? "grey"}>
-      {t(`log.kinds.${kind}`, { defaultValue: kind })}
-    </Badge>
-  )
-}
-
-/** The kit's counter tile (emails-blocks); "default" is the kit's grey. */
-export function StatTile({ tone = "grey", ...props }: Omit<ComponentProps<typeof KitStatTile>, "tone"> & { tone?: Tone | "default" }) {
-  return <KitStatTile tone={tone === "default" ? "grey" : tone} {...props} />
-}
-
-export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number; disabled?: boolean }>; onChange: (v: T) => void }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          disabled={o.disabled}
-          onClick={() => onChange(o.value)}
-          className={clx(
-            "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg disabled:cursor-not-allowed disabled:opacity-50",
-            value === o.value ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color" : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-          )}
-        >
-          {o.label}
-          {typeof o.count === "number" ? <span className="tabular-nums opacity-80">{o.count}</span> : null}
-        </button>
-      ))}
-    </div>
-  )
+  /* Purple only for the demo sample rows: a highlight, never a state. */
+  const tone: Record<string, Tone> = { test: "blue", seed: "purple", job: "grey" }
+  return <ToneBadge tone={tone[kind] ?? "grey"}>{t(`log.kinds.${kind}`, { defaultValue: kind })}</ToneBadge>
 }
 
 export function Fact({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
@@ -159,32 +128,12 @@ export function Fact({ label, children, mono = false }: { label: string; childre
 }
 
 export function OnOff({ on, labels }: { on: boolean; labels: [string, string] }) {
-  return (
-    <Badge size="2xsmall" color={on ? "green" : "grey"}>
-      {on ? labels[0] : labels[1]}
-    </Badge>
-  )
+  return <ToneBadge tone={on ? "green" : "grey"}>{on ? labels[0] : labels[1]}</ToneBadge>
 }
 
-export function EmptyRow({ cols, text }: { cols: number; text: string }) {
-  return (
-    <Table.Row>
-      <td colSpan={cols} className="px-6 py-6 text-center">
-        <Text size="small" className="text-ui-fg-muted">
-          {text}
-        </Text>
-      </td>
-    </Table.Row>
-  )
-}
-
+/** The kit's debounced value, trimmed: the log asks the server after a pause, not per letter. */
 export function useDebounced(value: string, ms = 300): string {
-  const [out, setOut] = useState(value)
-  useEffect(() => {
-    const id = window.setTimeout(() => setOut(value.trim()), ms)
-    return () => window.clearTimeout(id)
-  }, [value, ms])
-  return out
+  return useDebouncedValue(value, ms).trim()
 }
 
 /**

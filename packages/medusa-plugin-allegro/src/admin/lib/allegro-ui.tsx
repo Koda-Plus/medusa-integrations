@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react"
+import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import { ArrowUpRightMini } from "@medusajs/icons"
-import { Badge, Heading, StatusBadge, Table, Text, clx } from "@medusajs/ui"
+import { Table, Text } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
 import type {
   AllegroImportStatus,
@@ -11,6 +12,8 @@ import type {
   AllegroStatusGroup,
   AllegroStockState,
 } from "../../modules/allegro/lib/contract"
+import { ToneBadge, useDebouncedValue, type Tone } from "./allegro-blocks"
+import { kitFetch } from "./allegro-kit"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -67,6 +70,37 @@ export function scrollToSection(id: string): void {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
 }
 
+/** The search of a list after a pause in typing, trimmed (kit `useDebouncedValue`). */
+export function useDebounced(value: string): string {
+  return useDebouncedValue(value, 300).trim()
+}
+
+/* ------------------------------------------------------------------ */
+/* Product thumbnails, read from Medusa's own product list             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The thumbnails of the store products on a list page, by product id. The
+ * plugin keeps no images (Allegro offers are stored without them), so the
+ * picture is the Medusa product's own, read once per page from
+ * GET /admin/products with only `id,thumbnail`.
+ */
+export function useProductThumbs(ids: Array<string | null | undefined>): Record<string, string | null> {
+  const unique = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))].sort().slice(0, 100)
+  const q = useQuery({
+    queryKey: ["allegro-product-thumbs", unique],
+    queryFn: async () => {
+      const qs = ["fields=id,thumbnail", `limit=${unique.length}`, ...unique.map((id) => `id=${encodeURIComponent(id)}`)].join("&")
+      const r = await kitFetch<{ products?: Array<{ id: string; thumbnail?: string | null }> }>(`/admin/products?${qs}`)
+      return Object.fromEntries((r.products ?? []).map((p) => [p.id, p.thumbnail ?? null])) as Record<string, string | null>
+    },
+    enabled: unique.length > 0,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  return q.data ?? {}
+}
+
 /* ------------------------------------------------------------------ */
 /* The store side of a row: a Medusa product or order, one click away  */
 /* ------------------------------------------------------------------ */
@@ -93,13 +127,23 @@ export function StoreColumn({ label, hint }: { label: string; hint?: string }) {
   )
 }
 
-/** A Medusa record one click away: the mark on a tile, the title, a code in mono and the open link. */
-function StoreLink({ to, title, code, codeTitle, open }: { to: string; title: ReactNode; code?: string | null; codeTitle?: string; open: string }) {
+/** A product picture, or the Medusa mark on a tile when the product has none. */
+export function Thumb({ src, size = 32 }: { src?: string | null; size?: number }) {
+  if (src) {
+    return <img src={src} alt="" loading="lazy" style={{ width: size, height: size }} className="shrink-0 rounded-md bg-ui-bg-component object-cover shadow-borders-base" />
+  }
+  return (
+    <span style={{ width: size, height: size }} className="flex shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
+      <MedusaMark className="h-4 w-4 text-ui-fg-base" />
+    </span>
+  )
+}
+
+/** A Medusa record one click away: the thumbnail (or the mark), the title, a code in mono and the open link. */
+function StoreLink({ to, title, code, codeTitle, open, thumbnail }: { to: string; title: ReactNode; code?: string | null; codeTitle?: string; open: string; thumbnail?: string | null }) {
   return (
     <Link to={to} className="group flex items-center gap-x-2.5" title={open}>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
-        <MedusaMark className="h-4 w-4 text-ui-fg-base" />
-      </span>
+      <Thumb src={thumbnail} />
       <span className="flex min-w-0 flex-col">
         <span className="txt-compact-small-plus truncate text-ui-fg-base group-hover:text-ui-fg-interactive">{title}</span>
         <span className="flex min-w-0 items-center gap-x-1.5">
@@ -119,10 +163,10 @@ function StoreLink({ to, title, code, codeTitle, open }: { to: string; title: Re
   )
 }
 
-/** A product of the store: its title, the SKU (or the signature) in mono and "Open product". */
-export function ProductLink({ productId, title, code, codeTitle }: { productId: string; title: ReactNode; code?: string | null; codeTitle?: string }) {
+/** A product of the store: its picture, its title, the SKU (or the signature) in mono and "Open product". */
+export function ProductLink({ productId, title, code, codeTitle, thumbnail }: { productId: string; title: ReactNode; code?: string | null; codeTitle?: string; thumbnail?: string | null }) {
   const { t } = useTranslation("allegro")
-  return <StoreLink to={`/products/${productId}`} title={title} code={code} codeTitle={codeTitle} open={t("actions.openProduct")} />
+  return <StoreLink to={`/products/${productId}`} title={title} code={code} codeTitle={codeTitle} open={t("actions.openProduct")} thumbnail={thumbnail} />
 }
 
 /** An order of the store: its number, an optional code in mono and "Open order". */
@@ -143,9 +187,7 @@ export function NoProduct({ signature }: { signature: string | null }) {
   }
   return (
     <div className="flex flex-col items-start gap-y-1">
-      <Badge size="2xsmall" color="orange">
-        {t("offers.noProduct")}
-      </Badge>
+      <ToneBadge tone="orange">{t("offers.noProduct")}</ToneBadge>
       <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{signature}</span>
     </div>
   )
@@ -172,32 +214,30 @@ export function ImportWhy({
   const known = key !== "" && i18n.exists(key, { ns: "allegro" })
   if (!known && !fallback) return null
   return (
-    <span title={reason ?? undefined}>
-      <Badge size="2xsmall" color={status === "held" ? "orange" : "grey"}>
-        {known ? t(key) : t(`imports.status.${status}`)}
-      </Badge>
-    </span>
+    <ToneBadge tone={status === "held" ? "orange" : "grey"} title={reason ?? undefined}>
+      {known ? t(key) : t(`imports.status.${status}`)}
+    </ToneBadge>
   )
 }
 
-const GROUP_COLOR: Record<AllegroStatusGroup, "green" | "blue" | "grey" | "orange"> = {
+const GROUP_TONE: Record<AllegroStatusGroup, Tone> = {
   live: "green",
   activating: "blue",
-  draft: "orange",
+  draft: "grey",
   ended: "grey",
 }
 
-/** Allegro status as a dot badge; the raw Allegro status sits in the tooltip text. */
+/** Allegro status as a badge; the raw Allegro status sits in the tooltip. */
 export function OfferStatus({ offer }: { offer: Pick<AllegroOfferDto, "status" | "statusGroup"> }) {
   const { t } = useTranslation("allegro")
   return (
-    <span title={offer.status}>
-      <StatusBadge color={GROUP_COLOR[offer.statusGroup]}>{t(`status.${offer.statusGroup}`)}</StatusBadge>
-    </span>
+    <ToneBadge tone={GROUP_TONE[offer.statusGroup]} title={offer.status}>
+      {t(`status.${offer.statusGroup}`)}
+    </ToneBadge>
   )
 }
 
-const STOCK_COLOR: Record<AllegroStockState, "red" | "orange" | "green" | "grey" | "blue" | "purple"> = {
+const STOCK_TONE: Record<AllegroStockState, Tone> = {
   oversell: "red",
   sold_out: "red",
   under_listed: "blue",
@@ -217,16 +257,12 @@ export function StockCell({ offer }: { offer: AllegroOfferDto }) {
         {allegro}
         {offer.variantId && offer.isPrimary ? <span className="text-ui-fg-muted"> / {offer.medusaAvailable ?? "∞"}</span> : null}
       </span>
-      {offer.stockState ? (
-        <Badge size="2xsmall" color={STOCK_COLOR[offer.stockState]}>
-          {t(`stock.${offer.stockState}`)}
-        </Badge>
-      ) : null}
+      {offer.stockState ? <ToneBadge tone={STOCK_TONE[offer.stockState]}>{t(`stock.${offer.stockState}`)}</ToneBadge> : null}
     </div>
   )
 }
 
-const ORDER_COLOR: Record<AllegroOrderDto["group"], "green" | "orange" | "grey"> = {
+const ORDER_TONE: Record<AllegroOrderDto["group"], Tone> = {
   open: "orange",
   sent: "green",
   cancelled: "grey",
@@ -237,131 +273,12 @@ export function OrderStatus({ order }: { order: AllegroOrderDto }) {
   const raw = [order.status, order.fulfillmentStatus].filter(Boolean).join(" / ")
   return (
     <div className="flex flex-col items-start gap-y-1" title={raw}>
-      <StatusBadge color={ORDER_COLOR[order.group]}>{t(`orders.group.${order.group}`)}</StatusBadge>
+      <ToneBadge tone={ORDER_TONE[order.group]}>{t(`orders.group.${order.group}`)}</ToneBadge>
       {order.fulfillmentStatus ? (
         <Text size="xsmall" className="text-ui-fg-muted">
           {t(`orders.fulfillment.${order.fulfillmentStatus}`, { defaultValue: order.fulfillmentStatus })}
         </Text>
       ) : null}
-    </div>
-  )
-}
-
-export function StatTile({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-  hint,
-}: {
-  label: string
-  value: number | string
-  tone?: "default" | "green" | "orange" | "red" | "blue"
-  active?: boolean
-  onClick?: () => void
-  hint?: string
-}) {
-  const dot =
-    tone === "green"
-      ? "bg-ui-tag-green-icon"
-      : tone === "orange"
-        ? "bg-ui-tag-orange-icon"
-        : tone === "red"
-          ? "bg-ui-tag-red-icon"
-          : tone === "blue"
-            ? "bg-ui-tag-blue-icon"
-            : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      title={hint}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "hover:bg-ui-bg-component-hover cursor-pointer" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-      {hint ? (
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {hint}
-        </Text>
-      ) : null}
-    </button>
-  )
-}
-
-export function Pills<F extends string>({
-  filters,
-  value,
-  onChange,
-  label,
-  count,
-}: {
-  filters: readonly F[]
-  value: F
-  onChange: (f: F) => void
-  label: (f: F) => string
-  count?: (f: F) => number | null
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {filters.map((f) => {
-        const n = count ? count(f) : null
-        return (
-          <button
-            key={f}
-            type="button"
-            onClick={() => onChange(f)}
-            className={clx(
-              "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg",
-              value === f
-                ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color"
-                : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-            )}
-          >
-            {label(f)}
-            {n === null ? null : <span className="tabular-nums opacity-80">{n}</span>}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-export function useDebounced(value: string): string {
-  const [q, setQ] = useState("")
-  useEffect(() => {
-    const id = window.setTimeout(() => setQ(value.trim()), 300)
-    return () => window.clearTimeout(id)
-  }, [value])
-  return q
-}
-
-export function SectionHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-      <div className="flex min-w-0 flex-col gap-1">
-        <Heading level="h2">{title}</Heading>
-        {subtitle ? (
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {subtitle}
-          </Text>
-        ) : null}
-      </div>
-      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   )
 }
@@ -390,20 +307,6 @@ export function Pager({ count, page, size, onPage }: { count: number; page: numb
   )
 }
 
-export function EmptyRow({ span, loading, text }: { span: number; loading: boolean; text: string }) {
-  return (
-    <Table.Row>
-      <td colSpan={span} className="py-6 text-center">
-        <Text size="small" className="text-ui-fg-muted">
-          {loading ? "" : text}
-        </Text>
-      </td>
-    </Table.Row>
-  )
-}
-
-export type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
-
 export const PLAN_TONE: Record<string, Tone> = {
   planned: "blue",
   deferred: "grey",
@@ -419,7 +322,7 @@ export const IMPORT_TONE: Record<string, Tone> = {
   pending: "blue",
   importing: "blue",
   imported: "green",
-  held: "red",
+  held: "orange",
   skipped: "grey",
   cancelled: "grey",
   unknown: "orange",

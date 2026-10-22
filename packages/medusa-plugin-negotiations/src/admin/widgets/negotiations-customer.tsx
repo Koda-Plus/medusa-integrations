@@ -1,16 +1,20 @@
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminCustomer, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Container, Heading, Table, Text } from "@medusajs/ui"
+import { ArrowUpRightOnBox } from "@medusajs/icons"
+import { Button, Heading, Table, Text } from "@medusajs/ui"
 import { useCustomerNegotiations } from "../lib/negotiations-api"
+import { ToneBadge } from "../lib/negotiations-blocks"
 import { NegotiationsIcon } from "../lib/negotiations-icon"
-import { NegotiationStatusBadge, WaitingDot, fmtMoney, fmtNumber, fmtRelative, subjectLine } from "../lib/negotiations-ui"
+import { WidgetFrame } from "../lib/negotiations-kit"
+import { DemoBadge, NegotiationStatusBadge, WaitingDot, fmtMoney, fmtNumber, fmtRelative, subjectLine } from "../lib/negotiations-ui"
 
 /**
  * Customer page: this customer's negotiations, latest activity first, what
  * they are about, the price on the table and the status. A row opens its
- * thread; "All of this customer" opens the queue narrowed to them.
+ * thread; "All of this customer" opens the queue narrowed to them. Hidden
+ * when the customer never negotiated. Links are plain anchors: a
+ * react-router Link inside a widget breaks in some admins.
  */
 const NegotiationsCustomerWidget = ({ data }: DetailWidgetProps<AdminCustomer>) => {
   const { t, i18n } = useTranslation("negotiations")
@@ -18,26 +22,30 @@ const NegotiationsCustomerWidget = ({ data }: DetailWidgetProps<AdminCustomer>) 
   const q = useCustomerNegotiations(data.id)
   const threads = q.data?.threads ?? []
   if (!q.isLoading && threads.length === 0) return null
+  const waiting = threads.filter((n) => n.waitingFor === "team").length
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-x-2">
-          <NegotiationsIcon width={18} height={18} className="shrink-0" />
-          <Heading level="h2">{t("widget.customer.title")}</Heading>
-          <Badge size="2xsmall" color="grey">
-            {fmtNumber(q.data?.count ?? 0, lang)}
-          </Badge>
-          {q.data?.mode === "demo" ? (
-            <Badge size="2xsmall" color="purple">
-              {t("drawer.demo")}
-            </Badge>
-          ) : null}
+    <WidgetFrame
+      header={
+        <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-4">
+          <div className="flex items-center gap-x-2">
+            <NegotiationsIcon width={18} height={18} className="shrink-0" />
+            <Heading level="h2">{t("widget.customer.title")}</Heading>
+            <ToneBadge>
+              <span className="tabular-nums">{fmtNumber(q.data?.count ?? 0, lang)}</span>
+            </ToneBadge>
+            {waiting > 0 ? <ToneBadge tone="orange">{t("waitingBadge", { count: waiting })}</ToneBadge> : null}
+            {q.data?.mode === "demo" ? <DemoBadge /> : null}
+          </div>
+          <Button size="small" variant="secondary" asChild>
+            <a href={`/app/negotiations?customer=${encodeURIComponent(data.id)}`}>
+              <ArrowUpRightOnBox />
+              {t("widget.customer.all")}
+            </a>
+          </Button>
         </div>
-        <Link to={`/negotiations?customer=${encodeURIComponent(data.id)}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-          {t("widget.customer.all")}
-        </Link>
-      </div>
+      }
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -57,9 +65,9 @@ const NegotiationsCustomerWidget = ({ data }: DetailWidgetProps<AdminCustomer>) 
                   <Table.Cell>
                     <span className="flex items-center gap-x-2">
                       <WaitingDot waiting={n.waitingFor === "team"} />
-                      <Link to={`/negotiations?thread=${encodeURIComponent(n.id)}`} className="txt-compact-small-plus text-ui-fg-base hover:text-ui-fg-interactive">
+                      <a href={`/app/negotiations?thread=${encodeURIComponent(n.id)}`} className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
                         {n.ref}
-                      </Link>
+                      </a>
                     </span>
                   </Table.Cell>
                   <Table.Cell className="max-w-[16rem]">
@@ -78,7 +86,7 @@ const NegotiationsCustomerWidget = ({ data }: DetailWidgetProps<AdminCustomer>) 
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </WidgetFrame>
   )
 }
 

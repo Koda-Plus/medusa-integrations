@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next"
-import { Badge, Container, InlineTip, Switch, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import { LockClosedSolid } from "@medusajs/icons"
+import { InlineTip, Switch, Text, toast, usePrompt } from "@medusajs/ui"
+import { Beaker, BoltSolid, CheckCircle, LockClosedSolid, ShieldCheck, User } from "@medusajs/icons"
 import type { AllegroStatusResponse, AllegroWriterDto, AllegroWriterKey } from "../../modules/allegro/lib/contract"
 import { errorMessage, useAllegroWriterToggle } from "./allegro-api"
-import { SectionHeader, fmtDateTime } from "./allegro-ui"
+import { Section, ToneBadge } from "./allegro-blocks"
+import { fmtDateTime } from "./allegro-ui"
 
 /** The order the writers should be armed in: orders first, so Allegro sales reach Medusa before stock moves. */
 export const WRITER_ORDER: AllegroWriterKey[] = ["orders", "stock", "shipping", "invoices", "prices", "publish"]
@@ -50,34 +51,21 @@ function WriterRow({ writer, status, lang }: { writer: AllegroWriterDto; status:
             {name}
           </Text>
           {writer.effective ? (
-            <Badge size="2xsmall" color="green">
-              {t("writers.state.armed")}
-            </Badge>
+            <ToneBadge tone="green">{t("writers.state.armed")}</ToneBadge>
           ) : writer.armed ? (
-            <Badge size="2xsmall" color="orange">
-              {t("writers.state.blocked")}
-            </Badge>
+            <ToneBadge tone="orange">{t("writers.state.blocked")}</ToneBadge>
           ) : (
-            <Badge size="2xsmall" color="grey">
-              {t("writers.state.off")}
-            </Badge>
+            <ToneBadge tone="grey">{t("writers.state.off")}</ToneBadge>
           )}
-          {!writer.writesAllegro ? (
-            <Badge size="2xsmall" color="blue">
-              {t("writers.medusaOnly")}
-            </Badge>
-          ) : null}
+          {!writer.writesAllegro ? <ToneBadge tone="blue">{t("writers.medusaOnly")}</ToneBadge> : null}
           {locked ? (
-            <Badge size="2xsmall" color="grey">
-              <span className="inline-flex items-center gap-x-1">
-                <LockClosedSolid />
-                {t("writers.notAllowed", { key: writer.key })}
-              </span>
-            </Badge>
+            <ToneBadge tone="grey" icon={<LockClosedSolid />}>
+              {t("writers.notAllowed", { key: writer.key })}
+            </ToneBadge>
           ) : (
-            <Badge size="2xsmall" color="grey">
+            <ToneBadge tone="grey" icon={<CheckCircle />}>
               {t("writers.allowed")}
-            </Badge>
+            </ToneBadge>
           )}
         </div>
         <Text size="small" className="max-w-2xl text-ui-fg-subtle">
@@ -124,20 +112,20 @@ export function WritersSection({ status, lang }: { status: AllegroStatusResponse
   const { t } = useTranslation("allegro")
   const writers = WRITER_ORDER.map((k) => status.writers.find((w) => w.key === k)).filter((w): w is AllegroWriterDto => Boolean(w))
   return (
-    <Container className="divide-y p-0">
-      <SectionHeader title={t("writers.title")} subtitle={t("writers.subtitle")} />
-      {status.mode === "demo" ? (
-        <div className="px-6 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("writers.demoNote")}
-          </Text>
-        </div>
-      ) : null}
-      <div className={clx("divide-y")}>
-        {writers.map((w) => (
-          <WriterRow key={w.key} writer={w} status={status} lang={lang} />
-        ))}
-      </div>
-    </Container>
+    <Section
+      icon={<BoltSolid />}
+      title={t("writers.title")}
+      pointsLabel={t("writers.subtitle")}
+      points={[
+        { icon: <User />, text: t("writers.points.twoSwitches") },
+        { icon: <LockClosedSolid />, text: t("writers.points.off"), tone: "green" },
+        { icon: <ShieldCheck />, text: t("writers.points.breaker") },
+        status.mode === "demo" ? { icon: <Beaker />, text: t("writers.points.demo"), tone: "blue", title: t("writers.demoNote") } : null,
+      ]}
+    >
+      {writers.map((w) => (
+        <WriterRow key={w.key} writer={w} status={status} lang={lang} />
+      ))}
+    </Section>
   )
 }

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Button, Container, Heading, InlineTip, Input, Label, Switch, Text, Textarea, toast, usePrompt } from "@medusajs/ui"
+import { ArrowUturnLeft, BuildingStorefront, Clock, CogSixTooth, Envelope, EyeSlash, LockClosedSolid, PaperPlane, PencilSquare, Swatch } from "@medusajs/icons"
+import { Button, InlineTip, Input, Label, Switch, Text, Textarea, toast, usePrompt } from "@medusajs/ui"
+import { Section, ToneBadge } from "./emails-blocks"
 import type { BrandDto, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { errorMessage, useEmailsPreview, useEmailsSettings } from "./emails-api"
 import { CodeBlock } from "./emails-guide"
@@ -72,11 +74,7 @@ function Field({ id, label, value, placeholder, onChange, hint, multiline = fals
         <Label size="small" weight="plus" htmlFor={id}>
           {label}
         </Label>
-        {overridden ? (
-          <Badge size="2xsmall" color="blue">
-            {t("branding.overridden")}
-          </Badge>
-        ) : null}
+        {overridden ? <ToneBadge tone="blue">{t("branding.overridden")}</ToneBadge> : null}
       </span>
       {multiline ? (
         <Textarea id={id} rows={2} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
@@ -130,28 +128,30 @@ export function BrandingSection({ status, lang }: { status: StatusResponse; lang
   }
 
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex max-w-3xl flex-col gap-1">
-          <Heading level="h2">{t("branding.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {status.mode === "demo" ? t("branding.demoSubtitle") : t("branding.subtitle")}
-          </Text>
-          {status.brandUpdatedAt ? (
-            <Text size="xsmall" className="text-ui-fg-muted">
-              {t("branding.changedBy", { who: status.brandUpdatedBy ?? "-", time: fmtDateTime(status.brandUpdatedAt, lang) })}
-            </Text>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+    <Section
+      icon={<Swatch />}
+      title={t("branding.title")}
+      pointsLabel={status.mode === "demo" ? t("branding.demoSubtitle") : t("branding.subtitle")}
+      points={[
+        { icon: <BuildingStorefront />, text: t("branding.points.name") },
+        { icon: <Swatch />, text: t("branding.points.colours") },
+        { icon: <EyeSlash />, text: t("branding.points.noImages") },
+        { icon: <CogSixTooth />, text: t("branding.points.options") },
+        status.mode === "demo" && { icon: <Clock />, text: t("branding.points.demo"), tone: "blue" },
+        status.brandUpdatedAt ? { icon: <PencilSquare />, text: t("branding.changedBy", { who: status.brandUpdatedBy ?? "-", time: fmtDateTime(status.brandUpdatedAt, lang) }) } : null,
+      ]}
+      actions={
+        <>
           <Button size="small" variant="secondary" disabled={status.brandOverridden.length === 0 || save.isPending} onClick={() => void onReset()}>
+            <ArrowUturnLeft />
             {t("branding.reset")}
           </Button>
           <Button size="small" variant="primary" disabled={!dirty} isLoading={save.isPending} onClick={() => void onSave()}>
             {t("actions.save")}
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
       <div className="grid grid-cols-1 gap-6 px-6 py-5 xl:grid-cols-[1fr_420px]">
         <div className="grid grid-cols-1 content-start gap-4 md:grid-cols-2">
           <Field id="emails-brand-name" label={t("branding.name")} value={form.name} placeholder={options.name || t("branding.namePlaceholder")} onChange={set("name")} hint={t("branding.nameHint")} overridden={over.has("name")} />
@@ -181,7 +181,7 @@ export function BrandingSection({ status, lang }: { status: StatusResponse; lang
           </div>
         </div>
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -201,13 +201,17 @@ export function TemplatesSection({ status, lang }: { status: StatusResponse; lan
     }
   }
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("templates.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("templates.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<Envelope />}
+      title={t("templates.title")}
+      pointsLabel={t("templates.subtitle")}
+      points={[
+        { icon: <CogSixTooth />, text: t("templates.points.switch") },
+        { icon: <Clock />, text: t("templates.points.optional") },
+        { icon: <LockClosedSolid />, text: t("templates.points.blocked") },
+        { icon: <PaperPlane />, text: t("templates.points.test") },
+      ]}
+    >
       {status.templates.map((x) => (
         <div key={x.key} className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
           <div className="flex max-w-3xl flex-col gap-y-1">
@@ -216,16 +220,8 @@ export function TemplatesSection({ status, lang }: { status: StatusResponse; lan
                 {templateLabel(x, lang)}
               </Text>
               <OnOff on={x.enabled} labels={[t("templates.on"), x.allowed ? t("templates.off") : t("templates.blocked")]} />
-              {x.optional ? (
-                <Badge size="2xsmall" color="grey">
-                  {t("templates.optional")}
-                </Badge>
-              ) : null}
-              {x.source === "app" && status.mode !== "app" ? (
-                <Badge size="2xsmall" color="grey">
-                  {t("templates.app")}
-                </Badge>
-              ) : null}
+              {x.optional ? <ToneBadge>{t("templates.optional")}</ToneBadge> : null}
+              {x.source === "app" && status.mode !== "app" ? <ToneBadge>{t("templates.app")}</ToneBadge> : null}
             </span>
             <Text size="small" className="text-ui-fg-subtle">
               {templateDescription(x, lang)}
@@ -272,7 +268,7 @@ export function TemplatesSection({ status, lang }: { status: StatusResponse; lan
           </span>
         </div>
       ))}
-    </Container>
+    </Section>
   )
 }
 
@@ -309,13 +305,16 @@ export function ProviderSection({ status, lang }: { status: StatusResponse; lang
   const no = t("provider.no")
   if (status.mode === "app" && p.app) return <AppProviderSection status={status} lang={lang} />
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("provider.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("provider.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<CogSixTooth />}
+      title={t("provider.title")}
+      pointsLabel={t("provider.subtitle")}
+      points={[
+        { icon: <PaperPlane />, text: t("provider.points.sends") },
+        { icon: <Envelope />, text: t("provider.points.links") },
+        { icon: <LockClosedSolid />, text: t("provider.points.readOnly"), tone: "blue" },
+      ]}
+    >
       {!p.loaded || (p.feedProviders && p.feedProviders.length === 0) ? (
         <div className="flex flex-col gap-y-3 px-6 py-4">
           {!p.loaded ? (
@@ -395,7 +394,7 @@ export function ProviderSection({ status, lang }: { status: StatusResponse; lang
           </InlineTip>
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }
 
@@ -410,13 +409,16 @@ function AppProviderSection({ status, lang }: { status: StatusResponse; lang: st
   const p = status.provider
   const app = p.app as { id: string; serving: boolean | null }
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("provider.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("provider.app.subtitle", { id: app.id })}
-        </Text>
-      </div>
+    <Section
+      icon={<CogSixTooth />}
+      title={t("provider.title")}
+      pointsLabel={t("provider.app.subtitle")}
+      points={[
+        { icon: <PaperPlane />, text: t("provider.app.points.sender", { id: app.id }) },
+        { icon: <Envelope />, text: t("provider.app.points.channel") },
+        { icon: <LockClosedSolid />, text: t("provider.points.readOnly"), tone: "blue" },
+      ]}
+    >
       <div className="flex flex-col gap-y-3 px-6 py-4">
         {app.serving === false ? (
           <InlineTip variant="error" label={t("provider.app.missingLabel")}>
@@ -475,6 +477,6 @@ function AppProviderSection({ status, lang }: { status: StatusResponse; lang: st
           </InlineTip>
         </div>
       ) : null}
-    </Container>
+    </Section>
   )
 }

@@ -1,8 +1,8 @@
-import type { ComponentProps, ReactNode } from "react"
+import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowUpRightMini, ArrowUpRightOnBox, CheckCircleSolid, EllipseMiniSolid, ExclamationCircleSolid, InformationCircleSolid, XCircleSolid } from "@medusajs/icons"
-import { Badge, StatusBadge, Text, clx } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 import type {
   DisputeUrgency,
   MethodDetailDto,
@@ -20,7 +20,7 @@ import { pickText } from "../../modules/stripe/lib/references"
 import type { Reference } from "./stripe-guide"
 import { MethodName } from "./stripe-method-icon"
 import { StripeIcon } from "./stripe-icon"
-import { StatTile as KitStatTile, type Tone } from "./stripe-blocks"
+import { ToneBadge, type Tone } from "./stripe-blocks"
 
 
 /* ------------------------------------------------------------------ */
@@ -136,33 +136,6 @@ export function MedusaMark({ className }: { className?: string }) {
 /* Small blocks                                                        */
 /* ------------------------------------------------------------------ */
 
-/** The kit's counter tile (stripe-blocks); "default" is the kit's grey. */
-export function StatTile({ tone = "grey", ...props }: Omit<ComponentProps<typeof KitStatTile>, "tone"> & { tone?: Tone | "default" }) {
-  return <KitStatTile tone={tone === "default" ? "grey" : tone} {...props} />
-}
-
-/** Pills with counts, the same look as the other Koda Plus integrations. */
-export function FilterPills<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string; count?: number; icon?: ReactNode }>; onChange: (v: T) => void }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={clx(
-            "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg",
-            value === o.value ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color" : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-          )}
-        >
-          {o.icon ? <span className="mr-1.5 inline-flex align-middle">{o.icon}</span> : null}{o.label}
-          {typeof o.count === "number" ? <span className="tabular-nums opacity-80">{o.count}</span> : null}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function Fact({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
   return (
     <div className="flex min-w-0 flex-col gap-y-0.5">
@@ -174,7 +147,6 @@ export function Fact({ label, children, mono = false }: { label: string; childre
   )
 }
 
-/** An external link to the Stripe Dashboard (or any https page), opening in a new tab. */
 /** A page outside the admin, in a new tab: the Stripe mark when it is Stripe's dashboard, the text, the new-window icon. */
 export function ExternalLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
   const stripe = /^https:\/\/([a-z0-9-]+\.)*stripe\.com\//i.test(href)
@@ -190,9 +162,7 @@ export function ExternalLink({ href, children, className }: { href: string; chil
 export function SampleBadge() {
   const { t } = useTranslation("stripe")
   return (
-    <Badge size="2xsmall" color="purple">
-      {t("demo.sample")}
-    </Badge>
+    <ToneBadge tone="purple">{t("demo.sample")}</ToneBadge>
   )
 }
 
@@ -213,11 +183,9 @@ const STATUS_TONE: Record<PaymentStatus, Tone> = {
 export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const { t } = useTranslation("stripe")
   return (
-    <span title={t(`payments.statusHint.${status}`, { defaultValue: "" }) || undefined}>
-      <StatusBadge color={STATUS_TONE[status] ?? "grey"} className="whitespace-nowrap">
-        {t(`payments.status.${status}`)}
-      </StatusBadge>
-    </span>
+    <ToneBadge tone={STATUS_TONE[status] ?? "grey"} title={t(`payments.statusHint.${status}`, { defaultValue: "" }) || undefined}>
+      {t(`payments.status.${status}`)}
+    </ToneBadge>
   )
 }
 
@@ -297,17 +265,13 @@ export function OrderCell({ order, payment }: { order: OrderLinkDto | null; paym
   /* Another Medusa on the same Stripe account: its payment, never this store's order. */
   if (payment?.session === "foreign") {
     return (
-      <Badge size="2xsmall" color="grey">
-        {t("payments.foreign")}
-      </Badge>
+      <ToneBadge tone="grey">{t("payments.foreign")}</ToneBadge>
     )
   }
   if (payment?.status === "succeeded" && payment.session !== "replaced") {
     return (
       <div className="flex flex-col items-start gap-y-0.5">
-        <Badge size="2xsmall" color="red">
-          {t("payments.paidNoOrder")}
-        </Badge>
+        <ToneBadge tone="red">{t("payments.paidNoOrder")}</ToneBadge>
         {payment.cartId ? <span className="txt-compact-xsmall truncate font-mono text-ui-fg-muted">{t("payments.cart", { id: payment.cartId })}</span> : null}
       </div>
     )
@@ -343,10 +307,10 @@ export function VerdictIcon({ verdict, className }: { verdict: Verdict; classNam
 
 export function VerdictBadge({ verdict }: { verdict: Verdict }) {
   const { t } = useTranslation("stripe")
-  return <StatusBadge color={VERDICT_TONE[verdict]}>{t(`health.verdict.${verdict}`)}</StatusBadge>
+  return <ToneBadge tone={VERDICT_TONE[verdict]}>{t(`health.verdict.${verdict}`)}</ToneBadge>
 }
 
-const URGENCY_TONE: Record<DisputeUrgency, "red" | "orange" | "blue" | "grey"> = { overdue: "red", urgent: "red", soon: "orange", ok: "blue", waiting: "grey" }
+const URGENCY_TONE: Record<DisputeUrgency, Tone> = { overdue: "red", urgent: "red", soon: "orange", ok: "blue", waiting: "grey" }
 
 /** The evidence deadline: date and days left, coloured by urgency. */
 export function DisputeDue({ dueBy, daysLeft, urgency, lang }: { dueBy: string | null; daysLeft: number | null; urgency: DisputeUrgency; lang: string }) {
@@ -355,9 +319,7 @@ export function DisputeDue({ dueBy, daysLeft, urgency, lang }: { dueBy: string |
   return (
     <div className="flex flex-col items-start gap-y-0.5">
       {dueBy && urgency !== "waiting" ? <span className="txt-compact-small whitespace-nowrap text-ui-fg-base">{fmtDateTime(dueBy, lang)}</span> : null}
-      <Badge size="2xsmall" color={URGENCY_TONE[urgency]}>
-        {label}
-      </Badge>
+      <ToneBadge tone={URGENCY_TONE[urgency]}>{label}</ToneBadge>
     </div>
   )
 }

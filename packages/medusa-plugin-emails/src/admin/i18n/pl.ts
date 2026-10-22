@@ -12,9 +12,10 @@ const pl: typeof en = {
     title: "Odrzucone adresy",
     subtitle: "Adresy, na które Resend już nie wysyła (lista tłumienia): serwer adresata odrzucił wiadomość albo adresat zgłosił spam. Popraw adres u klienta (często to literówka w domenie) i usuń go z listy w Resend.",
     readAt: "Odczyt z Resend: {{at}}",
+    points: { blocked: "Resend już nie wysyła", fix: "Popraw adres, odblokuj w Resend" },
     back: "Wróć do dziennika",
     notConfigured: "Wtyczka nie czyta dostarczeń: ustaw opcję deliveryKey (klucz Resend z dostępem do odczytu).",
-    empty: "Resend nie blokuje żadnego adresu.",
+    empty: "Resend nie blokuje żadnego adresu",
     noLast: "brak wiadomości w tym sklepie",
     typo: "Literówka w domenie? Pewnie {{fixed}}",
     hint: "Co stało się po wysłaniu, według Resend",
@@ -139,9 +140,20 @@ const pl: typeof en = {
     latestNote: "Przy Najnowszym zamówieniu podgląd bierze produkty, kwoty i numer Twojego najnowszego zamówienia albo koszyka, a imię, firmę i adres klienta zastępuje przykładowymi.",
     sampleNote: "Ten szablon pokazuje dane przykładowe. Test trafia na adres, który wpiszesz, a jego temat zaczyna się od [Test].",
     sendThis: "Wyślij test tego szablonu",
+    points: {
+      devices: "Komputer i telefon",
+      modes: "Tryb jasny i ciemny",
+      languages: "Polski i angielski",
+      data: "Dane przykładowe lub najnowsze zamówienie",
+      latestOrder: "Twoje najnowsze zamówienie",
+      personReplaced: "Osoba zastąpiona przykładową",
+      sampleData: "Dane przykładowe",
+      testSubject: "Temat zaczyna się od [Test]",
+    },
   },
   templates: {
     title: "Szablony",
+    points: { switch: "Włączasz i wyłączasz tutaj", optional: "Opcjonalne startują wyłączone", blocked: "Wyłączone w opcjach zostają wyłączone", test: "Test działa dla każdego" },
     subtitle:
       "Szablon wysyła, gdy pozwalają na to opcje i jest tu włączony. Opcjonalne (porzucone koszyki, negocjacje) startują wyłączone. Szablonu wyłączonego w opcjach wtyczki (templates: { klucz: false }) nie da się tu włączyć. Test działa dla każdego szablonu.",
     on: "Włączony",
@@ -168,7 +180,9 @@ const pl: typeof en = {
   log: {
     group: {
       all: "Wszystkie szablony",
+      title: "Szablony tej grupy",
     },
+    emptyPoints: { order: "Pojawią się z zamówieniami i kontami", test: "Albo wyślij test" },
     openOrder: "Otwórz zamówienie",
     openResend: "Otwórz w Resend",
     title: "Wysłane e-maile",
@@ -194,8 +208,8 @@ const pl: typeof en = {
     },
     search: "Szukaj w temacie, szablonie, zamówieniu albo po pełnym adresie",
     searchAddresses: "Szukaj po e-mailu (też fragmencie), temacie, szablonie albo numerze zamówienia",
-    empty: "Jeszcze nic nie wyszło. Wiadomości pojawią się tu razem z zamówieniami, wysyłkami i kontami albo po wysyłce testowej.",
-    demoEmpty: "Skrzynka jest pusta. Złóż zamówienie w sklepie albo wyślij test.",
+    empty: "Brak e-maili",
+    demoEmpty: "Skrzynka jest pusta",
     details: "Szczegóły",
     col: {
       when: "Kiedy",
@@ -266,8 +280,8 @@ const pl: typeof en = {
     requestedBy: "Wysłał",
     retriedTimes: "Ponowienia: {{count}}",
     body: "Wiadomość",
-    noBody: "Wiadomości produkcyjne nie są przechowywane: otwórz szablon w galerii, żeby zobaczyć, jak wygląda.",
-    noBodyDemo: "Ta wiadomość nie została wyrenderowana (wcześniej się nie udała).",
+    noBody: "Treści wysłanych wiadomości nie przechowujemy",
+    noBodyDemo: "Nie wyrenderowana, wcześniej się nie udała",
     medusaHistory: "Wiadomość z historii Medusy: Twój dostawca ją wysłał, a Medusa zapisała adresata, szablon i wynik. Treści log nie pokazuje.",
     medusaFailed: "Wiadomość z historii Medusy: dostawca jej nie wysłał. Medusa nie zapisuje treści błędu, szczegóły są w logach serwera z tej chwili.",
     retry: "Wyślij ponownie",
@@ -279,6 +293,7 @@ const pl: typeof en = {
   test: {
     title: "Wysyłka testowa",
     subtitle: "Jeden szablon na jeden adres, tą samą drogą co każdy e-mail sklepu, więc przy okazji sprawdza całą konfigurację. Temat zaczyna się od [Test].",
+    points: { one: "Jeden szablon, jeden adres", path: "Ta sama droga co prawdziwe", subject: "Temat zaczyna się od [Test]" },
     template: "Szablon",
     offNote: "Ten szablon jest wyłączony: test i tak wyjdzie, klienci nie dostaną nic.",
     locale: "Język",
@@ -305,6 +320,7 @@ const pl: typeof en = {
     subtitle:
       "Nazwa sklepu, logo z żywego tekstu, kolory i stopka każdej wiadomości. Puste pole bierze wartość z opcji wtyczki. Wiadomości nie mają obrazków: nazwa jest tekstem, produkty kafelkami, więc nic się nie psuje, gdy program pocztowy blokuje obrazki.",
     demoSubtitle: "Nazwa sklepu, logo z żywego tekstu, kolory i stopka każdej wiadomości. W trybie demo zmiany znikają po dobie.",
+    points: { name: "Nazwa, logo, stopka", colours: "Kolor akcentu i paska", noImages: "Bez obrazków do blokowania", options: "Puste pole: opcje wtyczki", demo: "Demo: znika po dobie" },
     changedBy: "Zmienił {{who}}, {{time}}",
     overridden: "Zmienione tutaj",
     name: "Nazwa sklepu",
@@ -333,6 +349,7 @@ const pl: typeof en = {
     resetDone: "Wygląd z opcji",
   },
   provider: {
+    points: { sends: "Renderuje i wysyła", links: "Linki w wiadomościach", readOnly: "Tylko odczyt, z medusa-config.ts" },
     title: "Dostawca",
     subtitle: "Dostawca powiadomień, który renderuje i wysyła, opcje, które dostał, oraz linki w wiadomościach. Tylko do odczytu: wszystko tutaj pochodzi z medusa-config.ts.",
     yes: "Tak",
@@ -379,6 +396,7 @@ const pl: typeof en = {
       sender: "Wysyła",
       serving: "Obsługuje kanał email",
       recorded: "Zapisane w 30 dni",
+      points: { sender: "Wysyła {{id}}", channel: "Kanał email w Medusie" },
     },
     notLoaded: {
       label: "Dostawca",
@@ -398,9 +416,9 @@ const pl: typeof en = {
   widget: {
     title: "E-maile",
     all: "Otwórz w E-mailach",
-    empty: "Do tego zamówienia nie wyszedł jeszcze żaden e-mail.",
+    empty: "Brak e-maili do tego zamówienia",
     loading: "Wczytuję e-maile tego zamówienia",
-    failed: "Nie udało się wczytać e-maili tego zamówienia.",
+    failed: "Nie wczytano e-maili",
   },
   languages: {
     en: "Angielski",

@@ -1,13 +1,15 @@
 import type { ReactNode } from "react"
-import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { Badge, Button, Heading, Text, clx } from "@medusajs/ui"
+import { ArrowUturnLeft, CreditCard, Eye } from "@medusajs/icons"
+import { Button, Heading, Text, clx } from "@medusajs/ui"
 import type { OrderPaymentDto } from "../../modules/stripe/lib/contract"
 import { errorMessage, useStripeOrder, useStripeOrderRefresh } from "../lib/stripe-api"
 import { StripeIcon } from "../lib/stripe-icon"
-import { WidgetFrame, hostable } from "../lib/stripe-kit"
+import { KitLoading, WidgetFrame, hostable } from "../lib/stripe-kit"
+import { EmptyState, ToneBadge } from "../lib/stripe-blocks"
+import { KeyPoints } from "../lib/stripe-guide"
 import { DisputeDue, ExternalLink, PaymentStatusBadge, declineText, fmtDate, fmtDateTime, fmtMoney, methodDetail, methodLabel } from "../lib/stripe-ui"
 import { MethodName } from "../lib/stripe-method-icon"
 
@@ -35,7 +37,7 @@ const StripeOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
   const refresh = useStripeOrderRefresh(data.id)
   const info = q.data
 
-  if (q.isLoading) return embedded ? <Quiet>{t("widget.loading")}</Quiet> : null
+  if (q.isLoading) return embedded ? <KitLoading label={t("widget.loading")} /> : null
   if (q.isError || !info) {
     const text = t("error", { message: errorMessage(q.error) })
     if (embedded) return <Quiet tone="error">{t("widget.failed")}</Quiet>
@@ -45,7 +47,7 @@ const StripeOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
       </WidgetFrame>
     )
   }
-  if (info.none) return embedded ? <Quiet>{t("widget.none")}</Quiet> : null
+  if (info.none) return embedded ? <EmptyState compact icon={<CreditCard />} title={t("widget.none")} /> : null
 
   const readAt = info.payments
     .map((p) => p.readAt)
@@ -58,9 +60,7 @@ const StripeOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
     <WidgetFrame embedded={embedded} header={<Header orderRef={data.display_id ?? data.id} demo={info.mode === "demo"} />}>
       {embedded && info.mode === "demo" ? (
         <div className="px-6 py-2">
-          <Badge size="2xsmall" color="purple">
-            {t("widget.demo")}
-          </Badge>
+          <ToneBadge tone="purple">{t("widget.demo")}</ToneBadge>
         </div>
       ) : null}
 
@@ -85,9 +85,13 @@ const StripeOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
           </Text>
         ) : null}
         {embedded ? null : (
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("widget.readOnly")}
-          </Text>
+          <KeyPoints
+            label={t("widget.readOnly")}
+            items={[
+              { icon: <Eye />, text: t("widget.points.readOnly") },
+              { icon: <ArrowUturnLeft />, text: t("widget.points.medusa") },
+            ]}
+          />
         )}
       </div>
     </WidgetFrame>
@@ -101,15 +105,11 @@ function Header({ orderRef, demo }: { orderRef: string | number; demo: boolean }
       <div className="flex items-center gap-x-2">
         <StripeIcon width={18} height={18} className="shrink-0" />
         <Heading level="h2">{t("widget.title")}</Heading>
-        {demo ? (
-          <Badge size="2xsmall" color="purple">
-            {t("widget.demo")}
-          </Badge>
-        ) : null}
+        {demo ? <ToneBadge tone="purple">{t("widget.demo")}</ToneBadge> : null}
       </div>
-      <Link to={`/stripe?q=${encodeURIComponent(String(orderRef))}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+      <a href={`/app/stripe?q=${encodeURIComponent(String(orderRef))}`} className="txt-compact-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
         {t("widget.more")}
-      </Link>
+      </a>
     </div>
   )
 }
@@ -152,9 +152,9 @@ function PaymentBlock({ payment: p, lang, wide }: { payment: OrderPaymentDto; la
           {message}
         </Text>
         {p.problem === "unconfigured" ? (
-          <Link to="/stripe?view=guide" className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
+          <a href="/app/stripe?view=guide" className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
             {t("actions.guide")}
-          </Link>
+          </a>
         ) : null}
       </div>
     )
@@ -243,9 +243,7 @@ function PaymentBlock({ payment: p, lang, wide }: { payment: OrderPaymentDto; la
               <span className="txt-compact-xsmall text-ui-fg-muted">{fmtDate(r.created, lang)}</span>
               <span className="inline-flex items-center gap-x-1.5">
                 <span className="txt-compact-small tabular-nums">{fmtMoney(r.amount, lang)}</span>
-                <Badge size="2xsmall" color={r.status === "succeeded" ? "green" : r.status === "failed" ? "red" : "blue"}>
-                  {t(`refunds.status.${r.status}`, { defaultValue: r.status })}
-                </Badge>
+                <ToneBadge tone={r.status === "succeeded" ? "green" : r.status === "failed" ? "red" : "blue"}>{t(`refunds.status.${r.status}`, { defaultValue: r.status })}</ToneBadge>
               </span>
             </div>
           ))}
@@ -257,9 +255,7 @@ function PaymentBlock({ payment: p, lang, wide }: { payment: OrderPaymentDto; la
             <Text size="small" weight="plus">
               {t("widget.disputes")}
             </Text>
-            <Badge size="2xsmall" color={dispute.open ? "orange" : dispute.status === "won" ? "green" : "grey"}>
-              {t(`disputes.status.${dispute.status}`, { defaultValue: dispute.status })}
-            </Badge>
+            <ToneBadge tone={dispute.open ? "orange" : dispute.status === "won" ? "green" : "grey"}>{t(`disputes.status.${dispute.status}`, { defaultValue: dispute.status })}</ToneBadge>
           </div>
           {dispute.reason ? (
             <Text size="xsmall" className="text-ui-fg-subtle">

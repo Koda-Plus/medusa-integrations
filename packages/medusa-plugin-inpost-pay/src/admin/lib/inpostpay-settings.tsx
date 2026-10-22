@@ -1,26 +1,14 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Button, Container, Copy, Heading, Switch, Text, toast } from "@medusajs/ui"
+import { Beaker, CursorArrowRays, ExclamationCircle, EyeSlash, FloppyDisk, Key, LockClosedSolid, ShieldCheck, TruckFast } from "@medusajs/icons"
+import { Button, Copy, Switch, Text, toast } from "@medusajs/ui"
 import type { DeliveryMapping, Placements, StatusResponse } from "../../modules/inpostpay/lib/contract"
 import { errorMessage, useInpostPayCheck, useInpostPaySettings } from "./inpostpay-api"
+import { EmptyState, Section, ToneBadge } from "./inpostpay-blocks"
 import { Fact } from "./inpostpay-ui"
 
 const TYPES = ["APM", "COURIER", "DIGITAL"] as const
 const PLACES: Array<keyof Placements> = ["product", "cart", "minicart", "checkout", "thank_you"]
-
-function Section({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-y-1 px-6 py-4">
-        <Heading level="h2">{title}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {subtitle}
-        </Text>
-      </div>
-      {children}
-    </Container>
-  )
-}
 
 /** Settings, Delivery: the shipping option of each InPost Pay delivery type. */
 export function DeliverySection({ status: s }: { status: StatusResponse }) {
@@ -38,11 +26,26 @@ export function DeliverySection({ status: s }: { status: StatusResponse }) {
     }
   }
   return (
-    <Section title={t("delivery_settings.title")} subtitle={t("delivery_settings.subtitle")}>
+    <Section
+      icon={<TruckFast />}
+      title={t("delivery_settings.title")}
+      pointsLabel={t("delivery_settings.subtitle")}
+      points={[
+        { icon: <TruckFast />, text: t("delivery_settings.points.option") },
+        { icon: <ExclamationCircle />, text: t("delivery_settings.points.refused"), tone: "orange" },
+        s.mode === "demo" && { icon: <Beaker />, text: t("delivery_settings.points.demo"), tone: "blue" },
+      ]}
+      actions={
+        s.shippingOptions.length > 0 ? (
+          <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
+            <FloppyDisk />
+            {t("delivery_settings.save")}
+          </Button>
+        ) : null
+      }
+    >
       {s.shippingOptions.length === 0 ? (
-        <Text size="small" className="px-6 py-4 text-ui-fg-subtle">
-          {t("delivery_settings.noOptions")}
-        </Text>
+        <EmptyState icon={<TruckFast />} title={t("delivery_settings.noOptions")} points={[{ icon: <TruckFast />, text: t("delivery_settings.noOptionsHint") }]} />
       ) : (
         <div className="flex flex-col gap-y-4 px-6 py-4">
           {TYPES.map((type) => (
@@ -58,6 +61,7 @@ export function DeliverySection({ status: s }: { status: StatusResponse }) {
               <div className="flex flex-col gap-y-1">
                 <select
                   value={mapping[type] ?? ""}
+                  aria-label={t(`delivery.${type}`)}
                   onChange={(e) => setDraft({ ...mapping, [type]: e.target.value || null })}
                   className="w-full max-w-md rounded-md border border-ui-border-base bg-ui-bg-field px-3 py-1.5 text-sm text-ui-fg-base"
                 >
@@ -75,11 +79,6 @@ export function DeliverySection({ status: s }: { status: StatusResponse }) {
               </div>
             </div>
           ))}
-          <div>
-            <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
-              {t("delivery_settings.save")}
-            </Button>
-          </div>
         </div>
       )}
     </Section>
@@ -102,7 +101,22 @@ export function ButtonSection({ status: s }: { status: StatusResponse }) {
     }
   }
   return (
-    <Section title={t("button_settings.title")} subtitle={t("button_settings.subtitle")}>
+    <Section
+      icon={<CursorArrowRays />}
+      title={t("button_settings.title")}
+      pointsLabel={t("button_settings.subtitle")}
+      points={[
+        { icon: <CursorArrowRays />, text: t("button_settings.points.config") },
+        { icon: <ExclamationCircle />, text: t("button_settings.points.required"), tone: "orange" },
+        { icon: <EyeSlash />, text: t("button_settings.points.audit") },
+      ]}
+      actions={
+        <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
+          <FloppyDisk />
+          {t("button_settings.save")}
+        </Button>
+      }
+    >
       <div className="flex flex-col gap-y-3 px-6 py-4">
         {PLACES.map((p) => (
           <label key={p} className="flex items-center justify-between gap-3 md:max-w-md">
@@ -110,11 +124,6 @@ export function ButtonSection({ status: s }: { status: StatusResponse }) {
             <Switch checked={placements[p]} onCheckedChange={(on) => setDraft({ ...placements, [p]: on })} />
           </label>
         ))}
-        <div>
-          <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft} onClick={() => void onSave()}>
-            {t("button_settings.save")}
-          </Button>
-        </div>
       </div>
     </Section>
   )
@@ -134,7 +143,21 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
     }
   }
   return (
-    <Section title={t("account.title")} subtitle={t("account.subtitle")}>
+    <Section
+      icon={<Key />}
+      title={t("account.title")}
+      pointsLabel={t("account.subtitle")}
+      points={[
+        { icon: <Key />, text: t("account.points.keys") },
+        { icon: <LockClosedSolid />, text: t("account.points.masked"), tone: "green" },
+      ]}
+      actions={
+        <Button size="small" variant="secondary" isLoading={check.isPending} disabled={!s.configured} onClick={() => void onCheck()}>
+          <ShieldCheck />
+          {check.isPending ? t("account.checking") : t("account.check")}
+        </Button>
+      }
+    >
       <div className="flex flex-col gap-y-2 px-6 py-4">
         <Text size="small" weight="plus">
           {t("account.merchantApi")}
@@ -161,18 +184,13 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
         <Fact label={t("account.provider")}>
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono">{s.provider.id}</span>
-            <Badge size="2xsmall" color={s.provider.registered && s.provider.enabled ? "green" : s.provider.registered ? "orange" : "red"}>
+            <ToneBadge tone={s.provider.registered && s.provider.enabled ? "green" : s.provider.registered ? "orange" : "red"}>
               {s.provider.registered ? (s.provider.enabled ? t("account.providerOk") : t("account.providerOff")) : t("account.providerMissing")}
-            </Badge>
+            </ToneBadge>
           </span>
         </Fact>
         <Fact label={t("account.events")}>{s.options.sendOrderEvents ? t("account.eventsOn") : t("account.eventsOff")}</Fact>
         <Fact label={t("account.ttl")}>{t("account.ttlValue", { count: s.options.basketTtlHours })}</Fact>
-      </div>
-      <div className="px-6 py-4">
-        <Button size="small" variant="secondary" isLoading={check.isPending} disabled={!s.configured} onClick={() => void onCheck()}>
-          {check.isPending ? t("account.checking") : t("account.check")}
-        </Button>
       </div>
     </Section>
   )

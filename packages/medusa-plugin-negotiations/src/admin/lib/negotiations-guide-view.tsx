@@ -223,7 +223,7 @@ export function GuideView({ status }: { status: StatusResponse }) {
         subtitle={t("guide.diagram.subtitle")}
         nodes={[
           { title: t("guide.diagram.storefrontTitle"), caption: t("guide.diagram.storefront") },
-          { title: `${t("title")} ${t("by")}`, caption: t("guide.diagram.plugin"), accent: true },
+          { title: t("title"), caption: t("guide.diagram.plugin"), accent: true },
           { title: t("guide.diagram.adminTitle"), caption: t("guide.diagram.admin") },
           { title: t("guide.diagram.subscribersTitle"), caption: t("guide.diagram.subscribers") },
         ]}

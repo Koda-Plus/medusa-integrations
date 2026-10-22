@@ -5,6 +5,19 @@ import { integrationPl } from "../../modules/vonhalsky/lib/integration-texts"
 
 /* Typed by en.ts below (every English key exists here); Polish adds its plural forms (_few, _many). */
 const pl = {
+  points: {
+    offers: "Warianty jako oferty",
+    keys: "EAN, marka, MPN, GPSR",
+    orders: "Zamówienia do Medusy",
+    tracking: "Numery przesyłek wracają",
+  },
+  pagination: {
+    of: "z",
+    results: "wyników",
+    pages: "stron",
+    prev: "Poprzednia",
+    next: "Następna",
+  },
   title: "InPost Von Halsky",
   by: "by Koda Plus",
   subtitle:
@@ -20,7 +33,7 @@ const pl = {
   },
   settings: {
     title: "Ustawienia",
-    subtitle: "Cena kanału, kanał i region importowanych zamówień, opcja dostawy dla każdego rodzaju dostawy oraz konto w marketplace.",
+    subtitle: "Cena, zamówienia, dostawa i konto w marketplace.",
     tab: {
       pricing: "Ceny",
       orders: "Zamówienia",
@@ -53,6 +66,7 @@ const pl = {
     errors: "Błędy",
   },
   actions: {
+    clearSelection: "Odznacz",
     refresh: "Odśwież",
     refreshOffers: "Odśwież oferty",
     listSelected: "Wystaw zaznaczone",
@@ -87,10 +101,17 @@ const pl = {
     priceSaved: "Cena zapisana",
   },
   offers: {
+    points: {
+      variant: "Wiersz na wariant",
+      keys: "Dopasowanie po EAN, marce, MPN",
+      price: "Cena kanału i stan",
+    },
+    emptyHint: "Odśwież oferty, żeby odczytać katalog",
+    emptyFiltered: "Brak ofert",
     title: "Oferty",
     subtitle: "Jeden wiersz na wariant Medusy. Gotowe oferty (szkic) można wystawić; zablokowane mówią, czego brakuje. Cena to cena PLN z Medusy z VAT i narzutem kanału albo stała cena ustawiona przez Ciebie; stan pochodzi z magazynu Medusy.",
     search: "SKU, nazwa, EAN albo id produktu",
-    empty: "Nie ma jeszcze ofert. Odśwież oferty, żeby odczytać katalog.",
+    empty: "Jeszcze bez ofert",
     selected: "Zaznaczono: {{count}}",
     selectAll: "Zaznacz wszystkie na tej stronie",
     product: "Produkt",
@@ -140,11 +161,18 @@ const pl = {
     no_image: "Brak zdjęcia",
   },
   orders: {
+    points: {
+      medusa: "Import jako zamówienia Medusy",
+      paid: "Opłacone przez marketplace",
+      tracking: "Numery przesyłek wracają",
+    },
+    emptyFiltered: "Brak zamówień",
+    hideEvents: "Ukryj historię",
     title: "Zamówienia z marketplace",
     subtitle: "Zamówienia z InPost Von Halsky i zamówienia Medusy, które z nich powstały, opłacone przez marketplace (albo za pobraniem). Numery przesyłek z ich wysyłek wracają do marketplace.",
     search: "Id zamówienia w marketplace, numer zamówienia",
-    empty: "Nie ma jeszcze zamówień z marketplace.",
-    emptyDemo: "Nie ma jeszcze zamówień. Wystaw kilka ofert, potem Zasymuluj zamówienie.",
+    empty: "Jeszcze bez zamówień z marketplace",
+    emptyDemo: "Wystaw oferty, potem zasymuluj zamówienie",
     when: "Otrzymane",
     order: "Zamówienie",
     products: "Produkty",
@@ -185,9 +213,13 @@ const pl = {
     cod: "Za pobraniem",
   },
   log: {
+    points: {
+      newest: "Od najnowszych",
+      kept: "Przez 30 dni",
+    },
     title: "Dziennik synchronizacji",
     subtitle: "Co zrobiła wtyczka, od najnowszych, przez 30 dni.",
-    empty: "Nic jeszcze nie zapisano.",
+    empty: "Jeszcze nic",
     when: "Kiedy",
     area: "Obszar",
     message: "Wiadomość",
@@ -201,6 +233,10 @@ const pl = {
     },
   },
   pricing: {
+    points: {
+      gross: "Cena brutto z narzutem",
+      fixed: "Stała cena ma pierwszeństwo",
+    },
     title: "Cena kanału",
     subtitle: "Ceny w marketplace są brutto. Cena kanału to cena PLN z Medusy, z doliczonym VAT, gdy Medusa trzyma ceny netto, plus narzut. Stała cena na ofercie ma pierwszeństwo przed jednym i drugim.",
     markup: "Narzut (procent)",
@@ -213,6 +249,10 @@ const pl = {
     no: "nie",
   },
   orderSettings: {
+    points: {
+      where: "Kanał sprzedaży i region PLN",
+      auto: "Domyślnie automatycznie",
+    },
     title: "Importowane zamówienia",
     subtitle: "Gdzie zamówienia z marketplace trafiają w Medusie. Bez wyboru: kanał sprzedaży o nazwie \"InPost Von Halsky\", w przeciwnym razie domyślny kanał sklepu (demo: \"InPost Von Halsky (demo)\"), oraz pierwszy region w PLN.",
     channel: "Kanał sprzedaży",
@@ -224,16 +264,25 @@ const pl = {
     none: "brak",
   },
   shipping: {
+    points: {
+      option: "Opcja dostawy dla każdej dostawy",
+      locker: "Paczkomat w adresie",
+      demo: "Demo: pierwsza opcja sklepu",
+    },
     title: "Dostawa",
     subtitle: "Opcja dostawy Medusy, na którą trafia każdy rodzaj dostawy z marketplace, żeby zamówienie szło Twoją zwykłą realizacją. Bez przypisania zamówienie i tak jest importowane, a opcję wybierasz przy realizacji (demo: pierwsza opcja dostawy sklepu).",
     none: "Nie przypisano",
-    noOptions: "Sklep nie ma jeszcze opcji dostawy.",
+    noOptions: "Jeszcze bez opcji dostawy",
     hint: {
       APM: "Dostawy do Paczkomatu; numer Paczkomatu trafia do drugiej linii adresu i do danych dostawy.",
       COURIER: "Dostawy kurierem na adres kupującego.",
     },
   },
   account: {
+    points: {
+      config: "Z medusa-config.ts",
+      masked: "Token zamaskowany",
+    },
     title: "Konto w marketplace",
     subtitle: "Dane dostępowe z umowy integratora z InPost, osobno dla sandboxa i produkcji. Pochodzą z medusa-config.ts (zmienne środowiskowe), nigdy z tej strony.",
     environment: "Środowisko",
@@ -263,7 +312,7 @@ const pl = {
     point: "Paczkomat",
     payment: "Płatność",
     tracking: "Przesyłka",
-    demoNote: "Symulowane zamówienie trybu demo: nic nie zostało wysłane do marketplace.",
+    demoNote: "Demo: nic nie wysłano",
   },
   missing: {
     label: "Nieskonfigurowane",

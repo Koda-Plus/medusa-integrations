@@ -2,7 +2,7 @@ import { integrationEn } from "../../modules/stripe/lib/integration-texts"
 import { communityEn } from "../lib/stripe-kit-community"
 
 const en = {
-  loading: "Reading Stripe: payments, refunds, disputes and the balance of 30 days. The first read takes a few seconds; after that the data shows at once and new data arrives behind.",
+  loading: "Reading Stripe, 30 days",
   title: "Stripe",
   by: "by Koda Plus",
   subtitle:
@@ -21,7 +21,7 @@ const en = {
   },
   settings: {
     title: "Settings",
-    subtitle: "The options in use (read only: they live in medusa-config.ts), the checks the panel runs and the access the key needs.",
+    subtitle: "Read only, from medusa-config.ts",
     tab: {
       options: "Options",
       checks: "Checks",
@@ -84,6 +84,7 @@ const en = {
   period: {
     d7: "Last 7 days",
     d30: "Last 30 days",
+    label: "Period",
     partial: "The read stopped at the newest {{count}} payments, so the start of this period is missing (option maxPages).",
   },
   stats: {
@@ -130,7 +131,7 @@ const en = {
       declined: "Declined",
       success: "Success",
     },
-    empty: "No payments in this period.",
+    empty: "No payments in this period",
   },
   health: {
     title: "Health checks",
@@ -139,7 +140,13 @@ const en = {
     checkedAt: "Checked {{when}}",
     fix: "How to fix:",
     open: "Open",
-    allGood: "Everything checked is in order.",
+    allGood: "Everything in order",
+    loading: "Running the checks",
+    points: {
+      reads: "Reads Stripe and Medusa",
+      fix: "How to fix each one",
+      cached: "Cached with the panel",
+    },
     verdict: {
       pass: "Pass",
       warn: "Warning",
@@ -398,8 +405,8 @@ const en = {
       not_assessed: "Risk: not assessed",
       unknown: "Risk: unknown",
     },
-    empty: "No payments in this view.",
-    emptyRead: "No payments in the last 30 days.",
+    empty: "No payments in this view",
+    emptyRead: "No payments in 30 days",
   },
   disputes: {
     title: "Open disputes",
@@ -448,8 +455,8 @@ const en = {
     overdue: "Deadline passed",
     waiting: "Waiting for the bank",
     evidence: "Evidence sent",
-    none: "No open disputes.",
-    closed: "Closed in 30 days: won {{won}}, lost {{lost}}.",
+    none: "No open disputes",
+    closed: "Closed in 30 days: won {{won}}, lost {{lost}}",
   },
   /* Stripe's decline and error codes, said the same way in every language; any other code shows Stripe's own message. */
   declines: {
@@ -508,7 +515,7 @@ const en = {
       merchant_request: "Canceled at the store's request.",
       unknown: "Stripe did not give a reason.",
     },
-    none: "No refunds in the last 30 days.",
+    none: "No refunds in 30 days",
   },
   balance: {
     title: "Balance and payouts",
@@ -519,7 +526,7 @@ const en = {
     },
     available: "Available",
     pending: "Pending",
-    none: "The balance was not read.",
+    none: "Balance not read",
     upcoming: "On the way",
     past: "Recent payouts",
     col: {
@@ -539,12 +546,22 @@ const en = {
       standard: "Standard",
       instant: "Instant",
     },
-    noUpcoming: "No payout on its way.",
-    noPast: "No payouts yet.",
+    noUpcoming: "No payout on its way",
+    noPast: "No payouts yet",
   },
   options: {
     title: "Options in use",
     subtitle: "Read only. Change them in medusa-config.ts and restart.",
+    points: {
+      readOnly: "Read only",
+      config: "Set in medusa-config.ts",
+      restart: "Restart after a change",
+    },
+    readsPoints: {
+      open: "Reads only when opened",
+      cache: "Kept for cacheSeconds",
+      limit: "About 500 reads per payment",
+    },
     apiKey: "API key (apiKey)",
     demo: "Demo mode (demo)",
     providerId: "Provider entry (providerId)",
@@ -584,6 +601,10 @@ const en = {
   checksTab: {
     title: "Checks",
     subtitle: "Every check runs unless an option turns it off. A check that is off skips its read.",
+    points: {
+      on: "All on by default",
+      off: "Off means no read",
+    },
     col: {
       check: "Check",
       state: "State",
@@ -640,6 +661,12 @@ const en = {
       account: "country, currency, capabilities",
     },
     create: "Create the key in the Dashboard: Developers, API keys, Create restricted key.",
+    createPath: "Developers, API keys, Create restricted key",
+    points: {
+      get: "GET requests only",
+      restricted: "A restricted key is enough",
+      permission: "A refused read names its permission",
+    },
   },
   references: {
     title: "Running in stores built by Koda Plus",
@@ -667,7 +694,11 @@ const en = {
     title: "Stripe",
     more: "All payments",
     demo: "Sample data",
-    none: "This order was not paid with Stripe.",
+    none: "Not paid with Stripe",
+    points: {
+      readOnly: "Read only",
+      medusa: "Capture and refunds in Medusa",
+    },
     unconfigured: "Stripe by Koda Plus has no key yet, so it cannot read {{id}}.",
     notFound: "Stripe does not know {{id}} with the plugin's key: another account, or test and live mixed up.",
     forbidden: "The key may not read {{id}}: add {{permission}} to it.",
@@ -704,7 +735,7 @@ const en = {
     refresh: "Read again",
     readAt: "Read {{time}}",
     stale: "Stripe did not answer: the last read, from {{time}}.",
-    loading: "Reading Stripe...",
+    loading: "Reading Stripe",
     failed: "Could not read Stripe for this order.",
   },
   guide: {

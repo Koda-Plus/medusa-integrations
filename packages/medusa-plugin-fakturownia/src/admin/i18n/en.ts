@@ -6,6 +6,14 @@ const en = {
   by: "by Koda Plus",
   subtitle:
     "VAT invoices, proformas, receipts and corrections for your orders, issued in Fakturownia exactly once. Payment, KSeF status, e-mails and the PDF come back to the admin; nothing about the buyer is stored in Medusa.",
+  points: {
+    documents: "Invoices, proformas, receipts",
+    once: "Exactly once per order",
+    ksef: "KSeF through Fakturownia",
+    payments: "Payments come back",
+    noBuyerData: "No buyer data in Medusa",
+    demo: "Simulated account",
+  },
   view: {
     panel: "Panel",
     guide: "Setup guide",
@@ -29,6 +37,7 @@ const en = {
   },
   actions: {
     moreActions: "More actions",
+    refresh: "Refresh",
     issuePending: "Issue pending now",
     refreshStatuses: "Refresh statuses",
     running: "Running",
@@ -63,6 +72,8 @@ const en = {
     ksefProcessing: "KSeF processing",
     ksefRejected: "Rejected by KSeF",
     corrections: "Corrections to review",
+    filterHint: "Filters the documents below; click again to clear",
+    correctionsHint: "Goes to the corrections",
   },
   references: {
     title: "Running in stores built by Koda Plus",
@@ -81,7 +92,12 @@ const en = {
     title: "Writes to Fakturownia",
     subtitle:
       "What 0.2.0 can write is off until someone turns it on here, and each write can be forbidden for good in the plugin options (writers.<name>: false), which this page cannot override. Issuing documents, marking them paid and the automatic e-mail keep their own options.",
-    demo: "Demo mode: the writers write to the simulated account only.",
+    demoBadge: "Simulated account only",
+    points: {
+      offByDefault: "Off until turned on",
+      option: "An option can forbid it",
+      beta: "Beta: try on a test account",
+    },
     names: {
       corrections: "Corrections",
       emails: "E-mails",
@@ -162,13 +178,32 @@ const en = {
     channelMissing: "Sales channel {{channel}}: department {{id}} is not on this account.",
     categoryFound: "Category {{id}} found: {{name}}.",
     categoryMissing: "Category {{id}} is not on this account.",
+    points: {
+      demo: "Simulated account in the plugin",
+      header: "Token in a header",
+      masked: "Masked in logs",
+      checkReads: "The check only reads",
+    },
+    every: {
+      issue: "Documents and corrections: every 2 min",
+      payments: "Payments: every 10 min",
+      statuses: "KSeF and e-mails: every 15 min",
+      corrections: "Correction plans: every 30 min",
+    },
     schedule: "Pending documents and approved corrections every 2 minutes, payments every 10 minutes, KSeF status and waiting e-mails every 15 minutes, correction plans every 30 minutes.",
   },
   corrections: {
     title: "Corrections",
     subtitle:
       "When an order changes after its document was issued (a return, a refund, an order edit, a cancellation), the correction waits here for your decision: the positions before and after, net, VAT and gross. Approve it as shown and the correction invoice is issued once.",
-    off: "Corrections are off (corrections: \"off\" in the plugin options): a canceled order's invoice is only flagged, as in 0.1.0.",
+    offTitle: "Corrections are off",
+    offPoint: "corrections: \"off\" in the options",
+    points: {
+      changes: "Returns, refunds, edits, cancellations",
+      beforeAfter: "Positions before and after",
+      approve: "A person approves",
+      once: "Issued exactly once",
+    },
     waitingForWriter: "{{count}} approved correction(s) wait for the corrections writer. Turn it on in Settings, Writers.",
     search: "Document number or order number",
     filter: {
@@ -277,6 +312,12 @@ const en = {
     exactlyOnce:
       "One row per order and kind (corrections: one per change), refused twice by the database itself. A document is looked up in Fakturownia by its order number before it is created; a lost answer is never sent again blindly, it is looked up first.",
     openOrder: "Open order",
+    points: {
+      order: "Next to its order",
+      once: "Exactly once",
+      number: "Number opens the details",
+      history: "KSeF, e-mails, corrections",
+    },
     search: "Document number or order number",
     filter: {
       all: "All",
@@ -345,7 +386,16 @@ const en = {
       sent: "E-mailed {{time}}",
       failed: "E-mail failed",
     },
-    empty: "No documents in this view.",
+    emptyBy: {
+      all: "No documents yet",
+      pending: "Nothing waits in the queue",
+      issued: "Nothing issued yet",
+      attention: "Nothing needs attention",
+      unpaid: "Nothing unpaid",
+      ksef: "No KSeF problems",
+      corrections: "No correction documents",
+      canceled: "Nothing canceled",
+    },
   },
   drawer: {
     loading: "Loading",
@@ -424,6 +474,12 @@ const en = {
     noApi:
       "Fakturownia's API has no reminder call and no field for the text of an e-mail: a reminder e-mails the document again with the account's e-mail template, at most once a day. For reminders with their own text, use the automatic payment reminders in Fakturownia's settings.",
     reminders: "Reminders",
+    points: {
+      age_one: "Issued {{count}} day ago or earlier",
+      age: "Issued {{count}} days ago or earlier",
+      oldest: "Oldest first",
+      daily: "A reminder at most once a day",
+    },
     age_one: "{{count}} day ago",
     age: "{{count}} days ago",
     sentCount: "{{count}} sent",
@@ -439,10 +495,21 @@ const en = {
     demoTitle: "Simulated mailbox",
     demoSubtitle: "Demo mode: the e-mails that would have gone out. Nothing was sent to anybody.",
     simulated: "Simulated",
+    points: {
+      newest: "Newest first",
+      masked: "Addresses masked",
+      nothingSent: "Nothing was sent",
+    },
   },
   summary: {
     title: "Monthly summary",
     subtitle: "Documents by month of issue: how many and their gross value per currency, what is still unpaid, and the share of documents KSeF accepted.",
+    points: {
+      months: "12 months by issue date",
+      currency: "Gross per currency",
+      unpaid: "Still unpaid",
+      ksef: "Share accepted by KSeF",
+    },
     month: "Month",
     kinds: {
       vat: "VAT invoices",
@@ -487,6 +554,10 @@ const en = {
   runs: {
     title: "History",
     subtitle: "Background runs of this mode, newest first.",
+    points: {
+      background: "Background runs",
+      newest: "Newest first",
+    },
     col: {
       when: "When",
       kind: "Job",
@@ -533,9 +604,18 @@ const en = {
     failed: "Could not load the documents of this order.",
     none: "No document for this order yet.",
     notConfigured: "The plugin is not configured to issue documents yet.",
-    waiting: "The document is issued automatically: {{when}}.",
-    whenCaptured: "when the payment is captured",
-    whenPlaced: "right after the order is placed",
+    points: {
+      whenCaptured: "Issued after the payment is captured",
+      whenPlaced: "Issued right after the order",
+    },
+    state: {
+      none: "No document",
+      pending: "Pending",
+      failed: "Failed",
+      attention: "Needs attention",
+      canceled: "Canceled",
+      issued: "Issued",
+    },
     queued: "Queued. The number appears here in a few seconds.",
     correctionQueued: "Approved and queued. It goes out while the corrections writer is on.",
     nextKind: "Issue now creates: {{kind}}.",

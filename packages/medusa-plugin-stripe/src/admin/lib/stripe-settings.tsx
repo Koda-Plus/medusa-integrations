@@ -1,7 +1,9 @@
 import { useTranslation } from "react-i18next"
-import { Badge, Container, Heading, Table, Text } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, Bolt, Clock, CogSixTooth, Eye, EyeSlash, Key, ListCheckbox, MagnifyingGlass } from "@medusajs/icons"
+import { Table, Text } from "@medusajs/ui"
+import { Section, ToneBadge } from "./stripe-blocks"
 import type { CheckKey, StripeChecksResponse, StripeStatusResponse } from "../../modules/stripe/lib/contract"
-import { CodeBlock } from "./stripe-guide"
+import { CodeBlock, KeyPoints } from "./stripe-guide"
 import { ExternalLink, Fact, VerdictBadge, fmtNumber } from "./stripe-ui"
 
 /*
@@ -19,9 +21,7 @@ const CHECKS: CheckKey[] = ["provider", "key", "account", "capabilities", "webho
 function OnOff({ on }: { on: boolean }) {
   const { t } = useTranslation("stripe")
   return (
-    <Badge size="2xsmall" color={on ? "green" : "grey"}>
-      {on ? t("options.on") : t("options.off")}
-    </Badge>
+    <ToneBadge tone={on ? "green" : "grey"}>{on ? t("options.on") : t("options.off")}</ToneBadge>
   )
 }
 
@@ -34,13 +34,16 @@ export function OptionsTab({ status }: { status: StripeStatusResponse }) {
     ? [t(`options.keyKind.${k.kind}`), k.mode ? t(`options.keyMode.${k.mode}`) : null, k.last4 ? t("options.keyEnding", { last4: k.last4 }) : null].filter(Boolean).join(", ")
     : t("options.notSet")
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("options.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("options.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<CogSixTooth />}
+      title={t("options.title")}
+      pointsLabel={t("options.subtitle")}
+      points={[
+        { icon: <Eye />, text: t("options.points.readOnly"), tone: "blue" },
+        { icon: <CogSixTooth />, text: t("options.points.config") },
+        { icon: <ArrowPath />, text: t("options.points.restart") },
+      ]}
+    >
       <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-3">
         <Fact label={t("options.apiKey")}>{key}</Fact>
         <Fact label={t("options.demo")}>
@@ -73,11 +76,16 @@ export function OptionsTab({ status }: { status: StripeStatusResponse }) {
         </Fact>
       </div>
       <div className="px-6 py-4">
-        <Text size="xsmall" className="max-w-3xl text-ui-fg-muted">
-          {t("options.reads")}
-        </Text>
+        <KeyPoints
+          label={t("options.reads")}
+          items={[
+            { icon: <Eye />, text: t("options.readsPoints.open") },
+            { icon: <Clock />, text: t("options.readsPoints.cache") },
+            { icon: <Bolt />, text: t("options.readsPoints.limit") },
+          ]}
+        />
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -85,13 +93,15 @@ export function ChecksTab({ status, checks }: { status: StripeStatusResponse; ch
   const { t } = useTranslation("stripe")
   const verdictOf = (k: CheckKey) => checks?.results.find((r) => r.key === k)?.verdict
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("checksTab.title")}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {t("checksTab.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<ListCheckbox />}
+      title={t("checksTab.title")}
+      pointsLabel={t("checksTab.subtitle")}
+      points={[
+        { icon: <MagnifyingGlass />, text: t("checksTab.points.on") },
+        { icon: <EyeSlash />, text: t("checksTab.points.off") },
+      ]}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -137,7 +147,7 @@ export function ChecksTab({ status, checks }: { status: StripeStatusResponse; ch
         </Text>
         <CodeBlock code={`checks: { domains: false, deliveries: false },`} copyLabel={t("guide.copy")} copiedLabel={t("guide.copied")} />
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -146,13 +156,17 @@ const RESOURCES = ["paymentIntents", "charges", "balanceTransactions", "balance"
 export function AccessTab({ status }: { status: StripeStatusResponse }) {
   const { t } = useTranslation("stripe")
   return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-1 px-6 py-4">
-        <Heading level="h2">{t("access.title")}</Heading>
-        <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-          {t("access.subtitle")}
-        </Text>
-      </div>
+    <Section
+      icon={<Key />}
+      title={t("access.title")}
+      pointsLabel={t("access.subtitle")}
+      points={[
+        { icon: <Eye />, text: t("access.points.get"), tone: "green" },
+        { icon: <Key />, text: t("access.points.restricted") },
+        { icon: <MagnifyingGlass />, text: t("access.points.permission") },
+      ]}
+      actions={<ExternalLink href={`${status.dashboardUrl}/apikeys`}>{t("actions.openStripe")}</ExternalLink>}
+    >
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -169,9 +183,7 @@ export function AccessTab({ status }: { status: StripeStatusResponse }) {
                     <Text size="small" weight="plus">
                       {t(`access.resource.${r}`)}
                     </Text>
-                    <Badge size="2xsmall" color="green">
-                      {t("access.read")}
-                    </Badge>
+                    <ToneBadge tone="green">{t("access.read")}</ToneBadge>
                   </span>
                 </Table.Cell>
                 <Table.Cell>
@@ -184,12 +196,9 @@ export function AccessTab({ status }: { status: StripeStatusResponse }) {
           </Table.Body>
         </Table>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("access.create")}
-        </Text>
-        <ExternalLink href={`${status.dashboardUrl}/apikeys`}>{t("actions.openStripe")}</ExternalLink>
+      <div className="px-6 py-4">
+        <KeyPoints label={t("access.create")} items={[{ icon: <ArrowUpRightOnBox />, text: t("access.createPath") }]} />
       </div>
-    </Container>
+    </Section>
   )
 }

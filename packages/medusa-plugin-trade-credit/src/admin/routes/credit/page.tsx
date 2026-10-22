@@ -1,18 +1,19 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightMini, ArrowUpRightOnBox, Buildings, Calendar, Cash, CheckCircle, Clock, CreditCard, EnvelopeSolid, EyeSlash, LockClosedSolid, MagnifyingGlass, PauseSolid, PlaySolid, Plus, Receipt, XMark } from "@medusajs/icons"
-import { Badge, Button, Container, Drawer, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightMini, ArrowUpRightOnBox, Buildings, Calendar, Cash, CheckCircle, Clock, CreditCard, DocumentText, EnvelopeSolid, EyeSlash, LockClosedSolid, LockOpenSolid, MagnifyingGlass, PauseSolid, PencilSquare, PlaySolid, Plus, Receipt, Users, XMark } from "@medusajs/icons"
+import { Button, Container, Drawer, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/credit-kit"
 import { KitOrderProductsCell, useKitOrderProducts } from "../../lib/credit-order-products"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/credit-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/credit-guide"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/credit-blocks"
 import { GuideView, usePromptSpec } from "../../lib/credit-guide-view"
 import { OptionsTab, SETTINGS_TABS, StoreTab, type SettingsTabId } from "../../lib/credit-settings"
 import { errorMessage, useCreditStatus, useCustomerSearch, useHideOrder, useReminderPreview, useSendReminder, useSetLimit, useUpdateLimit, type FoundCustomer } from "../../lib/credit-api"
 import { CreditIcon } from "../../lib/credit-icon"
 import { StoreRule } from "../../lib/credit-rule"
-import { EmptyLine, SampleBadge, fmtMoney } from "../../lib/credit-ui"
+import { SampleBadge, fmtMoney } from "../../lib/credit-ui"
 import type { CreditOrderDto, LimitDto, StatusResponse } from "../../../modules/credit/lib/contract"
 
 /* The host of the koda.integration/1 cards learns about this plugin. */
@@ -31,35 +32,6 @@ type Tab = "accounts" | "orders"
 type OrderFilter = "all" | "overdue" | "no_due"
 type AccountFilter = "all" | "overdue" | "exhausted"
 
-function Tile({ label, value, hint, tone = "default", active, onClick }: { label: string; value: string; hint?: string; tone?: "default" | "red" | "orange" | "green" | "blue"; active?: boolean; onClick?: () => void }) {
-  const dot = { default: "bg-ui-tag-neutral-icon", red: "bg-ui-tag-red-icon", orange: "bg-ui-tag-orange-icon", green: "bg-ui-tag-green-icon", blue: "bg-ui-tag-blue-icon" }[tone]
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clx(
-        "flex flex-col gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        active ? "border-ui-border-interactive bg-ui-bg-base shadow-borders-interactive-with-active" : "border-ui-border-base bg-ui-bg-subtle hover:bg-ui-bg-base-hover",
-      )}
-    >
-      <span className="flex items-center gap-x-2">
-        <span className={clx("size-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums">
-        {value}
-      </Text>
-      {hint ? (
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {hint}
-        </Text>
-      ) : null}
-    </button>
-  )
-}
-
 /* How much of the limit is used, as a bar. */
 function UsageBar({ used, limit }: { used: number; limit: number }) {
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
@@ -69,6 +41,9 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
     </div>
   )
 }
+
+const ORDER_FILTERS: OrderFilter[] = ["overdue", "no_due"]
+const ACCOUNT_FILTERS: AccountFilter[] = ["overdue", "exhausted"]
 
 const CreditPage = () => {
   const { t, i18n } = useTranslation("credit")
@@ -86,36 +61,48 @@ const CreditPage = () => {
   const s = status.data
   const store = s?.mode === "store"
   const choices = s?.netDayChoices?.length ? s.netDayChoices : DEFAULT_CHOICES
-  /* Deep links (the E-mails log, a customer card): ?order_id= opens the order on credit, ?customer_id= the account. */
+  /*
+   * Deep links: ?order_id= opens the order on credit, ?customer_id= the account
+   * (the E-mails log, a customer card); ?filter= (overdue, no_due, exhausted)
+   * and ?q= as on every Koda Plus list.
+   */
   const [params] = useSearchParams()
   const askedOrder = (params.get("order_id") ?? "").slice(0, 80)
   const askedCustomer = (params.get("customer_id") ?? "").slice(0, 80)
-  const [tab, setTab] = useState<Tab>(askedOrder ? "orders" : "accounts")
-  const [accountFilter, setAccountFilter] = useState<AccountFilter>("all")
-  const [orderFilter, setOrderFilter] = useState<OrderFilter>("all")
-  const [q, setQ] = useState(askedOrder || askedCustomer)
+  const askedFilter = params.get("filter") ?? ""
+  const [tab, setTab] = useState<Tab>(askedOrder || (ORDER_FILTERS as string[]).includes(askedFilter) ? "orders" : "accounts")
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>(askedFilter === "exhausted" ? "exhausted" : "all")
+  const [orderFilter, setOrderFilter] = useState<OrderFilter>((ORDER_FILTERS as string[]).includes(askedFilter) ? (askedFilter as OrderFilter) : "all")
+  const [q, setQ] = useState((params.get("q") ?? "").slice(0, 80) || askedOrder || askedCustomer)
   const [editing, setEditing] = useState<string | null>(null)
   const money = (n: number | null | undefined) => fmtMoney(n ?? 0, "pln", lang)
   const names = useMemo(() => new Map((s?.limits ?? []).map((l) => [l.customer_id, l.company || l.customer_name || l.customer_email || l.customer_id])), [s?.limits])
 
   const needle = q.trim().toLowerCase()
-  const accounts = (s?.limits ?? []).filter((l) => {
-    if (accountFilter === "overdue" && !(l.overdue_amount ?? 0)) return false
-    if (accountFilter === "exhausted" && !l.exhausted) return false
+  const allLimits = s?.limits ?? []
+  const allOrders = s?.orders ?? []
+  const accountMatches = (l: LimitDto, f: AccountFilter) => (f === "overdue" ? (l.overdue_amount ?? 0) > 0 : f === "exhausted" ? Boolean(l.exhausted) : true)
+  const orderMatches = (o: CreditOrderDto, f: OrderFilter) => (f === "overdue" ? o.state === "overdue" : f === "no_due" ? Boolean(o.no_due_date) : true)
+  const accounts = allLimits.filter((l) => {
+    if (!accountMatches(l, accountFilter)) return false
     if (!needle) return true
     return [l.customer_id, l.customer_name, l.customer_email, l.company].some((x) => (x ?? "").toLowerCase().includes(needle))
   })
-  const orders = (s?.orders ?? []).filter((o) => {
-    if (orderFilter === "overdue" && o.state !== "overdue") return false
-    if (orderFilter === "no_due" && !o.no_due_date) return false
+  const orders = allOrders.filter((o) => {
+    if (!orderMatches(o, orderFilter)) return false
     if (!needle) return true
     return [o.order_id, o.customer_id, String(o.display_id ?? ""), o.document ?? "", names.get(o.customer_id) ?? ""].some((x) => x.toLowerCase().includes(needle))
   })
-  const overdueOrders = (s?.orders ?? []).filter((o) => o.state === "overdue").length
+  const overdueOrders = allOrders.filter((o) => o.state === "overdue").length
   const showAccounts = (f: AccountFilter) => {
     setTab("accounts")
     setAccountFilter((cur) => (cur === f && f !== "all" ? "all" : f))
   }
+  const showOrders = (f: OrderFilter) => {
+    setTab("orders")
+    setOrderFilter((cur) => (cur === f && f !== "all" ? "all" : f))
+  }
+  const filtered = Boolean(needle) || (tab === "accounts" ? accountFilter !== "all" : orderFilter !== "all")
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -123,7 +110,6 @@ const CreditPage = () => {
         <IntegrationHeader
           icon={<CreditIcon width={28} height={28} />}
           title={t("title")}
-          by={t("by")}
           badges={
             s?.demo || store ? (
               <>
@@ -184,19 +170,28 @@ const CreditPage = () => {
         ) : null}
         {view === "panel" && !s && status.isLoading ? <KitLoading label={t("ui.loading")} /> : null}
         {view === "panel" && s ? (
-          <div className="grid grid-cols-2 gap-3 px-6 py-4 md:grid-cols-4">
-            <Tile label={t("ui.tiles.accounts")} value={String(s.counts.limits)} hint={t("ui.tiles.accountsHint")} tone="blue" active={tab === "accounts" && accountFilter === "all"} onClick={() => showAccounts("all")} />
-            <Tile label={t("stats.used")} value={money(s.counts.used_total)} hint={t("ui.tiles.usedHint", { count: (s.orders ?? []).length })} onClick={() => { setTab("orders"); setOrderFilter("all") }} active={tab === "orders" && orderFilter === "all"} />
-            <Tile
+          <StatTiles columns={4}>
+            <StatTile icon={<Users />} label={t("ui.tiles.accounts")} value={String(s.counts.limits)} hint={t("ui.tiles.accountsHint")} active={tab === "accounts" && accountFilter === "all"} onClick={() => showAccounts("all")} />
+            <StatTile icon={<Receipt />} label={t("stats.used")} value={money(s.counts.used_total)} hint={t("ui.tiles.usedHint", { count: allOrders.length })} active={tab === "orders" && orderFilter === "all"} onClick={() => showOrders("all")} />
+            <StatTile
+              icon={<Clock />}
               label={t("ui.tiles.overdue")}
               value={store ? money(s.counts.overdue_total ?? 0) : String(s.counts.overdue)}
               hint={t("ui.tiles.overdueHint", { count: overdueOrders })}
-              tone={overdueOrders > 0 ? "red" : "default"}
+              tone={overdueOrders > 0 ? "red" : "grey"}
               active={tab === "orders" && orderFilter === "overdue"}
-              onClick={() => { setTab("orders"); setOrderFilter((cur) => (cur === "overdue" ? "all" : "overdue")) }}
+              onClick={() => showOrders("overdue")}
             />
-            <Tile label={t("ui.tiles.exhausted")} value={String(s.counts.exhausted)} hint={t("ui.tiles.exhaustedHint")} tone={s.counts.exhausted > 0 ? "orange" : "default"} active={tab === "accounts" && accountFilter === "exhausted"} onClick={() => showAccounts("exhausted")} />
-          </div>
+            <StatTile
+              icon={<LockClosedSolid />}
+              label={t("ui.tiles.exhausted")}
+              value={String(s.counts.exhausted)}
+              hint={t("ui.tiles.exhaustedHint")}
+              tone={s.counts.exhausted > 0 ? "orange" : "grey"}
+              active={tab === "accounts" && accountFilter === "exhausted"}
+              onClick={() => showAccounts("exhausted")}
+            />
+          </StatTiles>
         ) : null}
         {view === "panel" && (s?.ruleText || s?.rulePoints?.length) ? (
           <div className="px-6 py-3">
@@ -205,7 +200,7 @@ const CreditPage = () => {
         ) : null}
       </Container>
 
-      {view === "guide" ? <GuideView /> : null}
+      {view === "guide" ? <GuideView status={s} /> : null}
 
       {view === "settings" && s ? (
         <SettingsView
@@ -227,57 +222,60 @@ const CreditPage = () => {
       {view === "panel" && s ? (
         <>
           <SetTermsCard status={s} choices={choices} />
-          <Container className="divide-y p-0">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
-              <div className="flex items-center gap-1 rounded-md bg-ui-bg-subtle p-0.5">
-                {(["accounts", "orders"] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setTab(k)}
-                    className={clx("rounded-md px-2.5 py-1 transition-fg", tab === k ? "bg-ui-bg-base txt-compact-small-plus text-ui-fg-base shadow-elevation-card-rest" : "txt-compact-small text-ui-fg-subtle hover:bg-ui-bg-base-hover")}
-                  >
-                    {k === "accounts" ? t("ui.tabs.accounts", { count: s.limits.length }) : t("ui.tabs.orders", { count: s.orders.length })}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {tab === "orders" ? (
-                  <div className="flex items-center gap-1">
-                    {(["all", "overdue", "no_due"] as const).map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => setOrderFilter(f)}
-                        className={clx("txt-compact-small rounded-full border px-2.5 py-0.5", orderFilter === f ? "border-ui-border-interactive text-ui-fg-interactive" : "border-ui-border-base text-ui-fg-subtle hover:bg-ui-bg-base-hover")}
-                      >
-                        {t(`ui.orderFilter.${f}`)}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    {(["all", "overdue", "exhausted"] as const).map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => setAccountFilter(f)}
-                        className={clx("txt-compact-small rounded-full border px-2.5 py-0.5", accountFilter === f ? "border-ui-border-interactive text-ui-fg-interactive" : "border-ui-border-base text-ui-fg-subtle hover:bg-ui-bg-base-hover")}
-                      >
-                        {t(`ui.accountFilter.${f}`)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <Input size="small" type="search" className="w-60" placeholder={t("ui.search")} value={q} onChange={(e) => setQ(e.target.value)} />
-              </div>
-            </div>
+          <Section
+            id="credit-list"
+            icon={tab === "accounts" ? <Users /> : <Receipt />}
+            title={tab === "accounts" ? t("ui.list.accountsTitle") : t("ui.list.ordersTitle")}
+            pointsLabel={tab === "accounts" ? t("limits.subtitle") : t("orders.subtitle")}
+            points={
+              tab === "accounts"
+                ? [
+                    { icon: <CreditCard />, text: t("ui.list.accountsPoints.usage") },
+                    { icon: <Clock />, text: t("ui.list.accountsPoints.overdue") },
+                    { icon: <PencilSquare />, text: t("ui.list.accountsPoints.edit") },
+                  ]
+                : [
+                    { icon: <Calendar />, text: t("ui.list.ordersPoints.due") },
+                    { icon: <Clock />, text: t("ui.list.ordersPoints.daily") },
+                    s.reminders?.send ? { icon: <EnvelopeSolid />, text: t("ui.list.ordersPoints.reminders") } : null,
+                  ]
+            }
+            actions={<SearchInput value={q} onChange={setQ} placeholder={tab === "accounts" ? t("ui.searchAccounts") : t("ui.searchOrders")} />}
+          >
+            <FilterBar>
+              <FilterButton icon={<Users />} label={t("ui.tabs.accounts")} count={allLimits.length} active={tab === "accounts"} onClick={() => setTab("accounts")} />
+              <FilterButton icon={<Receipt />} label={t("ui.tabs.orders")} count={allOrders.length} active={tab === "orders"} onClick={() => setTab("orders")} />
+              <FilterDivider />
+              {tab === "accounts"
+                ? ACCOUNT_FILTERS.map((f) => (
+                    <FilterButton
+                      key={f}
+                      icon={f === "overdue" ? <Clock /> : <LockClosedSolid />}
+                      label={t(`ui.accountFilter.${f}`)}
+                      count={allLimits.filter((l) => accountMatches(l, f)).length}
+                      attention
+                      active={accountFilter === f}
+                      onClick={() => showAccounts(f)}
+                    />
+                  ))
+                : ORDER_FILTERS.map((f) => (
+                    <FilterButton
+                      key={f}
+                      icon={f === "overdue" ? <Clock /> : <DocumentText />}
+                      label={t(`ui.orderFilter.${f}`)}
+                      count={allOrders.filter((o) => orderMatches(o, f)).length}
+                      attention={f === "overdue"}
+                      active={orderFilter === f}
+                      onClick={() => showOrders(f)}
+                    />
+                  ))}
+            </FilterBar>
             {tab === "accounts" ? (
-              <AccountsTable rows={accounts} status={s} choices={choices} editing={editing} setEditing={setEditing} money={money} loading={status.isLoading} />
+              <AccountsTable rows={accounts} status={s} choices={choices} editing={editing} setEditing={setEditing} money={money} loading={status.isLoading} filtered={filtered} />
             ) : (
-              <OrdersTable rows={orders} names={names} status={s} money={money} lang={lang} />
+              <OrdersTable rows={orders} names={names} status={s} money={money} lang={lang} filtered={filtered} />
             )}
-          </Container>
+          </Section>
         </>
       ) : null}
     </div>
@@ -305,27 +303,25 @@ function SetTermsCard({ status, choices }: { status: StatusResponse; choices: nu
     }
   }
   return (
-    <Container id="credit-set" className="scroll-mt-4 divide-y p-0">
-      <div className="px-6 py-4">
-        <Heading level="h2">{t("set.title")}</Heading>
-        <KeyPoints
-          className="mt-1"
-          label={status.mode === "store" ? t("ui.setSubtitleStore") : t("set.subtitle")}
-          items={
-            status.mode === "store"
-              ? [
-                  { icon: <MagnifyingGlass />, text: t("ui.setPointsStore.pick") },
-                  { icon: <CreditCard />, text: t("ui.setPointsStore.terms") },
-                  { icon: <CheckCircle />, text: t("ui.setPointsStore.checkout"), tone: "green" },
-                ]
-              : [
-                  { icon: <MagnifyingGlass />, text: t("set.points.pick") },
-                  { icon: <CreditCard />, text: t("set.points.terms") },
-                  { icon: <Cash />, text: t("set.points.none") },
-                ]
-          }
-        />
-      </div>
+    <Section
+      id="credit-set"
+      icon={<Plus />}
+      title={t("set.title")}
+      pointsLabel={status.mode === "store" ? t("ui.setSubtitleStore") : t("set.subtitle")}
+      points={
+        status.mode === "store"
+          ? [
+              { icon: <MagnifyingGlass />, text: t("ui.setPointsStore.pick") },
+              { icon: <CreditCard />, text: t("ui.setPointsStore.terms") },
+              { icon: <CheckCircle />, text: t("ui.setPointsStore.checkout"), tone: "green" },
+            ]
+          : [
+              { icon: <MagnifyingGlass />, text: t("set.points.pick") },
+              { icon: <CreditCard />, text: t("set.points.terms") },
+              { icon: <Cash />, text: t("set.points.none") },
+            ]
+      }
+    >
       <div className="grid grid-cols-1 gap-3 px-6 py-4 md:grid-cols-[minmax(0,1.4fr)_10rem_10rem_auto] md:items-end">
         <div className="flex flex-col gap-y-1">
           <Label size="small">{t("set.customer")}</Label>
@@ -339,13 +335,13 @@ function SetTermsCard({ status, choices }: { status: StatusResponse; choices: nu
                   {picked.sub}
                 </Text>
               ) : null}
-              <IconButton size="2xsmall" variant="transparent" onClick={() => setPicked(null)}>
+              <IconButton size="2xsmall" variant="transparent" className="ml-auto" title={t("set.clear")} aria-label={t("set.clear")} onClick={() => setPicked(null)}>
                 <XMark />
               </IconButton>
             </div>
           ) : (
             <div className="relative">
-              <Input size="small" type="search" placeholder={t("set.customerPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} />
+              <SearchInput value={query} onChange={setQuery} placeholder={t("set.customerPlaceholder")} className="sm:w-full" />
               {(search.data ?? []).length ? (
                 <div className="absolute z-10 mt-1 w-full rounded-md border border-ui-border-base bg-ui-bg-base shadow-elevation-flyout">
                   {(search.data ?? []).map((c) => (
@@ -387,15 +383,16 @@ function SetTermsCard({ status, choices }: { status: StatusResponse; choices: nu
           {t("set.save")}
         </Button>
       </div>
-    </Container>
+    </Section>
   )
 }
 
-function AccountsTable({ rows, status, choices, editing, setEditing, money, loading }: { rows: LimitDto[]; status: StatusResponse; choices: number[]; editing: string | null; setEditing: (id: string | null) => void; money: (n: number | null | undefined) => string; loading: boolean }) {
+function AccountsTable({ rows, status, choices, editing, setEditing, money, loading, filtered }: { rows: LimitDto[]; status: StatusResponse; choices: number[]; editing: string | null; setEditing: (id: string | null) => void; money: (n: number | null | undefined) => string; loading: boolean; filtered: boolean }) {
   const { t } = useTranslation("credit")
   const update = useUpdateLimit()
   const [draft, setDraft] = useState<{ amount: string; net: string }>({ amount: "", net: "0" })
   const caps = status.capabilities ?? { block: true, pause: true }
+  const busy = (l: LimitDto) => update.isPending && update.variables?.id === l.id
   const save = async (l: LimitDto) => {
     try {
       await update.mutateAsync({ id: l.id, body: { limit_amount: Number(draft.amount), net_days: Number(draft.net) } })
@@ -490,12 +487,16 @@ function AccountsTable({ rows, status, choices, editing, setEditing, money, load
             </Table.Cell>
             <Table.Cell>
               <div className="flex flex-wrap gap-1">
-                {l.blocked ? <Badge size="2xsmall" className="whitespace-nowrap" color="red">{t("limits.blocked")}</Badge> : null}
-                {l.status === "paused" ? <Badge size="2xsmall" className="whitespace-nowrap" color="grey">{t("limits.paused")}</Badge> : null}
-                {(l.overdue_amount ?? 0) > 0 ? <Badge size="2xsmall" className="whitespace-nowrap" color="red">{t("ui.badgeOverdue")}</Badge> : null}
-                {l.exhausted ? <Badge size="2xsmall" className="whitespace-nowrap" color="orange">{t("limits.exhausted")}</Badge> : null}
-                {!l.blocked && l.status !== "paused" && !l.exhausted && !(l.overdue_amount ?? 0) ? <Badge size="2xsmall" className="whitespace-nowrap" color="green">{t("limits.active")}</Badge> : null}
-                {l.no_limit && l.net_days > 0 ? <Badge size="2xsmall" className="whitespace-nowrap" color="orange" title={t("ui.noLimitHint")}>{t("ui.noLimit")}</Badge> : null}
+                {l.blocked ? <ToneBadge tone="red">{t("limits.blocked")}</ToneBadge> : null}
+                {l.status === "paused" ? <ToneBadge tone="grey">{t("limits.paused")}</ToneBadge> : null}
+                {(l.overdue_amount ?? 0) > 0 ? <ToneBadge tone="red">{t("ui.badgeOverdue")}</ToneBadge> : null}
+                {l.exhausted ? <ToneBadge tone="orange">{t("limits.exhausted")}</ToneBadge> : null}
+                {!l.blocked && l.status !== "paused" && !l.exhausted && !(l.overdue_amount ?? 0) ? <ToneBadge tone="green">{t("limits.active")}</ToneBadge> : null}
+                {l.no_limit && l.net_days > 0 ? (
+                  <ToneBadge tone="blue" title={t("ui.noLimitHint")}>
+                    {t("ui.noLimit")}
+                  </ToneBadge>
+                ) : null}
               </div>
             </Table.Cell>
             <Table.Cell className="text-right">
@@ -509,51 +510,55 @@ function AccountsTable({ rows, status, choices, editing, setEditing, money, load
                   </Button>
                 </div>
               ) : (
-                <div className="flex justify-end gap-1">
-                  {caps.pause ? (
-                    <IconButton size="small" variant="transparent" title={t("limits.pause")} onClick={() => void toggle(l, { status: l.status === "paused" ? "active" : "paused" })}>
-                      {l.status === "paused" ? <PlaySolid /> : <PauseSolid />}
-                    </IconButton>
-                  ) : null}
-                  {caps.block ? (
-                    <Button size="small" variant="transparent" onClick={() => void toggle(l, { blocked: !l.blocked })}>
-                      {t("limits.block")}
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="small"
-                    variant="secondary"
-                    onClick={() => {
-                      setDraft({ amount: String(l.no_limit ? "" : l.limit_amount), net: String(l.net_days) })
-                      setEditing(l.id)
-                    }}
-                  >
-                    {t("limits.edit")}
-                  </Button>
-                </div>
+                <RowActions
+                  actions={[
+                    {
+                      key: "edit",
+                      label: t("limits.edit"),
+                      icon: <PencilSquare />,
+                      onClick: () => {
+                        setDraft({ amount: String(l.no_limit ? "" : l.limit_amount), net: String(l.net_days) })
+                        setEditing(l.id)
+                      },
+                    },
+                    {
+                      key: "pause",
+                      label: l.status === "paused" ? t("limits.resume") : t("limits.pauseOne"),
+                      icon: l.status === "paused" ? <PlaySolid /> : <PauseSolid />,
+                      hidden: !caps.pause,
+                      disabled: busy(l),
+                      onClick: () => void toggle(l, { status: l.status === "paused" ? "active" : "paused" }),
+                    },
+                    {
+                      key: "block",
+                      label: l.blocked ? t("limits.unblock") : t("limits.blockOne"),
+                      icon: l.blocked ? <LockOpenSolid /> : <LockClosedSolid />,
+                      danger: !l.blocked,
+                      hidden: !caps.block,
+                      disabled: busy(l),
+                      onClick: () => void toggle(l, { blocked: !l.blocked }),
+                    },
+                  ]}
+                />
               )}
             </Table.Cell>
           </Table.Row>
         ))}
-        {!loading && rows.length === 0 ? (
-          <Table.Row>
-            <td colSpan={6}>
-              <EmptyLine>{t("limits.empty")}</EmptyLine>
-            </td>
-          </Table.Row>
-        ) : null}
+        {!loading && rows.length === 0 ? <EmptyTableRow cols={6} icon={<Users />} title={filtered ? t("ui.emptyFiltered") : t("limits.empty")} /> : null}
       </Table.Body>
     </Table>
   )
 }
 
-function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDto[]; names: Map<string, string>; status: StatusResponse; money: (n: number | null | undefined) => string; lang: string }) {
+function OrdersTable({ rows, names, status, money, lang, filtered }: { rows: CreditOrderDto[]; names: Map<string, string>; status: StatusResponse; money: (n: number | null | undefined) => string; lang: string; filtered: boolean }) {
   const { t } = useTranslation("credit")
+  const navigate = useNavigate()
   const date = (iso: string | null | undefined) => (iso ? new Intl.DateTimeFormat(lang.startsWith("pl") ? "pl-PL" : "en-GB", { dateStyle: "medium" }).format(new Date(iso)) : "")
   const withReminders = rows.some((o) => o.reminders !== undefined)
   const [reminding, setReminding] = useState<CreditOrderDto | null>(null)
   const cols = withReminders ? 8 : 7
   const products = useKitOrderProducts(rows.map((o) => o.order_id))
+  const hide = useHideOrderAction()
   return (
     <>
     <Table>
@@ -600,11 +605,9 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
             </Table.Cell>
             <Table.Cell>
               {o.no_due_date ? (
-                <span title={t("ui.noDueHint")}>
-                  <Badge size="2xsmall" className="whitespace-nowrap" color="grey">
-                    {t("ui.noDue")}
-                  </Badge>
-                </span>
+                <ToneBadge tone="grey" title={t("ui.noDueHint")}>
+                  {t("ui.noDue")}
+                </ToneBadge>
               ) : (
                 <Text size="small">{date(o.due_at)}</Text>
               )}
@@ -616,39 +619,47 @@ function OrdersTable({ rows, names, status, money, lang }: { rows: CreditOrderDt
             </Table.Cell>
             <Table.Cell>
               {o.state === "overdue" ? (
-                <Badge size="2xsmall" className="whitespace-nowrap" color="red">
-                  {o.overdue_days ? t("ui.daysLate", { days: o.overdue_days }) : t("orders.state.overdue")}
-                </Badge>
+                <ToneBadge tone="red">{o.overdue_days ? t("ui.daysLate", { days: o.overdue_days }) : t("orders.state.overdue")}</ToneBadge>
               ) : (
-                <Badge size="2xsmall" className="whitespace-nowrap" color={o.no_due_date ? "grey" : "blue"}>
-                  {t("orders.state.open")}
-                </Badge>
+                <ToneBadge tone={o.no_due_date ? "grey" : "blue"}>{t("orders.state.open")}</ToneBadge>
               )}
             </Table.Cell>
             {withReminders ? (
               <Table.Cell>
-                <RemindersCell order={o} status={status} date={date} onRemind={() => setReminding(o)} />
+                <RemindersCell order={o} status={status} date={date} />
               </Table.Cell>
             ) : null}
             <Table.Cell className="text-right">
-              <div className="flex flex-col items-end gap-y-1">
-                {status.markPaidPath ? (
-                  <Link to={status.markPaidPath.replace(":id", o.order_id)} className="txt-compact-small text-ui-fg-interactive hover:underline" title={t("ui.markPaidHint")}>
-                    {t("ui.markPaid")}
-                  </Link>
-                ) : null}
-                {status.canHideOrder ? <HideOrderButton order={o} /> : null}
-              </div>
+              <RowActions
+                actions={[
+                  {
+                    key: "remind",
+                    label: t("ui.remind"),
+                    icon: <EnvelopeSolid />,
+                    hidden: !(status.reminders?.send && !o.no_due_date && !o.reminders_note),
+                    onClick: () => setReminding(o),
+                  },
+                  {
+                    key: "settle",
+                    label: t("ui.markPaidHint"),
+                    icon: <Cash />,
+                    hidden: !status.markPaidPath,
+                    onClick: () => navigate((status.markPaidPath ?? "").replace(":id", o.order_id)),
+                  },
+                  {
+                    key: "hide",
+                    label: t("ui.hide.hint"),
+                    icon: <EyeSlash />,
+                    hidden: !status.canHideOrder,
+                    loading: hide.pendingFor === o.order_id,
+                    onClick: () => void hide.run(o),
+                  },
+                ]}
+              />
             </Table.Cell>
           </Table.Row>
         ))}
-        {rows.length === 0 ? (
-          <Table.Row>
-            <td colSpan={cols}>
-              <EmptyLine>{t("orders.empty")}</EmptyLine>
-            </td>
-          </Table.Row>
-        ) : null}
+        {rows.length === 0 ? <EmptyTableRow cols={cols} icon={<Receipt />} title={filtered ? t("ui.emptyFiltered") : t("orders.empty")} /> : null}
       </Table.Body>
     </Table>
     {reminding ? <ReminderDrawer order={reminding} onClose={() => setReminding(null)} /> : null}
@@ -702,11 +713,11 @@ function OrderCell({ order, status }: { order: CreditOrderDto; status: StatusRes
 }
 
 /* A test order off the page for good: the store marks it (nothing is deleted), after a confirmation. */
-function HideOrderButton({ order }: { order: CreditOrderDto }) {
+function useHideOrderAction(): { run: (order: CreditOrderDto) => Promise<void>; pendingFor: string | null } {
   const { t } = useTranslation("credit")
   const prompt = usePrompt()
   const hide = useHideOrder()
-  const run = async () => {
+  const run = async (order: CreditOrderDto) => {
     const ok = await prompt({ title: t("ui.hide.title", { id: order.display_id ?? "?" }), description: t("ui.hide.text"), confirmText: t("ui.hide.confirm"), cancelText: t("ui.preview.cancel") })
     if (!ok) return
     try {
@@ -716,16 +727,11 @@ function HideOrderButton({ order }: { order: CreditOrderDto }) {
       toast.error(t("toast.error", { error: errorMessage(err) }))
     }
   }
-  return (
-    <Button size="small" variant="transparent" className="px-1 text-ui-fg-muted" isLoading={hide.isPending} onClick={() => void run()} title={t("ui.hide.hint")}>
-      <EyeSlash />
-      {t("ui.hide.button")}
-    </Button>
-  )
+  return { run, pendingFor: hide.isPending ? (hide.variables ?? null) : null }
 }
 
 /* The reminders of an order: what went (stage, date, by hand or not), the next one, a link to the e-mail log and the send button. */
-function RemindersCell({ order, status, date, onRemind }: { order: CreditOrderDto; status: StatusResponse; date: (iso: string | null | undefined) => string; onRemind: () => void }) {
+function RemindersCell({ order, status, date }: { order: CreditOrderDto; status: StatusResponse; date: (iso: string | null | undefined) => string }) {
   const { t } = useTranslation("credit")
   const [open, setOpen] = useState(false)
   const list = order.reminders ?? []
@@ -795,12 +801,6 @@ function RemindersCell({ order, status, date, onRemind }: { order: CreditOrderDt
             <ArrowUpRightMini />
           </Link>
         ) : null}
-        {status.reminders?.send && !order.no_due_date && !order.reminders_note ? (
-          <Button size="small" variant="transparent" className="px-1" onClick={onRemind}>
-            <EnvelopeSolid />
-            {t("ui.remind")}
-          </Button>
-        ) : null}
       </span>
     </div>
   )
@@ -861,9 +861,7 @@ function ReminderDrawer({ order, onClose }: { order: CreditOrderDto; onClose: ()
                   {t("ui.preview.stage")}
                 </Text>
                 <span>
-                  <Badge size="2xsmall" className="whitespace-nowrap" color="orange">
-                    {p.stage}
-                  </Badge>
+                  <ToneBadge tone="orange">{p.stage}</ToneBadge>
                 </span>
               </div>
               <iframe title={p.subject} sandbox="" srcDoc={p.html} className="h-[60vh] w-full rounded-md border border-ui-border-base bg-white" />

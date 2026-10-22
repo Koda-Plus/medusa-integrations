@@ -1,12 +1,22 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Button, Container, Drawer, Heading, InlineTip, Input, Label, Table, Text, Textarea, toast } from "@medusajs/ui"
+import { ArchiveBox, ArrowUturnLeft, Beaker, CheckCircle, CheckCircleSolid, Clock, DocumentText, Eye, ListBullet, PencilSquare, ShieldCheck, XCircle } from "@medusajs/icons"
+import { Button, Drawer, InlineTip, Input, Label, Table, Text, Textarea, toast } from "@medusajs/ui"
 import type { CorrectionPlanDto, PlanFilter, StatusResponse, WriterDto } from "../../modules/fakturownia/lib/contract"
 import { errorMessage, useFakturowniaCorrections, useFakturowniaPlanAction } from "./fakturownia-api"
-import { DocumentStatusBadge, FilterPills, KindBadge, PlanStatusBadge, StoreOrderCell, WriterBadge, fmtDateTime, fmtDelta, fmtMoney, fmtQuantity } from "./fakturownia-ui"
+import { EmptyState, FilterBar, FilterButton, FilterDivider, Section, SearchInput, ToneBadge, useDebouncedValue } from "./fakturownia-blocks"
+import { KitLoading } from "./fakturownia-kit"
+import { DocumentStatusBadge, KindBadge, PlanStatusBadge, StoreOrderCell, WriterBadge, fmtDateTime, fmtDelta, fmtMoney, fmtQuantity } from "./fakturownia-ui"
 
 const PAGE = 10
-const FILTERS: PlanFilter[] = ["open", "approved", "issued", "closed", "all"]
+
+const FILTER_ICON: Record<PlanFilter, ReactNode> = {
+  all: <ListBullet />,
+  open: <Clock />,
+  approved: <CheckCircle />,
+  issued: <DocumentText />,
+  closed: <ArchiveBox />,
+}
 
 /**
  * CORRECTIONS: what changed after a document was issued (a return, a
@@ -35,84 +45,84 @@ export function CorrectionsSection({
     if (focus) section.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [focus])
   const [search, setSearch] = useState("")
-  const [q, setQ] = useState("")
+  const q = useDebouncedValue(search.trim())
   const [page, setPage] = useState(0)
-  useEffect(() => {
-    const id = window.setTimeout(() => setQ(search.trim()), 300)
-    return () => window.clearTimeout(id)
-  }, [search])
   useEffect(() => setPage(0), [filter, q])
   const plans = useFakturowniaCorrections(filter, q, page * PAGE, PAGE, false)
   const rows = plans.data?.plans ?? []
   const count = plans.data?.count ?? 0
   const writer = status.writers.corrections
   const off = status.options.corrections === "off"
-  const counts: Partial<Record<PlanFilter, number>> = { open: status.counts.correctionsOpen, approved: status.counts.correctionsApproved, issued: status.counts.correctionsIssued }
+  const c = status.counts
+  /* A second click on the active filter clears it (back to all plans). */
+  const pick = (f: PlanFilter) => setFilter(filter === f && f !== "all" ? "all" : f)
+  const button = (f: PlanFilter, count?: number, attention?: boolean) => (
+    <FilterButton key={f} icon={FILTER_ICON[f]} label={t(`corrections.filter.${f}`)} count={count} attention={attention} active={filter === f} onClick={() => pick(f)} />
+  )
 
   return (
-    <Container className="divide-y p-0" ref={section}>
-      <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex max-w-3xl flex-col gap-1">
-          <Heading level="h2">{t("corrections.title")}</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("corrections.subtitle")}
-          </Text>
-        </div>
-        <span className="flex items-center gap-x-2">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {t("writers.names.corrections")}
-          </Text>
-          <WriterBadge writer={writer} />
-        </span>
-      </div>
-      {off ? (
-        <div className="px-6 py-4">
-          <InlineTip variant="info" label={t("corrections.title")}>
-            {t("corrections.off")}
-          </InlineTip>
-        </div>
-      ) : (
-        <>
-          {!writer.armed && status.counts.correctionsApproved > 0 ? (
-            <div className="px-6 py-4">
-              <InlineTip variant="warning" label={t("writers.names.corrections")}>
-                {t("corrections.waitingForWriter", { count: status.counts.correctionsApproved })}
-              </InlineTip>
+    <div ref={section} className="scroll-mt-4">
+      <Section
+        id="fakturownia-corrections"
+        icon={<ArrowUturnLeft />}
+        title={t("corrections.title")}
+        badges={<WriterBadge writer={writer} label={t("writers.names.corrections")} />}
+        pointsLabel={t("corrections.subtitle")}
+        points={[
+          { icon: <ArrowUturnLeft />, text: t("corrections.points.changes") },
+          { icon: <Eye />, text: t("corrections.points.beforeAfter") },
+          { icon: <CheckCircle />, text: t("corrections.points.approve") },
+          { icon: <ShieldCheck />, text: t("corrections.points.once"), tone: "green" },
+        ]}
+        actions={off ? null : <SearchInput value={search} onChange={setSearch} placeholder={t("corrections.search")} />}
+      >
+        {off ? (
+          <EmptyState icon={<XCircle />} title={t("corrections.offTitle")} points={[{ icon: <PencilSquare />, text: t("corrections.offPoint") }]} />
+        ) : (
+          <>
+            <FilterBar>
+              {button("all")}
+              <FilterDivider />
+              {button("open", c.correctionsOpen, true)}
+              {button("approved", c.correctionsApproved)}
+              {button("issued", c.correctionsIssued)}
+              {button("closed")}
+            </FilterBar>
+            {!writer.armed && c.correctionsApproved > 0 ? (
+              <div className="px-6 py-4">
+                <InlineTip variant="warning" label={t("writers.names.corrections")}>
+                  {t("corrections.waitingForWriter", { count: c.correctionsApproved })}
+                </InlineTip>
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-y-3 px-6 py-4">
+              {plans.isLoading ? (
+                <KitLoading />
+              ) : rows.length === 0 ? (
+                <EmptyState compact icon={filter === "open" ? <CheckCircleSolid /> : FILTER_ICON[filter]} title={t(`corrections.empty.${filter}`)} />
+              ) : (
+                rows.map((p) => <PlanCard key={p.id} plan={p} lang={lang} writer={writer} onOpenDocument={onOpenDocument} />)
+              )}
             </div>
-          ) : null}
-          <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-            <FilterPills<PlanFilter> value={filter} onChange={setFilter} options={FILTERS.map((f) => ({ value: f, label: t(`corrections.filter.${f}`), count: counts[f] }))} />
-            <div className="w-full lg:w-72">
-              <Input size="small" type="search" placeholder={t("corrections.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-y-3 px-6 py-4">
-            {rows.length === 0 ? (
-              <Text size="small" className="py-4 text-center text-ui-fg-muted">
-                {plans.isLoading ? "" : t(`corrections.empty.${filter}`)}
-              </Text>
-            ) : (
-              rows.map((p) => <PlanCard key={p.id} plan={p} lang={lang} writer={writer} onOpenDocument={onOpenDocument} />)
-            )}
-          </div>
-          {count > PAGE ? (
-            <div className="flex items-center justify-between px-6 py-3">
-              <Text size="xsmall" className="text-ui-fg-muted">
-                {t("corrections.page", { from: page * PAGE + 1, to: Math.min(count, (page + 1) * PAGE), count })}
-              </Text>
-              <span className="flex gap-2">
-                <Button size="small" variant="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>
-                  {t("pagination.prev")}
-                </Button>
-                <Button size="small" variant="secondary" disabled={(page + 1) * PAGE >= count} onClick={() => setPage(page + 1)}>
-                  {t("pagination.next")}
-                </Button>
-              </span>
-            </div>
-          ) : null}
-        </>
-      )}
-    </Container>
+            {count > PAGE ? (
+              <div className="flex items-center justify-between px-6 py-3">
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  {t("corrections.page", { from: page * PAGE + 1, to: Math.min(count, (page + 1) * PAGE), count })}
+                </Text>
+                <span className="flex gap-2">
+                  <Button size="small" variant="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>
+                    {t("pagination.prev")}
+                  </Button>
+                  <Button size="small" variant="secondary" disabled={(page + 1) * PAGE >= count} onClick={() => setPage(page + 1)}>
+                    {t("pagination.next")}
+                  </Button>
+                </span>
+              </div>
+            ) : null}
+          </>
+        )}
+      </Section>
+    </div>
   )
 }
 
@@ -146,9 +156,7 @@ export function PlanCard({
             <KindBadge kind={plan.documentKind} />
             <span className="txt-compact-small font-mono">{plan.documentNumber ?? ""}</span>
             {plan.simulated ? (
-              <Badge size="2xsmall" color="purple">
-                {t("corrections.simulated")}
-              </Badge>
+              <ToneBadge tone="blue" icon={<Beaker />}>{t("corrections.simulated")}</ToneBadge>
             ) : null}
           </span>
         </span>
@@ -157,9 +165,7 @@ export function PlanCard({
 
       <div className="flex flex-wrap items-center gap-2">
         {plan.reasons.map((r) => (
-          <Badge key={r} size="2xsmall" color="grey">
-            {t(`corrections.reasons.${r}`)}
-          </Badge>
+          <ToneBadge key={r} tone="grey">{t(`corrections.reasons.${r}`)}</ToneBadge>
         ))}
         {plan.sources
           .filter((s) => s.type !== "demo")
@@ -289,6 +295,7 @@ export function PlanCard({
           ) : null}
           {onOpenDocument ? (
             <Button size="small" variant="transparent" onClick={() => onOpenDocument(plan.correction?.id ?? "")}>
+              <Eye />
               {t("corrections.openDocument")}
             </Button>
           ) : null}
@@ -307,16 +314,19 @@ export function PlanCard({
         <div className="flex flex-wrap justify-end gap-2">
           {plan.actions.dismiss ? (
             <Button size="small" variant="secondary" onClick={() => setClosing("dismiss")}>
+              <XCircle />
               {t("corrections.dismiss")}
             </Button>
           ) : null}
           {plan.actions.done ? (
             <Button size="small" variant="secondary" onClick={() => setClosing("done")}>
+              <CheckCircle />
               {t("corrections.markDone")}
             </Button>
           ) : null}
           {plan.actions.approve ? (
             <Button size="small" variant="primary" onClick={() => setApproving(true)}>
+              <CheckCircleSolid />
               {t("corrections.approve")}
             </Button>
           ) : null}

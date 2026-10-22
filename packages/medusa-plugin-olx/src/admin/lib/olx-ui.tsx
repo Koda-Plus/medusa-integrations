@@ -1,4 +1,4 @@
-import { Badge, StatusBadge, Text, clx } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
 import type {
   OlxAdvertDto,
@@ -12,6 +12,7 @@ import type {
 } from "../../modules/olx/lib/contract"
 import { pickText } from "../../modules/olx/lib/references"
 import type { Reference } from "./olx-guide"
+import { ToneBadge, type Tone } from "./olx-blocks"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -103,7 +104,8 @@ export function MedusaMark({ className }: { className?: string }) {
 /* Badges                                                              */
 /* ------------------------------------------------------------------ */
 
-const GROUP_COLOR: Record<OlxStatusGroup, "green" | "orange" | "grey"> = {
+/* The kit palette: green ok, orange a look, red an error, blue information, grey neutral. Purple never paints a state. */
+const GROUP_TONE: Record<OlxStatusGroup, Tone> = {
   live: "green",
   limited: "orange",
   ended: "grey",
@@ -113,29 +115,25 @@ const GROUP_COLOR: Record<OlxStatusGroup, "green" | "orange" | "grey"> = {
 export function AdvertStatus({ advert }: { advert: Pick<OlxAdvertDto, "status" | "statusGroup"> }) {
   const { t } = useTranslation("olx")
   return (
-    <span title={advert.status}>
-      <StatusBadge color={GROUP_COLOR[advert.statusGroup]}>{t(`status.${advert.statusGroup}`)}</StatusBadge>
-    </span>
+    <ToneBadge tone={GROUP_TONE[advert.statusGroup]} dot title={advert.status}>
+      {t(`status.${advert.statusGroup}`)}
+    </ToneBadge>
   )
 }
 
-export const ALERT_COLOR: Record<OlxAlertKind, "red" | "orange" | "blue" | "purple"> = {
+export const ALERT_TONE: Record<OlxAlertKind, Tone> = {
   live_sold_out: "red",
   live_unpublished: "orange",
-  stock_not_live: "blue",
-  stock_not_listed: "purple",
+  stock_not_live: "orange",
+  stock_not_listed: "blue",
 }
 
 export function AlertBadge({ kind }: { kind: OlxAlertKind }) {
   const { t } = useTranslation("olx")
-  return (
-    <Badge size="2xsmall" color={ALERT_COLOR[kind]}>
-      {t(`alerts.kind.${kind}`)}
-    </Badge>
-  )
+  return <ToneBadge tone={ALERT_TONE[kind]}>{t(`alerts.kind.${kind}`)}</ToneBadge>
 }
 
-const PLAN_COLOR: Record<OlxPlanState, "green" | "orange" | "red" | "grey" | "blue" | "purple"> = {
+const PLAN_TONE: Record<OlxPlanState, Tone> = {
   idle: "grey",
   pending: "blue",
   held: "orange",
@@ -143,27 +141,27 @@ const PLAN_COLOR: Record<OlxPlanState, "green" | "orange" | "red" | "grey" | "bl
   done: "green",
   failed: "orange",
   quarantined: "red",
-  unknown: "purple",
+  unknown: "orange",
 }
 
 export function PlanStateBadge({ state }: { state: OlxPlanState }) {
   const { t } = useTranslation("olx")
-  return <StatusBadge color={PLAN_COLOR[state]}>{t(`plan.state.${state}`)}</StatusBadge>
+  return <ToneBadge tone={PLAN_TONE[state]}>{t(`plan.state.${state}`)}</ToneBadge>
 }
 
-const PUBLICATION_COLOR: Record<OlxPublicationState, "green" | "orange" | "red" | "grey" | "blue" | "purple"> = {
+const PUBLICATION_TONE: Record<OlxPublicationState, Tone> = {
   planned: "blue",
   blocked: "orange",
   publishing: "blue",
   published: "green",
   failed: "orange",
   quarantined: "red",
-  unknown: "purple",
+  unknown: "orange",
 }
 
 export function PublicationStateBadge({ state }: { state: OlxPublicationState }) {
   const { t } = useTranslation("olx")
-  return <StatusBadge color={PUBLICATION_COLOR[state]}>{t(`publish.state.${state}`)}</StatusBadge>
+  return <ToneBadge tone={PUBLICATION_TONE[state]}>{t(`publish.state.${state}`)}</ToneBadge>
 }
 
 export const WRITER_OPTION: Record<OlxWriterKey, string> = {
@@ -193,93 +191,5 @@ export function ProblemList({ problems, tone = "error" }: { problems: OlxProblem
         </li>
       ))}
     </ul>
-  )
-}
-
-export function KeyCell({ advert }: { advert: OlxAdvertDto }) {
-  const { t } = useTranslation("olx")
-  if (!advert.matchKey) {
-    return (
-      <Text size="small" className="text-ui-fg-muted">
-        {t("adverts.noKey")}
-      </Text>
-    )
-  }
-  return (
-    <div className="flex flex-col items-start gap-y-1">
-      <span className="font-mono text-ui-fg-base txt-compact-small">{advert.matchKey}</span>
-      <Badge size="2xsmall" color={advert.matchSource === "external_id" ? "blue" : "purple"}>
-        {advert.matchSource === "external_id" ? t("adverts.keyExternal") : t("adverts.keyDescription")}
-      </Badge>
-    </div>
-  )
-}
-
-export function StatTile({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-}: {
-  label: string
-  value: number | string
-  tone?: "default" | "green" | "orange" | "red" | "blue" | "purple"
-  active?: boolean
-  onClick?: () => void
-}) {
-  const dot =
-    tone === "green"
-      ? "bg-ui-tag-green-icon"
-      : tone === "orange"
-        ? "bg-ui-tag-orange-icon"
-        : tone === "red"
-          ? "bg-ui-tag-red-icon"
-          : tone === "blue"
-            ? "bg-ui-tag-blue-icon"
-            : tone === "purple"
-              ? "bg-ui-tag-purple-icon"
-              : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "hover:bg-ui-bg-component-hover cursor-pointer" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-    </button>
-  )
-}
-
-/** A filter chip with a count, the same look as the advert filters. */
-export function Chip({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clx(
-        "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg",
-        active
-          ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color"
-          : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-      )}
-    >
-      {label}
-      {count !== undefined ? <span className="tabular-nums opacity-80">{count}</span> : null}
-    </button>
   )
 }

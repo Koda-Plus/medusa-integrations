@@ -1,13 +1,12 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowUpRightMini, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Copy, StatusBadge, Text, clx } from "@medusajs/ui"
+import { ArchiveBox, ArrowUpRightMini, ArrowUpRightOnBox, Cash, TruckFast } from "@medusajs/icons"
+import { Copy, Text, clx } from "@medusajs/ui"
 import type { ParcelDto, ParcelEventDto, ProblemDto, ReferenceDto, ShipmentStage, StatusResponse } from "../../modules/inpost/lib/contract"
 import { pickText } from "../../modules/inpost/lib/references"
+import { ToneBadge, type Tone } from "./inpost-blocks"
 import { nb, type Reference } from "./inpost-guide"
-
-type Tone = "green" | "orange" | "red" | "grey" | "blue" | "purple"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -73,10 +72,10 @@ export function kitReferences(refs: ReferenceDto[], lang: string): Reference[] {
 /** The mode of the module in one word, for the header badge. */
 export function modeOf(s: StatusResponse | undefined): { key: string; tone: Tone } {
   if (!s) return { key: "unknown", tone: "grey" }
-  if (s.mode === "demo") return { key: "demo", tone: "purple" }
+  if (s.mode === "demo") return { key: "demo", tone: "blue" }
   if (!s.configured) return { key: "notConfigured", tone: "orange" }
   if (s.lastCheck && !s.lastCheck.ok) return { key: "error", tone: "red" }
-  if (s.sandbox) return { key: "sandbox", tone: "blue" }
+  if (s.sandbox) return { key: "sandbox", tone: "orange" }
   return { key: "live", tone: "green" }
 }
 
@@ -96,7 +95,7 @@ const STAGE_TONE: Record<ShipmentStage, Tone> = {
   preparing: "blue",
   ready: "orange",
   in_transit: "blue",
-  in_locker: "purple",
+  in_locker: "blue",
   delivered: "green",
   problem: "red",
   returned: "red",
@@ -154,13 +153,13 @@ export function ParcelStatus({ parcel }: { parcel: Pick<ParcelDto, "state" | "st
   const { t } = useTranslation("inpost")
   const statusName = useStatusName()
   if (parcel.state !== "created" || !parcel.status) {
-    return <StatusBadge color={STATE_TONE[parcel.state] ?? "grey"}>{t(`state.${parcel.state}`)}</StatusBadge>
+    return <ToneBadge tone={STATE_TONE[parcel.state] ?? "grey"}>{t(`state.${parcel.state}`)}</ToneBadge>
   }
   const tone = parcel.status === "offers_prepared" ? "orange" : STAGE_TONE[parcel.stage ?? "in_transit"]
   return (
-    <span title={parcel.status}>
-      <StatusBadge color={tone}>{parcel.status === "offers_prepared" ? t("parcels.awaitingPayment") : statusName(parcel.status)}</StatusBadge>
-    </span>
+    <ToneBadge tone={tone} title={parcel.status}>
+      {parcel.status === "offers_prepared" ? t("parcels.awaitingPayment") : statusName(parcel.status)}
+    </ToneBadge>
   )
 }
 
@@ -169,19 +168,13 @@ export function KindBadges({ parcel }: { parcel: Pick<ParcelDto, "kind" | "cod" 
   const { t } = useTranslation("inpost")
   return (
     <span className="flex flex-wrap items-center gap-1">
-      <Badge size="2xsmall" color={parcel.kind === "locker" ? "orange" : "blue"}>
-        {t(`kind.${parcel.kind}`)}
-      </Badge>
+      <ToneBadge icon={parcel.kind === "locker" ? <ArchiveBox /> : <TruckFast />}>{t(`kind.${parcel.kind}`)}</ToneBadge>
       {parcel.cod ? (
-        <Badge size="2xsmall" color="purple">
+        <ToneBadge tone="blue" icon={<Cash />}>
           {t("kind.cod")}
-        </Badge>
+        </ToneBadge>
       ) : null}
-      {parcel.size ? (
-        <Badge size="2xsmall" color="grey">
-          {t(`size.letter.${parcel.size}`)}
-        </Badge>
-      ) : null}
+      {parcel.size ? <ToneBadge title={t(`size.long.${parcel.size}`)}>{t(`size.letter.${parcel.size}`)}</ToneBadge> : null}
     </span>
   )
 }
@@ -245,73 +238,6 @@ export function ProblemList({ items, tone = "error", kind = "problem" }: { items
         )
       })}
     </ul>
-  )
-}
-
-export function StatTile({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-}: {
-  label: string
-  value: ReactNode
-  tone?: "default" | "green" | "orange" | "red" | "blue" | "purple"
-  active?: boolean
-  onClick?: () => void
-}) {
-  const dot =
-    tone === "green"
-      ? "bg-ui-tag-green-icon"
-      : tone === "orange"
-        ? "bg-ui-tag-orange-icon"
-        : tone === "red"
-          ? "bg-ui-tag-red-icon"
-          : tone === "blue"
-            ? "bg-ui-tag-blue-icon"
-            : tone === "purple"
-              ? "bg-ui-tag-purple-icon"
-              : "bg-ui-fg-muted"
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={clx(
-        "flex h-full flex-col items-start justify-between gap-y-1 rounded-lg border px-4 py-3 text-left transition-fg",
-        "border-ui-border-base bg-ui-bg-component",
-        onClick ? "cursor-pointer hover:bg-ui-bg-component-hover" : "cursor-default",
-        active && "border-ui-border-interactive shadow-borders-interactive-with-active",
-      )}
-    >
-      <span className="flex items-center gap-x-1.5">
-        <span className={clx("h-1.5 w-1.5 rounded-full", dot)} />
-        <Text size="xsmall" className="text-ui-fg-subtle">
-          {label}
-        </Text>
-      </span>
-      <Text size="xlarge" weight="plus" className="tabular-nums text-ui-fg-base">
-        {value}
-      </Text>
-    </button>
-  )
-}
-
-/** A filter chip with a count. */
-export function Chip({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clx(
-        "txt-compact-small-plus inline-flex items-center gap-x-1.5 rounded-full border px-3 py-1 transition-fg",
-        active ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color" : "border-ui-border-base bg-ui-bg-component text-ui-fg-subtle hover:bg-ui-bg-component-hover",
-      )}
-    >
-      {label}
-      {count !== undefined ? <span className="tabular-nums opacity-80">{count}</span> : null}
-    </button>
   )
 }
 

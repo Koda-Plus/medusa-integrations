@@ -1,8 +1,33 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { Fragment, useEffect, useState, type ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowLongRight, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, InlineTip, Input, Table, Text, toast, usePrompt } from "@medusajs/ui"
+import {
+  ArrowDownTray,
+  ArrowLongRight,
+  ArrowPath,
+  ArrowUpRightOnBox,
+  ArrowUturnLeft,
+  Beaker,
+  BuildingStorefront,
+  CheckCircle,
+  Clock,
+  CloudArrowDown,
+  DocumentText,
+  ExclamationCircle,
+  BellAlert,
+  Eye,
+  EyeSlash,
+  ListBullet,
+  LockClosedSolid,
+  LockOpenSolid,
+  PencilSquare,
+  Receipt,
+  Plus,
+  ShieldCheck,
+  ShoppingCart,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, Table, Text, toast, usePrompt } from "@medusajs/ui"
 import type {
   ImportFilter,
   InvoiceRowStatus,
@@ -25,9 +50,10 @@ import {
   useBaseLinkerRelease,
   useBaseLinkerReturns,
 } from "./baselinker-api"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, ToneBadge, useDebouncedValue } from "./baselinker-blocks"
 import { References } from "./baselinker-guide"
+import { KitFetchingBar, KitSkeletonRows } from "./baselinker-kit"
 import {
-  FilterPills,
   ImportStatusBadge,
   InvoiceStatusBadge,
   MedusaColumn,
@@ -36,11 +62,13 @@ import {
   PlanStatusBadge,
   RunStatusBadge,
   StoreOrderCell,
+  Thumb,
   fmtDateTime,
   fmtMoney,
   fmtNumber,
   fmtRating,
   kitReferences,
+  useProductThumbs,
 } from "./baselinker-ui"
 
 /*
@@ -48,7 +76,7 @@ import {
  * writers and their arm switches, the plans of the writers, the marketplace
  * orders imported from BaseLinker, returns and invoice numbers, plus the demo
  * note of the mode badge and the stores running the integration. Shared
- * table pieces (pagination, empty row, debounced search) live here too.
+ * table pieces (pagination, table body states, debounced search) live here too.
  */
 
 export const PAGE_SIZE = 15
@@ -77,13 +105,23 @@ export function Pagination({ count, page, onPage }: { count: number; page: numbe
   )
 }
 
+/** The search of a list after a pause in typing, trimmed (the kit's debounce). */
 export function useDebounced(value: string, ms = 300): string {
-  const [out, setOut] = useState(value)
-  useEffect(() => {
-    const id = window.setTimeout(() => setOut(value.trim()), ms)
-    return () => window.clearTimeout(id)
-  }, [value, ms])
-  return out
+  return useDebouncedValue(value, ms).trim()
+}
+
+/** A filter button that clears itself on a second click: back to `all`. */
+export function toggleFilter<T extends string>(current: T, next: T, all: T): T {
+  return current === next && next !== all ? all : next
+}
+
+/**
+ * What a table body shows when it has no rows: skeleton rows on the first
+ * read, then the empty state with its icon and phrase. Never "nothing" before
+ * the data came.
+ */
+export function TableBodyState({ cols, loading, icon, title }: { cols: number; loading: boolean; icon: ReactNode; title: string }) {
+  return loading ? <KitSkeletonRows cols={cols} rows={5} /> : <EmptyTableRow cols={cols} icon={icon} title={title} />
 }
 
 /** Sections of the page a link can open: the Panel lists and the plans of Settings. */
@@ -106,34 +144,6 @@ export function useDeepLink(section: DeepSection): { filter: string | null; q: s
 /** One of the allowed values, or the fallback. */
 export function pick<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
   return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
-}
-
-export function EmptyRow({ cols, text }: { cols: number; text: string }) {
-  return (
-    <Table.Row>
-      <td colSpan={cols} className="px-6 py-6 text-center">
-        <Text size="small" className="text-ui-fg-muted">
-          {text}
-        </Text>
-      </td>
-    </Table.Row>
-  )
-}
-
-function SectionHead({ title, subtitle, right }: { title: string; subtitle?: ReactNode; right?: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-start md:justify-between">
-      <div className="flex min-w-0 flex-col gap-1">
-        <Heading level="h2">{title}</Heading>
-        {subtitle ? (
-          <Text size="small" className="max-w-3xl text-ui-fg-subtle">
-            {subtitle}
-          </Text>
-        ) : null}
-      </div>
-      {right ? <div className="flex shrink-0 flex-wrap items-center gap-2">{right}</div> : null}
-    </div>
-  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -173,13 +183,9 @@ export function ReferencesBlock({ status, lang }: { status: StatusResponse; lang
 function Flow({ from, to }: { from: string; to: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <Badge size="2xsmall" color="grey">
-        {from}
-      </Badge>
+      <ToneBadge tone="grey">{from}</ToneBadge>
       <ArrowLongRight className="text-ui-fg-muted" />
-      <Badge size="2xsmall" color="blue">
-        {to}
-      </Badge>
+      <ToneBadge tone="blue">{to}</ToneBadge>
     </span>
   )
 }
@@ -230,9 +236,7 @@ export function WriterControl({ writer, lang, max }: { writer: WriterDto; lang: 
         <Text size="small" weight="plus">
           {name}
         </Text>
-        <Badge size="2xsmall" color={tone}>
-          {label}
-        </Badge>
+        <ToneBadge tone={tone}>{label}</ToneBadge>
       </div>
       {writer.armedBy === "options" ? (
         <Text size="xsmall" className="text-ui-fg-muted">
@@ -282,11 +286,7 @@ export function DirectionsSection({ status, lang }: { status: StatusResponse; la
     }
   }
 
-  const readOnly = (
-    <Badge size="2xsmall" color="grey">
-      {t("directions.readOnly")}
-    </Badge>
-  )
+  const readOnly = <ToneBadge tone="grey">{t("directions.readOnly")}</ToneBadge>
   const rows: Array<{ key: string; label: string; flow: ReactNode; how: string; writer: ReactNode }> = [
     {
       key: "catalog",
@@ -324,11 +324,7 @@ export function DirectionsSection({ status, lang }: { status: StatusResponse; la
       label: t("directions.rows.ordersOut"),
       flow: <Flow from={M} to={B} />,
       how: status.options.exportOrders ? t("directions.how.ordersOutOn") : t("directions.how.ordersOutOff"),
-      writer: (
-        <Badge size="2xsmall" color={status.options.exportOrders ? "green" : "grey"}>
-          {status.options.exportOrders ? t("directions.fixed") : t("connection.ordersOff")}
-        </Badge>
-      ),
+      writer: <ToneBadge tone={status.options.exportOrders ? "green" : "grey"}>{status.options.exportOrders ? t("directions.fixed") : t("connection.ordersOff")}</ToneBadge>,
     },
     {
       key: "ordersIn",
@@ -361,42 +357,31 @@ export function DirectionsSection({ status, lang }: { status: StatusResponse; la
   ]
 
   return (
-    <Container className="divide-y p-0">
-      <SectionHead title={t("directions.title")} subtitle={t("directions.subtitle")} />
+    <Section
+      icon={<ArrowLongRight />}
+      title={t("directions.title")}
+      pointsLabel={t("directions.subtitle")}
+      points={[
+        { icon: <ShieldCheck />, text: t("directions.points.owner") },
+        { icon: <LockClosedSolid />, text: t("directions.points.armed"), tone: "green" },
+        { icon: <DocumentText />, text: t("directions.points.plan") },
+        d.switchable && { icon: <Beaker />, text: t("directions.points.demo"), tone: "blue", title: t("directions.demoNote") },
+      ]}
+    >
       {d.switchable ? (
-        <div className="flex flex-col gap-3 px-6 py-4">
-          <InlineTip variant="info" label={t("demo.label")}>
-            {t("directions.demoNote")}
-          </InlineTip>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <div className="flex items-center gap-2">
-              <Text size="small" className="text-ui-fg-subtle">
-                {t("directions.pickCatalog")}
-              </Text>
-              <FilterPills<"medusa" | "baselinker">
-                value={d.catalog}
-                onChange={(v) => void pick({ catalog: v })}
-                options={[
-                  { value: "medusa", label: M },
-                  { value: "baselinker", label: B },
-                ]}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Text size="small" className="text-ui-fg-subtle">
-                {t("directions.pickStock")}
-              </Text>
-              <FilterPills<"medusa" | "baselinker">
-                value={d.stock}
-                onChange={(v) => void pick({ stock: v })}
-                options={[
-                  { value: "baselinker", label: B },
-                  { value: "medusa", label: M },
-                ]}
-              />
-            </div>
-          </div>
-        </div>
+        <FilterBar>
+          <Text size="small" className="text-ui-fg-subtle">
+            {t("directions.pickCatalog")}
+          </Text>
+          <FilterButton icon={<BuildingStorefront />} label={M} active={d.catalog === "medusa"} disabled={switchDirections.isPending} onClick={() => void pick({ catalog: "medusa" })} />
+          <FilterButton icon={<CloudArrowDown />} label={B} active={d.catalog === "baselinker"} disabled={switchDirections.isPending} onClick={() => void pick({ catalog: "baselinker" })} />
+          <FilterDivider />
+          <Text size="small" className="text-ui-fg-subtle">
+            {t("directions.pickStock")}
+          </Text>
+          <FilterButton icon={<CloudArrowDown />} label={B} active={d.stock === "baselinker"} disabled={switchDirections.isPending} onClick={() => void pick({ stock: "baselinker" })} />
+          <FilterButton icon={<BuildingStorefront />} label={M} active={d.stock === "medusa"} disabled={switchDirections.isPending} onClick={() => void pick({ stock: "medusa" })} />
+        </FilterBar>
       ) : null}
       <div className="overflow-x-auto">
         <Table>
@@ -428,7 +413,7 @@ export function DirectionsSection({ status, lang }: { status: StatusResponse; la
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -437,6 +422,31 @@ export function DirectionsSection({ status, lang }: { status: StatusResponse; la
 /* ------------------------------------------------------------------ */
 
 const PLAN_FILTERS: PlanFilter[] = ["all", "changes", "create", "update", "draft", "conflict", "skip", "failed", "quarantined"]
+
+const PLAN_FILTER_ICON: Record<PlanFilter, ReactNode> = {
+  all: <ListBullet />,
+  changes: <PencilSquare />,
+  create: <Plus />,
+  update: <ArrowPath />,
+  draft: <EyeSlash />,
+  conflict: <ExclamationCircle />,
+  skip: <XCircle />,
+  failed: <XCircle />,
+  quarantined: <LockClosedSolid />,
+}
+
+/** Things a person has to look at: their count turns orange. */
+const PLAN_ATTENTION: ReadonlySet<PlanFilter> = new Set(["conflict", "failed", "quarantined"])
+
+function PlanFilterButton({ f, divider, count, active, onClick }: { f: PlanFilter; divider: boolean; count: number | undefined; active: boolean; onClick: () => void }) {
+  const { t } = useTranslation("baselinker")
+  return (
+    <>
+      {divider ? <FilterDivider /> : null}
+      <FilterButton icon={PLAN_FILTER_ICON[f]} label={t(`plans.filter.${f}`)} count={count} attention={PLAN_ATTENTION.has(f)} active={active} onClick={onClick} />
+    </>
+  )
+}
 
 function ChangeLine({ change, lang }: { change: PlanChange; lang: string }) {
   const { t } = useTranslation("baselinker")
@@ -477,7 +487,9 @@ export function PlanSection({ kind, status, lang }: { kind: PlanKind; status: St
   const demo = status.mode === "demo"
   const max =
     kind === "prices" ? status.more.maxPriceChangesPerRun : kind === "stock_push" ? status.options.maxStockChangesPerRun : status.more.maxCatalogChangesPerRun
-  const modeText = writer && !writer.active ? t("plans.mode.off") : writer?.live ? (demo ? t("plans.mode.demo") : t("plans.mode.write", { max })) : t("plans.mode.plan")
+  const modeKey = writer && !writer.active ? "off" : writer?.live ? (demo ? "demo" : "write") : "plan"
+  const modeText = modeKey === "write" ? t("plans.mode.write", { max }) : t(`plans.mode.${modeKey}`)
+  const thumbs = useProductThumbs(rows.map((r) => r.productId))
 
   const onRelease = async (id: string) => {
     try {
@@ -511,43 +523,40 @@ export function PlanSection({ kind, status, lang }: { kind: PlanKind; status: St
     }
   }
 
+  const shown = PLAN_FILTERS.filter((f) => f === "all" || f === "changes" || f === filter || (count(f) ?? 0) > 0)
   return (
-    <Container className="divide-y p-0">
-      <SectionHead
-        title={t(`plans.kinds.${kind}.title`)}
-        subtitle={t(`plans.kinds.${kind}.subtitle`)}
-        right={run ? <RunStatusBadge status={run.status} /> : null}
-      />
-      <div className="flex flex-col gap-y-2 px-6 py-4">
-        <InlineTip variant={writer?.live && !demo ? "warning" : "info"} label={writer ? t(`directions.writers.${writer.key}`) : t(`plans.kinds.${kind}.title`)}>
-          {modeText}
-        </InlineTip>
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {run
-            ? `${t("plans.plannedAt", { time: fmtDateTime(run.startedAt, lang) })}. ${t("plans.summary", {
-                create: summary.create,
-                update: summary.update,
-                conflict: summary.conflict,
-                skip: summary.skip,
-              })}`
-            : t("plans.never")}
-        </Text>
-        {run?.status === "error" || run?.counts?.skipped ? (
+    <Section
+      icon={<DocumentText />}
+      title={t(`plans.kinds.${kind}.title`)}
+      badges={run ? <RunStatusBadge status={run.status} /> : null}
+      pointsLabel={t(`plans.kinds.${kind}.subtitle`)}
+      points={[
+        {
+          icon: modeKey === "write" ? <LockOpenSolid /> : <LockClosedSolid />,
+          text: modeKey === "write" ? t("plans.modeShort.write", { max }) : t(`plans.modeShort.${modeKey}`),
+          tone: modeKey === "write" ? "orange" : modeKey === "demo" ? "blue" : "grey",
+          title: modeText,
+        },
+        run ? { icon: <Clock />, text: t("plans.plannedAt", { time: fmtDateTime(run.startedAt, lang) }) } : { icon: <Clock />, text: t("plans.never") },
+        run && { icon: <PencilSquare />, text: t("plans.summaryShort", { create: summary.create, update: summary.update }) },
+        run && summary.conflict > 0 && { icon: <ExclamationCircle />, text: t("plans.conflictsShort", { count: summary.conflict }), tone: "red" },
+        kind === "catalog_import" && { icon: <ShieldCheck />, text: t("plans.noDelete"), tone: "green" },
+      ]}
+      description={
+        run?.status === "error" || run?.counts?.skipped ? (
           <Text size="xsmall" className="text-ui-tag-orange-text">
             {run.message}
           </Text>
-        ) : null}
-      </div>
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<PlanFilter>
-          value={filter}
-          onChange={setFilter}
-          options={PLAN_FILTERS.filter((f) => f === "all" || f === "changes" || (count(f) ?? 0) > 0).map((f) => ({ value: f, label: t(`plans.filter.${f}`), count: count(f) }))}
-        />
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("plans.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+        ) : undefined
+      }
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("plans.search")} />}
+    >
+      <FilterBar>
+        {shown.map((f, i) => (
+          <PlanFilterButton key={f} f={f} divider={i === 2} count={count(f)} active={filter === f} onClick={() => setFilter(toggleFilter(filter, f, "changes"))} />
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={plans.isFetching && !plans.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -556,27 +565,31 @@ export function PlanSection({ kind, status, lang }: { kind: PlanKind; status: St
               <Table.HeaderCell>{t("plans.col.action")}</Table.HeaderCell>
               <Table.HeaderCell>{t("plans.col.changes")}</Table.HeaderCell>
               <Table.HeaderCell>{t("plans.col.status")}</Table.HeaderCell>
+              <Table.HeaderCell />
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={4} text={plans.isLoading ? "" : run ? t("plans.empty") : t("plans.never")} />
+              <TableBodyState cols={5} loading={plans.isLoading} icon={<DocumentText />} title={run ? t("plans.empty") : t("plans.never")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5 [&_td]:align-top">
-                  <Table.Cell className="max-w-[300px]">
-                    <div className="flex flex-col gap-y-0.5">
-                      {r.productId ? (
-                        <Link to={`/products/${r.productId}`} className="txt-compact-small-plus truncate text-ui-fg-base hover:text-ui-fg-interactive">
-                          {r.label ?? r.itemKey}
-                        </Link>
-                      ) : (
-                        <span className="txt-compact-small-plus truncate text-ui-fg-base">{r.label ?? r.itemKey}</span>
-                      )}
-                      <span className="flex flex-wrap gap-x-2 font-mono text-ui-fg-muted txt-compact-xsmall">
-                        {r.sku ? <span>{r.sku}</span> : null}
-                        {r.blProductId ? <span>#{r.blProductId}</span> : null}
-                      </span>
+                  <Table.Cell className="max-w-[320px]">
+                    <div className="flex items-start gap-x-2.5">
+                      {r.productId ? <Thumb src={thumbs[r.productId]} /> : null}
+                      <div className="flex min-w-0 flex-col gap-y-0.5">
+                        {r.productId ? (
+                          <Link to={`/products/${r.productId}`} className="txt-compact-small-plus truncate text-ui-fg-base hover:text-ui-fg-interactive">
+                            {r.label ?? r.itemKey}
+                          </Link>
+                        ) : (
+                          <span className="txt-compact-small-plus truncate text-ui-fg-base">{r.label ?? r.itemKey}</span>
+                        )}
+                        <span className="flex flex-wrap gap-x-2 font-mono text-ui-fg-muted txt-compact-xsmall">
+                          {r.sku ? <span>{r.sku}</span> : null}
+                          {r.blProductId ? <span>#{r.blProductId}</span> : null}
+                        </span>
+                      </div>
                     </div>
                   </Table.Cell>
                   <Table.Cell>
@@ -615,12 +628,21 @@ export function PlanSection({ kind, status, lang }: { kind: PlanKind; status: St
                           {t("plans.failures", { count: r.quarantine.failures })}
                         </Text>
                       ) : null}
-                      {r.quarantine?.quarantinedAt ? (
-                        <Button size="small" variant="secondary" isLoading={release.isPending && release.variables === r.quarantine.id} onClick={() => void onRelease(r.quarantine!.id)}>
-                          {t("plans.release")}
-                        </Button>
-                      ) : null}
                     </div>
+                  </Table.Cell>
+                  <Table.Cell className="text-right">
+                    <RowActions
+                      actions={[
+                        {
+                          key: "release",
+                          label: t("plans.release"),
+                          icon: <LockOpenSolid />,
+                          hidden: !r.quarantine?.quarantinedAt,
+                          loading: release.isPending && release.variables === r.quarantine?.id,
+                          onClick: () => r.quarantine && void onRelease(r.quarantine.id),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -629,7 +651,7 @@ export function PlanSection({ kind, status, lang }: { kind: PlanKind; status: St
         </Table>
       </div>
       <Pagination count={data?.count ?? 0} page={page} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }
 
@@ -638,6 +660,15 @@ export function PlanSection({ kind, status, lang }: { kind: PlanKind; status: St
 /* ------------------------------------------------------------------ */
 
 const IMPORT_FILTERS: ImportFilter[] = ["all", "pending", "imported", "skipped", "failed", "flagged"]
+
+const IMPORT_FILTER_ICON: Record<ImportFilter, ReactNode> = {
+  all: <ListBullet />,
+  pending: <Clock />,
+  imported: <CheckCircle />,
+  skipped: <XCircle />,
+  failed: <ExclamationCircle />,
+  flagged: <BellAlert />,
+}
 
 export function ImportsSection({ status, lang, poll }: { status: StatusResponse; lang: string; poll: boolean }) {
   const { t } = useTranslation("baselinker")
@@ -674,32 +705,34 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
   const waiting = !off && !writer?.live && c.pending > 0
 
   return (
-    <Container className="divide-y p-0">
-      <SectionHead title={t("imports.title")} subtitle={t("imports.subtitle")} />
-      {off || waiting ? (
-        <div className="flex flex-col gap-2 px-6 py-4">
-          {off ? (
-            <InlineTip variant="info" label={t("directions.writers.orderImport")}>
-              {t("imports.off")}
-            </InlineTip>
-          ) : null}
-          {waiting ? (
-            <InlineTip variant="warning" label={t("directions.writers.orderImport")}>
-              {t("imports.waiting", { count: c.pending })}
-            </InlineTip>
-          ) : null}
-        </div>
-      ) : null}
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <FilterPills<ImportFilter>
-          value={filter}
-          onChange={setFilter}
-          options={IMPORT_FILTERS.map((f) => ({ value: f, label: t(`imports.filter.${f}`), count: counts[f] }))}
-        />
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("imports.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+    <Section
+      icon={<ShoppingCart />}
+      title={t("imports.title")}
+      pointsLabel={`${t("imports.subtitle")} ${t("imports.how")}`}
+      points={[
+        { icon: <CloudArrowDown />, text: t("imports.points.sources") },
+        { icon: <ShieldCheck />, text: t("imports.points.once"), tone: "green" },
+        off && { icon: <XCircle />, text: t("imports.points.off"), title: t("imports.off") },
+        waiting && { icon: <Clock />, text: t("imports.points.waiting", { count: c.pending }), tone: "orange", title: t("imports.waiting", { count: c.pending }) },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("imports.search")} />}
+    >
+      <FilterBar>
+        {IMPORT_FILTERS.map((f, i) => (
+          <Fragment key={f}>
+            {i === 1 || i === 5 ? <FilterDivider /> : null}
+            <FilterButton
+              icon={IMPORT_FILTER_ICON[f]}
+              label={t(`imports.filter.${f}`)}
+              count={counts[f]}
+              attention={f === "failed" || f === "flagged"}
+              active={filter === f}
+              onClick={() => setFilter(toggleFilter(filter, f, "all"))}
+            />
+          </Fragment>
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={imports.isFetching && !imports.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -718,7 +751,7 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={8} text={imports.isLoading ? "" : t("imports.empty")} />
+              <TableBodyState cols={8} loading={imports.isLoading} icon={<ShoppingCart />} title={t("imports.empty")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5 [&_td]:align-top">
@@ -734,9 +767,9 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
                     {r.orderId ? (
                       <StoreOrderCell orderId={r.orderId} displayId={r.displayId} />
                     ) : (
-                      <Badge size="2xsmall" color="orange">
+                      <ToneBadge tone={r.status === "failed" ? "red" : r.status === "skipped" ? "grey" : "orange"}>
                         {t(`imports.noOrder.${r.status === "skipped" || r.status === "failed" ? r.status : "pending"}`)}
-                      </Badge>
+                      </ToneBadge>
                     )}
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmtMoney(r.total, r.currency, lang)}</Table.Cell>
@@ -780,11 +813,18 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
                     </div>
                   </Table.Cell>
                   <Table.Cell className="text-right">
-                    {writer?.live && r.status !== "imported" ? (
-                      <Button size="small" variant="secondary" isLoading={importNow.isPending && importNow.variables === r.id} onClick={() => void onImport(r.id)}>
-                        {t("imports.importNow")}
-                      </Button>
-                    ) : null}
+                    <RowActions
+                      actions={[
+                        {
+                          key: "import",
+                          label: t("imports.importNow"),
+                          icon: <ArrowDownTray />,
+                          hidden: !writer?.live || r.status === "imported",
+                          loading: importNow.isPending && importNow.variables === r.id,
+                          onClick: () => void onImport(r.id),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -793,7 +833,7 @@ export function ImportsSection({ status, lang, poll }: { status: StatusResponse;
         </Table>
       </div>
       <Pagination count={imports.data?.count ?? 0} page={page} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }
 
@@ -810,20 +850,20 @@ export function ReturnsSection({ status, lang }: { status: StatusResponse; lang:
   const returns = useBaseLinkerReturns(q, page * PAGE_SIZE, PAGE_SIZE)
   const rows = returns.data?.returns ?? []
   return (
-    <Container className="divide-y p-0">
-      <SectionHead title={t("returns.title")} subtitle={t("returns.subtitle")} right={status.lastRuns.returns ? <RunStatusBadge status={status.lastRuns.returns.status} /> : null} />
-      {!status.more.returnsSync ? (
-        <div className="px-6 py-4">
-          <InlineTip variant="info" label={t("returns.title")}>
-            {t("returns.off")}
-          </InlineTip>
-        </div>
-      ) : null}
-      <div className="flex justify-end px-6 py-3">
-        <div className="w-full md:w-72">
-          <Input size="small" type="search" placeholder={t("returns.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
+    <Section
+      icon={<ArrowUturnLeft />}
+      title={t("returns.title")}
+      badges={status.lastRuns.returns ? <RunStatusBadge status={status.lastRuns.returns.status} /> : null}
+      pointsLabel={`${t("returns.subtitle")} ${t("returns.how")}`}
+      points={[
+        { icon: <Eye />, text: t("returns.points.readOnly"), tone: "blue" },
+        { icon: <ShoppingCart />, text: t("returns.points.linked") },
+        { icon: <ShieldCheck />, text: t("returns.points.noBuyer"), tone: "green" },
+        !status.more.returnsSync && { icon: <XCircle />, text: t("returns.points.off"), title: t("returns.off") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("returns.search")} />}
+    >
+      <KitFetchingBar active={returns.isFetching && !returns.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -841,7 +881,7 @@ export function ReturnsSection({ status, lang }: { status: StatusResponse; lang:
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={7} text={returns.isLoading ? "" : t("returns.empty", { days: status.more.returnsWindowDays })} />
+              <TableBodyState cols={7} loading={returns.isLoading} icon={<ArrowUturnLeft />} title={t("returns.empty", { days: status.more.returnsWindowDays })} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5 [&_td]:align-top">
@@ -856,9 +896,7 @@ export function ReturnsSection({ status, lang }: { status: StatusResponse; lang:
                       {r.orderId ? (
                         <StoreOrderCell orderId={r.orderId} displayId={r.displayId} />
                       ) : (
-                        <Badge size="2xsmall" color="orange">
-                          {t("returns.noOrder")}
-                        </Badge>
+                        <ToneBadge tone="grey">{t("returns.noOrder")}</ToneBadge>
                       )}
                       {r.blOrderId ? <span className="font-mono text-ui-fg-muted txt-compact-xsmall">BL {r.blOrderId}</span> : null}
                     </div>
@@ -884,7 +922,7 @@ export function ReturnsSection({ status, lang }: { status: StatusResponse; lang:
         </Table>
       </div>
       <Pagination count={returns.data?.count ?? 0} page={page} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }
 
@@ -893,6 +931,15 @@ export function ReturnsSection({ status, lang }: { status: StatusResponse; lang:
 /* ------------------------------------------------------------------ */
 
 const INVOICE_FILTERS: Array<InvoiceRowStatus | "all"> = ["all", "pending", "written", "conflict", "skipped", "failed"]
+
+const INVOICE_FILTER_ICON: Record<InvoiceRowStatus | "all", ReactNode> = {
+  all: <ListBullet />,
+  pending: <Clock />,
+  written: <CheckCircle />,
+  conflict: <ExclamationCircle />,
+  skipped: <XCircle />,
+  failed: <XCircle />,
+}
 
 export function InvoicesSection({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("baselinker")
@@ -920,15 +967,32 @@ export function InvoicesSection({ status, lang }: { status: StatusResponse; lang
     }
   }
   return (
-    <Container className="divide-y p-0">
-      <SectionHead title={t("invoices.title")} subtitle={t("invoices.subtitle", { field: status.more.invoiceNumberField })} />
-      <div className="px-6 py-4">
-        <FilterPills<InvoiceRowStatus | "all">
-          value={filter}
-          onChange={setFilter}
-          options={INVOICE_FILTERS.map((f) => ({ value: f, label: t(`invoices.filter.${f}`), count: counts[f] }))}
-        />
-      </div>
+    <Section
+      icon={<Receipt />}
+      title={t("invoices.title")}
+      pointsLabel={t("invoices.subtitle", { field: status.more.invoiceNumberField })}
+      points={[
+        { icon: <DocumentText />, text: t("invoices.points.source") },
+        { icon: <PencilSquare />, text: t("invoices.points.field", { field: status.more.invoiceNumberField }) },
+        { icon: <ShieldCheck />, text: t("invoices.points.never"), tone: "green" },
+      ]}
+    >
+      <FilterBar>
+        {INVOICE_FILTERS.map((f, i) => (
+          <Fragment key={f}>
+            {i === 1 ? <FilterDivider /> : null}
+            <FilterButton
+              icon={INVOICE_FILTER_ICON[f]}
+              label={t(`invoices.filter.${f}`)}
+              count={counts[f]}
+              attention={f === "conflict" || f === "failed"}
+              active={filter === f}
+              onClick={() => setFilter(toggleFilter(filter, f, "all"))}
+            />
+          </Fragment>
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={invoices.isFetching && !invoices.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -944,7 +1008,7 @@ export function InvoicesSection({ status, lang }: { status: StatusResponse; lang
           </Table.Header>
           <Table.Body>
             {rows.length === 0 ? (
-              <EmptyRow cols={7} text={invoices.isLoading ? "" : t("invoices.empty")} />
+              <TableBodyState cols={7} loading={invoices.isLoading} icon={<Receipt />} title={t("invoices.empty")} />
             ) : (
               rows.map((r) => (
                 <Table.Row key={r.id} className="[&_td]:py-2.5 [&_td]:align-top">
@@ -972,11 +1036,18 @@ export function InvoicesSection({ status, lang }: { status: StatusResponse; lang
                     ) : null}
                   </Table.Cell>
                   <Table.Cell className="text-right">
-                    {r.status === "conflict" || r.status === "failed" || r.status === "skipped" ? (
-                      <Button size="small" variant="secondary" isLoading={retry.isPending && retry.variables === r.id} onClick={() => void onRetry(r.id)}>
-                        {t("invoices.retry")}
-                      </Button>
-                    ) : null}
+                    <RowActions
+                      actions={[
+                        {
+                          key: "retry",
+                          label: t("invoices.retry"),
+                          icon: <ArrowPath />,
+                          hidden: !(r.status === "conflict" || r.status === "failed" || r.status === "skipped"),
+                          loading: retry.isPending && retry.variables === r.id,
+                          onClick: () => void onRetry(r.id),
+                        },
+                      ]}
+                    />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -985,6 +1056,6 @@ export function InvoicesSection({ status, lang }: { status: StatusResponse; lang
         </Table>
       </div>
       <Pagination count={invoices.data?.count ?? 0} page={page} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }

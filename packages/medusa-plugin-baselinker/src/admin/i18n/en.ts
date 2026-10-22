@@ -7,6 +7,15 @@ const en = {
   by: "by Koda Plus",
   subtitle:
     "Medusa and BaseLinker in both directions: cards linked or created, products imported, stock and prices carried the way you choose, store orders sent exactly once, marketplace orders imported exactly once, statuses, parcels, returns and invoice numbers in step. Every write waits behind a plan and a switch a person arms.",
+  loading: "Reading BaseLinker",
+  points: {
+    cards: "Cards linked by SKU and EAN",
+    stock: "Stock and prices your way",
+    ordersOut: "Store orders sent once",
+    ordersIn: "Marketplace orders imported once",
+    plans: "Plan first, armed switch writes",
+    demo: "Demo data",
+  },
   view: {
     panel: "Panel",
     guide: "Setup guide",
@@ -31,6 +40,7 @@ const en = {
   },
   actions: {
     moreActions: "More actions",
+    refresh: "Refresh",
     syncCatalog: "Sync cards now",
     syncStatuses: "Read statuses",
     sendQueue: "Send queue now",
@@ -69,6 +79,19 @@ const en = {
     failed: "Orders need attention",
   },
   connection: {
+    points: {
+      token: "Token masked everywhere",
+      reads: "Reads with get methods",
+      writes: "Writes only when armed",
+      demo: "Simulated account",
+    },
+    schedulePoints: {
+      cards: "Cards every hour",
+      queue: "Order queue every 2 min",
+      imports: "Marketplace orders every 5 min",
+      statuses: "Statuses every 15 min",
+      returns: "Returns every hour",
+    },
     title: "Connection",
     subtitle: "BaseLinker API with the token from the plugin options. Reads use get methods; the only writes are addOrder and the four writes of armed writers, each behind the barrier.",
     token: "API token",
@@ -124,6 +147,17 @@ const en = {
     lists: "What the account has, to pick the ids for the options",
   },
   stock: {
+    points: {
+      formula: "Available in Medusa = BaseLinker",
+      after: "After every catalog read",
+      noZero: "Missing items never zeroed",
+    },
+    modeShort: {
+      off: "Sync off",
+      plan: "Plan only",
+      write: "Writes up to {{max}} per run",
+      demo: "Simulation only",
+    },
     title: "Stock plan",
     subtitle:
       "BaseLinker to Medusa: target stocked = max(0, BaseLinker stock) + reserved, so Medusa available equals BaseLinker. Planned after every complete catalog read; items missing from a read are never zeroed.",
@@ -131,7 +165,7 @@ const en = {
     modePlan: "Plan only: nothing is written. Read the plan, then set stockSync: \"write\" in the plugin options and arm the stock writer.",
     modeWrite: "Write: up to {{max}} changes per run go through Medusa's own inventory workflow, decreases first.",
     modeDemo: "Demo mode: the plan comes from the simulated account; an armed writer applies it to the simulation only.",
-    never: "No plan yet. It appears after the first complete catalog read.",
+    never: "No plan yet",
     plannedAt: "Planned {{time}}",
     summary: {
       changes: "Changes",
@@ -160,9 +194,14 @@ const en = {
       failed: "Failed",
     },
     search: "Search SKU or product",
-    empty: "Nothing to change: Medusa and BaseLinker agree.",
+    empty: "Nothing to change",
   },
   cards: {
+    points: {
+      key: "SKU first, then EAN",
+      duplicates: "Duplicates never linked",
+      nothing: "Nothing created here",
+    },
     title: "Cards",
     subtitle: "Product cards of your BaseLinker catalog next to the store products they are linked to. A linked card shows its product in Medusa, one click away.",
     matching:
@@ -193,10 +232,15 @@ const en = {
     noKey: "No SKU or EAN",
     sample: "Sample",
     variantOf: "variant of {{id}}",
-    empty: "No cards in this view.",
+    empty: "No cards in this view",
     onlyInMedusa: "Variants without a BaseLinker card: {{list}}",
   },
   orders: {
+    points: {
+      once: "Each order sent once",
+      retry: "Failures retry, then wait here",
+      exportOff: "Export off",
+    },
     title: "Orders to BaseLinker",
     subtitle:
       "Orders placed in your store, each sent to BaseLinker once, with the status and parcel number it received there. An order that could not be sent waits here with the reason.",
@@ -226,10 +270,14 @@ const en = {
     },
     nextAttempt: "Next attempt {{time}}",
     fulfilled: "Fulfilled {{time}}",
-    empty: "No orders yet.",
+    empty: "No orders in this view",
     exportOff: "Order export is off (exportOrders: false).",
   },
   runs: {
+    points: {
+      background: "Background runs",
+      newest: "Newest first",
+    },
     title: "History",
     subtitle: "Background runs of this mode, newest first.",
     col: {
@@ -274,7 +322,7 @@ const en = {
       returns: "{{read}} read, {{created}} new, {{updated}} changed",
       invoices: "{{written}} written, {{adopted}} already there, {{conflict}} conflicts",
     },
-    empty: "No runs yet.",
+    empty: "No runs yet",
   },
   pagination: {
     of: "of",
@@ -311,9 +359,12 @@ const en = {
     },
   },
   productWidget: {
+    points: {
+      sku: "Same SKU or EAN as the card",
+      hourly: "Links after the hourly read",
+    },
     title: "BaseLinker",
-    none: "No BaseLinker card is linked to this product.",
-    hint: "Give the variant the same SKU (or EAN) as its card in BaseLinker. The link appears after the next hourly read.",
+    none: "No linked card",
     stock: "BaseLinker stock",
     noStock: "no number for the warehouse",
     more: "All cards",
@@ -355,6 +406,12 @@ const en = {
   },
   community: communityEn,
   directions: {
+    points: {
+      owner: "One side owns each kind of data",
+      armed: "Writes only when armed",
+      plan: "The rest is a plan",
+      demo: "Demo: switch freely",
+    },
     title: "Source of truth and writers",
     subtitle:
       "Which side owns which data, and the writers that carry it over. A writer writes only when the plugin options allow it and a person armed it here; everything else is planned and shown, never written.",
@@ -431,6 +488,15 @@ const en = {
     inBaseLinker: "BaseLinker",
   },
   plans: {
+    modeShort: {
+      write: "Armed, up to {{max}} per run",
+      plan: "Plan only",
+      demo: "Simulation only",
+      off: "Not used now",
+    },
+    summaryShort: "{{create}} create, {{update}} update",
+    conflictsShort: "{{count}} conflicts",
+    noDelete: "Never deletes",
     kinds: {
       catalog_import: {
         title: "Catalog import plan",
@@ -527,15 +593,20 @@ const en = {
       demo: "Demo: an armed writer applies to the simulation only.",
       off: "Not used with the current directions.",
     },
-    summary: "{{create}} to create, {{update}} to update, {{conflict}} conflicts, {{skip}} skipped",
     plannedAt: "Planned {{time}}",
     release: "Release",
     failures: "{{count}} failed run(s)",
-    empty: "Nothing to change.",
-    never: "No plan yet. It appears after the next catalog read.",
+    empty: "Nothing to change",
+    never: "No plan yet",
     search: "Search name, SKU or id",
   },
   imports: {
+    points: {
+      sources: "Allegro, Amazon, eBay, Erli",
+      once: "Imported once each",
+      waiting: "{{count}} wait for the writer",
+      off: "Import off",
+    },
     title: "Marketplace orders from BaseLinker",
     subtitle: "Marketplace orders (Allegro, Amazon, eBay, Erli and others) that BaseLinker collected, next to the store orders they became.",
     how: "Found every 5 minutes; turned into Medusa orders, exactly once each, only while the order import writer is armed. Our own orders sent to BaseLinker never come back.",
@@ -583,10 +654,16 @@ const en = {
     lines: "{{count}} line(s)",
     unlinked: "{{count}} without a card link (custom lines)",
     importNow: "Import now",
-    empty: "No marketplace orders yet.",
+    empty: "No marketplace orders in this view",
     search: "BaseLinker id, order number or reference",
   },
   returns: {
+    points: {
+      readOnly: "Read only",
+      linked: "Next to store orders",
+      noBuyer: "No buyer data stored",
+      off: "Returns off",
+    },
     title: "Returns",
     subtitle: "Returns from the BaseLinker return manager, next to the store order they belong to.",
     how: "Read only. A return is linked to the store order when this plugin sent or imported that order. No buyer data is stored.",
@@ -601,10 +678,15 @@ const en = {
       created: "Created",
     },
     noOrder: "Not a store order",
-    empty: "No returns in the last {{days}} days.",
+    empty: "No returns in {{days}} days",
     search: "Return id, BaseLinker order or order number",
   },
   invoices: {
+    points: {
+      source: "From the Fakturownia plugin",
+      field: "Into field {{field}}",
+      never: "Never overwrites",
+    },
     title: "Invoice numbers",
     subtitle:
       "Numbers of documents the Fakturownia plugin issues, written into the BaseLinker order field {{field}}. The field is read first: an empty one is written, the same number is left as it is, another value is never overwritten.",
@@ -632,7 +714,7 @@ const en = {
       failed: "Failed",
     },
     retry: "Retry",
-    empty: "No invoice numbers yet. They come from the Fakturownia plugin when it issues a document.",
+    empty: "No invoice numbers in this view",
   },
   guide: {
     timeLabel: "Time",

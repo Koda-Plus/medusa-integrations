@@ -2,6 +2,19 @@ import { communityEn } from "../lib/vonhalsky-kit-community"
 import { integrationEn } from "../../modules/vonhalsky/lib/integration-texts"
 
 const en = {
+  points: {
+    offers: "Variants as offers",
+    keys: "EAN, brand, MPN, GPSR",
+    orders: "Orders into Medusa",
+    tracking: "Tracking goes back",
+  },
+  pagination: {
+    of: "of",
+    results: "results",
+    pages: "pages",
+    prev: "Previous",
+    next: "Next",
+  },
   title: "InPost Von Halsky",
   by: "by Koda Plus",
   subtitle:
@@ -17,7 +30,7 @@ const en = {
   },
   settings: {
     title: "Settings",
-    subtitle: "The channel price, where imported orders land, the shipping option of each delivery type and the marketplace account.",
+    subtitle: "Price, orders, shipping and the marketplace account.",
     tab: {
       pricing: "Pricing",
       orders: "Orders",
@@ -50,6 +63,7 @@ const en = {
     errors: "Errors",
   },
   actions: {
+    clearSelection: "Clear selection",
     refresh: "Refresh",
     refreshOffers: "Refresh offers",
     listSelected: "List selected",
@@ -84,10 +98,17 @@ const en = {
     priceSaved: "Price saved",
   },
   offers: {
+    points: {
+      variant: "One row per variant",
+      keys: "Matched by EAN, brand, MPN",
+      price: "Channel price and stock",
+    },
+    emptyHint: "Refresh offers to read the catalog",
+    emptyFiltered: "No offers here",
     title: "Offers",
     subtitle: "One row per Medusa variant. Ready offers (draft) can be listed; blocked ones say what is missing. The price is the Medusa PLN price with VAT and the channel markup, or a fixed price you set; the stock comes from Medusa inventory.",
     search: "SKU, title, EAN or product id",
-    empty: "No offers yet. Refresh offers to read the catalog.",
+    empty: "No offers yet",
     selected: "{{count}} selected",
     selectAll: "Select all on this page",
     product: "Product",
@@ -137,11 +158,18 @@ const en = {
     no_image: "No photo",
   },
   orders: {
+    points: {
+      medusa: "Imported as Medusa orders",
+      paid: "Paid by the marketplace",
+      tracking: "Tracking goes back",
+    },
+    emptyFiltered: "No orders here",
+    hideEvents: "Hide history",
     title: "Marketplace orders",
     subtitle: "Orders from InPost Von Halsky and the Medusa orders they became, paid by the marketplace (or cash on delivery). Tracking numbers of their shipments go back.",
     search: "Marketplace order id, order number",
-    empty: "No marketplace orders yet.",
-    emptyDemo: "No orders yet. List a few offers, then Simulate an order.",
+    empty: "No marketplace orders yet",
+    emptyDemo: "List offers, then simulate an order",
     when: "Received",
     order: "Order",
     products: "Products",
@@ -182,9 +210,13 @@ const en = {
     cod: "Cash on delivery",
   },
   log: {
+    points: {
+      newest: "Newest first",
+      kept: "Kept 30 days",
+    },
     title: "Sync log",
     subtitle: "What the plugin did, newest first, kept 30 days.",
-    empty: "Nothing logged yet.",
+    empty: "Nothing logged yet",
     when: "When",
     area: "Area",
     message: "Message",
@@ -198,6 +230,10 @@ const en = {
     },
   },
   pricing: {
+    points: {
+      gross: "Gross price with markup",
+      fixed: "Fixed price wins",
+    },
     title: "Channel price",
     subtitle: "Marketplace prices are gross. The channel price is the Medusa PLN price, with VAT added when Medusa keeps prices without tax, plus the markup. A fixed price on an offer wins over both.",
     markup: "Markup (percent)",
@@ -210,6 +246,10 @@ const en = {
     no: "no",
   },
   orderSettings: {
+    points: {
+      where: "Sales channel and PLN region",
+      auto: "Automatic by default",
+    },
     title: "Imported orders",
     subtitle: "Where marketplace orders land in Medusa. Without a choice: a sales channel named \"InPost Von Halsky\", else the store default (demo: \"InPost Von Halsky (demo)\"), and the first PLN region.",
     channel: "Sales channel",
@@ -221,16 +261,25 @@ const en = {
     none: "none",
   },
   shipping: {
+    points: {
+      option: "Shipping option per delivery",
+      locker: "Locker in the address",
+      demo: "Demo: the store's first option",
+    },
     title: "Shipping",
     subtitle: "The Medusa shipping option each marketplace delivery lands on, so the order follows your normal fulfilment. Without one the order is still imported and you pick the option when fulfilling (demo: the first shipping option of the store).",
     none: "Not mapped",
-    noOptions: "The store has no shipping options yet.",
+    noOptions: "No shipping options yet",
     hint: {
       APM: "Parcel locker deliveries; the locker id goes to the second address line and the shipping data.",
       COURIER: "Courier deliveries to the buyer's address.",
     },
   },
   account: {
+    points: {
+      config: "From medusa-config.ts",
+      masked: "Token masked",
+    },
     title: "Marketplace account",
     subtitle: "The credentials from the integrator agreement with InPost, sandbox and production kept apart. They come from medusa-config.ts (environment variables), never from this page.",
     environment: "Environment",
@@ -260,7 +309,7 @@ const en = {
     point: "Parcel locker",
     payment: "Payment",
     tracking: "Tracking",
-    demoNote: "A simulated order of the demo: nothing was sent to the marketplace.",
+    demoNote: "Demo: nothing sent",
   },
   missing: {
     label: "Not configured",

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
-import { Link, PencilSquare, Trash } from "@medusajs/icons"
-import { Badge, Button, Drawer, Input, Select, Text, Textarea, clx, toast, usePrompt } from "@medusajs/ui"
+import { ArrowDownTray, ChatBubble, History, Link, PencilSquare, Sparkles, Trash } from "@medusajs/icons"
+import { Button, Drawer, Input, Select, Text, Textarea, clx, toast, usePrompt } from "@medusajs/ui"
 import { PRIORITIES, STATUSES, type TaskPriority, type TaskStatus } from "../../modules/tasks/lib/constants"
 import type { CommentDto, StatusResponse, TaskDetailDto, TaskDto } from "../../modules/tasks/lib/contract"
 import {
@@ -16,6 +16,7 @@ import {
 } from "./tasks-api"
 import { AssigneeSelect, RecordPicker, assigneeBody, assigneeValue, splitTags, useFailToast } from "./tasks-form"
 import { completeDay } from "./tasks-rules"
+import { EmptyState, RowActions, ToneBadge } from "./tasks-blocks"
 import {
   Field,
   LinkChip,
@@ -194,15 +195,11 @@ function DrawerBody({
         {task.sample || task.adopted ? (
           <div className="flex flex-wrap gap-1.5">
             {task.sample ? (
-              <Badge size="2xsmall" color="purple">
+              <ToneBadge tone="purple" icon={<Sparkles />}>
                 {t("drawer.sample")}
-              </Badge>
+              </ToneBadge>
             ) : null}
-            {task.adopted ? (
-              <Badge size="2xsmall" color="grey">
-                {t("drawer.adopted")}
-              </Badge>
-            ) : null}
+            {task.adopted ? <ToneBadge icon={<ArrowDownTray />}>{t("drawer.adopted")}</ToneBadge> : null}
           </div>
         ) : null}
 
@@ -302,9 +299,7 @@ function DrawerBody({
               {t("drawer.activity")}
             </Text>
             {task.activity.length === 0 ? (
-              <Text size="small" className="text-ui-fg-muted">
-                {t("drawer.noActivity")}
-              </Text>
+              <EmptyState compact icon={<History />} title={t("drawer.noActivity")} />
             ) : (
               <div className="flex flex-col gap-y-2">
                 {task.activity.map((a) => {
@@ -358,9 +353,7 @@ function LinksSection({ task }: { task: TaskDetailDto }) {
         </Button>
       </div>
       {task.links.length === 0 ? (
-        <Text size="small" className="text-ui-fg-muted">
-          {t("drawer.noLinks")}
-        </Text>
+        <EmptyState compact icon={<Link />} title={t("drawer.noLinks")} />
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {task.links.map((l) => (
@@ -421,9 +414,7 @@ function CommentsSection({ task, index, status }: { task: TaskDetailDto; index: 
         {t("drawer.comments")} <span className="tabular-nums text-ui-fg-muted">{task.comments.length}</span>
       </Text>
       {task.comments.length === 0 ? (
-        <Text size="small" className="text-ui-fg-muted">
-          {t("drawer.noComments")}
-        </Text>
+        <EmptyState compact icon={<ChatBubble />} title={t("drawer.noComments")} />
       ) : (
         <div className="flex flex-col gap-y-2">
           {task.comments.map((c) => (
@@ -483,6 +474,23 @@ function CommentRow({ taskId, comment: c, index }: { taskId: string; comment: Co
           {fmtRelative(c.created_at, lang)}
           {c.edited_at ? `, ${t("drawer.edited")}` : ""}
         </Text>
+        {c.own && !editing ? (
+          <RowActions
+            className="-my-1 shrink-0"
+            actions={[
+              {
+                key: "edit",
+                label: t("actions.editComment"),
+                icon: <PencilSquare />,
+                onClick: () => {
+                  setDraft(text)
+                  setEditing(true)
+                },
+              },
+              { key: "delete", label: t("actions.deleteComment"), icon: <Trash />, danger: true, loading: remove.isPending, onClick: () => void del() },
+            ]}
+          />
+        ) : null}
       </div>
       {editing ? (
         <div className="flex flex-col gap-y-2">
@@ -514,23 +522,6 @@ function CommentRow({ taskId, comment: c, index }: { taskId: string; comment: Co
           <Typeset text={text} />
         </Text>
       )}
-      {c.own && !editing ? (
-        <div className="flex items-center gap-x-1">
-          <Button
-            size="small"
-            variant="transparent"
-            onClick={() => {
-              setDraft(text)
-              setEditing(true)
-            }}
-          >
-            {t("actions.edit")}
-          </Button>
-          <Button size="small" variant="transparent" isLoading={remove.isPending} onClick={() => void del()}>
-            {t("actions.remove")}
-          </Button>
-        </div>
-      ) : null}
     </div>
   )
 }

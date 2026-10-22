@@ -1,10 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Button, Container, Copy, InlineTip, Input, StatusBadge, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import {
+  ArchiveBox,
+  ArrowPath,
+  ArrowUpRightOnBox,
+  Beaker,
+  CheckCircle,
+  Clock,
+  CloudArrowDown,
+  DocumentText,
+  ExclamationCircle,
+  History,
+  Key,
+  Link as LinkIcon,
+  ListBullet,
+  LockClosedSolid,
+  MinusCircle,
+  PauseSolid,
+  PencilSquare,
+  ShieldCheck,
+  ShoppingCart,
+  Tag,
+  TruckFast,
+  User,
+  XCircle,
+} from "@medusajs/icons"
+import { Button, Container, Copy, InlineTip, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type {
   AllegroImportFilter,
   AllegroIssueFilter,
@@ -29,16 +53,17 @@ import {
   useAllegroStatus,
   useAllegroSync,
 } from "../../lib/allegro-api"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, StatTile, StatTiles, ToneBadge, type Tone } from "../../lib/allegro-blocks"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/allegro-guide"
 import { GuideView, referencesFor, usePromptSpec } from "../../lib/allegro-guide-view"
 import { AllegroIcon } from "../../lib/allegro-icon"
-import { deepLinkOf } from "../../lib/allegro-links"
 import { ImportsSection } from "../../lib/allegro-imports"
 import { IssuesSection } from "../../lib/allegro-issues"
+import { KitFetchingBar, KitSkeletonRows } from "../../lib/allegro-kit"
+import { deepLinkOf } from "../../lib/allegro-links"
 import { OutboxSection } from "../../lib/allegro-outbox"
 import { PlanSection } from "../../lib/allegro-plans"
 import {
-  EmptyRow,
   IMPORT_TONE,
   ImportWhy,
   NoProduct,
@@ -46,10 +71,7 @@ import {
   OrderLink,
   OrderStatus,
   Pager,
-  Pills,
   ProductLink,
-  SectionHeader,
-  StatTile,
   StockCell,
   StoreColumn,
   fmtDateTime,
@@ -58,6 +80,7 @@ import {
   fmtRating,
   scrollToSection,
   useDebounced,
+  useProductThumbs,
 } from "../../lib/allegro-ui"
 import { WritersSection } from "../../lib/allegro-writers"
 
@@ -154,6 +177,8 @@ const AllegroPage = () => {
     dropLink()
     setFilterState(f)
   }
+  /* A second click on the active offer filter goes back to all offers. */
+  const toggleOffers = (f: AllegroOfferFilter) => setFilter(filter === f ? "all" : f)
   const setOrderFilter = (f: AllegroOrderFilter) => {
     dropLink()
     setOrderFilterState(f)
@@ -191,7 +216,7 @@ const AllegroPage = () => {
   return (
     <div className="flex flex-col gap-y-3">
       <Container className="divide-y p-0" id="allegro-top">
-        <Header status={s} loading={status.isLoading} lang={lang} nav={nav} onSyncStarted={poll} />
+        <Header status={s} loading={status.isLoading} fetching={status.isFetching && !status.isLoading} onReload={() => void client.invalidateQueries({ queryKey: allegroKeys.all })} lang={lang} nav={nav} onSyncStarted={poll} />
         {status.isError ? (
           <div className="px-6 py-4">
             <InlineTip variant="error" label="Allegro">
@@ -202,61 +227,64 @@ const AllegroPage = () => {
         {s && nav.view !== "guide" ? <Warnings status={s} /> : null}
         {s && nav.view !== "guide" ? <DemoSeedNotice status={s} onStarted={poll} /> : null}
         {s && nav.view === "panel" ? (
-          /* One block with two labelled groups, like OLX: a second block would get the container's divider glued to its tiles. */
-          <div className="flex flex-col gap-y-4 px-6 py-4">
-            <div className="flex flex-col gap-y-2">
-              <Text size="xsmall" className="text-ui-fg-muted">
-                {t("stats.groupOffers")}
-              </Text>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-                <StatTile label={t("stats.offers")} value={s.counts.offers} active={filter === "all"} onClick={() => setFilter("all")} />
-                <StatTile label={t("stats.live")} value={s.counts.live} tone="green" />
-                <StatTile label={t("stats.linkedLive")} value={s.counts.linkedLive} tone="green" active={filter === "linked"} onClick={() => setFilter("linked")} />
-                <StatTile label={t("stats.stockIssues")} value={s.counts.stockIssues} tone="red" active={filter === "stock"} onClick={() => setFilter("stock")} />
-                <StatTile label={t("stats.endedInStock")} value={s.counts.endedInStock} tone="orange" active={filter === "ended_in_stock"} onClick={() => setFilter("ended_in_stock")} />
-                <StatTile label={t("stats.unmatched")} value={s.counts.unmatchedLive} tone="red" active={filter === "unmatched"} onClick={() => setFilter("unmatched")} />
-                <StatTile label={t("stats.noKey")} value={s.counts.noKey} active={filter === "nokey"} onClick={() => setFilter("nokey")} />
-              </div>
-            </div>
-            <div className="flex flex-col gap-y-2">
-              <Text size="xsmall" className="text-ui-fg-muted">
-                {t("stats.groupOrders")}
-              </Text>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-                <StatTile
-                  label={t("stats.ordersOpen")}
-                  value={s.counts.ordersOpen}
-                  tone="blue"
-                  active={s.ordersEnabled && orderFilter === "open"}
-                  onClick={
-                    s.ordersEnabled
-                      ? () => {
-                          setOrderFilter("open")
-                          scrollToSection("allegro-orders")
-                        }
-                      : undefined
-                  }
-                />
-                <StatTile label={t("stats.imported")} value={s.imports.imported} tone="green" active={importsActive("imported")} onClick={() => openImports("imported")} />
-                <StatTile label={t("stats.held")} value={s.imports.held} tone="red" active={importsActive("held")} onClick={() => openImports("held")} />
-                <StatTile
-                  label={t("stats.outbox")}
-                  value={s.outbox.shipping.pending + s.outbox.invoices.pending}
-                  tone="blue"
-                  onClick={() => openSettings("outbox")}
-                />
-                <StatTile
-                  label={t("stats.issues")}
-                  value={s.issues.needReply}
-                  tone="orange"
-                  active={issueFilter === "needs_reply"}
-                  onClick={() => {
-                    setIssueFilter("needs_reply")
-                    scrollToSection("allegro-issues")
-                  }}
-                />
-              </div>
-            </div>
+          /* One block with two labelled groups: a second block would get the container's divider glued to its tiles. */
+          <div className="flex flex-col">
+            <Text size="xsmall" className="px-6 pt-4 text-ui-fg-muted">
+              {t("stats.groupOffers")}
+            </Text>
+            <StatTiles columns={7} className="pt-2">
+              <StatTile label={t("stats.offers")} value={s.counts.offers} icon={<Tag />} active={filter === "all"} onClick={() => setFilter("all")} />
+              <StatTile label={t("stats.live")} value={s.counts.live} tone="green" />
+              <StatTile label={t("stats.linkedLive")} value={s.counts.linkedLive} tone="green" active={filter === "linked"} onClick={() => toggleOffers("linked")} />
+              <StatTile label={t("stats.stockIssues")} value={s.counts.stockIssues} tone={s.counts.stockIssues > 0 ? "red" : "grey"} active={filter === "stock"} onClick={() => toggleOffers("stock")} />
+              <StatTile
+                label={t("stats.endedInStock")}
+                value={s.counts.endedInStock}
+                tone={s.counts.endedInStock > 0 ? "orange" : "grey"}
+                active={filter === "ended_in_stock"}
+                onClick={() => toggleOffers("ended_in_stock")}
+              />
+              <StatTile label={t("stats.unmatched")} value={s.counts.unmatchedLive} tone={s.counts.unmatchedLive > 0 ? "orange" : "grey"} active={filter === "unmatched"} onClick={() => toggleOffers("unmatched")} />
+              <StatTile label={t("stats.noKey")} value={s.counts.noKey} active={filter === "nokey"} onClick={() => toggleOffers("nokey")} />
+            </StatTiles>
+            <Text size="xsmall" className="px-6 pt-2 text-ui-fg-muted">
+              {t("stats.groupOrders")}
+            </Text>
+            <StatTiles columns={5} className="pt-2">
+              <StatTile
+                label={t("stats.ordersOpen")}
+                value={s.counts.ordersOpen}
+                icon={<ShoppingCart />}
+                tone={s.counts.ordersOpen > 0 ? "blue" : "grey"}
+                active={s.ordersEnabled && orderFilter === "open"}
+                onClick={
+                  s.ordersEnabled
+                    ? () => {
+                        setOrderFilter(orderFilter === "open" ? "all" : "open")
+                        scrollToSection("allegro-orders")
+                      }
+                    : undefined
+                }
+              />
+              <StatTile label={t("stats.imported")} value={s.imports.imported} tone="green" active={importsActive("imported")} onClick={() => openImports("imported")} />
+              <StatTile label={t("stats.held")} value={s.imports.held} tone={s.imports.held > 0 ? "orange" : "grey"} active={importsActive("held")} onClick={() => openImports("held")} />
+              <StatTile
+                label={t("stats.outbox")}
+                value={s.outbox.shipping.pending + s.outbox.invoices.pending}
+                tone={outboxFailed > 0 ? "red" : outboxOpen > 0 ? "blue" : "grey"}
+                onClick={() => openSettings("outbox")}
+              />
+              <StatTile
+                label={t("stats.issues")}
+                value={s.issues.needReply}
+                tone={s.issues.needReply > 0 ? "orange" : "grey"}
+                active={issueFilter === "needs_reply"}
+                onClick={() => {
+                  setIssueFilter(issueFilter === "needs_reply" ? "open" : "needs_reply")
+                  scrollToSection("allegro-issues")
+                }}
+              />
+            </StatTiles>
           </div>
         ) : null}
       </Container>
@@ -330,12 +358,16 @@ function modeBadge(s: AllegroStatusResponse | undefined): { color: "green" | "or
 function Header({
   status,
   loading,
+  fetching,
+  onReload,
   lang,
   nav,
   onSyncStarted,
 }: {
   status: AllegroStatusResponse | undefined
   loading: boolean
+  fetching: boolean
+  onReload: () => void
   lang: string
   nav: PageNav<SettingsTabId>
   onSyncStarted: () => void
@@ -365,7 +397,6 @@ function Header({
     <IntegrationHeader
       icon={<AllegroIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         <>
           {!loading ? (
@@ -374,18 +405,21 @@ function Header({
             </ModeBadge>
           ) : null}
           {status ? (
-            <Badge size="2xsmall" color={armed > 0 ? "orange" : "grey"}>
+            <ToneBadge tone={armed > 0 ? "orange" : "grey"} icon={armed > 0 ? <PencilSquare /> : <LockClosedSolid />}>
               {armed > 0 ? t("mode.writersArmed", { count: armed }) : t("mode.readOnly")}
-            </Badge>
+            </ToneBadge>
           ) : null}
-          {status?.environment === "sandbox" ? (
-            <Badge size="2xsmall" color="orange">
-              {t("connection.sandbox")}
-            </Badge>
-          ) : null}
+          {status?.environment === "sandbox" ? <ToneBadge tone="orange">{t("connection.sandbox")}</ToneBadge> : null}
         </>
       }
       description={t("subtitle")}
+      points={[
+        { icon: <LinkIcon />, text: t("points.offers") },
+        { icon: <ExclamationCircle />, text: t("points.stock") },
+        { icon: <ShoppingCart />, text: t("points.orders") },
+        { icon: <TruckFast />, text: t("points.back") },
+        { icon: <User />, text: t("points.armed"), tone: "green" },
+      ]}
       social={
         <>
           <ReferencesBadge
@@ -415,12 +449,18 @@ function Header({
       view={nav.view}
       onView={(v) => nav.go(v)}
       labels={{ panel: t("view.panel"), guide: t("view.guide"), settings: t("settings.title"), more: t("actions.moreActions") }}
+      actions={[
+        { key: "reload", label: t("actions.reload"), icon: <ArrowPath />, loading: fetching, onClick: onReload },
+        ...(status && status.mode !== "demo"
+          ? [{ key: "panel", label: t("actions.sellerPanel"), icon: <ArrowUpRightOnBox />, onClick: () => void window.open(status.panel.orders, "_blank", "noopener") }]
+          : []),
+      ]}
       primary={
         nav.view !== "guide"
           ? {
               key: "sync",
               label: running ? t("actions.syncing") : t("actions.sync"),
-              icon: <ArrowPath />,
+              icon: <CloudArrowDown />,
               loading: sync.isPending || running,
               disabled: !canSync,
               onClick: () => void onSync(),
@@ -553,14 +593,35 @@ function ConnectionSection({ status, lang }: { status: AllegroStatusResponse; la
   }
 
   return (
-    <Container className="divide-y p-0">
-      <SectionHeader title={t("connection.title")} subtitle={t("connection.subtitle", { host: status.webHost })} />
+    <Section
+      icon={<User />}
+      title={t("connection.title")}
+      badges={!demo ? <ToneBadge tone={c.connected ? "green" : code ? "blue" : "grey"}>{t(c.connected ? "mode.connected" : code ? "mode.waiting" : "mode.notConnected")}</ToneBadge> : null}
+      pointsLabel={t("connection.subtitle", { host: status.webHost })}
+      points={[
+        demo ? { icon: <Beaker />, text: t("connection.points.demo"), tone: "blue", title: t("connection.demoNote") } : null,
+        { icon: <Key />, text: t("connection.points.device") },
+        { icon: <ShieldCheck />, text: t("connection.points.scopes") },
+        { icon: <LockClosedSolid />, text: t("connection.points.encrypted"), title: t("connection.tokensNote") },
+        { icon: <ArrowPath />, text: t("connection.points.refresh"), title: t("connection.tokensNote") },
+      ]}
+      actions={
+        !demo ? (
+          <>
+            <Button size="small" variant="secondary" isLoading={disconnect.isPending} disabled={!c.connected} onClick={() => void onDisconnect()}>
+              <XCircle />
+              {t("actions.disconnect")}
+            </Button>
+            <Button size="small" variant={c.connected ? "secondary" : "primary"} isLoading={connect.isPending} disabled={!status.configured} onClick={() => void onConnect()}>
+              <LinkIcon />
+              {c.connected ? t("actions.reconnect") : code ? t("actions.newCode") : t("actions.connect")}
+            </Button>
+          </>
+        ) : null
+      }
+    >
       <div className="flex flex-col gap-4 px-6 py-4">
-        {demo ? (
-          <Text size="small" className="text-ui-fg-subtle">
-            {t("connection.demoNote")}
-          </Text>
-        ) : (
+        {!demo ? (
           <>
             {code ? (
               <InlineTip variant="info" label={t("connection.waitingLabel")}>
@@ -594,7 +655,7 @@ function ConnectionSection({ status, lang }: { status: AllegroStatusResponse; la
               <Fact label={t("connection.expiresAt")} value={fmtDateTime(c.accessExpiresAt, lang) || t("connection.none")} />
             </div>
           </>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="flex items-start gap-x-2">
@@ -604,29 +665,23 @@ function ConnectionSection({ status, lang }: { status: AllegroStatusResponse; la
           {status.grantedScopes ? <Fact label={t("connection.granted")} value={status.grantedScopes.join(" ") || t("connection.none")} mono /> : null}
           <Fact label={t("connection.userAgent")} value={status.userAgent} mono />
         </div>
-
-        {!demo ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button size="small" variant={c.connected ? "secondary" : "primary"} isLoading={connect.isPending} disabled={!status.configured} onClick={() => void onConnect()}>
-              {c.connected ? t("actions.reconnect") : code ? t("actions.newCode") : t("actions.connect")}
-            </Button>
-            <Button size="small" variant="secondary" isLoading={disconnect.isPending} disabled={!c.connected} onClick={() => void onDisconnect()}>
-              {t("actions.disconnect")}
-            </Button>
-          </div>
-        ) : null}
-
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("connection.tokensNote")}
-        </Text>
       </div>
-    </Container>
+    </Section>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
-const FILTERS: AllegroOfferFilter[] = ["all", "linked", "unmatched", "stock", "ended_in_stock", "ended", "drafts", "nokey"]
+const OFFER_FILTER_ICON: Record<AllegroOfferFilter, ReactNode> = {
+  all: <ListBullet />,
+  linked: <LinkIcon />,
+  unmatched: <ExclamationCircle />,
+  stock: <ArchiveBox />,
+  ended_in_stock: <PauseSolid />,
+  ended: <MinusCircle />,
+  drafts: <PencilSquare />,
+  nokey: <XCircle />,
+}
 
 function filterCount(status: AllegroStatusResponse, f: AllegroOfferFilter): number {
   const c = status.counts
@@ -672,17 +727,38 @@ function OffersSection({
 
   const offers = useAllegroOffers(filter, q, page * PAGE_SIZE, PAGE_SIZE)
   const rows = offers.data?.offers ?? []
+  const thumbs = useProductThumbs(rows.map((o) => o.productId))
+  const toggle = (f: AllegroOfferFilter) => onFilter(filter === f ? "all" : f)
+  const button = (f: AllegroOfferFilter, attention = false) => (
+    <FilterButton key={f} icon={OFFER_FILTER_ICON[f]} label={t(`offers.filter.${f}`)} count={filterCount(status, f)} attention={attention} active={filter === f} onClick={() => toggle(f)} />
+  )
 
   return (
-    <Container className="divide-y p-0" id="allegro-offers">
-      <SectionHeader title={t("offers.title")} subtitle={t("offers.subtitle")} />
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <Pills filters={FILTERS} value={filter} onChange={onFilter} label={(f) => t(`offers.filter.${f}`)} count={(f) => filterCount(status, f)} />
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("offers.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
-
+    <Section
+      id="allegro-offers"
+      icon={<Tag />}
+      title={t("offers.title")}
+      pointsLabel={t("offers.subtitle")}
+      points={[
+        { icon: <LinkIcon />, text: t("offers.points.signature"), title: t("offers.matching") },
+        { icon: <ArchiveBox />, text: t("offers.points.qty") },
+        { icon: <ShieldCheck />, text: t("offers.points.check"), title: t("offers.stockNote") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("offers.search")} />}
+    >
+      <FilterBar>
+        <FilterButton icon={OFFER_FILTER_ICON.all} label={t("offers.filter.all")} count={filterCount(status, "all")} active={filter === "all"} onClick={() => onFilter("all")} />
+        {button("linked")}
+        <FilterDivider />
+        {button("stock", true)}
+        {button("unmatched", true)}
+        {button("ended_in_stock", true)}
+        <FilterDivider />
+        {button("ended")}
+        {button("drafts")}
+        {button("nokey")}
+      </FilterBar>
+      <KitFetchingBar active={offers.isFetching && !offers.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -697,8 +773,10 @@ function OffersSection({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow span={5} loading={offers.isLoading} text={t("offers.empty")} />
+            {offers.isLoading ? (
+              <KitSkeletonRows cols={5} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={5} icon={<Tag />} title={t("offers.empty")} />
             ) : (
               rows.map((o) => (
                 <Table.Row key={o.id} className="[&_td]:py-2.5">
@@ -716,16 +794,8 @@ function OffersSection({
                       </a>
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono text-ui-fg-muted txt-compact-xsmall">#{o.allegroId}</span>
-                        {o.isPrimary ? (
-                          <Badge size="2xsmall" color="green">
-                            {t("offers.primary")}
-                          </Badge>
-                        ) : null}
-                        {o.demo ? (
-                          <Badge size="2xsmall" color="purple">
-                            {t("offers.sample")}
-                          </Badge>
-                        ) : null}
+                        {o.isPrimary ? <ToneBadge tone="green">{t("offers.primary")}</ToneBadge> : null}
+                        {o.demo ? <ToneBadge tone="purple">{t("offers.sample")}</ToneBadge> : null}
                       </span>
                     </div>
                   </Table.Cell>
@@ -737,7 +807,7 @@ function OffersSection({
                     <StockCell offer={o} />
                   </Table.Cell>
                   <Table.Cell className="max-w-[300px]">
-                    <StoreProductCell offer={o} />
+                    <StoreProductCell offer={o} thumbnail={o.productId ? thumbs[o.productId] : null} />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -746,12 +816,7 @@ function OffersSection({
         </Table>
       </div>
       <Pager count={offers.data?.count ?? 0} page={page} size={PAGE_SIZE} onPage={setPage} />
-      <div className="px-6 py-3">
-        <Text size="xsmall" className="text-ui-fg-muted">
-          {t("offers.stockNote")}
-        </Text>
-      </div>
-    </Container>
+    </Section>
   )
 }
 
@@ -761,8 +826,8 @@ function signatureOf(externalId: string | null, matchKey: string | null): string
   return externalId?.trim() || matchKey
 }
 
-/** The store side of an offer: its Medusa product, one click away, or why there is none. */
-function StoreProductCell({ offer: o }: { offer: AllegroOfferDto }) {
+/** The store side of an offer: its Medusa product with its picture, one click away, or why there is none. */
+function StoreProductCell({ offer: o, thumbnail }: { offer: AllegroOfferDto; thumbnail?: string | null }) {
   const { t } = useTranslation("allegro")
   const signature = signatureOf(o.externalId, o.matchKey)
   if (o.productId) {
@@ -772,6 +837,7 @@ function StoreProductCell({ offer: o }: { offer: AllegroOfferDto }) {
         title={o.productTitle ?? o.productId}
         code={o.sku ?? signature}
         codeTitle={signature ? t("offers.signatureTitle", { signature }) : undefined}
+        thumbnail={thumbnail}
       />
     )
   }
@@ -780,7 +846,15 @@ function StoreProductCell({ offer: o }: { offer: AllegroOfferDto }) {
 
 /* ------------------------------------------------------------------ */
 
-const ORDER_FILTERS: AllegroOrderFilter[] = ["all", "open", "sent", "cancelled", "unmatched", "imported", "held"]
+const ORDER_FILTER_ICON: Record<AllegroOrderFilter, ReactNode> = {
+  all: <ListBullet />,
+  open: <TruckFast />,
+  sent: <CheckCircle />,
+  cancelled: <XCircle />,
+  unmatched: <ExclamationCircle />,
+  imported: <ShoppingCart />,
+  held: <PauseSolid />,
+}
 
 function OrdersSection({
   status,
@@ -804,6 +878,7 @@ function OrdersSection({
 
   const orders = useAllegroOrders(filter, q, page * ORDERS_PAGE_SIZE, ORDERS_PAGE_SIZE)
   const rows = orders.data?.orders ?? []
+  const thumbs = useProductThumbs(rows.flatMap((o) => o.lines.map((l) => l.productId)))
   const counts: Partial<Record<AllegroOrderFilter, number>> = {
     all: status.counts.orders,
     open: status.counts.ordersOpen,
@@ -811,17 +886,36 @@ function OrdersSection({
     imported: status.imports.imported,
     held: status.imports.held,
   }
+  const toggle = (f: AllegroOrderFilter) => onFilter(filter === f ? "all" : f)
+  const button = (f: AllegroOrderFilter, attention = false) => (
+    <FilterButton key={f} icon={ORDER_FILTER_ICON[f]} label={t(`orders.filter.${f}`)} count={counts[f]} attention={attention} active={filter === f} onClick={() => toggle(f)} />
+  )
 
   return (
-    <Container className="divide-y p-0" id="allegro-orders">
-      <SectionHeader title={t("orders.title")} subtitle={t("orders.subtitle")} />
-      <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <Pills filters={ORDER_FILTERS} value={filter} onChange={onFilter} label={(f) => t(`orders.filter.${f}`)} count={(f) => counts[f] ?? null} />
-        <div className="w-full lg:w-72">
-          <Input size="small" type="search" placeholder={t("orders.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-      </div>
-
+    <Section
+      id="allegro-orders"
+      icon={<ShoppingCart />}
+      title={t("orders.title")}
+      pointsLabel={t("orders.subtitle")}
+      points={[
+        { icon: <Clock />, text: t("orders.points.journal"), title: t("orders.journal") },
+        { icon: <Tag />, text: t("orders.points.lines") },
+        { icon: <LinkIcon />, text: t("orders.points.store") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("orders.search")} />}
+    >
+      <FilterBar>
+        <FilterButton icon={ORDER_FILTER_ICON.all} label={t("orders.filter.all")} count={counts.all} active={filter === "all"} onClick={() => onFilter("all")} />
+        <FilterDivider />
+        {button("open")}
+        {button("sent")}
+        {button("cancelled")}
+        <FilterDivider />
+        {button("unmatched", true)}
+        {button("held", true)}
+        {button("imported")}
+      </FilterBar>
+      <KitFetchingBar active={orders.isFetching && !orders.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -837,8 +931,10 @@ function OrdersSection({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {rows.length === 0 ? (
-              <EmptyRow span={6} loading={orders.isLoading} text={t("orders.empty")} />
+            {orders.isLoading ? (
+              <KitSkeletonRows cols={6} rows={4} />
+            ) : rows.length === 0 ? (
+              <EmptyTableRow cols={6} icon={<ShoppingCart />} title={t("orders.empty")} />
             ) : (
               rows.map((o) => (
                 <Table.Row key={o.id} className="[&_td]:py-2.5 align-top">
@@ -854,11 +950,7 @@ function OrdersSection({
                             {o.deliveryMethod}
                           </Text>
                         ) : null}
-                        {o.demo ? (
-                          <Badge size="2xsmall" color="purple">
-                            {t("offers.sample")}
-                          </Badge>
-                        ) : null}
+                        {o.demo ? <ToneBadge tone="purple">{t("offers.sample")}</ToneBadge> : null}
                       </span>
                     </div>
                   </Table.Cell>
@@ -868,7 +960,7 @@ function OrdersSection({
                   <Table.Cell className="max-w-[380px]">
                     <div className="flex flex-col gap-y-2">
                       {o.lines.map((l, i) => (
-                        <OrderLineCell key={`${l.offerId}-${i}`} line={l} />
+                        <OrderLineCell key={`${l.offerId}-${i}`} line={l} thumbnail={l.productId ? thumbs[l.productId] : null} />
                       ))}
                     </div>
                   </Table.Cell>
@@ -883,12 +975,12 @@ function OrdersSection({
         </Table>
       </div>
       <Pager count={orders.data?.count ?? 0} page={page} size={ORDERS_PAGE_SIZE} onPage={setPage} />
-    </Container>
+    </Section>
   )
 }
 
 /** One item of an Allegro order: its store product, or the Allegro offer and why it has no product. */
-function OrderLineCell({ line: l }: { line: AllegroOrderLineDto }) {
+function OrderLineCell({ line: l, thumbnail }: { line: AllegroOrderLineDto; thumbnail?: string | null }) {
   const { t } = useTranslation("allegro")
   const signature = l.externalId?.trim() || null
   const quantity = <span className="tabular-nums text-ui-fg-muted">{l.quantity} x </span>
@@ -904,6 +996,7 @@ function OrderLineCell({ line: l }: { line: AllegroOrderLineDto }) {
         }
         code={l.sku ?? signature}
         codeTitle={signature ? t("offers.signatureTitle", { signature }) : undefined}
+        thumbnail={thumbnail}
       />
     )
   }
@@ -923,9 +1016,7 @@ function OrderLineCell({ line: l }: { line: AllegroOrderLineDto }) {
         <ArrowUpRightOnBox className="shrink-0 text-ui-fg-muted" />
       </a>
       <span className="flex flex-wrap items-center gap-1.5">
-        <Badge size="2xsmall" color="orange">
-          {signature ? t("offers.noProduct") : t("offers.noKey")}
-        </Badge>
+        <ToneBadge tone="orange">{signature ? t("offers.noProduct") : t("offers.noKey")}</ToneBadge>
         <span className="font-mono text-ui-fg-muted txt-compact-xsmall">{signature ?? `#${l.offerId}`}</span>
       </span>
     </div>
@@ -943,7 +1034,7 @@ function OrderInStoreCell({ order: o }: { order: AllegroOrderDto }) {
       </Text>
     )
   }
-  const state = <StatusBadge color={IMPORT_TONE[imp.status] ?? "grey"}>{t(`imports.status.${imp.status}`)}</StatusBadge>
+  const state = <ToneBadge tone={IMPORT_TONE[imp.status] ?? "grey"}>{t(`imports.status.${imp.status}`)}</ToneBadge>
   if (imp.orderId) {
     return (
       <div className="flex flex-col items-start gap-y-1.5" title={imp.status === "imported" ? undefined : (imp.reason ?? undefined)}>
@@ -962,7 +1053,7 @@ function OrderInStoreCell({ order: o }: { order: AllegroOrderDto }) {
 
 /* ------------------------------------------------------------------ */
 
-const RUN_COLOR: Record<AllegroRunDto["status"], "green" | "orange" | "red" | "grey"> = {
+const RUN_TONE: Record<AllegroRunDto["status"], Tone> = {
   ok: "green",
   partial: "orange",
   error: "red",
@@ -975,8 +1066,16 @@ function RunsSection({ lang }: { lang: string }) {
   const list = useMemo(() => runs.data?.runs ?? [], [runs.data])
 
   return (
-    <Container className="divide-y p-0">
-      <SectionHeader title={t("runs.title")} subtitle={t("runs.subtitle")} />
+    <Section
+      icon={<History />}
+      title={t("runs.title")}
+      pointsLabel={t("runs.subtitle")}
+      points={[
+        { icon: <DocumentText />, text: t("runs.points.what") },
+        { icon: <Clock />, text: t("runs.points.when") },
+      ]}
+    >
+      <KitFetchingBar active={runs.isFetching && !runs.isLoading} />
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -992,8 +1091,10 @@ function RunsSection({ lang }: { lang: string }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {list.length === 0 ? (
-              <EmptyRow span={8} loading={runs.isLoading} text={t("runs.empty")} />
+            {runs.isLoading ? (
+              <KitSkeletonRows cols={8} />
+            ) : list.length === 0 ? (
+              <EmptyTableRow cols={8} icon={<History />} title={t("runs.empty")} />
             ) : (
               list.map((r) => (
                 <Table.Row key={r.id} title={r.message ?? undefined}>
@@ -1007,10 +1108,10 @@ function RunsSection({ lang }: { lang: string }) {
                     <span className="text-ui-fg-muted"> / {t(`runs.trigger.${r.trigger}`)}</span>
                   </Table.Cell>
                   <Table.Cell>
-                    <StatusBadge color={RUN_COLOR[r.status]}>{t(`runs.${r.status}`)}</StatusBadge>
+                    <ToneBadge tone={RUN_TONE[r.status]}>{t(`runs.${r.status}`)}</ToneBadge>
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{r.items}</Table.Cell>
-                  <Table.Cell className="text-right tabular-nums">{r.issues}</Table.Cell>
+                  <Table.Cell className={clx("text-right tabular-nums", r.issues > 0 && "text-ui-tag-orange-text")}>{r.issues}</Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{t("runs.changes", { created: r.created, updated: r.updated, removed: r.removed })}</Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmtDuration(r.durationMs)}</Table.Cell>
                 </Table.Row>
@@ -1019,7 +1120,7 @@ function RunsSection({ lang }: { lang: string }) {
           </Table.Body>
         </Table>
       </div>
-    </Container>
+    </Section>
   )
 }
 

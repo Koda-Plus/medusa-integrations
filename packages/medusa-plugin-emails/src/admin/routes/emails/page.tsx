@@ -11,7 +11,8 @@ import { GuideView, usePromptSpec } from "../../lib/emails-guide-view"
 import { EmailsIcon } from "../../lib/emails-icon"
 import { ByTemplateSection, DemoDetails, GallerySection, MessageDrawer, MessagesSection, TestDrawer, type TestInitial } from "../../lib/emails-panels"
 import { BrandingSection, ProviderSection, TemplatesSection } from "../../lib/emails-settings"
-import { StatTile, fmtNumber, fmtRating, modeState, referencesFor } from "../../lib/emails-ui"
+import { fmtNumber, fmtRating, modeState, referencesFor } from "../../lib/emails-ui"
+import { StatTile, StatTiles } from "../../lib/emails-blocks"
 import { KitLoading } from "../../lib/emails-kit"
 import { BouncesSection } from "../../lib/emails-delivery"
 
@@ -114,7 +115,7 @@ const EmailsPage = () => {
           </div>
         ) : null}
         {s && nav.view === "panel" ? (
-          <div className={clxGrid(Boolean(s.delivery))}>
+          <StatTiles columns={s.delivery ? 6 : 5}>
             <StatTile
               label={t("stats.all")}
               value={fmtNumber(everything.data?.count ?? 0, lang)}
@@ -127,7 +128,7 @@ const EmailsPage = () => {
             <StatTile
               label={t("stats.attention")}
               value={fmtNumber(s.counts.attention30d, lang)}
-              tone={s.counts.attention30d > 0 ? "red" : "default"}
+              tone={s.counts.attention30d > 0 ? "red" : "grey"}
               active={filter === "attention" && scope.since === "30d"}
               onClick={() => showLog("attention", "30d")}
             />
@@ -135,7 +136,7 @@ const EmailsPage = () => {
               <StatTile
                 label={t("delivery.tile")}
                 value={fmtNumber(s.delivery.suppressed, lang)}
-                tone={s.delivery.suppressed > 0 ? "red" : "default"}
+                tone={s.delivery.suppressed > 0 ? "red" : "grey"}
                 active={bounces}
                 onClick={() => setBounces((v) => !v)}
               />
@@ -146,7 +147,7 @@ const EmailsPage = () => {
               tone="blue"
               onClick={() => nav.go("settings", "templates")}
             />
-          </div>
+          </StatTiles>
         ) : null}
       </Container>
 
@@ -215,7 +216,6 @@ function Header({
     <IntegrationHeader
       icon={<EmailsIcon width={28} height={28} />}
       title={t("title")}
-      by={t("by")}
       badges={
         status ? (
           <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={status.mode === "dev" ? t("devNote.label") : status.mode === "app" ? t("provider.app.label") : t("demo.label")}>
@@ -265,8 +265,8 @@ function Header({
       actions={
         panel
           ? [
-              { key: "templates", label: t("actions.templates"), icon: <EyeMini />, onClick: () => nav.go("settings", "gallery") },
               { key: "refresh", label: t("actions.refresh"), icon: <ArrowPath />, loading: refreshing, onClick: onRefresh },
+              { key: "templates", label: t("actions.templates"), icon: <EyeMini />, onClick: () => nav.go("settings", "gallery") },
             ]
           : []
       }
@@ -314,11 +314,6 @@ function Warnings({ status }: { status: StatusResponse }) {
       ))}
     </div>
   )
-}
-
-/* Six tiles when delivery is read from Resend (the suppressed addresses tile), five without. */
-function clxGrid(withDelivery: boolean): string {
-  return `grid grid-cols-2 gap-3 px-6 py-4 ${withDelivery ? "md:grid-cols-3 xl:grid-cols-6" : "md:grid-cols-5"}`
 }
 
 export const config = defineRouteConfig({

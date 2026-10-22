@@ -1,9 +1,9 @@
-import type { ComponentProps, ReactNode } from "react"
+import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Badge, Text, clx } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 import type { CouponStatus } from "../../modules/coupons/lib/contract"
 import type { SentenceFormat } from "./coupons-sentence"
-import { StatTile as KitStatTile, type Tone } from "./coupons-blocks"
+import { ToneBadge, type Tone } from "./coupons-blocks"
 
 /** Money and dates in the admin's language. */
 export function useFormat(): SentenceFormat & { lang: string; number: (n: number) => string } {
@@ -23,49 +23,19 @@ export function useFormat(): SentenceFormat & { lang: string; number: (n: number
   }
 }
 
-const STATUS_COLOR: Record<CouponStatus, "green" | "blue" | "grey" | "orange" | "red" | "purple"> = {
+/* One palette (kit Tone): an ended coupon is grey whether its dates or its uses ran out; purple is never a state. */
+const STATUS_TONE: Record<CouponStatus, Tone> = {
   active: "green",
   scheduled: "blue",
   expired: "grey",
   paused: "orange",
   draft: "grey",
-  used_up: "purple",
+  used_up: "grey",
 }
 
 export function StatusBadge({ status }: { status: CouponStatus }) {
   const { t } = useTranslation("coupons")
-  return (
-    <Badge size="2xsmall" color={STATUS_COLOR[status]}>
-      {t(`status.${status}`)}
-    </Badge>
-  )
-}
-
-/** The kit's counter tile (coupons-blocks); "default" is the kit's grey. */
-export function StatTile({ tone = "grey", ...props }: Omit<ComponentProps<typeof KitStatTile>, "tone"> & { tone?: Tone | "default" }) {
-  return <KitStatTile tone={tone === "default" ? "grey" : tone} {...props} />
-}
-
-/** A segmented choice: the options as small buttons, the chosen one filled. */
-export function Segment<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string }>; onChange: (v: T) => void }) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={value === o.value}
-          onClick={() => onChange(o.value)}
-          className={clx(
-            "txt-compact-small rounded-md border px-2.5 py-1 transition-fg",
-            value === o.value ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-color" : "border-ui-border-base bg-ui-bg-base text-ui-fg-subtle hover:bg-ui-bg-base-hover",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
+  return <ToneBadge tone={STATUS_TONE[status]}>{t(`status.${status}`)}</ToneBadge>
 }
 
 /** A choice card: an option with a line of description, the chosen one outlined. */

@@ -7,10 +7,18 @@ const pl: typeof en = {
   by: "by Koda Plus",
   subtitle:
     "Zamówienia trafiają do Subiekta nexo PRO jako dokumenty ZK, WZ wystawione w magazynie wraca do zamówienia, dokumenty sprzedaży dostają numer KSeF, a stany i ceny płyną z Subiekta do Medusy.",
+  points: {
+    orders: "Zamówienie jako ZK",
+    wz: "WZ wraca z magazynu",
+    sales: "Faktury z numerem KSeF",
+    stock: "Stany z Subiekta",
+    prices: "Ceny najpierw jako plan",
+    safe: "Zapis dopiero po włączeniu",
+  },
   view: { panel: "Panel", guide: "Przewodnik wdrożenia" },
   settings: {
     title: "Ustawienia",
-    subtitle: "Techniczna strona integracji: połączenie z mostem i jego diagnostyka, przełączniki zapisu, synchronizacja stanów i historia zadań w tle.",
+    subtitle: "Techniczna strona integracji",
     tab: {
       connection: "Połączenie",
       bridge: "Most",
@@ -29,6 +37,7 @@ const pl: typeof en = {
   },
   actions: {
     moreActions: "Więcej akcji",
+    refresh: "Odśwież",
     check: "Sprawdź połączenie",
     checking: "Sprawdzam",
     stock: "Synchronizuj stany",
@@ -61,6 +70,8 @@ const pl: typeof en = {
     zk: "Dokumenty ZK",
     wz: "Dokumenty WZ",
     sales: "FS i PA",
+    hintAttention: "Wyślij ponownie niżej",
+    hintWaiting: "Wysyłka po płatności",
   },
   store: {
     openOrder: "Otwórz zamówienie",
@@ -88,11 +99,12 @@ const pl: typeof en = {
     never: "nigdy",
     none: "brak",
     eventsReadAt: "Dokumenty pobrane",
-    schedule: "Kolejka co minutę, dokumenty co 2 minuty, stany co 10 minut, produkty co godzinę.",
+    points: { queue: "Kolejka co minutę", documents: "Dokumenty co 2 min", stock: "Stany co 10 min", products: "Produkty co godzinę" },
   },
   bridge: {
     title: "Most",
     subtitle: "Co powiedziało ostatnie sprawdzenie mostu. Świeży odczyt daje przycisk Sprawdź połączenie.",
+    points: { last: "Z ostatniego sprawdzenia", fresh: "Sprawdź połączenie czyta od nowa" },
     versions: "Wersje",
     versionsValue: "most {{bridge}}, kontrakt {{contract}}, wtyczka {{plugin}}",
     sdk: "nexo SDK i baza",
@@ -171,6 +183,7 @@ const pl: typeof en = {
   writers: {
     title: "Przełączniki zapisu",
     subtitle: "Każdy zapis dodany w 0.2.0 wymaga swojej opcji w medusa-config.ts i osoby, która włączy go tutaj. Opcja ustawiona na false wygrywa.",
+    points: { option: "Opcja w medusa-config.ts", person: "Włącza tu człowiek", falseWins: "Opcja false wygrywa" },
     demoNote: "Demo: włączone zapisy tylko symulują. W tym sklepie nic się nie zmienia.",
     names: {
       prices: "Ceny z Subiekta",
@@ -217,6 +230,7 @@ const pl: typeof en = {
   products: {
     title: "Produkty z Subiekta",
     subtitle: "Ceny z Subiekta obok produktów w sklepie, które aktualizują, oraz towary z Subiekta, których sklep jeszcze nie sprzedaje. Najpierw wszystko jest planem: nic się nie zmienia, dopóki ktoś nie włączy zapisu w Ustawieniach.",
+    points: { plan: "Najpierw plan", match: "Najpierw EAN, potem SKU", writer: "Zmiany po włączeniu zapisu" },
     matching: "Towary z Subiekta są dopasowywane do wariantów w sklepie najpierw po EAN, potem po SKU porównanym z symbolem w Subiekcie. Kod użyty dwa razy to konflikt i nigdy nie jest zgadywany.",
     matchedKey: "Dopasowane po {{by}}: {{code}}",
     settings: "Ceny z {{level}} ({{type}}) do: {{target}}, w walucie {{currency}}.",
@@ -252,10 +266,11 @@ const pl: typeof en = {
     columns: { product: "Towar w Subiekcie", change: "Zmiana", store: "Produkt w sklepie", matched: "Dopasowanie", status: "Status", details: "Szczegóły" },
     matchedBy: { ean: "EAN", sku: "SKU" },
     newProduct: "nowy, {{price}}",
-    empty: "Nic w tym planie.",
+    empty: "Nic w tym planie",
     search: "Symbol, SKU albo EAN",
     quarantine: "W kwarantannie po kolejnych błędach",
     quarantineHint: "Zapis pomija te pozycje, dopóki ich nie zwolnisz. Najpierw usuń przyczynę (ostatni błąd mówi, co poszło nie tak).",
+    quarantinePoints: { skipped: "Pomijane do zwolnienia", fix: "Najpierw usuń przyczynę" },
     samples: { conflicts: "Konflikty, nigdy nie zgadujemy", unmatchedVariants: "Warianty bez dopasowania (SKU)", noPrice: "Bez ceny w tym poziomie" },
     blocked: {
       currency_mismatch: "Poziom cen jest w innej walucie niż priceCurrency: nic nie zaplanowano.",
@@ -265,10 +280,10 @@ const pl: typeof en = {
   tasks: {
     title: "Kolejka",
     subtitle: "Zamówienia w drodze do Subiekta: każde ZK, WZ, faktura albo paragon, o które poprosił sklep, i jak poszło. Wysyłka, która się nie udała, czeka tu na Ciebie z przyciskiem Wyślij ponownie.",
-    technical: "Każde wywołanie, które Medusa ma do wykonania w moście, z ponowieniami. Nieudane zadanie czeka na człowieka.",
+    points: { order: "Wiersz na każde wywołanie", retries: "Ponawia sama", failed: "Nieudane czeka na Ciebie" },
+    emptyBy: { attention: "Nic nie wymaga uwagi", open: "Nic nie jest w drodze", done: "Jeszcze nic nie wysłano", all: "Kolejka pusta" },
     filters: { attention: "Wymagają uwagi", open: "Otwarte", done: "Zakończone", all: "Wszystkie" },
     search: "Numer zamówienia",
-    empty: "Nic tu nie ma.",
     columns: { order: "Zamówienie w sklepie", operation: "Operacja", status: "Status", attempts: "Próby", document: "Dokument w Subiekcie", details: "Szczegóły", actions: "" },
     kinds: { "order.create": "Utwórz ZK", "order.cancel": "Anuluj ZK", "order.fulfill": "Wystaw WZ", "order.document": "Wystaw dokument sprzedaży" },
     documentKinds: { fs: "Wystaw FS", pa: "Wystaw PA" },
@@ -292,8 +307,10 @@ const pl: typeof en = {
   documents: {
     title: "Dokumenty",
     subtitle: "Co Subiekt wystawił do Twoich zamówień: ZK, WZ, faktury i paragony, każdy dokument obok swojego zamówienia w sklepie.",
+    points: { tag: "Znacznik zamówienia w uwagach", warehouse: "WZ z magazynu", ksef: "Numer KSeF na FS" },
+    search: "Numer dokumentu albo zamówienia",
     filters: { all: "Wszystkie", ZK: "ZK", WZ: "WZ", FS: "FS", PA: "PA" },
-    empty: "Jeszcze nie ma dokumentów.",
+    empty: "Jeszcze bez dokumentów",
     columns: { number: "Numer", order: "Zamówienie w sklepie", issued: "Wystawiono", source: "Źródło", status: "Status", ksef: "Numer KSeF" },
     sources: { bridge: "Medusa", subiekt: "Magazyn", demo: "Demo" },
     statuses: { open: "Otwarty", canceled: "Anulowany", completed: "Zrealizowany" },
@@ -302,7 +319,8 @@ const pl: typeof en = {
   stock: {
     title: "Stany",
     subtitle: "Z Subiekta do Medusy, najpierw po EAN, potem po SKU porównanym z symbolem towaru.",
-    never: "Synchronizacja stanów jeszcze się nie odbyła.",
+    points: { direction: "Z Subiekta do Medusy", match: "Najpierw EAN, potem SKU" },
+    never: "Stany jeszcze nie synchronizowane",
     dryRun: "Próba na sucho",
     counters: {
       subiektProducts: "Towary w Subiekcie",
@@ -323,7 +341,8 @@ const pl: typeof en = {
   },
   runs: {
     title: "Historia",
-    empty: "Jeszcze nic się nie wydarzyło.",
+    empty: "Jeszcze bez uruchomień",
+    points: { newest: "Najnowsze na górze", jobs: "Zadania w tle i kliknięcia" },
     columns: { kind: "Zadanie", trigger: "Wyzwalacz", status: "Wynik", message: "Podsumowanie", started: "Start", duration: "Czas" },
     kinds: { stock: "Stany", events: "Dokumenty", tasks: "Kolejka", health: "Połączenie", products: "Produkty" },
     triggers: { schedule: "Harmonogram", manual: "Ręcznie", webhook: "Webhook", event: "Zdarzenie", auto: "Automatycznie" },
@@ -344,8 +363,18 @@ const pl: typeof en = {
     title: "Subiekt nexo",
     demo: "Demo",
     more: "Panel",
-    none: "To zamówienie nie zostało wysłane do Subiekta.",
-    waiting: "ZK powstanie po zaksięgowaniu płatności.",
+    none: "Nie wysłano do Subiekta",
+    waiting: "ZK po zaksięgowaniu płatności",
+    state: { notSent: "Nie wysłano", waiting: "Czeka na płatność", sending: "Wysyłka", attention: "Wymaga uwagi", inSubiekt: "W Subiekcie" },
+    run: {
+      queue: "Czeka w kolejce Medusy",
+      queueShort: "Kolejka",
+      bridge: "Most wystawia dokument",
+      bridgeShort: "Most",
+      document: "Numer wraca do Medusy",
+      documentShort: "Numer",
+      done: "W Subiekcie",
+    },
     send: "Wyślij do Subiekta teraz",
     sent: "W kolejce. ZK pojawi się tu za kilka sekund.",
     ksef: "KSeF {{number}}",
