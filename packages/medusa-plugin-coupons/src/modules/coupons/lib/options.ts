@@ -9,7 +9,7 @@
  *     codePrefix: "SHOP",
  *   } }]
  */
-import type { StoreFeature, StoreTerms } from "./contract"
+import type { PoolProductDto, StoreFeature, StoreTerms } from "./contract"
 
 export interface CouponsPluginOptions {
   /** The currency of amount coupons and order minimums. Default "pln". */
@@ -72,6 +72,16 @@ export interface StoreTermsAdapter {
   read: (scope: unknown, promotionIds: string[]) => Promise<Record<string, StoreTerms>>
   /** Saves the terms of one promotion (null: the store forgets them). `kind` is the coupon's kind after the save. */
   write: (scope: unknown, promotionId: string, terms: StoreTerms | null, context: { code: string; kind: string }) => Promise<void>
+  /**
+   * The products (one row per variant) of a pool, for leaving single ones
+   * out of a discount on pools. Optional: without it the plugin lists the
+   * products the pool's target names (tags, categories, a collection,
+   * products, a type). Give it when a pool holds variants rather than whole
+   * products. A pool with products left out gets a target rule
+   * items.variant_id "ne": a store that counts pieces itself ("from N
+   * pieces") should leave those variants out of its count too.
+   */
+  poolProducts?: (scope: unknown, poolId: string) => Promise<PoolProductDto[]>
   /**
    * Buy X get Y counted by the store: Medusa keeps a standard promotion with
    * this percent on the items as a marker (Medusa takes no zero). Default 0.001.

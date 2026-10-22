@@ -4,12 +4,13 @@ import { Bolt, Buildings, BuildingStorefront, Calendar, Cash, CheckCircleSolid, 
 import { Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, NameMaps, WizardInput, WizardKind } from "../../modules/coupons/lib/contract"
 import { checkWizard, cleanCode, endOfMonth, suggestCode, wizardWarnings } from "../../modules/coupons/lib/wizard"
-import { CouponsRequestError, errorMessage, useCreateCoupon, useLookups } from "./coupons-api"
+import { CouponsRequestError, errorMessage, useCreateCoupon, useLookups, usePoolProducts } from "./coupons-api"
 import { BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, poolsWord } from "./coupons-fields"
 import { couponSentence, wizardCoupon } from "./coupons-sentence"
 import { useFormat } from "./coupons-ui"
 import { ToneBadge } from "./coupons-blocks"
 import { KeyPoints, type KeyPointItem } from "./coupons-guide"
+import { PoolPicker, variantNames } from "./coupons-pool-picker"
 
 /**
  * THE CREATOR, full screen: the steps on the left (each with what was
@@ -28,6 +29,7 @@ const START: WizardInput = {
   value: 15,
   categoryIds: [],
   poolIds: [],
+  excludedVariantIds: [],
   buyGet: { buy: 6, free: 1, freePrice: null },
   audience: "everyone",
   groupIds: [],
@@ -80,6 +82,9 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.validity, form.startsAt, form.endsAt])
 
+  /* A discount on pools: the products of each picked pool, to leave single ones out. */
+  const poolProducts = usePoolProducts(form.kind === "percent_pools" ? form.poolIds ?? [] : [], open && has("pools"))
+
   const names: NameMaps = useMemo(
     () => ({
       groups: Object.fromEntries((lookups.data?.groups ?? []).map((g) => [g.id, g.name])),
@@ -88,8 +93,9 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
       customers: customerNames,
       pools: Object.fromEntries((store?.pools ?? []).map((p) => [p.id, p.name])),
       priceLists: Object.fromEntries((store?.priceLists ?? []).map((p) => [p.id, p.name])),
+      variants: variantNames(poolProducts.byPool),
     }),
-    [lookups.data, customerNames, store],
+    [lookups.data, customerNames, store, poolProducts.byPool],
   )
 
   const withCode = !form.code ? { ...form, code: suggestCode(form, codePrefix) } : form
@@ -171,6 +177,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
   const sample = 300
   const after = form.kind === "fixed_order" ? Math.max(0, sample - Number(form.value ?? 0)) : form.kind === "free_shipping" || form.kind === "buy_get" ? sample : sample * (1 - Number(form.value ?? 0) / 100)
   const validityText = dates.endsAt ? `${dates.startsAt ? fmt.date(dates.startsAt) : ""} - ${fmt.date(dates.endsAt)}` : t("wizard.validity.none")
+  const excludedNames = form.kind === "percent_pools" ? (form.excludedVariantIds ?? []).map((id) => names.variants?.[id] ?? id) : []
   const targetNames = usesPools ? (form.poolIds ?? []).map((id) => names.pools?.[id]).filter(Boolean) : usesCategories ? (form.categoryIds ?? []).map((id) => names.categories[id]).filter(Boolean) : []
 
   return (
@@ -291,7 +298,13 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
                   ) : null}
                   {usesPools ? (
                     <Field label={poolsLabel} hint={(form.poolIds ?? []).length ? t("wizard.ui.picked", { count: (form.poolIds ?? []).length }) : form.kind === "buy_get" ? t("fields.poolsAllHint") : t("fields.poolsPick")}>
-                      <PickList items={store?.pools ?? []} selected={form.poolIds ?? []} onChange={(ids) => set("poolIds", ids)} search={t("fields.search")} />
+                      <PoolPicker
+                        pools={store?.pools ?? []}
+                        selected={form.poolIds ?? []}
+                        onChange={(ids) => set("poolIds", ids)}
+                        search={t("fields.search")}
+                        products={form.kind === "percent_pools" ? { byPool: poolProducts.byPool, excluded: form.excludedVariantIds ?? [], onExcluded: (ids) => set("excludedVariantIds", ids) } : undefined}
+                      />
                     </Field>
                   ) : null}
                   {usesCategories ? (
@@ -462,6 +475,11 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
                 <Text size="small" className="text-ui-fg-subtle">
                   {targetNames.length ? targetNames.join(", ") : t(`wizard.kind.${form.kind}.${form.kind === "buy_get" && storeBuyGet ? "hintStore" : "hint"}`)}
                 </Text>
+                {excludedNames.length ? (
+                  <Text size="xsmall" className="mt-1 text-ui-fg-muted">
+                    {excludedNames.length <= 3 ? t("fields.poolProducts.without", { list: excludedNames.join(", ") }) : t("fields.poolProducts.withoutCount", { count: excludedNames.length })}
+                  </Text>
+                ) : null}
                 {form.terms?.note ? (
                   <Text size="xsmall" className="mt-2 italic text-ui-fg-subtle">
                     {form.terms.note}

@@ -181,6 +181,15 @@ export function customerLabel(row: Record<string, unknown>): string | null {
   return str(row.company_name) ?? (person || null) ?? str(row.email)
 }
 
+/** A variant as people name it: the product and the variant ("Cream 200 ml"), a lone default variant by its product. */
+export function variantLabel(row: Record<string, unknown>): string | null {
+  const product = str((row.product as Record<string, unknown> | undefined)?.title)
+  const own = str(row.title)
+  if (product && own && own.toLowerCase().startsWith(product.toLowerCase())) return own
+  if (product && own && own !== product && !/^default/i.test(own)) return `${product} ${own}`
+  return product ?? own ?? str(row.sku)
+}
+
 export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<NameMaps> {
   const groups = coupons.flatMap((c) => [...c.shape.groupIds, ...(c.shape.excludedGroupIds ?? [])])
   const categories = coupons.flatMap((c) => c.shape.categoryIds)
@@ -188,7 +197,7 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
   const customers = coupons.flatMap((c) => c.shape.customerIds)
   const ids = (k: "collectionIds" | "shippingTypeIds" | "shippingOptionIds" | "salesChannelIds" | "regionIds" | "tagIds") => coupons.flatMap((c) => c.shape[k] ?? [])
   const needStore = coupons.some((c) => c.terms)
-  const [g, cat, p, cus, col, st, so, sc, reg, tags, store] = await Promise.all([
+  const [g, cat, p, cus, col, st, so, sc, reg, tags, variants, store] = await Promise.all([
     nameMap(scope, "customer_group", groups, (r) => str(r.name), ["name"]),
     nameMap(scope, "product_category", categories, (r) => str(r.name), ["name"]),
     nameMap(scope, "product", products, (r) => str(r.title), ["title"]),
@@ -199,6 +208,7 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
     nameMap(scope, "sales_channel", ids("salesChannelIds"), (r) => str(r.name), ["name"]),
     nameMap(scope, "region", ids("regionIds"), (r) => str(r.name), ["name"]),
     nameMap(scope, "product_tag", ids("tagIds"), (r) => str(r.value), ["value"]),
+    nameMap(scope, "product_variant", coupons.flatMap((c) => c.shape.excludedVariantIds ?? []), variantLabel, ["title", "sku", "product.title"]),
     needStore ? storeLookups(scope).then((x) => x.lookups) : Promise.resolve(null),
   ])
   /* The store's own rules (option storeRules), never a reason for the page to fail. */
@@ -214,7 +224,7 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
   const pools = Object.fromEntries((store?.pools ?? []).map((x) => [x.id, x.name]))
   const priceLists = Object.fromEntries((store?.priceLists ?? []).map((x) => [x.id, x.name]))
   const nobody = couponsService(scope).getOptions().nobodyCustomerId
-  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, tags, pools, priceLists, nobody, storeRules }
+  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, tags, variants, pools, priceLists, nobody, storeRules }
 }
 
 /* ------------------------------------------------------------------ */

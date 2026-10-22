@@ -106,12 +106,14 @@ export function shapeOf(p: PromotionLike): CouponShape {
   const shippingTypeIds: string[] = []
   const shippingOptionIds: string[] = []
   const tagIds: string[] = []
+  const excludedVariantIds: string[] = []
   for (const r of targets) {
     const attr = r.attribute ?? ""
     if (attr === RULE.category && isIn(r)) categoryIds.push(...ruleValues(r))
     else if (attr === RULE.product && isIn(r)) productIds.push(...ruleValues(r))
     else if (attr === RULE.collection && isIn(r)) collectionIds.push(...ruleValues(r))
     else if (attr === RULE.tag && isIn(r)) tagIds.push(...ruleValues(r))
+    else if (attr === RULE.variant && r.operator === "ne") excludedVariantIds.push(...ruleValues(r))
     else if (attr === RULE.shippingType && isIn(r)) shippingTypeIds.push(...ruleValues(r))
     else if (attr === RULE.shippingOption && isIn(r)) shippingOptionIds.push(...ruleValues(r))
     else keep("target", r)
@@ -129,6 +131,7 @@ export function shapeOf(p: PromotionLike): CouponShape {
     shippingTypeIds: [...new Set(shippingTypeIds)],
     shippingOptionIds: [...new Set(shippingOptionIds)],
     tagIds: [...new Set(tagIds)],
+    excludedVariantIds: [...new Set(excludedVariantIds)],
     salesChannelIds: [...new Set(salesChannelIds)],
     regionIds: [...new Set(regionIds)],
     groupIds: [...new Set(groupIds)],

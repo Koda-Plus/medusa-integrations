@@ -25,6 +25,12 @@ export const RULE = {
   minimum: "item_total",
   category: "items.product.categories.id",
   product: "items.product.id",
+  /**
+   * One variant of a line. With "ne" it leaves single products out of a
+   * discount on the store's pools: Medusa joins target rules with AND, and
+   * "ne" on a list holds when the line's variant is none of them.
+   */
+  variant: "items.variant_id",
   collection: "items.product.collection_id",
   tag: "items.product.tags.id",
   shippingType: "shipping_methods.shipping_option.shipping_option_type_id",

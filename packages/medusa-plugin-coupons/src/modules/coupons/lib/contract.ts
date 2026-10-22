@@ -38,6 +38,8 @@ export interface CouponShape {
   regionIds: string[]
   /** Product tag ids the discount is limited to. */
   tagIds?: string[]
+  /** Variant ids left out of the discount (target rule items.variant_id "ne"). */
+  excludedVariantIds?: string[]
   /** Customer group ids the coupon is for; empty: every group. */
   groupIds: string[]
   /** Customer group ids the coupon is NOT for (rule "is not"): retail only, when they are the member groups. */
@@ -138,6 +140,8 @@ export interface NameMaps {
   regions?: Record<string, string>
   tags?: Record<string, string>
   pools?: Record<string, string>
+  /** Variants left out of a discount: the product title and the variant ("Cream 200 ml"). */
+  variants?: Record<string, string>
   priceLists?: Record<string, string>
   /** The value of a customer rule that matches nobody (option nobodyCustomerId). */
   nobody?: string | null
@@ -194,6 +198,25 @@ export interface LookupsResponse {
   store: StoreLookups | null
 }
 
+/** A product (one variant) of a store's pool, for leaving single products out of a discount. */
+export interface PoolProductDto {
+  variantId: string
+  productId: string
+  /** The product's title. */
+  title: string
+  /** The variant's title, null when the product has only its default variant. */
+  variantTitle: string | null
+  sku: string | null
+  thumbnail: string | null
+}
+
+/** GET /admin/coupons/lookups/pool-products?pool=<id>. supported false: the pool's target is not one the plugin can list. */
+export interface PoolProductsResponse {
+  pool: string
+  products: PoolProductDto[]
+  supported: boolean
+}
+
 export interface CustomerHit {
   id: string
   email: string
@@ -217,6 +240,8 @@ export interface WizardInput {
   categoryIds?: string[]
   /** The store's pools (percent_pools, and buy_get when the store keeps it). */
   poolIds?: string[]
+  /** percent_pools: variants of the picked pools left out of the discount; empty or missing: none. */
+  excludedVariantIds?: string[]
   /** Buy X get Y: how many to buy, how many free, the price of a free piece (store only). */
   buyGet?: { buy: number; free: number; freePrice?: number | null } | null
   audience: WizardAudience
@@ -259,6 +284,8 @@ export interface CouponPatch {
   /** What the discount lands on, for coupons on items: categories, or the store's pools. */
   categoryIds?: string[]
   poolIds?: string[]
+  /** A discount on the store's pools: the variants left out of it; [] clears it. */
+  excludedVariantIds?: string[]
   /** Buy X get Y kept by Medusa (buyget): how many to buy, how many free. */
   buyGet?: { buy: number; free: number } | null
   /** The store's own terms (option storeTerms): only the keys sent change. */

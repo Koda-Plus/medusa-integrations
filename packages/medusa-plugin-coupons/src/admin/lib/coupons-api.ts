@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   CreateResponse,
   CustomerCouponsResponse,
@@ -7,6 +7,7 @@ import type {
   ListResponse,
   LookupsResponse,
   OrderCouponsResponse,
+  PoolProductsResponse,
   ProductCouponsResponse,
   CouponPatch,
   UpdateResponse,
@@ -54,6 +55,23 @@ export function useCoupon(id: string | null) {
 
 export function useLookups(enabled: boolean) {
   return useQuery({ queryKey: [...KEY, "lookups"], queryFn: () => call<LookupsResponse>("/admin/coupons/lookups"), enabled, staleTime: 60_000 })
+}
+
+/** The products of each picked pool (one row per variant), by pool id; a pool still loading is missing from the map. */
+export function usePoolProducts(poolIds: readonly string[], enabled: boolean) {
+  const results = useQueries({
+    queries: poolIds.map((id) => ({
+      queryKey: [...KEY, "pool-products", id],
+      queryFn: () => call<PoolProductsResponse>(`/admin/coupons/lookups/pool-products?pool=${encodeURIComponent(id)}`),
+      enabled,
+      staleTime: 60_000,
+    })),
+  })
+  const byPool: Record<string, PoolProductsResponse> = {}
+  results.forEach((r, i) => {
+    if (r.data) byPool[poolIds[i]] = r.data
+  })
+  return { byPool, loading: results.some((r) => r.isLoading) }
 }
 
 export function useCustomerSearch(q: string) {

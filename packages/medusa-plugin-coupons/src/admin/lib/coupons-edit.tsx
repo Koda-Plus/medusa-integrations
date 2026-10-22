@@ -3,13 +3,14 @@ import { useTranslation } from "react-i18next"
 import { ArrowUpRightOnBox, Bolt, Buildings, BuildingStorefront, Cash, Gift, Key, PauseSolid, PlaySolid, ReceiptPercent, SquareTwoStack, SquaresPlus, Tag, TruckFast, User, Users, XMark } from "@medusajs/icons"
 import { Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast } from "@medusajs/ui"
 import type { CouponDto, CouponKind, CouponPatch, NameMaps, StoreTerms } from "../../modules/coupons/lib/contract"
-import { checkPatch, editWarnings, isPercent, targetsEditable, valueEditable, type NormalizedPatch } from "../../modules/coupons/lib/edit"
+import { checkPatch, editWarnings, exclusionsEditable, isPercent, targetsEditable, valueEditable, type NormalizedPatch } from "../../modules/coupons/lib/edit"
 import { cleanCode, nextCode } from "../../modules/coupons/lib/wizard"
-import { CouponsRequestError, errorMessage, useDuplicateCoupon, useLookups, useSetStatus, useUpdateCoupon } from "./coupons-api"
+import { CouponsRequestError, errorMessage, useDuplicateCoupon, useLookups, usePoolProducts, useSetStatus, useUpdateCoupon } from "./coupons-api"
 import { BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, Section, poolsWord } from "./coupons-fields"
 import { couponSentence } from "./coupons-sentence"
 import { StatusBadge, useFormat } from "./coupons-ui"
 import { ToneBadge } from "./coupons-blocks"
+import { PoolPicker, variantNames } from "./coupons-pool-picker"
 
 /**
  * THE EDIT FORM, full screen, built like the creator: 1. what it gives (and
@@ -37,6 +38,7 @@ type Form = {
   excludedGroupIds: string[]
   categoryIds: string[]
   poolIds: string[]
+  excludedVariantIds: string[]
   buyGet: { buy: number; free: number; freePrice: number | null } | null
   terms: StoreTerms
 }
@@ -70,6 +72,7 @@ function formOf(c: CouponDto, members: readonly string[], code?: string): Form {
     excludedGroupIds: [...(c.shape.excludedGroupIds ?? [])],
     categoryIds: [...c.shape.categoryIds],
     poolIds: [...(c.terms?.pools ?? [])],
+    excludedVariantIds: [...(c.shape.excludedVariantIds ?? [])],
     buyGet: bg,
     terms: { ...(c.terms ?? {}) },
   }
@@ -96,6 +99,7 @@ function patchOf(f: Form, c: CouponDto, datesTouched: boolean, storeFeatures: re
     excludedGroupIds: f.excludedGroupIds,
     ...(targetsEditable(c) ? { categoryIds: f.categoryIds } : {}),
     ...(targetsEditable(c) && storeFeatures.includes("pools") ? { poolIds: f.poolIds } : {}),
+    ...(exclusionsEditable(c) ? { excludedVariantIds: f.excludedVariantIds } : {}),
     ...(c.shape.kind === "buy_get" && !storeBuyGet && f.buyGet ? { buyGet: { buy: f.buyGet.buy, free: f.buyGet.free } } : {}),
     ...(storeFeatures.length ? { terms: { ...terms, ...(storeBuyGet && f.buyGet ? { buyGet: f.buyGet } : {}) } } : {}),
   }
@@ -121,6 +125,7 @@ function preview(c: CouponDto, p: NormalizedPatch | null): CouponDto {
       customerIds: p.customerIds ?? c.shape.customerIds,
       excludedGroupIds: p.excludedGroupIds ?? c.shape.excludedGroupIds,
       categoryIds: p.categoryIds ?? c.shape.categoryIds,
+      excludedVariantIds: p.excludedVariantIds ?? c.shape.excludedVariantIds,
       /* New pools replace the tags they stand for. */
       tagIds: p.poolIds !== undefined ? [] : c.shape.tagIds,
       buyGet: p.buyGet ?? (terms?.buyGet ? { buy: terms.buyGet.buy, free: terms.buyGet.free } : c.shape.buyGet),
@@ -192,6 +197,9 @@ export function EditCouponModal({
   const has = (f: (typeof features)[number]) => features.includes(f)
   const poolsLabel = poolsWord(store, fmt.lang, t("fields.pools"))
   const nobody = names.nobody ?? null
+  /* A discount on pools: the products of each picked pool, to leave single ones out. */
+  const excludable = Boolean(coupon && exclusionsEditable(coupon) && features.includes("pools"))
+  const poolProducts = usePoolProducts(excludable && form ? form.poolIds : [], open)
 
   const check = useMemo(() => {
     if (!coupon || !form) return null
@@ -213,8 +221,9 @@ export function EditCouponModal({
       categories: { ...(names.categories ?? {}), ...Object.fromEntries((lookups.data?.categories ?? []).map((c) => [c.id, c.name])) },
       pools: { ...(names.pools ?? {}), ...Object.fromEntries((store?.pools ?? []).map((p) => [p.id, p.name])) },
       priceLists: { ...(names.priceLists ?? {}), ...Object.fromEntries((store?.priceLists ?? []).map((p) => [p.id, p.name])) },
+      variants: { ...(names.variants ?? {}), ...variantNames(poolProducts.byPool) },
     }),
-    [names, picked, lookups.data, store],
+    [names, picked, lookups.data, store, poolProducts.byPool],
   )
 
   if (!coupon || !form) return null
@@ -364,7 +373,13 @@ export function EditCouponModal({
                 </div>
                 {showPools ? (
                   <Field label={poolsLabel} hint={form.poolIds.length ? t("wizard.ui.picked", { count: form.poolIds.length }) : t("fields.poolsAllHint")}>
-                    <PickList items={store?.pools ?? []} selected={form.poolIds} onChange={(ids) => set("poolIds", ids)} search={t("fields.search")} />
+                    <PoolPicker
+                      pools={store?.pools ?? []}
+                      selected={form.poolIds}
+                      onChange={(ids) => set("poolIds", ids)}
+                      search={t("fields.search")}
+                      products={excludable ? { byPool: poolProducts.byPool, excluded: form.excludedVariantIds, onExcluded: (ids) => set("excludedVariantIds", ids) } : undefined}
+                    />
                   </Field>
                 ) : null}
                 {showCategories ? (
@@ -533,6 +548,13 @@ export function EditCouponModal({
                 <Text size="xlarge" weight="plus" className="text-ui-fg-interactive">
                   {bigValue}
                 </Text>
+                {form.excludedVariantIds.length ? (
+                  <Text size="xsmall" className="mt-1 text-ui-fg-muted">
+                    {form.excludedVariantIds.length <= 3
+                      ? t("fields.poolProducts.without", { list: form.excludedVariantIds.map((id) => allNames.variants?.[id] ?? id).join(", ") })
+                      : t("fields.poolProducts.withoutCount", { count: form.excludedVariantIds.length })}
+                  </Text>
+                ) : null}
                 {form.terms.note ? (
                   <Text size="xsmall" className="mt-1 italic text-ui-fg-subtle">
                     {form.terms.note}

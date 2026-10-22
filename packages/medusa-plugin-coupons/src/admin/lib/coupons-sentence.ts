@@ -99,6 +99,9 @@ export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: Senten
     default:
       parts.push(t("sentence.other"))
   }
+  /* Products left out of a discount on items: named up to three, then counted. */
+  const without = s.excludedVariantIds ?? []
+  if (without.length) parts.push(without.length <= 3 ? t("sentence.without", { list: list(names(without, n.variants), t) }) : t("sentence.withoutCount", { count: without.length }))
   if (s.salesChannelIds?.length) parts.push(t("sentence.salesChannels", { list: list(names(s.salesChannelIds, n.salesChannels), t) }))
   if (s.regionIds?.length) parts.push(t("sentence.regions", { list: list(names(s.regionIds, n.regions), t) }))
   /* The minimum count, the price list base and the floor belong to what it gives. */
@@ -140,6 +143,7 @@ export function wizardCoupon(w: WizardInput, dates: { startsAt: string | null; e
   const members = [...(ctx.memberGroupIds ?? [])]
   const customers = [...new Set([...(w.customerIds ?? []), ...(w.customerId ? [w.customerId] : [])])]
   const pools = w.kind === "percent_pools" || (w.kind === "buy_get" && ctx.storeBuyGet) ? w.poolIds ?? [] : []
+  const excludedVariantIds = w.kind === "percent_pools" ? [...new Set(w.excludedVariantIds ?? [])] : []
   const buyGet = w.kind === "buy_get" && w.buyGet ? { buy: Number(w.buyGet.buy) || 0, free: Number(w.buyGet.free) || 0 } : null
   const terms: StoreTerms = { ...(w.terms ?? {}), ...(pools.length ? { pools } : {}), ...(buyGet && ctx.storeBuyGet ? { buyGet: { ...buyGet, freePrice: w.buyGet?.freePrice ? Number(w.buyGet.freePrice) : null } } : {}) }
   return {
@@ -155,6 +159,7 @@ export function wizardCoupon(w: WizardInput, dates: { startsAt: string | null; e
       salesChannelIds: [],
       regionIds: [],
       tagIds: [],
+      excludedVariantIds,
       groupIds: w.audience === "groups" ? w.groupIds ?? [] : w.audience === "members" ? members : [],
       excludedGroupIds: w.audience === "retail" ? members : [],
       buyGet,

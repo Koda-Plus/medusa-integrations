@@ -3,10 +3,10 @@
  * read for the list and the forms, written next to a promotion. A failed
  * read is no terms; a failed write is a CouponInputError the route answers.
  */
-import type { StoreLookups, StoreTerms } from "../../modules/coupons/lib/contract"
+import type { PoolProductDto, PoolProductsResponse, StoreLookups, StoreTerms } from "../../modules/coupons/lib/contract"
 import type { ResolvedStoreTerms, StorePool } from "../../modules/coupons/lib/options"
 import { CouponInputError } from "./errors"
-import { couponsService, type Scope } from "./runtime"
+import { couponsService, queryOf, type Scope } from "./runtime"
 
 export function storeAdapter(scope: Scope): ResolvedStoreTerms | null {
   return couponsService(scope).getOptions().storeTerms
@@ -62,4 +62,72 @@ export async function storeLookups(scope: Scope): Promise<{ lookups: StoreLookup
 /** The attributes the pools' targets use (e.g. product tags), for removing the old pool targets. */
 export function poolAttributes(pools: readonly StorePool[]): string[] {
   return [...new Set(pools.map((p) => p.target?.attribute).filter((a): a is string => Boolean(a)))]
+}
+
+/** At most this many products of one pool on the list (the creator searches among them). */
+export const POOL_PRODUCTS_LIMIT = 500
+
+/** The product filter of a pool's target, null when the plugin cannot list it. */
+export function productFilterOf(target: StorePool["target"]): Record<string, unknown> | null {
+  const values = (target?.values ?? []).map(String).filter(Boolean)
+  if (!target?.attribute || !values.length) return null
+  switch (target.attribute) {
+    case "items.product.tags.id":
+      return { tags: { id: values } }
+    case "items.product.categories.id":
+      return { categories: { id: values } }
+    case "items.product.collection_id":
+      return { collection_id: values }
+    case "items.product.type_id":
+      return { type_id: values }
+    case "items.product.id":
+      return { id: values }
+    default:
+      return null
+  }
+}
+
+type ProductRow = { id?: string; title?: string | null; thumbnail?: string | null; variants?: Array<{ id?: string; title?: string | null; sku?: string | null }> | null }
+
+/** Products of Query as one row per variant, sorted by title; a lone default variant has no title of its own. */
+export function poolRowsOf(products: readonly ProductRow[]): PoolProductDto[] {
+  const out: PoolProductDto[] = []
+  for (const p of products) {
+    const variants = (p.variants ?? []).filter((v) => v?.id)
+    for (const v of variants) {
+      const own = v.title && v.title !== p.title && !(variants.length === 1 && /^default/i.test(v.title)) ? v.title : null
+      out.push({ variantId: String(v.id), productId: String(p.id ?? ""), title: p.title ?? String(p.id ?? ""), variantTitle: own, sku: v.sku ?? null, thumbnail: p.thumbnail ?? null })
+    }
+  }
+  return out.sort((a, b) => a.title.localeCompare(b.title) || (a.variantTitle ?? "").localeCompare(b.variantTitle ?? ""))
+}
+
+/**
+ * The products of one of the store's pools, one row per variant: from the
+ * store's adapter when it lists them itself, else the products its target
+ * names. Never throws: a failure reads as an empty, unsupported list.
+ */
+export async function poolProducts(scope: Scope, poolId: string): Promise<PoolProductsResponse> {
+  const adapter = storeAdapter(scope)
+  const empty = (supported: boolean): PoolProductsResponse => ({ pool: poolId, products: [], supported })
+  if (!adapter) return empty(false)
+  try {
+    if (typeof adapter.poolProducts === "function") {
+      const rows = (await adapter.poolProducts(scope, poolId)) ?? []
+      return { pool: poolId, products: rows.filter((r) => r && typeof r.variantId === "string" && r.variantId).slice(0, POOL_PRODUCTS_LIMIT), supported: true }
+    }
+    const { pools } = await storeLookups(scope)
+    const filter = productFilterOf(pools.find((p) => p.id === poolId)?.target ?? null)
+    if (!filter) return empty(false)
+    const { data } = await queryOf(scope).graph({
+      entity: "product",
+      fields: ["id", "title", "thumbnail", "variants.id", "variants.title", "variants.sku"],
+      filters: filter,
+      pagination: { take: POOL_PRODUCTS_LIMIT, skip: 0 },
+    })
+    return { pool: poolId, products: poolRowsOf((data ?? []) as ProductRow[]).slice(0, POOL_PRODUCTS_LIMIT), supported: true }
+  } catch (err) {
+    couponsService(scope).getLogger().warn(`[coupons] The products of the pool ${poolId} could not be read: ${(err as Error)?.message ?? err}`)
+    return empty(false)
+  }
 }

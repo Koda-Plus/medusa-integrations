@@ -20,6 +20,8 @@ export interface NormalizedWizard {
   value: number
   categoryIds: string[]
   poolIds: string[]
+  /** percent_pools: variants of the pools left out of the discount (a target rule "ne"). */
+  excludedVariantIds: string[]
   buyGet: { buy: number; free: number; freePrice: number | null } | null
   audience: WizardInput["audience"]
   groupIds: string[]
@@ -148,6 +150,24 @@ export function cleanTerms(raw: Partial<StoreTerms> | null | undefined, features
   return out
 }
 
+/** At most this many variants left out of one coupon (a rule with one value per variant). */
+export const MAX_EXCLUDED_VARIANTS = 500
+
+/** Variant ids to leave out: valid ids, each once, at most MAX_EXCLUDED_VARIANTS. */
+export function cleanVariantIds(v: unknown): string[] {
+  return [...new Set((Array.isArray(v) ? v : []).map((x) => String(x ?? "").trim()).filter((x) => ID.test(x)))].slice(0, MAX_EXCLUDED_VARIANTS)
+}
+
+/**
+ * The target rule that leaves single variants out of a discount on items.
+ * Medusa joins target rules with AND and checks "ne" on a list as "none of
+ * them", so the pools stay as they are and products added to a pool later
+ * are in the discount too. No variants: no rule (the coupon as before).
+ */
+export function exclusionTargetRules(variantIds: readonly string[]): RuleInput[] {
+  return variantIds.length ? [{ attribute: RULE.variant, operator: "ne", values: [...variantIds] }] : []
+}
+
 export function checkWizard(input: WizardInput, opts: WizardContext): WizardCheck {
   const errors: string[] = []
   const now = opts.now ?? new Date()
@@ -167,6 +187,7 @@ export function checkWizard(input: WizardInput, opts: WizardContext): WizardChec
   const poolIds = [...new Set((input.poolIds ?? []).filter((c) => POOL.test(c)))]
   if (kind === "percent_category" && categoryIds.length === 0) errors.push("category")
   if (kind === "percent_pools" && poolIds.length === 0) errors.push("pools")
+  const excludedVariantIds = kind === "percent_pools" ? cleanVariantIds(input.excludedVariantIds) : []
 
   /* Buy X get Y: the store counts it (feature buyGet) or Medusa does (buyget, on categories). */
   const storeBuyGet = features.includes("buyGet")
@@ -232,6 +253,7 @@ export function checkWizard(input: WizardInput, opts: WizardContext): WizardChec
       value,
       categoryIds: kind === "percent_category" || kind === "buy_get" ? categoryIds : [],
       poolIds: kind === "percent_pools" || (kind === "buy_get" && storeBuyGet) ? poolIds : [],
+      excludedVariantIds,
       buyGet,
       audience,
       groupIds: audience === "groups" ? groupIds : audience === "members" ? members : [],
@@ -310,7 +332,14 @@ export function promotionInput(
   } else if (w.kind === "percent_category") {
     application_method = { type: "percentage", target_type: "items", allocation: "across", value: w.value, target_rules: categoryTarget(w.categoryIds) }
   } else if (w.kind === "percent_pools") {
-    application_method = { type: "percentage", target_type: "items", allocation: "each", max_quantity: EACH_MAX_QUANTITY, value: w.value, target_rules: poolTargetRules(w.poolIds, ctx.pools) }
+    application_method = {
+      type: "percentage",
+      target_type: "items",
+      allocation: "each",
+      max_quantity: EACH_MAX_QUANTITY,
+      value: w.value,
+      target_rules: [...poolTargetRules(w.poolIds, ctx.pools), ...exclusionTargetRules(w.excludedVariantIds)],
+    }
   } else if (w.kind === "buy_get" && ctx.buyGetMarker !== null) {
     /* The store adds the free pieces itself; Medusa keeps a marker on the same items. */
     const targets = [...poolTargetRules(w.poolIds, ctx.pools), ...categoryTarget(w.categoryIds)]
