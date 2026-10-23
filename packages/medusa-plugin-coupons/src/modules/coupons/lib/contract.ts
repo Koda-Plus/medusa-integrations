@@ -125,6 +125,79 @@ export interface CouponDto {
   createdAt: string | null
   /** The store's own terms (option storeTerms), null when the store keeps none for it. */
   terms?: StoreTerms | null
+  /** Who got the code by e-mail from the panel (promotion metadata `code_sent`), oldest first. */
+  codeSent?: CodeSentEntry[]
+}
+
+/** One e-mail with the code, as kept in the promotion's metadata (`code_sent`). */
+export interface CodeSentEntry {
+  customer_id: string
+  email: string
+  /** ISO date of the send. */
+  at: string
+  /** The admin who sent it (e-mail or user id), null when unknown. */
+  by: string | null
+}
+
+/** What the panel can do with e-mails of a code (options sendCode, previewCode). */
+export interface CodeMailAbility {
+  send: boolean
+  preview: boolean
+}
+
+/** A person the code can go to: from the coupon's customer rule, from earlier sends, or picked now. */
+export interface CodeMailRecipientDto {
+  customerId: string
+  email: string | null
+  name: string | null
+  /** When she got the code, null: not yet. */
+  sentAt: string | null
+  /** She is on the coupon's customer rule ("For whom"). */
+  inRule: boolean
+}
+
+/** GET /admin/coupons/:id/code-mail */
+export interface CodeMailResponse {
+  ability: CodeMailAbility
+  code: string
+  /** The coupon has a customer rule: new people are added to it when the code goes out. */
+  customerRule: boolean
+  /** Why the code cannot be sent now (keys of codeMail.blocker.*), empty: it can. */
+  blockers: string[]
+  recipients: CodeMailRecipientDto[]
+  sent: CodeSentEntry[]
+}
+
+/** POST /admin/coupons/:id/code-mail (send) and /code-mail/preview. */
+export interface CodeMailInput {
+  customerIds: string[]
+  message: string
+}
+
+export interface CodeMailPreviewResponse {
+  subject: string
+  html: string
+  to: string | null
+}
+
+export interface CodeMailSendResponse {
+  /** Customer ids the e-mail went to now. */
+  sent: string[]
+  /** Customer ids that already had it (never sent twice). */
+  skipped: string[]
+  failed: Array<{ customerId: string; reason: string }>
+  /** Customer ids added to the coupon's customer rule before sending. */
+  addedToRule: string[]
+  /** False when the e-mails went out but the record on the coupon was not saved. */
+  recorded: boolean
+  coupon: CouponDto
+}
+
+/** DELETE /admin/coupons/:id */
+export interface DeleteResponse {
+  id: string
+  code: string
+  deleted: true
 }
 
 /** Names of the ids the shapes point to, so the admin can say them in words. */
@@ -170,6 +243,8 @@ export interface ListResponse {
   coupons: CouponDto[]
   names: NameMaps
   tiles: CouponTiles
+  /** E-mails of a code (options sendCode, previewCode); missing from older servers. */
+  codeMail?: CodeMailAbility
 }
 
 export interface CouponOrderDto {

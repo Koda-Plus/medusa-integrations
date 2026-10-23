@@ -23,6 +23,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       coupons,
       names,
       tiles,
+      codeMail: { send: Boolean(o.sendCode), preview: Boolean(o.sendCode && o.previewCode) },
     }
     res.json(body)
   } catch (err) {

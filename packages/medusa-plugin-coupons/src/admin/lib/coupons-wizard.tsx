@@ -101,7 +101,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
   const withCode = !form.code ? { ...form, code: suggestCode(form, codePrefix) } : form
   const check = checkWizard(withCode, { currencyCode: currency, memberGroupIds, features })
   const sentence = couponSentence(wizardCoupon(withCode, dates, { memberGroupIds, storeBuyGet }), names, t, fmt, currency)
-  const warnings = wizardWarnings(withCode, { active: existing, memberGroupIds })
+  const warnings = wizardWarnings(withCode, { active: existing, memberGroupIds, features })
   const STEP_ERRORS: Record<Step, string[]> = {
     1: ["kind", "percent", "amount", "category", "pools", "buy_get", "free_price", "min_quantity"],
     2: ["audience", "groups", "customer", "members"],
@@ -427,6 +427,11 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
                         onChange={(v) => set("limit", v === "once" ? 1 : v === "hundred" ? 100 : v === "none" ? null : 10)}
                       />
                       {form.limit && form.limit !== 1 && form.limit !== 100 ? <NumberInput value={form.limit} onChange={(v) => set("limit", v)} min={1} className="w-28" /> : null}
+                      {warnings.filter((w) => w.startsWith("once_many_customers")).map((w) => (
+                        <InlineTip key={w} variant="warning" label={t("wizard.limit.label")}>
+                          {t(`wizard.warning.${w}`)}
+                        </InlineTip>
+                      ))}
                     </Field>
                     <Field label={t("wizard.minimum.label")} hint={t("wizard.ui.minimumHint")}>
                       <Chips value={form.minimum ? "own" : "none"} options={[{ value: "none", label: t("wizard.minimum.none") }, { value: "own", label: t("wizard.minimum.own") }]} onChange={(v) => set("minimum", v === "none" ? null : 300)} />

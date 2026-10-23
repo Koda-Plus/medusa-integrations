@@ -398,7 +398,7 @@ const targetOf = (kind: string): "shipping" | "items" | "order" =>
  * `active` are the store's coupons active today (from the list), for the
  * checks that compare with them.
  */
-export function wizardWarnings(input: WizardInput, ctx: { active: readonly CouponDto[]; memberGroupIds: readonly string[] }): string[] {
+export function wizardWarnings(input: WizardInput, ctx: { active: readonly CouponDto[]; memberGroupIds: readonly string[]; features?: readonly string[] }): string[] {
   const out: string[] = []
   const automatic = input.mode === "automatic"
   const value = Number(input.value) || 0
@@ -421,5 +421,8 @@ export function wizardWarnings(input: WizardInput, ctx: { active: readonly Coupo
   const combineCodes = [...(input.terms?.combines?.with ?? []), ...(input.terms?.combines?.never ?? [])].map((c) => c.toUpperCase())
   const known = new Set(ctx.active.map((c) => c.code.toUpperCase()))
   if (combineCodes.some((c) => !known.has(c))) out.push("combines_unknown")
+  /* A limit of 1 counts all customers together: with several on it, only the first one can use it. */
+  const customers = input.audience === "customer" ? new Set([...(input.customerIds ?? []), ...(input.customerId ? [input.customerId] : [])]) : new Set<string>()
+  if (Number(input.limit) === 1 && customers.size > 1) out.push((ctx.features ?? []).includes("perCustomerOrders") ? "once_many_customers" : "once_many_customers_total")
   return out
 }

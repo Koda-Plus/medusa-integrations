@@ -13,6 +13,11 @@ import type {
   UpdateResponse,
   DuplicateInput,
   WizardInput,
+  CodeMailInput,
+  CodeMailPreviewResponse,
+  CodeMailResponse,
+  CodeMailSendResponse,
+  DeleteResponse,
 } from "../../modules/coupons/lib/contract"
 import { kitFetch } from "./coupons-kit"
 
@@ -29,7 +34,7 @@ export class CouponsRequestError extends Error {
 }
 
 /* The kit's fetch: backend URL, session or JWT, the write header; its error keeps the body, which holds the creator's error keys. */
-async function call<T>(path: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<T> {
+async function call<T>(path: string, init?: { method?: "GET" | "POST" | "DELETE"; body?: unknown }): Promise<T> {
   try {
     return await kitFetch<T>(path, init)
   } catch (err) {
@@ -126,4 +131,33 @@ export function useCustomerCoupons(id: string | undefined) {
 
 export function useProductCoupons(id: string | undefined) {
   return useQuery({ queryKey: [...KEY, "product", id], queryFn: () => call<ProductCouponsResponse>(`/admin/coupons/for/product/${id}`), enabled: Boolean(id) })
+}
+
+/** Deletes a coupon nobody used; the server answers 409 (errors ["used"]) otherwise. */
+export function useDeleteCoupon() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => call<DeleteResponse>(`/admin/coupons/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+}
+
+/** Who is on the coupon and who got its code by e-mail. */
+export function useCodeMail(id: string | null) {
+  return useQuery({ queryKey: [...KEY, "code-mail", id], queryFn: () => call<CodeMailResponse>(`/admin/coupons/${id}/code-mail`), enabled: Boolean(id) })
+}
+
+/** The e-mail rendered by the store for the first person; sends nothing. */
+export function usePreviewCodeMail() {
+  return useMutation({
+    mutationFn: (v: { id: string } & CodeMailInput) => call<CodeMailPreviewResponse>(`/admin/coupons/${v.id}/code-mail/preview`, { method: "POST", body: { customerIds: v.customerIds, message: v.message } }),
+  })
+}
+
+export function useSendCodeMail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id: string } & CodeMailInput) => call<CodeMailSendResponse>(`/admin/coupons/${v.id}/code-mail`, { method: "POST", body: { customerIds: v.customerIds, message: v.message } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
 }

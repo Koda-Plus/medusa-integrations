@@ -3,8 +3,8 @@
  * workflows: a coupon is created as a standard promotion (and a campaign
  * holding its dates, when it has any), the store's own terms go to the
  * store's adapter next to it, and a coupon is paused or turned back on by
- * its status. Editing lives in ./update.ts, copies in ./duplicate.ts;
- * deleting stays on Medusa's own promotion page.
+ * its status. Editing lives in ./update.ts, copies in ./duplicate.ts,
+ * deleting an unused coupon in ./delete.ts.
  */
 
 import { createCampaignsWorkflow, createPromotionsWorkflow, deletePromotionsWorkflow, updatePromotionsWorkflow } from "@medusajs/medusa/core-flows"
@@ -31,7 +31,7 @@ export async function createCoupon(scope: Scope, input: WizardInput, now: Date =
   if (same.length > 0) throw new CouponInputError(409, ["code_taken"], `The code ${w.code} is taken.`)
 
   const existing = await toCoupons(scope, await readPromotions(scope), undefined, now)
-  const warnings = wizardWarnings(input, { active: existing, memberGroupIds: o.memberGroupIds })
+  const warnings = wizardWarnings(input, { active: existing, memberGroupIds: o.memberGroupIds, features })
 
   const storeBuyGet = features.includes("buyGet")
   const { pools } = w.poolIds.length ? await storeLookups(scope) : { pools: [] }

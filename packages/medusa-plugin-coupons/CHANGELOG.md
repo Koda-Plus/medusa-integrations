@@ -9,6 +9,13 @@ The coupon's whole build in one form, copies, a pause from the list, and the sto
 - The header and the list intro say it in short phrases with icons (creator in three steps, each coupon in one sentence, warnings before saving, uses, discount and revenue) instead of long sentences.
 - Kit 1.2.0: the page header takes `points`, short phrases with an icon shown as pills instead of the long description (which stays as their tooltip and accessible label); `KeyPoints` draws the same pills under a section heading.
 
+### Delete, send the code, the counter of uses
+
+- Delete a coupon nobody used (a copy made by mistake, a test): a red bin on the row and in the detail, with a confirmation. A coupon with uses or orders (canceled ones too) only turns off; the server checks it itself and answers 409 with the reason. `DELETE /admin/coupons/:id` deletes the promotion through `deletePromotionsWorkflow`, with the store's terms and the campaign the creator made for its dates.
+- Send the code by e-mail (options `sendCode` and `previewCode`, the plugin sends nothing itself): the people of "For whom" ticked, more from the creator's customer search, an instruction made from the coupon's sentence (without other customers' names, editable) and the store's own e-mail as a preview. Who got it is kept in the promotion's metadata (`code_sent`), shown when it opens again, and nobody gets it twice: "Add and send" goes only to the new people and adds them to the customer rule first, so the code works for them.
+- The counter of uses says what limits it: "0 uses" and under it "limit 1 in total", "1 per customer", "3 customers", on the list and in the detail.
+- The creator warns before saving when a limit of 1 in total meets more than one customer: the code works once for one of them; for once per customer set Orders per customer: 1.
+
 ### The creator
 
 - Two more types: buy X get Y (Medusa's own buyget on chosen categories, or counted by the store when it keeps buy X get Y in `storeTerms`) and percent off the store's product groups (option `storeTerms`, feature `pools`), whose target rules the store names (for example a product tag per group).
