@@ -48,6 +48,7 @@ export const PROMOTION_FIELDS = [
   "rules.attribute",
   "rules.operator",
   "rules.values.value",
+  "metadata",
 ]
 
 export async function readPromotions(scope: Scope, filters: Record<string, unknown> = {}, take = LIST_LIMIT): Promise<PromotionLike[]> {
@@ -83,7 +84,7 @@ const marks = (n: number) => Array.from({ length: n }, () => "?").join(", ")
  * coupon's: stores that write their own rows that way keep them out of
  * Medusa's refresh, which would otherwise remove them.
  */
-function adjustments(scope: Scope, where: (pid: string) => string): string {
+function adjustments(scope: Scope, where: (pid: string) => string, opts: { canceled?: boolean } = {}): string {
   const own = couponsService(scope).getOptions().codeInDescription
   const pid = own ? "coalesce(x.promotion_id, pd.id)" : "x.promotion_id"
   const code = own ? "coalesce(x.code, pd.code)" : "x.code"
@@ -91,19 +92,20 @@ function adjustments(scope: Scope, where: (pid: string) => string): string {
     ? `left join promotion pd on x.promotion_id is null and position(':' in coalesce(x.description, '')) > 1
         and pd.code = split_part(x.description, ':', 1) and pd.deleted_at is null`
     : ""
+  const live = opts.canceled ? "" : " and o.status <> 'canceled'"
   return `adj as (
     select ${pid} as promotion_id, ${code} as code, oi.order_id, x.amount::numeric as amount, 'items' as part, o.customer_id, o.created_at, o.currency_code
     from order_line_item_adjustment x
     ${join}
     join order_item oi on oi.item_id = x.item_id and oi.deleted_at is null
-    join "order" o on o.id = oi.order_id and o.version = oi.version and o.deleted_at is null and o.status <> 'canceled'
+    join "order" o on o.id = oi.order_id and o.version = oi.version and o.deleted_at is null${live}
     where x.deleted_at is null and ${where(pid)}
     union all
     select ${pid} as promotion_id, ${code} as code, os.order_id, x.amount::numeric as amount, 'shipping' as part, o.customer_id, o.created_at, o.currency_code
     from order_shipping_method_adjustment x
     ${join}
     join order_shipping os on os.shipping_method_id = x.shipping_method_id and os.deleted_at is null
-    join "order" o on o.id = os.order_id and o.version = os.version and o.deleted_at is null and o.status <> 'canceled'
+    join "order" o on o.id = os.order_id and o.version = os.version and o.deleted_at is null${live}
     where x.deleted_at is null and ${where(pid)}
   )`
 }
@@ -140,6 +142,18 @@ export async function statsFor(scope: Scope, promotionIds: string[]): Promise<Ma
     })
   }
   return out
+}
+
+/**
+ * Orders the promotion took part in, canceled ones included: a coupon with
+ * any order is kept (disabled, never deleted), so the order history keeps
+ * its promotion.
+ */
+export async function ordersUsing(scope: Scope, promotionId: string): Promise<number> {
+  const sql = `with ${adjustments(scope, (pid) => `${pid} = ?`, { canceled: true })}
+    select count(distinct order_id)::int as orders from adj`
+  const r = await sqlOf(scope).raw(sql, [promotionId, promotionId])
+  return num(r.rows?.[0]?.orders)
 }
 
 /** Orders with any coupon and the discount they got, in the last 30 days. */

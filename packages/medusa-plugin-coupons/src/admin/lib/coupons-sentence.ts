@@ -43,7 +43,12 @@ function describeRule(r: CouponRuleDto, t: T): string {
   return t("sentence.rule", { attribute: r.attribute, operator: t(`sentence.op.${r.operator}`, { defaultValue: r.operator }), values: values || "-" })
 }
 
-export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: SentenceFormat, currency: string): string {
+/**
+ * `forCustomer`: the words for the customer herself (the e-mail with the
+ * code): who else the coupon is for and the code are left out, she reads the
+ * code next to it.
+ */
+export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: SentenceFormat, currency: string, opts: { forCustomer?: boolean } = {}): string {
   const s = c.shape
   const cur = s.currency ?? currency
   const terms = c.terms ?? null
@@ -111,13 +116,15 @@ export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: Senten
   const nobody = n.nobody ?? null
   const realCustomers = s.customerIds.filter((id) => id !== nobody)
   const excluded = s.excludedGroupIds ?? []
-  if (s.customerIds.length && !realCustomers.length) parts.push(t("sentence.forNobody"))
+  if (opts.forCustomer) {
+    /* no audience: never other customers' names in her e-mail */
+  } else if (s.customerIds.length && !realCustomers.length) parts.push(t("sentence.forNobody"))
   else if (realCustomers.length && s.groupIds.length) parts.push(t("sentence.forCustomerInGroups", { customer: list(names(realCustomers, n.customers), t), groups: list(names(s.groupIds, n.groups), t) }))
   else if (realCustomers.length) parts.push(t("sentence.forCustomer", { customer: list(names(realCustomers, n.customers), t) }))
   else if (s.groupIds.length) parts.push(t("sentence.forGroups", { groups: list(names(s.groupIds, n.groups), t) }))
   else if (excluded.length) parts.push(t("sentence.forAllBut", { groups: list(names(excluded, n.groups), t) }))
   else parts.push(t("sentence.forEveryone"))
-  parts.push(c.automatic || !c.code ? t("sentence.automatic") : t("sentence.withCode", { code: c.code }))
+  if (!opts.forCustomer) parts.push(c.automatic || !c.code ? t("sentence.automatic") : t("sentence.withCode", { code: c.code }))
   if (s.minimum !== null) parts.push(t("sentence.minimum", { amount: fmt.money(s.minimum, cur) }))
   if (c.startsAt && c.endsAt) parts.push(t("sentence.between", { from: fmt.date(c.startsAt), to: fmt.date(c.endsAt) }))
   else if (c.endsAt) parts.push(t("sentence.until", { date: fmt.date(c.endsAt) }))

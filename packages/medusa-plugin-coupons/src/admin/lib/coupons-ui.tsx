@@ -1,7 +1,8 @@
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Text, clx } from "@medusajs/ui"
-import type { CouponStatus } from "../../modules/coupons/lib/contract"
+import type { CouponDto, CouponStatus } from "../../modules/coupons/lib/contract"
+import { usageOf } from "../../modules/coupons/lib/code-mail"
 import type { SentenceFormat } from "./coupons-sentence"
 import { ToneBadge, type Tone } from "./coupons-blocks"
 
@@ -60,5 +61,42 @@ export function OptionCard({ on, title, hint, onClick, icon }: { on: boolean; ti
         </Text>
       </span>
     </button>
+  )
+}
+
+/**
+ * The counter of uses in words: how many so far, then what limits it. The
+ * limit is for all customers together ("limit 1 in total"); the store's
+ * orders per customer and the number of customers come next to it.
+ */
+export function usageWords(c: Pick<CouponDto, "used" | "limit" | "terms" | "shape">, nobody: string | null | undefined, t: (k: string, o?: Record<string, unknown>) => string): { used: string; details: string } {
+  const u = usageOf(c, nobody)
+  const parts: string[] = []
+  if (u.limit) parts.push(t("usage.limitTotal", { count: u.limit }))
+  if (u.perCustomer) parts.push(t("usage.perCustomer", { count: u.perCustomer }))
+  if (u.customers) parts.push(t("usage.customers", { count: u.customers }))
+  if (!u.limit && !u.perCustomer) parts.unshift(t("usage.noLimit"))
+  return { used: t("usage.used", { count: u.used }), details: parts.join(", ") }
+}
+
+/** The counter on the list: the uses, under them what limits them. */
+export function UsageCell({ c, nobody }: { c: CouponDto; nobody: string | null | undefined }) {
+  const { t } = useTranslation("coupons")
+  const w = usageWords(c, nobody, t)
+  return (
+    <div className="flex flex-col gap-y-0.5" title={t("usage.hint")}>
+      {c.automatic && !c.limit ? (
+        <ToneBadge tone="blue" title={t("list.automaticUsesHint")}>
+          {t("list.automaticUses")}
+        </ToneBadge>
+      ) : (
+        <Text size="small" className="tabular-nums">
+          {w.used}
+        </Text>
+      )}
+      <Text size="xsmall" className="text-ui-fg-muted">
+        {w.details}
+      </Text>
+    </div>
   )
 }

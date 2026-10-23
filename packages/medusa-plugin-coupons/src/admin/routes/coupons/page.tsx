@@ -2,16 +2,18 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, Bolt, Calendar, ChartBar, ChatBubbleLeftRight, CheckCircle, Clock, CogSixTooth, CursorArrowRays, ExclamationCircle, ListBullet, PauseSolid, PencilSquare, PlaySolid, Plus, Receipt, Sparkles, SquareTwoStack, Tag, Users, XCircle } from "@medusajs/icons"
-import { Button, Container, Drawer, Heading, InlineTip, Table, Text, clx, toast } from "@medusajs/ui"
-import type { CouponDto, ListResponse, NameMaps } from "../../../modules/coupons/lib/contract"
-import { errorMessage, useCoupon, useCoupons, useSetStatus } from "../../lib/coupons-api"
+import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, Bolt, Calendar, ChartBar, ChatBubbleLeftRight, CheckCircle, Clock, CogSixTooth, CursorArrowRays, ExclamationCircle, ListBullet, PauseSolid, PencilSquare, PaperPlane, PlaySolid, Plus, Receipt, Sparkles, SquareTwoStack, Tag, Trash, Users, XCircle } from "@medusajs/icons"
+import { Button, Container, Drawer, Heading, InlineTip, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
+import type { CodeMailAbility, CouponDto, ListResponse, NameMaps } from "../../../modules/coupons/lib/contract"
+import { looksDeletable, sendBlockers } from "../../../modules/coupons/lib/code-mail"
+import { CouponsRequestError, errorMessage, useCoupon, useCoupons, useDeleteCoupon, useSetStatus } from "../../lib/coupons-api"
+import { SendCodeModal } from "../../lib/coupons-code-mail"
 import { GuideIntro, GuideSteps, HelpButtons, IntegrationHeader, ModeBadge, communityLabels, usePageNav, type GuideStep } from "../../lib/coupons-guide"
 import { EmptyState, EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/coupons-blocks"
 import { CouponsIcon } from "../../lib/coupons-icon"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/coupons-kit"
 import { couponSentence } from "../../lib/coupons-sentence"
-import { StatusBadge, useFormat } from "../../lib/coupons-ui"
+import { StatusBadge, UsageCell, useFormat, usageWords } from "../../lib/coupons-ui"
 import { CreateCouponModal } from "../../lib/coupons-wizard"
 import { EditCouponModal } from "../../lib/coupons-edit"
 import { KIT_META } from "../../lib/coupons-kit-meta"
@@ -38,6 +40,40 @@ const STATE_FILTERS: Array<{ f: Filter; icon: ReactNode }> = [
   { f: "ended", icon: <XCircle /> },
 ]
 const WEEK = 7 * 24 * 3600 * 1000
+
+/** "Send the code" shows when the store sends e-mails and the coupon has a code that works (or will). */
+function canMail(c: CouponDto, ability: CodeMailAbility | undefined): boolean {
+  return sendBlockers(c, Boolean(ability?.send)).length === 0
+}
+
+/**
+ * Deleting with a confirmation: only a coupon nobody used. The server checks
+ * it again (canceled orders too) and answers 409 with the reason.
+ */
+function useRemove() {
+  const { t } = useTranslation("coupons")
+  const prompt = usePrompt()
+  const del = useDeleteCoupon()
+  const remove = async (c: CouponDto): Promise<boolean> => {
+    const ok = await prompt({
+      title: t("remove.title", { code: c.code || t("list.noCode") }),
+      description: t("remove.text"),
+      confirmText: t("remove.confirm"),
+      cancelText: t("remove.cancel"),
+      variant: "danger",
+    })
+    if (!ok) return false
+    try {
+      await del.mutateAsync(c.id)
+      toast.success(t("remove.done", { code: c.code || t("list.noCode") }))
+      return true
+    } catch (err) {
+      toast.error(err instanceof CouponsRequestError && err.errors.includes("used") ? t("remove.used") : errorMessage(err))
+      return false
+    }
+  }
+  return { remove, pending: del.isPending, pendingId: del.variables ?? null }
+}
 
 function matches(c: CouponDto, f: Filter, now: number): boolean {
   switch (f) {
@@ -69,6 +105,8 @@ const CouponsPage = () => {
   const [openId, setOpenId] = useState<string | null>(null)
   /* The edit form: from a row of the list or from the detail (which knows the names of its own customers). */
   const [editing, setEditing] = useState<{ coupon: CouponDto; names: NameMaps; back?: boolean; mode?: "edit" | "copy" } | null>(null)
+  const [mailing, setMailing] = useState<{ coupon: CouponDto; names: NameMaps } | null>(null)
+  const removal = useRemove()
   const setStatus = useSetStatus()
   const toggle = async (c: CouponDto) => {
     const next = c.medusaStatus === "inactive" || c.medusaStatus === "draft" ? "active" : "inactive"
@@ -226,17 +264,7 @@ const CouponsPage = () => {
                     <Text size="small" className="leading-relaxed">{couponSentence(c, data?.names as NameMaps, t, fmt, currency)}</Text>
                   </Table.Cell>
                   <Table.Cell>
-                    <Text size="small" className="tabular-nums">
-                      {c.automatic && !c.limit ? (
-                        <ToneBadge tone="blue" title={t("list.automaticUsesHint")}>
-                          {t("list.automaticUses")}
-                        </ToneBadge>
-                      ) : c.limit ? (
-                        t("detail.usesOf", { used: c.used, limit: c.limit })
-                      ) : (
-                        fmt.number(c.used)
-                      )}
-                    </Text>
+                    <UsageCell c={c} nobody={data?.names.nobody} />
                   </Table.Cell>
                   <Table.Cell className="text-right tabular-nums">{fmt.money(c.stats.discount, currency)}</Table.Cell>
                   <Table.Cell className="text-right tabular-nums">
@@ -259,8 +287,18 @@ const CouponsPage = () => {
                           loading: setStatus.isPending && setStatus.variables?.id === c.id,
                           onClick: () => void toggle(c),
                         },
+                        { key: "mail", label: t("codeMail.action"), icon: <PaperPlane />, hidden: !canMail(c, data?.codeMail), onClick: () => setMailing({ coupon: c, names: (data?.names ?? {}) as NameMaps }) },
                         { key: "copy", label: t("copy.action"), icon: <SquareTwoStack />, onClick: () => setEditing({ coupon: c, names: (data?.names ?? {}) as NameMaps, mode: "copy" }) },
                         { key: "open", label: t("detail.openInMedusa"), icon: <ArrowUpRightOnBox />, href: `/app/promotions/${c.id}` },
+                        {
+                          key: "delete",
+                          label: t("remove.action"),
+                          icon: <Trash />,
+                          danger: true,
+                          hidden: !looksDeletable(c),
+                          loading: removal.pending && removal.pendingId === c.id,
+                          onClick: () => void removal.remove(c),
+                        },
                       ]}
                     />
                   </Table.Cell>
@@ -307,11 +345,24 @@ const CouponsPage = () => {
         id={openId}
         onClose={() => setOpenId(null)}
         currency={currency}
+        codeMail={data?.codeMail}
+        nobody={data?.names.nobody ?? null}
+        onMail={(coupon, names) => {
+          setOpenId(null)
+          setMailing({ coupon, names })
+        }}
         onEdit={(coupon, names, mode) => {
           /* One window at a time: the drawer closes, and opens again on the saved coupon. */
           setOpenId(null)
           setEditing({ coupon, names, back: true, mode })
         }}
+      />
+      <SendCodeModal
+        coupon={mailing?.coupon ?? null}
+        names={mailing?.names ?? ((data?.names ?? {}) as NameMaps)}
+        currency={currency}
+        nobody={data?.names.nobody ?? null}
+        onOpenChange={(v) => (!v ? setMailing(null) : null)}
       />
       <EditCouponModal
         coupon={editing?.coupon ?? null}
@@ -344,10 +395,27 @@ function Tiles({ data, filter, onFilter }: { data: ListResponse; filter: Filter;
   )
 }
 
-function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; onClose: () => void; currency: string; onEdit: (c: CouponDto, names: NameMaps, mode?: "edit" | "copy") => void }) {
+function CouponDrawer({
+  id,
+  onClose,
+  currency,
+  codeMail,
+  nobody,
+  onMail,
+  onEdit,
+}: {
+  id: string | null
+  onClose: () => void
+  currency: string
+  codeMail: CodeMailAbility | undefined
+  nobody: string | null
+  onMail: (c: CouponDto, names: NameMaps) => void
+  onEdit: (c: CouponDto, names: NameMaps, mode?: "edit" | "copy") => void
+}) {
   const { t } = useTranslation("coupons")
   const fmt = useFormat()
   const detail = useCoupon(id)
+  const removal = useRemove()
   const setStatus = useSetStatus()
   const c = detail.data?.coupon
   const toggle = async () => {
@@ -381,7 +449,7 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
                 </InlineTip>
               ) : null}
               <StatTiles columns={3} className="px-0 py-0">
-                <StatTile label={t("detail.uses")} value={c.automatic && !c.limit ? t("list.automaticUses") : c.limit ? t("detail.usesOf", { used: c.used, limit: c.limit }) : fmt.number(c.used)} />
+                <StatTile label={t("detail.uses")} value={c.automatic && !c.limit ? t("list.automaticUses") : usageWords(c, nobody, t).used} hint={usageWords(c, nobody, t).details} title={t("usage.hint")} />
                 <StatTile label={t("detail.orders")} value={fmt.number(c.stats.orders)} />
                 <StatTile label={t("detail.discount")} value={fmt.money(c.stats.discount, currency)} />
                 <StatTile label={t("detail.revenue")} value={fmt.money(c.stats.revenue, currency)} />
@@ -423,13 +491,36 @@ function CouponDrawer({ id, onClose, currency, onEdit }: { id: string | null; on
         <Drawer.Footer>
           {c ? (
             <div className="flex w-full items-center justify-between gap-2">
-              <Button size="small" variant="secondary" asChild>
-                <a href={`/app/promotions/${c.id}`}>
-                  <ArrowUpRightOnBox />
-                  {t("detail.openInMedusa")}
-                </a>
-              </Button>
               <div className="flex items-center gap-2">
+                <Button size="small" variant="secondary" asChild>
+                  <a href={`/app/promotions/${c.id}`}>
+                    <ArrowUpRightOnBox />
+                    {t("detail.openInMedusa")}
+                  </a>
+                </Button>
+                {looksDeletable(c) ? (
+                  <Button
+                    size="small"
+                    variant="danger"
+                    isLoading={removal.pending}
+                    onClick={() =>
+                      void removal.remove(c).then((done) => {
+                        if (done) onClose()
+                      })
+                    }
+                  >
+                    <Trash />
+                    {t("remove.action")}
+                  </Button>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2">
+                {canMail(c, codeMail) ? (
+                  <Button size="small" variant="secondary" onClick={() => onMail(c, detail.data?.names ?? ({} as NameMaps))}>
+                    <PaperPlane />
+                    {t("codeMail.action")}
+                  </Button>
+                ) : null}
                 <Button size="small" variant="secondary" onClick={() => onEdit(c, detail.data?.names ?? ({} as NameMaps), "copy")}>
                   <SquareTwoStack />
                   {t("copy.action")}

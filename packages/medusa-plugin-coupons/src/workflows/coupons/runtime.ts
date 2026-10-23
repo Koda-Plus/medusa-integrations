@@ -43,7 +43,8 @@ export function sqlOf(scope: Scope): SqlLike {
 }
 
 export interface PromotionModuleLike {
-  listPromotions(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Array<{ id: string; code?: string | null }>>
+  listPromotions(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Array<{ id: string; code?: string | null; metadata?: Record<string, unknown> | null }>>
+  updatePromotions(data: Record<string, unknown>): Promise<unknown>
 }
 
 export function promotionModule(scope: Scope): PromotionModuleLike {

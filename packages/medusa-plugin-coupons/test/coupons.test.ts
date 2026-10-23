@@ -154,7 +154,7 @@ test("a store rule takes the place of a marker value, or follows the sentence", 
 })
 
 test("options: defaults, and bad values fall back with a problem named", () => {
-  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, codeInDescription: false, storeTerms: null, nobodyCustomerId: null, problems: [] })
+  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, codeInDescription: false, storeTerms: null, nobodyCustomerId: null, sendCode: null, previewCode: null, problems: [] })
   const o = resolveOptions({ currencyCode: "euro", codePrefix: "to long prefix!", memberGroupIds: ["ok_1", 5 as unknown as string] })
   assert.equal(o.currencyCode, "pln")
   assert.equal(o.codePrefix, null)
@@ -163,6 +163,17 @@ test("options: defaults, and bad values fall back with a problem named", () => {
   assert.equal(resolveOptions({ storeRules: "x" as never }).problems.length, 1)
   assert.equal(resolveOptions({ codeInDescription: true }).codeInDescription, true)
   assert.equal(resolveOptions({ codeInDescription: "yes" as never }).problems.length, 1)
+  assert.equal(resolveOptions({ sendCode: "mail" as never, previewCode: 1 as never }).problems.length, 2)
+  const send = async () => ({ sent: [] })
+  assert.equal(resolveOptions({ sendCode: send }).sendCode, send)
+})
+
+test("the sentence for the customer herself leaves out who else it is for and the code", () => {
+  const c = toCouponDto({ id: "p9", code: "CB-SALON", limit: 1, application_method: { type: "percentage", target_type: "order", value: 10 }, rules: [{ attribute: "customer.id", operator: "in", values: ["cus_1", "cus_2"] }] }, undefined, NOW)
+  const names = { ...NAMES, customers: { cus_1: "Salon Anna", cus_2: "Salon Beata" } }
+  const admin = couponSentence(c, names, translator(en), fmt, "pln")
+  assert.ok(admin.includes("Salon Anna") && admin.includes("CB-SALON"))
+  assert.equal(couponSentence(c, names, translator(en), fmt, "pln", { forCustomer: true }), "10% off the whole order, with no end date, single use.")
 })
 
 test("uses: orders found by the reads count when Medusa's own counter is lower", () => {

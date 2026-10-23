@@ -9,7 +9,7 @@ import { COUPONS_MODULE } from "./lib/constants"
  * Registered under `koda_coupons`, never `coupons`: see `lib/constants.ts`.
  */
 export { COUPONS_MODULE }
-export type { CouponsPluginOptions, StoreRule } from "./lib/options"
+export type { CouponsPluginOptions, StoreRule, CodeMailSend, CodeMailPreview, CodeMailCoupon, CodeMailRecipient } from "./lib/options"
 export type {
   CouponDto,
   CouponShape,

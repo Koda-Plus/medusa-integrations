@@ -12,5 +12,7 @@ export { listCoupons, couponDetail, customerCoupons, orderCoupons, productCoupon
 export { createCoupon, setCouponStatus, CouponInputError } from "./coupons/create"
 export { updateCoupon } from "./coupons/update"
 export { duplicateCoupon } from "./coupons/duplicate"
+export { deleteCoupon } from "./coupons/delete"
+export { codeMailState, previewCodeMail, sendCodeMail } from "./coupons/code-mail"
 /** koda.integration/1 for in-process hosts: `couponsIntegration.build.summaries(ctx, "order", ids)` answers without HTTP. */
 export { couponsIntegration } from "./coupons/integration"

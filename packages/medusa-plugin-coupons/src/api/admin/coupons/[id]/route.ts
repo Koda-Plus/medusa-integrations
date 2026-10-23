@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import type { CouponPatch, DetailResponse, UpdateResponse } from "../../../../modules/coupons/lib/contract"
+import type { CouponPatch, DeleteResponse, DetailResponse, UpdateResponse } from "../../../../modules/coupons/lib/contract"
 import { setCouponStatus } from "../../../../workflows/coupons/create"
+import { deleteCoupon } from "../../../../workflows/coupons/delete"
 import { couponDetail } from "../../../../workflows/coupons/reads"
 import { updateCoupon } from "../../../../workflows/coupons/update"
 import { fail, idParam } from "../helpers"
@@ -52,5 +53,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.json({ coupon: await setCouponStatus(req.scope, id, status) })
   } catch (err) {
     fail(req, res, err, "The coupon could not be changed.")
+  }
+}
+
+/**
+ * DELETE /admin/coupons/:id: only a coupon nobody used (no use, no order,
+ * canceled ones too). 409 with the reason otherwise: disable it instead.
+ */
+export async function DELETE(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+  const id = idParam(req)
+  if (!id) {
+    res.status(404).json({ message: "No such coupon." })
+    return
+  }
+  try {
+    const body: DeleteResponse = await deleteCoupon(req.scope, id)
+    res.json(body)
+  } catch (err) {
+    fail(req, res, err, "The coupon was not deleted.")
   }
 }

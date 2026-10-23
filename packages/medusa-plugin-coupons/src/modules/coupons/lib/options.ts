@@ -55,6 +55,54 @@ export interface CouponsPluginOptions {
    * (Medusa takes no empty rule). The sentence says "nobody" for it. Default none.
    */
   nobodyCustomerId?: string
+  /**
+   * Sends the coupon's code by e-mail with a short instruction, from the
+   * coupon page ("Send the code"). The plugin sends no e-mails of its own:
+   * without this option the button is hidden. The plugin hands over the
+   * people who did not get the code before (never twice) and records who got
+   * it in the promotion's metadata (code_sent). Give each e-mail an
+   * idempotency key per coupon and customer (Medusa's notification module
+   * takes idempotency_key). Answer the customer ids it went to.
+   */
+  sendCode?: (scope: unknown, input: CodeMailSend) => Promise<{ sent: string[]; failed?: Array<{ customerId: string; reason: string }> }>
+  /** The same e-mail rendered for one person, sent to nobody (the preview before sending). Optional. */
+  previewCode?: (scope: unknown, input: CodeMailPreview) => Promise<{ subject: string; html: string }>
+}
+
+/** The coupon an e-mail of its code is about. Dates are ISO strings, money in major units. */
+export interface CodeMailCoupon {
+  id: string
+  code: string
+  kind: string
+  value: number | null
+  currency: string | null
+  startsAt: string | null
+  endsAt: string | null
+  /** The store's note for the customer (storeTerms), null without it. */
+  note: string | null
+}
+
+export interface CodeMailRecipient {
+  customerId: string
+  email: string
+  firstName: string | null
+  /** Company or full name, as the panel names her. */
+  name: string | null
+}
+
+export interface CodeMailSend {
+  promotion: CodeMailCoupon
+  recipients: CodeMailRecipient[]
+  /** The instruction the admin read in the preview: the coupon's rules in a sentence or two. */
+  message: string
+  /** The admin who sends it (e-mail or user id). */
+  sentBy: string | null
+}
+
+export interface CodeMailPreview {
+  promotion: CodeMailCoupon
+  recipient: CodeMailRecipient
+  message: string
 }
 
 export interface StorePool {
@@ -103,6 +151,8 @@ export interface ResolvedCouponsOptions {
   codeInDescription: boolean
   storeTerms: ResolvedStoreTerms | null
   nobodyCustomerId: string | null
+  sendCode: CouponsPluginOptions["sendCode"] | null
+  previewCode: CouponsPluginOptions["previewCode"] | null
   problems: string[]
 }
 
@@ -144,5 +194,9 @@ export function resolveOptions(input: CouponsPluginOptions | undefined | null): 
     }
   }
   const nobodyCustomerId = typeof o.nobodyCustomerId === "string" && o.nobodyCustomerId.trim() ? o.nobodyCustomerId.trim() : null
-  return { currencyCode, memberGroupIds, codePrefix, storeRules, codeInDescription, storeTerms, nobodyCustomerId, problems }
+  const sendCode = typeof o.sendCode === "function" ? o.sendCode : null
+  if (o.sendCode !== undefined && !sendCode) problems.push("sendCode (a function)")
+  const previewCode = typeof o.previewCode === "function" ? o.previewCode : null
+  if (o.previewCode !== undefined && !previewCode) problems.push("previewCode (a function)")
+  return { currencyCode, memberGroupIds, codePrefix, storeRules, codeInDescription, storeTerms, nobodyCustomerId, sendCode, previewCode, problems }
 }

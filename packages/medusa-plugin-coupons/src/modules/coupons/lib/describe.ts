@@ -5,6 +5,7 @@
  */
 
 import { MINIMUM_ATTRIBUTES, RULE } from "./constants"
+import { codeSentOf } from "./code-mail"
 import type { CouponDto, CouponKind, CouponRuleDto, CouponShape, CouponStats, CouponStatus, StoreTerms } from "./contract"
 
 /** The fields of a promotion the plugin reads (Query or the promotion module). */
@@ -37,6 +38,8 @@ export interface PromotionLike {
     buy_rules?: RuleLike[] | null
   } | null
   rules?: RuleLike[] | null
+  /** The promotion's metadata: the plugin reads only code_sent from it. */
+  metadata?: Record<string, unknown> | null
 }
 
 export interface RuleLike {
@@ -191,6 +194,7 @@ export function toCouponDto(p: PromotionLike, stats: CouponStats | undefined, no
     stats: stats ?? NO_STATS,
     createdAt: iso(p.created_at),
     terms,
+    codeSent: codeSentOf(p.metadata),
   }
 }
 
