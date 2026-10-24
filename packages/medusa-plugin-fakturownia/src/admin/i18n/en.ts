@@ -312,6 +312,7 @@ const en = {
     exactlyOnce:
       "One row per order and kind (corrections: one per change), refused twice by the database itself. A document is looked up in Fakturownia by its order number before it is created; a lost answer is never sent again blindly, it is looked up first.",
     openOrder: "Open order",
+    times: { placed: "Placed", proforma: "Proforma", vat: "VAT invoice", none: "none" },
     points: {
       order: "Next to its order",
       once: "Exactly once",

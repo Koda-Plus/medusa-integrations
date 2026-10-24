@@ -248,11 +248,24 @@ export interface StatusResponse {
   schedules: { issue: string; payments: string; statuses: string; corrections: string }
 }
 
+/**
+ * The times of the order a documents row belongs to (since 0.3.2): when the
+ * order was placed and when its proforma and its VAT invoice were issued
+ * (the moment of issuing, or the issue date when only that is known).
+ */
+export interface OrderTimesDto {
+  placedAt: string | null
+  proformaAt: string | null
+  vatAt: string | null
+}
+
 export interface DocumentsResponse {
   documents: DocumentDto[]
   count: number
   limit: number
   offset: number
+  /** By Medusa order id, for the orders on this page (since 0.3.2). */
+  orders?: Record<string, OrderTimesDto>
 }
 
 /* ---- Corrections --------------------------------------------------- */
