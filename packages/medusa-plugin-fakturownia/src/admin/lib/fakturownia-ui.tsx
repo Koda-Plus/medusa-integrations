@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { Fragment, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { Button, Drawer, Input, Label, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import {
@@ -26,6 +26,7 @@ import type {
   GovState,
   LocalizedTextDto,
   MoneyDto,
+  OrderTimesDto,
   PlanStatus,
   ReferenceDto,
   RunDto,
@@ -172,9 +173,9 @@ export function MedusaMark({ className }: { className?: string }) {
  * one click away. The order number (#1042) on top, the Medusa id below. In a
  * narrow column the id takes its own line instead of shrinking to "ord...".
  */
-export function StoreOrderCell({ orderId, displayId }: { orderId: string; displayId: number | null }) {
-  const { t } = useTranslation("fakturownia")
-  return (
+export function StoreOrderCell({ orderId, displayId, times }: { orderId: string; displayId: number | null; times?: OrderTimesDto }) {
+  const { t, i18n } = useTranslation("fakturownia")
+  const link = (
     <Link to={`/orders/${orderId}`} className="group flex min-w-0 items-center gap-x-2.5" title={t("documents.openOrder")}>
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
         <MedusaMark className="h-4 w-4 text-ui-fg-base" />
@@ -194,6 +195,30 @@ export function StoreOrderCell({ orderId, displayId }: { orderId: string; displa
         </span>
       </span>
     </Link>
+  )
+  if (!times) return link
+  /* Since 0.3.2: when the order was placed and when its proforma and VAT invoice
+   * were issued, with the hour, like the date column of the orders list. A date
+   * without a time (only the issue date is known) is shown as a date. */
+  const lang = i18n.language || "en"
+  const when = (v: string | null) => (v ? (/^\d{4}-\d{2}-\d{2}$/.test(v) ? fmtDate(v, lang) : fmtDateTime(v, lang)) : null)
+  const lines: Array<[string, string | null]> = [
+    [t("documents.times.placed"), when(times.placedAt)],
+    [t("documents.times.proforma"), when(times.proformaAt)],
+    [t("documents.times.vat"), when(times.vatAt)],
+  ]
+  return (
+    <div className="flex min-w-0 flex-col gap-y-2">
+      {link}
+      <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 pl-[42px] txt-compact-xsmall">
+        {lines.map(([label, value]) => (
+          <Fragment key={label}>
+            <dt className="text-ui-fg-muted">{label}</dt>
+            <dd className={clx("tabular-nums", value ? "text-ui-fg-subtle" : "text-ui-fg-disabled")}>{value ?? t("documents.times.none")}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
   )
 }
 

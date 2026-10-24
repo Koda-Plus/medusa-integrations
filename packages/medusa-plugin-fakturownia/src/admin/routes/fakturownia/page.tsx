@@ -717,7 +717,7 @@ function DocumentsSection({
             {rows.map((d) => (
               <Table.Row key={d.id} className="[&_td]:py-2.5 align-top">
                 <Table.Cell className="max-w-[260px]">
-                  <StoreOrderCell orderId={d.orderId} displayId={d.displayId} />
+                  <StoreOrderCell orderId={d.orderId} displayId={d.displayId} times={documents.data?.orders?.[d.orderId]} />
                 </Table.Cell>
                 <Table.Cell>
                   <div className="flex flex-col items-start gap-y-1">

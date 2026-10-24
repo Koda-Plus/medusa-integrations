@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 (2026-10-24)
+
+### Added
+
+- The order column of the documents table shows, under the order number, when the order was placed and when its proforma and its VAT invoice were issued, with the hour (like the date column of Medusa's orders list). `GET /admin/fakturownia/documents` returns them in `orders` (by order id, `OrderTimesDto`), read in two queries for the whole page.
+
 ## 0.3.1 (2026-10-18)
 
 No change to the documents, the writers or the tables: the shared admin kit moves from 1.0.1 to 1.0.9.

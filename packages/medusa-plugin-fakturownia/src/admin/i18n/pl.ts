@@ -313,6 +313,7 @@ const pl: typeof en = {
     exactlyOnce:
       "Jeden wiersz na zamówienie i rodzaj dokumentu (korekty: jedna na zmianę); drugiego takiego samego odmawia sama baza danych. Przed utworzeniem dokument jest szukany w Fakturowni po numerze zamówienia, a zgubiona odpowiedź nigdy nie jest wysyłana ponownie na ślepo: najpierw wyszukanie.",
     openOrder: "Otwórz zamówienie",
+    times: { placed: "Złożone", proforma: "Proforma", vat: "Faktura VAT", none: "brak" },
     points: {
       order: "Obok swojego zamówienia",
       once: "Dokładnie raz",

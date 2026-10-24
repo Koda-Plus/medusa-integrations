@@ -1,5 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import type { DocumentFilter, DocumentsResponse } from "../../../../modules/fakturownia/lib/contract"
+import type { DocumentFilter, DocumentsResponse, OrderTimesDto } from "../../../../modules/fakturownia/lib/contract"
 import type { DocumentRow } from "../../../../modules/fakturownia/lib/dto"
 import { queryOf } from "../../../../workflows/fakturownia/runtime"
 import { DOCUMENT_FILTERS, documentDto, documentFilters, fakturowniaService, intParam, like, strParam, withAlternatives } from "../helpers"
@@ -71,6 +71,49 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     skip: offset,
     order: { created_at: "DESC" },
   } as never)) as unknown as [DocumentRow[], number]
-  const body: DocumentsResponse = { documents: rows.map((r) => documentDto(svc, r)), count, limit, offset }
+  const body: DocumentsResponse = {
+    documents: rows.map((r) => documentDto(svc, r)),
+    count,
+    limit,
+    offset,
+    orders: await orderTimes(req.scope, svc, rows),
+  }
   res.json(body)
+}
+
+/**
+ * When each order on the page was placed and when its proforma and VAT invoice
+ * were issued: the order column shows them next to the order number. Two reads
+ * for the whole page (the orders and their documents), never one per row.
+ */
+async function orderTimes(
+  scope: MedusaRequest["scope"],
+  svc: ReturnType<typeof fakturowniaService>,
+  rows: DocumentRow[],
+): Promise<Record<string, OrderTimesDto>> {
+  const ids = [...new Set(rows.map((r) => r.order_id).filter((id): id is string => typeof id === "string"))]
+  if (ids.length === 0) return {}
+  const out: Record<string, OrderTimesDto> = {}
+  for (const id of ids) out[id] = { placedAt: null, proformaAt: null, vatAt: null }
+
+  const { data } = await queryOf(scope).graph({ entity: "order", fields: ["id", "created_at"], filters: { id: ids } })
+  for (const o of data as Array<{ id?: string; created_at?: string | Date | null }>) {
+    if (o.id && out[o.id] && o.created_at) out[o.id].placedAt = new Date(o.created_at).toISOString()
+  }
+
+  const docs = (await svc.listFakturowniaDocuments(
+    { demo: svc.isDemo(), order_id: ids, kind: ["proforma", "vat"], status: ["issued", "needs_correction", "canceled"] } as never,
+    { take: ids.length * 6 } as never,
+  )) as unknown as DocumentRow[]
+  for (const d of docs) {
+    const times = d.order_id ? out[d.order_id] : undefined
+    if (!times) continue
+    const at = d.issued_at ? new Date(d.issued_at).toISOString() : d.issue_date ?? null
+    if (!at) continue
+    /* A canceled document counts only when nothing better is there: an issued
+     * VAT invoice replaces a canceled one in the column. */
+    const key = d.kind === "proforma" ? "proformaAt" : "vatAt"
+    if (!times[key] || d.status !== "canceled") times[key] = at
+  }
+  return out
 }
