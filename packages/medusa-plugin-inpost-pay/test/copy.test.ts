@@ -98,7 +98,9 @@ test("copy: the demo says it is a simulation, in both languages", async () => {
   assert.match(pl.mode.demo, /symulacj/i)
 })
 
-test("branding: the admin icon is a generic Koda mark, not InPost's logo colours", () => {
+test("branding: the admin icon is the InPost Pay mark (yellow crescent, pink Pay) on a white tile", () => {
   const icon = readFileSync(join(root, "src/admin/lib/inpostpay-icon.tsx"), "utf8")
-  assert.ok(!/#FFCC05|#1D1D1D/i.test(icon), "InPost's yellow on black is not used")
+  assert.ok(/#FFCC05/i.test(icon), "the crescent keeps InPost's yellow")
+  assert.ok(/#FF2B7E/i.test(icon), "\"Pay\" keeps InPost Pay's pink")
+  assert.ok(/trademarks of their owner/.test(icon), "the trademark note stays with the mark")
 })

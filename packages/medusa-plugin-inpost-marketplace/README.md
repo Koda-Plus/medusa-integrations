@@ -165,7 +165,7 @@ With the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/m
 
 ## Branding
 
-This plugin is an independent integration. It contains no InPost or Von Halsky logo, colours used as their brand, or imitation of their seller panel: the admin icon is a generic Koda Plus mark, and the demo texts say "demo" and "simulation".
+This plugin is an independent integration. It contains no imitation of InPost's or Von Halsky's seller panel. The admin icon shows InPost's crescent on Von Halsky's violet only to identify the marketplace, and the demo texts say "demo" and "simulation".
 
 ## Uninstall
 

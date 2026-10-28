@@ -99,9 +99,11 @@ test("copy: the demo says it is a simulation, in both languages", async () => {
   assert.match(pl.mode.demo, /symulacj/i)
 })
 
-test("branding: the admin icon is a generic Koda mark, not InPost's logo colours", () => {
+test("branding: the admin icon is InPost's crescent on Von Halsky violet, not the InPost plugin's yellow tile", () => {
   const icon = readFileSync(join(root, "src/admin/lib/vonhalsky-icon.tsx"), "utf8")
-  assert.ok(!/#FFCC0?0?5|#FFCD00|#1D1D1D/i.test(icon), "InPost's yellow on black is not used")
+  assert.ok(/#A200BB/i.test(icon) && /#560064/i.test(icon), "the tile is Von Halsky's violet")
+  assert.ok(!/#FFD303/i.test(icon), "not the InPost plugin's yellow tile")
+  assert.ok(/trademarks of their owner/.test(icon), "the trademark note stays with the mark")
 })
 
 test("the live client invents no address: no host is written into the code", () => {
