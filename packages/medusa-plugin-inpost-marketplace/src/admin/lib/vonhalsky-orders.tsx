@@ -109,7 +109,7 @@ export function OrdersSection({ status: s, lang, filter, onFilter, initialQuery 
             ) : null}
             {rows.map((o) => (
               <Fragment key={o.id}>
-                <Table.Row className="cursor-pointer" onClick={() => setOpen(open === o.id ? null : o.id)}>
+                <Table.Row className="cursor-pointer [&_td]:py-2.5 align-top" onClick={() => setOpen(open === o.id ? null : o.id)}>
                   <Table.Cell className="whitespace-nowrap">
                     <span className="flex flex-col">
                       <span className="txt-compact-small tabular-nums text-ui-fg-base">{fmtDateTime(o.created_at, lang)}</span>
