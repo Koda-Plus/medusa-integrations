@@ -135,7 +135,7 @@ export function BasketsSection({ status, lang, filter, onFilter, initialQuery }:
             ) : null}
             {rows.map((b) => (
               <Fragment key={b.id}>
-                <Table.Row className="cursor-pointer" onClick={() => setOpen(open === b.id ? null : b.id)}>
+                <Table.Row className="cursor-pointer [&_td]:py-2.5 align-top" onClick={() => setOpen(open === b.id ? null : b.id)}>
                   <Table.Cell className="whitespace-nowrap">
                     <span className="flex flex-col">
                       <span className="txt-compact-small tabular-nums text-ui-fg-base">{fmtDateTime(b.created_at, lang)}</span>

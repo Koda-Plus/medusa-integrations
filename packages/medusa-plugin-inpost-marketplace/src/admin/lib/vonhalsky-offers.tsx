@@ -165,7 +165,7 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
               <EmptyTableRow cols={7} icon={FILTER_ICON[filter]} title={fresh ? t("offers.empty") : t("offers.emptyFiltered")} points={fresh ? [{ icon: <Tag />, text: t("offers.emptyHint") }] : undefined} />
             ) : null}
             {rows.map((o) => (
-              <Table.Row key={o.id} className="align-top">
+              <Table.Row key={o.id} className="[&_td]:py-2.5 align-top">
                 <Table.Cell>
                   <Checkbox aria-label={o.sku ?? o.id} checked={selected.has(o.id)} onCheckedChange={() => toggle(o.id)} />
                 </Table.Cell>

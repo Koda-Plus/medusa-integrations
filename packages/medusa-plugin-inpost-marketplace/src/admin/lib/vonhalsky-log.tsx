@@ -50,7 +50,7 @@ export function LogSection({ lang }: { lang: string }) {
             {log.isLoading ? <KitSkeletonRows cols={3} rows={5} /> : null}
             {!log.isLoading && rows.length === 0 ? <EmptyTableRow cols={3} icon={<HistoryIcon />} title={t("log.empty")} /> : null}
             {rows.map((e) => (
-              <Table.Row key={e.id}>
+              <Table.Row key={e.id} className="[&_td]:py-2.5 align-top">
                 <Table.Cell className="whitespace-nowrap tabular-nums">{fmtDateTime(e.created_at, lang)}</Table.Cell>
                 <Table.Cell>
                   <span className="flex items-center gap-1">
