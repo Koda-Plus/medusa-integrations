@@ -1,29 +1,30 @@
 import type { SVGProps } from "react"
 
 /**
- * The Subiekt nexo program icon: a white "Su" on InsERT blue, as in the
- * program window, redrawn as a vector so it stays sharp at sidebar size.
- * Shown in the admin sidebar, on the Subiekt page and in the order widget.
+ * The Subiekt tile as shown on the plugin's page in the Medusa integrations
+ * directory (medusajs.com/integrations): the white wordmark on #00AAEC.
+ * Since 2026-10-28 the admin uses the same tile, so the sidebar, this plugin's
+ * page and its widget match the directory listing. The wordmark is the
+ * directory's own artwork (https://cdn.sanity.io/images/5a711ubd/production/6b7db7ae1e8619583f6b73da91d3f2e76ddcdea0-512x512.svg,
+ * a 512 px PNG inside an SVG), scaled to 192 px and clipped to the rounded
+ * square of the other Koda Plus icons (rx 40 on a 192 viewBox).
  *
  * Subiekt nexo, InsERT and their logos are trademarks of InsERT S.A., used
  * here only to identify the ERP this integration connects to.
  */
+const TILE =
+  "data:image/png;base64,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"
+
 export function SubiektIcon({ width = 15, height = 15, ...props }: SVGProps<SVGSVGElement>) {
   return (
-    <svg
-      width={width}
-      height={height}
-      viewBox="0 0 192 192"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      {...props}
-    >
-      <rect width="192" height="192" rx="40" fill="#0071B8" />
-      <path
-        fill="#FFFFFF"
-        d="M38.4 134.71L38.4 123.08Q40.4 124.84 43.19 126.25 45.98 127.66 49.06 128.63 52.15 129.6 55.26 130.13 58.37 130.66 61.02 130.66 70.12 130.66 74.62 127.28 79.11 123.9 79.11 117.56 79.11 114.15 77.61 111.63 76.12 109.1 73.47 107.02 70.83 104.93 67.21 103.02 63.6 101.11 59.43 99 55.03 96.76 51.21 94.47 47.39 92.18 44.57 89.42 41.75 86.66 40.13 83.16 38.52 79.67 38.52 74.97 38.52 69.21 41.04 64.95 43.57 60.69 47.68 57.93 51.79 55.17 57.05 53.82 62.31 52.47 67.77 52.47 80.23 52.47 85.93 55.47L85.93 66.57Q78.46 61.4 66.77 61.4 63.54 61.4 60.31 62.07 57.08 62.75 54.56 64.28 52.03 65.8 50.44 68.21 48.86 70.62 48.86 74.09 48.86 77.32 50.06 79.67 51.27 82.02 53.62 83.96 55.97 85.9 59.34 87.72 62.72 89.54 67.13 91.71 71.65 93.94 75.7 96.41 79.76 98.88 82.81 101.87 85.87 104.87 87.66 108.51 89.45 112.15 89.45 116.85 89.45 123.08 87.01 127.4 84.57 131.72 80.43 134.42 76.29 137.12 70.89 138.33 65.48 139.53 59.49 139.53 57.49 139.53 54.56 139.21 51.62 138.88 48.56 138.27 45.51 137.65 42.78 136.74 40.04 135.83 38.4 134.71M153.6 77.96L153.6 138.12 143.97 138.12 143.97 128.6 143.73 128.6Q137.74 139.53 125.17 139.53 103.67 139.53 103.67 113.92L103.67 77.96 113.24 77.96 113.24 112.39Q113.24 131.42 127.81 131.42 134.86 131.42 139.41 126.22 143.97 121.03 143.97 112.63L143.97 77.96"
-      />
+    <svg width={width} height={height} viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" {...props}>
+      <defs>
+        <clipPath id="kp-subiekt-tile">
+          <rect width="192" height="192" rx="40" />
+        </clipPath>
+      </defs>
+      <rect width="192" height="192" rx="40" fill="#00AAEC" />
+      <image href={TILE} width="192" height="192" clipPath="url(#kp-subiekt-tile)" />
     </svg>
   )
 }
