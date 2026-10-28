@@ -284,7 +284,7 @@ Check these against the sandbox before going live; the option overrides and the 
 
 ## Branding
 
-This plugin is an independent integration. It contains no InPost logo, button artwork or imitation of the InPost app: the admin icon is a generic Koda Plus mark, and the demo button is the store's own. In production, show InPost's official button through InPost's Widget 2.0 and follow InPost's brand guidelines and display rules (the product page, the cart and the thank-you page are mandatory placements, and InPost provides the banners).
+This plugin is an independent integration. It contains no InPost button artwork or imitation of the InPost app. The admin icon shows the InPost Pay mark (InPost's crescent and "Pay") only to identify the service, and the demo button is the store's own. In production, show InPost's official button through InPost's Widget 2.0 and follow InPost's brand guidelines and display rules (the product page, the cart and the thank-you page are mandatory placements, and InPost provides the banners).
 
 ## Uninstall
 
