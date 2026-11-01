@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/community.ts (kit 1.3.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/community.ts (kit 1.4.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 /**
  * The `community` block of every plugin dictionary: "Add your store", the
  * setup prompt and help on Discord. The same words in every Koda Plus
@@ -33,6 +33,10 @@ export const communityEn = {
     button: "Help on Discord",
     title: "Join the Koda Plus server on Discord",
   },
+  featured: {
+    badge: "Medusa featured integration",
+    title: "Featured in the Medusa integrations catalog. Opens its page there in a new tab.",
+  },
 }
 
 export const communityPl: typeof communityEn = {
@@ -61,5 +65,9 @@ export const communityPl: typeof communityEn = {
   discord: {
     button: "Pomoc na Discordzie",
     title: "Dołącz do serwera Koda Plus na Discordzie",
+  },
+  featured: {
+    badge: "Wyróżniona przez Medusę",
+    title: "Wyróżniona w katalogu integracji Medusy. Otwiera jej stronę w katalogu w nowej karcie.",
   },
 }

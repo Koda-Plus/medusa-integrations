@@ -278,6 +278,7 @@ function Header({
     <IntegrationHeader
       icon={<SubiektIcon width={28} height={28} />}
       title={t("title")}
+      featured={{ url: "https://medusajs.com/integrations/@koda-plusmedusa-plugin-subiekt-nexo", labels: community.featured }}
       badges={
         !loading ? (
           <ModeBadge color={state.tone} label={t(`mode.${state.key}`)} title={t("demo.label")}>

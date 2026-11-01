@@ -78,6 +78,7 @@ const WhitelistPage = () => {
         <IntegrationHeader
           icon={<WhitelistIcon width={28} height={28} />}
           title={t("title")}
+          featured={{ url: "https://medusajs.com/integrations/@koda-plusmedusa-plugin-vat-whitelist", labels: community.featured }}
           badges={
             s?.demo ? (
               <ModeBadge color="blue" label={t("mode.demo")} title={t("mode.demoTitle")}>
