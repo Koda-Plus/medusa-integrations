@@ -1,4 +1,4 @@
-// GENERATED from kit/admin/blocks.tsx (kit 1.3.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/blocks.tsx (kit 1.4.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeftMini, ArrowPath, CheckCircleSolid, Clock, Sparkles, TriangleRightMini, XCircleSolid } from "@medusajs/icons"

@@ -276,6 +276,7 @@ function Header({ status, fetching, lang, nav, onAction }: { status: StatusRespo
     <IntegrationHeader
       icon={<FakturowniaIcon width={28} height={28} />}
       title={t("title")}
+      featured={{ url: "https://medusajs.com/integrations/@koda-plusmedusa-plugin-fakturownia", labels: community.featured }}
       badges={
         status ? (
           <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>

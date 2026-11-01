@@ -1,7 +1,7 @@
-// GENERATED from kit/admin/guide.tsx (kit 1.3.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/guide.tsx (kit 1.4.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useMemo, useState, type ReactNode } from "react"
 import { Navigate, useSearchParams } from "react-router-dom"
-import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
+import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, Medusa, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
 import { PAGE_TAB_PARAM, usePageTabHost, usePageTabs, type IconComponent } from "./whitelist-kit"
 import { KIT_META } from "./whitelist-kit-meta"
@@ -306,7 +306,8 @@ export function isWhiteLabel(): boolean {
 /**
  * The header of an integration page, the same in all five. Three places, each
  * with one job:
- *   who      icon, name and the state badges (no "by Koda Plus" since kit 1.3.0); on the right the help
+ *   who      icon, name, the "Medusa featured integration" link (kit 1.4.0) and the state badges
+ *            (no "by Koda Plus" since kit 1.3.0); on the right the help
  *            about the integration itself (Copy prompt, Discord)
  *   why      the description (with `points`: short phrases with icons, the description
  *            as their tooltip), then the stores running it and "Add your store"
@@ -317,6 +318,7 @@ export function IntegrationHeader({
   icon,
   title,
   badges,
+  featured,
   description,
   points,
   social,
@@ -336,6 +338,12 @@ export function IntegrationHeader({
    */
   by?: string
   badges?: ReactNode
+  /**
+   * The integration is featured in the Medusa integrations catalog: its page
+   * there, e.g. https://medusajs.com/integrations/@koda-plusmedusa-plugin-olx.
+   * Shown as the first badge, a link that opens in a new tab.
+   */
+  featured?: { url: string; labels: FeaturedLabels } | null
   description: string
   /** Short phrases with icons shown instead of the description; the description stays as their tooltip and accessible label. */
   points?: KeyPointItem[]
@@ -355,7 +363,12 @@ export function IntegrationHeader({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <span className="flex shrink-0">{icon}</span>
             <Heading level="h1">{title}</Heading>
-            {badges ? <span className="flex flex-wrap items-center gap-1.5">{badges}</span> : null}
+            {(featured && !plain) || badges ? (
+              <span className="flex flex-wrap items-center gap-1.5">
+                {featured && !plain ? <FeaturedBadge url={featured.url} labels={featured.labels} /> : null}
+                {badges}
+              </span>
+            ) : null}
           </div>
           {help && !plain ? <div className="flex shrink-0">{help}</div> : null}
         </div>
@@ -418,6 +431,28 @@ export function ModeBadge({ color, label, title, children }: { color: BadgeColor
         <div className="txt-small flex max-h-[60vh] flex-col gap-y-3 overflow-y-auto px-4 py-3 text-ui-fg-subtle">{children}</div>
       </Popover.Content>
     </Popover>
+  )
+}
+
+export type FeaturedLabels = { badge: string; title: string }
+
+/** "Medusa featured integration": the page of the integration in the Medusa integrations catalog, in a new tab. */
+export function FeaturedBadge({ url, labels }: { url: string; labels: FeaturedLabels }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={labels.title}
+      aria-label={`${labels.badge}. ${labels.title}`}
+      className="inline-flex rounded-full outline-none transition-fg hover:opacity-80 focus-visible:shadow-borders-focus"
+    >
+      <Badge size="2xsmall" rounded="full" color="green" className="cursor-pointer gap-x-1">
+        <Medusa className="h-3 w-3" />
+        {labels.badge}
+        <ArrowUpRightOnBox className="h-3 w-3 opacity-70" />
+      </Badge>
+    </a>
   )
 }
 
@@ -735,6 +770,7 @@ export type CommunityLabels = {
   addStore: AddStoreLabels
   prompt: PromptLabels
   discord: { button: string; title: string }
+  featured: FeaturedLabels
 }
 
 /**
@@ -768,6 +804,7 @@ export function communityLabels(t: Translate, integration: string): CommunityLab
       failed: k("prompt.failed"),
     },
     discord: { button: k("discord.button"), title: k("discord.title") },
+    featured: { badge: k("featured.badge"), title: k("featured.title") },
   }
 }
 

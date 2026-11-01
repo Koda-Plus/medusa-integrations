@@ -209,6 +209,7 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
       <IntegrationHeader
         icon={<InpostIcon width={28} height={28} />}
         title={t("title")}
+        featured={{ url: "https://medusajs.com/integrations/@koda-plusmedusa-plugin-inpost", labels: community.featured }}
         badges={
           status ? (
             <>

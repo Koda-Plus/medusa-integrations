@@ -240,6 +240,7 @@ function Header({
     <IntegrationHeader
       icon={<OlxIcon width={28} height={28} />}
       title={t("title")}
+      featured={{ url: "https://medusajs.com/integrations/@koda-plusmedusa-plugin-olx", labels: community.featured }}
       badges={
         <>
           {!loading ? (
