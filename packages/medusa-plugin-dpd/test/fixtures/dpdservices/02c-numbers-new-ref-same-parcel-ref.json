@@ -1,0 +1,59 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "receiver": {
+            "company": "Odbiorca Testowy",
+            "name": "Anna Przykładowa",
+            "address": "Przykładowa 2",
+            "city": "Kraków",
+            "countryCode": "PL",
+            "postalCode": "30001",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "parcels": [
+            {
+              "reference": "probe-mvzj6089-R1-1",
+              "weight": 1
+            }
+          ],
+          "reference": "probe-mvzj6089-R1c"
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "DUPLICATED_PARCEL_REFERENCE",
+      "sessionId": null,
+      "beginTime": null,
+      "endTime": null,
+      "packages": [],
+      "traceId": "e540ae9e-a690-4bf7-98d5-6944fd5b11e9"
+    }
+  }
+}

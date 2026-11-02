@@ -108,6 +108,19 @@ test("a pending shipment waits for a person and says when nobody armed the write
   assert.equal(armed.detail?.key, "integration.order.more", "armed: the other shipment is mentioned instead")
 })
 
+test("cash on delivery of two rows recorded in the same instant: the lower id carries it, as in the plan (codCarrierOf)", async () => {
+  const G = "order_01INTEGRATION0000000007"
+  const s = setup({ ...SANDBOX, shipmentWriter: true }, [order({ id: G, display_id: 1007 })])
+  const at = new Date("2026-11-02T10:00:00Z")
+  const base = { mode: "sandbox", kind: "outbound", option_id: "dpd-courier-cod", currency: "PLN", attempts: 1, handed_over_at: null, stage: null, problems: null, order_id: G, display_id: 1007, created_at: at, updated_at: at }
+  /* Inserted out of id order: only the tie-break puts dpdshp_9001 first. */
+  s.shipments.insert({ ...base, id: "dpdshp_9002", fulfillment_id: "ful_g2", state: "unknown", cod_minor: 20000 })
+  s.shipments.insert({ ...base, id: "dpdshp_9001", fulfillment_id: "ful_g1", state: "labeled", cod_minor: 10000, waybills: ["99000000000071D"] })
+  const [g] = await dpdIntegration.build.summaries(makeContext({ scope: s.container, lang: "en" }), "order", [G])
+  const cod = g.facts.find((f) => f.slot === "payment")
+  assert.match(String(cod?.value.params?.amount), /100[.,]00/)
+})
+
 test("before any fulfillment the checkout's choice shows; metadata changes nothing", async () => {
   const s = sample()
   const [c, d] = await dpdIntegration.build.summaries(makeContext({ scope: s.container }), "order", [C, D])

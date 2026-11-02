@@ -1,0 +1,98 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "receiver": {
+            "company": "Odbiorca Testowy",
+            "name": "Anna Przykładowa",
+            "address": "Przykładowa 2",
+            "city": "Kraków",
+            "countryCode": "PL",
+            "postalCode": "30001",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "parcels": [
+            {
+              "reference": "probe-mvzj6089-COD-1",
+              "weight": 1
+            },
+            {
+              "reference": "probe-mvzj6089-COD-2",
+              "weight": 1
+            }
+          ],
+          "reference": "probe-mvzj6089-COD",
+          "services": [
+            {
+              "code": "COD",
+              "attributes": [
+                {
+                  "code": "AMOUNT",
+                  "value": "123.45"
+                },
+                {
+                  "code": "CURRENCY",
+                  "value": "PLN"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "sessionId": 244462958,
+      "beginTime": null,
+      "endTime": null,
+      "packages": [
+        {
+          "status": "OK",
+          "reference": "probe-mvzj6089-COD",
+          "validationInfo": [],
+          "parcels": [
+            {
+              "status": "OK",
+              "reference": "probe-mvzj6089-COD-1",
+              "waybill": "0000899044737Q",
+              "validationInfo": []
+            },
+            {
+              "status": "OK",
+              "reference": "probe-mvzj6089-COD-2",
+              "waybill": "0000899044877Q",
+              "validationInfo": []
+            }
+          ]
+        }
+      ],
+      "traceId": "a0e3c34b-403b-4661-8534-ec1b55f70f86"
+    }
+  }
+}

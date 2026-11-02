@@ -57,7 +57,8 @@ export const dpdIntegration = integrationRoutes({
     if (entity !== "order") return out
     const svc = dpdService(ctx.scope)
     const mode = svc.mode()
-    const rows = await listShipments(svc, { order_id: ids, mode }, { take: ids.length * 20, order: { created_at: "ASC" } })
+    /* The id breaks a tie of created_at, as in codCarrierOf: the cash on delivery fact names the same row the plan does. */
+    const rows = await listShipments(svc, { order_id: ids, mode }, { take: ids.length * 20, order: { created_at: "ASC", id: "ASC" } })
     const { data } = await queryOf(ctx.scope).graph({
       entity: "order",
       fields: ["id", "display_id", "shipping_methods.data"],

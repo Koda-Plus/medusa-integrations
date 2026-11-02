@@ -16,8 +16,11 @@ import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import en from "../src/admin/i18n/en.ts"
 import { LABEL_PAGES, MODES, SHIPMENT_STAGES, SHIPMENT_STATES, TRACKING_MODES } from "../src/modules/dpd/lib/constants.ts"
-import { SHIPMENT_GROUPS } from "../src/modules/dpd/lib/contract.ts"
+import { ACTION_ERROR_CODES, SHIPMENT_ERROR_CODES, SHIPMENT_GROUPS } from "../src/modules/dpd/lib/contract.ts"
+import { DPD_PROBLEM_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
 import { WRITERS } from "../src/modules/dpd/lib/writers.ts"
+import { formatMinor } from "../src/modules/dpd/lib/money.ts"
+import { BOX_FIELDS, fmtMinor, fmtMoney } from "../src/admin/lib/dpd-logic.ts"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const FORBIDDEN = new RegExp(`[${String.fromCharCode(0x2013, 0x2014, 0xb7)}]`)
@@ -92,11 +95,16 @@ function multilineUnion(file: string, name: string): string[] {
   return [...body.matchAll(/"([a-z_]+)"/g)].map((m) => m[1])
 }
 
-/** The row problem codes the plugin records: every checkout check of option-data.ts and every sample problem of demo.ts. */
+/**
+ * The problem codes the admin shows: every checkout check of option-data.ts,
+ * every sample problem of demo.ts, every plan problem of plan.ts and every
+ * problem built from a DPD answer (dpd-answers.ts).
+ */
 function problemCodes(): string[] {
   const checkout = multilineUnion("src/modules/dpd/lib/option-data.ts", "CheckoutErrorCode")
   const demo = [...readFileSync(join(root, "src/modules/dpd/lib/demo.ts"), "utf8").matchAll(/problems: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/code: "([a-z_]+)"/g)].map((x) => x[1]))
-  return [...new Set([...checkout, ...demo])]
+  const plan = multilineUnion("src/modules/dpd/lib/plan.ts", "PlanProblemCode")
+  return [...new Set([...checkout, ...demo, ...plan, ...DPD_PROBLEM_CODES])]
 }
 
 /** A file written by scripts/kit.mjs: its words come from the plugin through props, never through t(). */
@@ -184,6 +192,13 @@ test("every string the admin asks for exists in both dictionaries: every key lit
     "mode.*": [...new Set([...MODES, ...modeKeys])],
     "kind.*": unionMembers("src/modules/dpd/lib/constants.ts", "OptionKind"),
     "problem.*": problems,
+    "warning.*": multilineUnion("src/modules/dpd/lib/plan.ts", "PlanWarningCode"),
+    "errorCode.*": SHIPMENT_ERROR_CODES,
+    "actionError.*": ACTION_ERROR_CODES,
+    "plan.source.*": ["edited", "variants", "default_box", "none"],
+    "plan.sessionTypes.*": ["DOMESTIC", "INTERNATIONAL"],
+    /* The refused fields of a 400 of POST .../boxes, under "Box n:". */
+    "plan.boxFields.*": BOX_FIELDS,
     "sender.problem.*": unionMembers("src/modules/dpd/lib/sender.ts", "SenderProblemCode"),
     "sender.fields.*": ["company", "name", "fullName", "phone", "email", "street", "city", "postalCode", "countryCode"],
     "account.labelPages.*": LABEL_PAGES,
@@ -197,7 +212,8 @@ test("every string the admin asks for exists in both dictionaries: every key lit
   }
   assert.deepEqual([...shapes.keys()].filter((k) => !(k in DYNAMIC)).map((k) => `${shapes.get(k)}: ${k}`), [], "a dynamic key without its enumeration here")
   assert.ok(modeKeys.includes("notConfigured") && problems.length > 0 && faq.length > 0, "the enumerations read from the sources")
-  for (const code of ["country_unsupported", "cod_country_unsupported", "cod_currency_unsupported", "address_incomplete", "pudo_missing", "pudo_invalid", "contact_missing", "cod_pickup_abroad", "weight_missing"]) assert.ok(problems.includes(code), `problem code read from the sources: ${code}`)
+  assert.ok(Object.keys(DYNAMIC).includes("plan.boxFields.*") && BOX_FIELDS.includes("weightKg"), "the box fields of the boxes DTO have their words")
+  for (const code of ["country_unsupported", "cod_country_unsupported", "cod_currency_unsupported", "address_incomplete", "pudo_missing", "pudo_invalid", "contact_missing", "cod_pickup_abroad", "weight_missing", "option_later", "cod_zero", "dpd_validation"]) assert.ok(problems.includes(code), `problem code read from the sources: ${code}`)
   const absent: string[] = []
   for (const [shape, names] of Object.entries(DYNAMIC)) {
     for (const n of names) for (const [lang, d] of dicts) if (!has(d, shape.replace("*", n))) absent.push(`${lang}: ${shape.replace("*", n)}`)
@@ -312,6 +328,32 @@ test("the README has no tables and every section, once it exists", { skip: !exis
   for (const h of ["## What it does", "## Requirements", "## Installation", "## Configuration", "## Security and data", "## License", "## Changelog"]) {
     assert.ok(readme.includes(`\n${h}\n`), h)
   }
+})
+
+test("the README names the buttons as the admin shows them and says when the label page is chosen", { skip: !existsSync(join(root, "README.md")) && "the README comes with a later stage" }, () => {
+  const readme = readFileSync(join(root, "README.md"), "utf8")
+  /* The lookup button of the admin, by its English name. */
+  assert.ok(readme.includes(`the ${en.actions.lookup} button`), en.actions.lookup)
+  assert.ok(!/\bLook up button\b/.test(readme), "no Look up button in the admin")
+  /* The page is picked in the plan drawer, before the create; printing a stored label asks nothing. */
+  assert.ok(readme.includes("chosen when creating the shipment (the default is `labelPage`)"))
+  /* Nowhere chosen (again) at printing: "chosen when printing", "chosen again when printing", "picked at print time". */
+  const atPrint = readme.split("\n").filter((l) => /\b(chosen|picked|selected)\b[^.;\n]*\b(when|at|while) print(ing)?\b/i.test(l) || /\bchosen again\b/i.test(l))
+  assert.deepEqual(atPrint, [])
+  /* The option line itself says the same as the Labels point: chosen when creating, no reprint in another format yet. */
+  const option = readme.split("\n").find((l) => l.startsWith("- `labelPage`")) ?? ""
+  assert.match(option, /chosen when creating the shipment/)
+  assert.match(option, /not printed again in another format yet/)
+})
+
+test("an amount in minor units reads as the server counts it: hundredths, whatever digits the currency has", () => {
+  for (const currency of ["PLN", "EUR", "JPY", "KWD", "HUF"]) {
+    for (const minor of [0, 1, 99, 100, 12345, 1000, -250]) {
+      assert.equal(fmtMinor(minor, currency, "en"), fmtMoney(formatMinor(minor), currency, "en"), `${minor} ${currency}`)
+    }
+  }
+  /* 1000 JPY minor units are 10 yen on the server (toMinor counts hundredths), never 1000 yen. */
+  assert.equal(fmtMinor(1000, "JPY", "en"), fmtMoney("10.00", "JPY", "en"))
 })
 
 test("package.json: the version, the keywords of the Medusa catalog, the files", () => {

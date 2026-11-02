@@ -4,8 +4,12 @@
  * server code.
  *
  * NO TYPE HERE HAS A FIELD FOR A SECRET. Passwords and keys stay on the
- * server; the admin learns only whether each is set. No type carries the
- * receiver's name, phone, e-mail or street: the plugin keeps none of them.
+ * server; the admin learns only whether each is set.
+ *
+ * NOTHING ABOUT THE RECEIVER IS KEPT AT REST: no row, document list or
+ * history line carries the receiver's name, phone, e-mail or street. The one
+ * type that shows them is PlanDto, read live from the order when the plan is
+ * built and answered with `Cache-Control: private, no-store`.
  *
  * Routes of stage 1:
  *
@@ -15,6 +19,19 @@
  *   POST /admin/dpd/writers          WriterRequest     -> WritersResponse
  *   POST /admin/dpd/demo/seed        DemoSeedResponse
  *   POST /admin/dpd/demo/reset       DemoResetResponse
+ *
+ * Routes of stage 2, one shipment (`:id` is a row of the current mode; every
+ * answer is private, no-store):
+ *
+ *   GET  /admin/dpd/shipments/:id          ShipmentResponse
+ *   GET  /admin/dpd/shipments/:id/plan     PlanResponse
+ *   POST /admin/dpd/shipments/:id/create   CreateRequest  -> ActionResponse
+ *   POST /admin/dpd/shipments/:id/label    LabelRequest   -> ActionResponse
+ *   GET  /admin/dpd/shipments/:id/label    the label PDF (?download=1 saves it)
+ *   POST /admin/dpd/shipments/:id/lookup   {}             -> ActionResponse
+ *   POST /admin/dpd/shipments/:id/skip     {}             -> ActionResponse
+ *   POST /admin/dpd/shipments/:id/accept   {}             -> ActionResponse
+ *   POST /admin/dpd/shipments/:id/boxes    BoxesRequest   -> PlanResponse
  *
  * An error of any route is an ErrorResponse with an HTTP status.
  */
@@ -93,6 +110,11 @@ export type ProblemDto = {
   /** The field or value it is about, like "receiver.postalCode" or "PL14509". */
   field?: string
   detail?: string
+}
+
+/** A warning of a plan: a problem that does not stop the plan; order_paid carries the amount already captured, for the admin to format. */
+export type PlanWarningDto = ProblemDto & {
+  amount?: { minor: number; currency: string }
 }
 
 /** A problem of the sender, the orderer or a sender of `senders` (code: missing, required, too_long, invalid, not_polish). */
@@ -208,6 +230,18 @@ export type ShipmentDto = {
   createdAt: string | null
   mode: DpdMode
   demo: boolean
+  /** The package reference sent to DPD (the fulfillment id). */
+  reference: string | null
+  /** The DPD session of the waybills; null before DPD gave them, and after an adoption. */
+  sessionId: string | null
+  /** How many times the row was claimed to talk to DPD. */
+  attempts: number
+  /** The boxes as last sent or set by hand; null before any. */
+  boxes: BoxDto[] | null
+  updatedAt: string | null
+  /** unknown | abandoned_unknown: the time a lookup may run (updated_at + UNKNOWN_SETTLE_MS); null otherwise. */
+  lookupAfter: string | null
+  actions: ShipmentActions
 }
 
 /** GET /admin/dpd/shipments query: filter, search (order number, waybill, Pickup point), paging. */
@@ -284,16 +318,150 @@ export type DemoResetResponse = {
   removed: { shipments: number; documents: number; events: number; dispatches: number; settings: number }
 }
 
+/** The boxes of a row or a plan, as the admin sees them. */
+export type BoxDto = {
+  weightKg: number
+  lengthCm: number | null
+  widthCm: number | null
+  heightCm: number | null
+  reference: string | null
+  waybill: string | null
+}
+
+/** What a person may do with a row now (state only; the admin also checks writers.shipment.armed). */
+export type ShipmentActions = {
+  /** pending | failed, outbound: open the plan. */
+  plan: boolean
+  /** pending | failed, outbound. */
+  create: boolean
+  /** pending | failed: change the boxes. */
+  boxes: boolean
+  /** created: get the label from DPD (POST). */
+  fetchLabel: boolean
+  /** labeled, or ambiguous | abandoned_unknown with waybills: open or download the stored label (GET). */
+  label: boolean
+  /** unknown | abandoned_unknown without waybills: check in DPD. */
+  lookup: boolean
+  /** ambiguous with waybills: accept the waybills DPD gave. */
+  accept: boolean
+  /** pending | failed | ambiguous: mark as shipped outside Medusa. */
+  skip: boolean
+}
+
+/** A stored document of a shipment, without its bytes. */
+export type DocumentDto = {
+  id: string
+  type: "label" | "return_label" | "protocol"
+  format: "PDF"
+  page: LabelPage | null
+  createdAt: string | null
+  createdBy: string | null
+}
+
+/** An address of a plan: the receiver read live from the order, or the sender. */
+export type PlanAddressDto = {
+  company: string | null
+  name: string | null
+  address: string
+  city: string
+  postalCode: string
+  countryCode: string
+  phone: string | null
+  email: string | null
+}
+
+/** The plan as the admin sees it: read live from the order, never stored. */
+export type PlanDto = {
+  ok: boolean
+  optionId: string
+  kind: OptionKind | null
+  cod: boolean
+  sessionType: "DOMESTIC" | "INTERNATIONAL" | null
+  country: string | null
+  receiver: PlanAddressDto | null
+  sender: PlanAddressDto | null
+  senderLocationId: string | null
+  boxes: BoxDto[]
+  boxesSource: "edited" | "variants" | "default_box" | "none"
+  /** Sum of the box weights, kg. */
+  weightKg: number
+  /** "249.90" and the currency; null without cash on delivery on this shipment. */
+  codAmount: { amount: string; currency: CodCurrency } | null
+  reference: string
+  problems: ProblemDto[]
+  warnings: PlanWarningDto[]
+  /** The exact JSON for DPD (shown raw on request), null with problems. */
+  request: unknown
+  hash: string
+}
+
+/** GET /admin/dpd/shipments/:id/plan */
+export type PlanResponse = {
+  shipment: ShipmentDto
+  plan: PlanDto
+  writerArmed: boolean
+  mode: DpdMode
+  /** The page the create action asks for by default (Settings, else the option). */
+  labelPage: LabelPage
+}
+
+/** POST /admin/dpd/shipments/:id/create */
+export type CreateRequest = { planHash: string; page?: LabelPage }
+/** POST /admin/dpd/shipments/:id/label */
+export type LabelRequest = { page?: LabelPage }
+/** POST /admin/dpd/shipments/:id/boxes; null goes back to automatic boxes. */
+export type BoxesRequest = {
+  boxes: Array<{ weightKg: number | string; lengthCm?: number | string | null; widthCm?: number | string | null; heightCm?: number | string | null }> | null
+}
+/** The answer of every action route (create, label POST, lookup, skip, accept). */
+export type ActionResponse = { shipment: ShipmentDto }
+/** GET /admin/dpd/shipments/:id */
+export type ShipmentResponse = { shipment: ShipmentDto; documents: DocumentDto[]; events: EventDto[]; writerArmed: boolean; labelPage: LabelPage }
+
+/** ErrorResponse.code values of stage 2 actions. */
+export const ACTION_ERROR_CODES = [
+  "writer_off", "writer_unknown", "not_armed", "not_configured", "not_demo", "not_found", "invalid",
+  "plan_problems", "plan_hash_missing", "plan_changed", "busy", "wrong_state", "too_early", "no_label",
+] as const
+export type ActionErrorCode = (typeof ACTION_ERROR_CODES)[number]
+
+/** Every value dpd_shipment.error_code can hold: the DPD codes (DPD_ERROR_CODES, repeated here, this file has no imports) and the flow codes. */
+export const SHIPMENT_ERROR_CODES = [
+  "timeout", "network", "server_error", "bad_answer", "unknown_status", "dpd_unknown_error",
+  "not_processed", "no_waybill", "partial", "not_pdf", "http_404",
+  "auth", "payer_fid", "forbidden", "disabled_api", "incorrect_data", "validation",
+  "rate_limited", "unsupported", "bad_request", "not_configured", "alternative_number",
+  "rate_limited_manual",
+  "lease_expired", "label_lease_expired", "label_unclear", "label_not_found",
+  "adopted", "adopt_failed", "waybill_count_mismatch", "waybill_mismatch", "duplicate_not_found",
+  "not_created", "abandoned_found", "lookup_failed", "no_client",
+] as const
+export type ShipmentErrorCode = (typeof SHIPMENT_ERROR_CODES)[number]
+
 /**
  * The error of any route:
  *
- *   writer_off       the option turns the writer off (409)
- *   writer_unknown   not one of the three writers (400)
- *   not_demo         a demo route outside demo mode (409)
- *   not_found        no such order or row (404)
- *   invalid          a broken request (400)
+ *   writer_off         the option turns the writer off (409)
+ *   writer_unknown     not one of the three writers (400)
+ *   not_armed          the writer is not armed in Settings (409)
+ *   not_configured     sandbox or live without credentials (409)
+ *   not_demo           a demo route outside demo mode (409)
+ *   not_found          no such order or row (404)
+ *   invalid            a broken request (400)
+ *   plan_problems      the plan has problems to fix first (422)
+ *   plan_hash_missing  the plan was not read (400)
+ *   plan_changed       the plan changed since it was read (409)
+ *   busy               another process holds the row (409)
+ *   wrong_state        not possible in the state of the row (409)
+ *   too_early          a lookup before the row settled (409)
+ *   no_label           no stored label (404)
  */
 export type ErrorResponse = {
-  code: "writer_off" | "writer_unknown" | "not_demo" | "not_found" | "invalid" | string
+  code: ActionErrorCode | string
   message: string
+  /** invalid boxes (POST .../boxes): each wrong field, by the 0-based box index and the BoxDto field name (weightKg, lengthCm, widthCm, heightCm). */
+  fields?: FieldErrorDto[]
 }
+
+/** One wrong field of a request: the 0-based index of the item and its field name. */
+export type FieldErrorDto = { index: number; field: string }

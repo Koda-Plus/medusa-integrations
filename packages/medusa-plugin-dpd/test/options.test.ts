@@ -203,6 +203,36 @@ test("lists as JSON arrays in a string; a broken one, an unreadable number or on
   }
 })
 
+test("stage 2: timeoutMs, requestsPerMinute and autoCreateMaxAgeHours, defaults, strings, out of range", () => {
+  const d = resolveOptions({})
+  assert.equal(d.timeoutMs, 20000)
+  assert.equal(d.requestsPerMinute, 60)
+  assert.equal(d.autoCreateMaxAgeHours, 24)
+  const s = resolveOptions({ timeoutMs: "30000", requestsPerMinute: " 120 ", autoCreateMaxAgeHours: "48" })
+  assert.equal(s.timeoutMs, 30000)
+  assert.equal(s.requestsPerMinute, 120)
+  assert.equal(s.autoCreateMaxAgeHours, 48)
+  assert.deepEqual(s.problems, [])
+  const low = resolveOptions({ timeoutMs: 100, requestsPerMinute: 1, autoCreateMaxAgeHours: 0 })
+  assert.equal(low.timeoutMs, 5000, "brought into the range")
+  assert.equal(low.requestsPerMinute, 10, "E1: a slower pace would outwait the lease")
+  assert.equal(low.autoCreateMaxAgeHours, 1)
+  assert.deepEqual(low.problems, [
+    "autoCreateMaxAgeHours (a whole number from 1 to 720)",
+    "timeoutMs (a whole number from 5000 to 45000)",
+    "requestsPerMinute (a whole number from 10 to 600)",
+  ])
+  const high = resolveOptions({ timeoutMs: 90000, requestsPerMinute: "6000", autoCreateMaxAgeHours: 1000 })
+  assert.equal(high.timeoutMs, 45000)
+  assert.equal(high.requestsPerMinute, 600)
+  assert.equal(high.autoCreateMaxAgeHours, 720)
+  assert.equal(high.problems.length, 3)
+  const junk = resolveOptions({ timeoutMs: "soon", requestsPerMinute: "", autoCreateMaxAgeHours: null as never })
+  assert.equal(junk.timeoutMs, 20000, "no number: the default")
+  assert.equal(junk.requestsPerMinute, 60, "an empty string is unset")
+  assert.deepEqual(junk.problems, ["timeoutMs (a whole number from 5000 to 45000)"])
+})
+
 test("settings: per mode keys; a saved label page wins over the option", () => {
   assert.equal(settingsKey("live"), "live:settings")
   assert.equal(DEMO_SEEDED_KEY, "demo:seeded")

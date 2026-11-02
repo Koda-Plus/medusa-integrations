@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { DEMO_ROWS, OPTION_SPECS, type DpdOptionId, type ShipmentKind, type ShipmentStage, type ShipmentState } from "./constants"
 import { toMinor } from "./money"
+import type { ResolvedSender } from "./sender"
 
 /**
  * DEMO MODE: sample DPD shipments built from the store's own newest orders,
@@ -16,9 +17,10 @@ import { toMinor } from "./money"
  * No InfoServices event code is invented either: the rows carry a stage
  * (where the parcel is) and no status code.
  *
- * Stage 1 has no flow that moves a shipment, so the seeded rows stay where
- * they are; later stages run the demo through the same code paths as the
- * sandbox and live.
+ * From stage 2 the seeded rows move through the same code paths as the
+ * sandbox and live (create, label, lookup), with a simulated DPDServices
+ * client that never calls DPD; the plan uses DEMO_SENDER when the options
+ * have no sender.
  */
 
 export const DEMO_SEED_SOURCE = "demo"
@@ -74,7 +76,7 @@ const SCENARIOS: readonly Scenario[] = [
   { option: "dpd-pickup-cod", kind: "outbound", state: "labeled", stage: "in_point", point: 3, boxes: 1, handedOver: true, ageHours: 30 },
   { option: "dpd-courier", kind: "outbound", state: "labeled", stage: "delivered", boxes: 1, handedOver: true, ageHours: 48 },
   { option: "dpd-pickup", kind: "outbound", state: "labeled", stage: "delivered", point: 4, boxes: 1, handedOver: true, ageHours: 72 },
-  { option: "dpd-courier", kind: "outbound", state: "failed", stage: null, error: { code: "INVALID_FIELDS", message: "Sample: DPD refused the receiver's postal code." }, ageHours: 5 },
+  { option: "dpd-courier", kind: "outbound", state: "failed", stage: null, error: { code: "incorrect_data", message: "Sample: DPD refused the receiver's postal code." }, ageHours: 5 },
   { option: "dpd-courier-cod", kind: "outbound", state: "unknown", stage: null, error: { code: "timeout", message: "Sample: no answer from DPD in time; looked up before anything is sent again." }, ageHours: 7 },
   { option: "dpd-courier", kind: "outbound", state: "canceled", stage: null, ageHours: 9 },
   { option: "dpd-return", kind: "return", state: "labeled", stage: "in_transit", boxes: 1, ageHours: 40 },
@@ -184,4 +186,19 @@ export function demoMessage(row: Pick<DemoRow, "state" | "stage" | "kind">): str
     default:
       return "Sample shipment."
   }
+}
+
+/**
+ * The sender of demo mode when the options have none. Invented, the shape of
+ * a valid sender (it passes validateSender), never sent anywhere.
+ */
+export const DEMO_SENDER: ResolvedSender = {
+  company: "Sample Store",
+  name: "Sample Sender",
+  phone: "000000000",
+  email: "shop@example.com",
+  street: "ul. Przykładowa 1",
+  city: "Warszawa",
+  postalCode: "00950",
+  countryCode: "PL",
 }

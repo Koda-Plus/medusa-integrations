@@ -30,8 +30,23 @@
  *                   groupOf in contract.ts)
  *   list            one page of a group of one mode, with the search
  *
- * The claims with a lease (creating, labeling, the courier order) come with
- * the flows that send something to DPD, from stage 2 on.
+ * The claims with a lease, for every call that writes to DPD:
+ *
+ *   claim           a row in one of the given states moves to creating or
+ *                   labeling with a token and a lease (attempts + 1); a
+ *                   second process finds the state changed and gets null
+ *   finish          only the owner of the claim (state creating or labeling
+ *                   and the same token) writes the result; a claim whose
+ *                   lease ran out was taken back, so a late answer writes
+ *                   nothing. A claim the pacing refused (nothing sent) is
+ *                   finished with `unsent`: attempts goes back to its value
+ *                   before the claim, so only claims that sent a request
+ *                   count toward AUTO_LABEL_MAX_ATTEMPTS
+ *   expireLeases    creating past its lease becomes unknown (looked up
+ *                   before anything is sent again), labeling past its lease
+ *                   goes back to created (the label can be asked again)
+ *
+ * The courier order (stage 4) gets its own claim on dpd_dispatch.
  */
 
 import { SHIPMENT_GROUPS, type ShipmentFilter, type ShipmentGroup } from "./contract"
@@ -115,7 +130,38 @@ export type ListArgs = {
   limit: number
 }
 
+export type ClaimArgs = {
+  token: string
+  leaseUntil: Date
+  to: "creating" | "labeling"
+  /** Columns set in the same statement (plan_hash, cod_minor, boxes...). `state` in it is ignored. */
+  patch?: ShipmentPatch
+}
+
+/** How a claim ends besides its patch. */
+export type FinishOptions = {
+  /**
+   * The claim sent nothing (the client's pacing refused the call): attempts
+   * goes back to its value before the claim (attempts - 1, never below 0),
+   * and updated_at to `updatedAt` when it is given (a lookup that never left
+   * keeps the clock its settle check runs on).
+   */
+  unsent?: { updatedAt?: Date | null }
+}
+
+/** The states a claim moves a row to; finish only writes from these. */
+export const CLAIMED_STATES: readonly string[] = ["creating", "labeling"]
+
+export const LEASE_EXPIRED_ERROR = "No answer from DPD within the lease; the shipment is looked up before anything is sent again."
+export const LABEL_LEASE_EXPIRED_ERROR = "Getting the label took longer than its lease; get it again."
+
 export type DpdStore = {
+  /** state in `from` -> `to`, with the token and the lease, attempts + 1, updated_at = now(). Null when another process won. */
+  claim(id: string, from: readonly string[], args: ClaimArgs): Promise<ShipmentRow | null>
+  /** Only the owner of the claim: state in (creating, labeling) and claim_token = token. Clears token and lease; `unsent` undoes the count of the claim. */
+  finish(id: string, token: string, patch: ShipmentPatch & { state: string }, options?: FinishOptions): Promise<ShipmentRow | null>
+  /** creating past its lease -> unknown (lease_expired); labeling past its lease -> created (label_lease_expired). Returns the rows changed. */
+  expireLeases(mode: DpdMode, now: Date): Promise<ShipmentRow[]>
   insertIgnore(row: NewShipment): Promise<ShipmentRow | null>
   transition(id: string, from: readonly string[], patch: ShipmentPatch): Promise<ShipmentRow | null>
   insertEvent(event: NewEvent): Promise<EventRow | null>
@@ -187,7 +233,8 @@ export const GROUP_SQL = `case
   else 'labeled'
 end`
 
-export function setClause(patch: ShipmentPatch): { sql: string; bindings: unknown[] } {
+/** The `set` list of a patch; updated_at is now(), or `updatedAt` when one is given. */
+export function setClause(patch: ShipmentPatch, updatedAt?: Date | null): { sql: string; bindings: unknown[] } {
   const parts: string[] = []
   const bindings: unknown[] = []
   const values = patch as Record<string, unknown>
@@ -202,7 +249,12 @@ export function setClause(patch: ShipmentPatch): { sql: string; bindings: unknow
       bindings.push(v)
     }
   }
-  parts.push(`"updated_at" = now()`)
+  if (updatedAt) {
+    parts.push(`"updated_at" = ?`)
+    bindings.push(updatedAt)
+  } else {
+    parts.push(`"updated_at" = now()`)
+  }
   return { sql: parts.join(", "), bindings }
 }
 
@@ -243,6 +295,50 @@ export function isGroup(v: unknown): v is ShipmentGroup {
 export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) => string }): DpdStore {
   const { sql, newId } = deps
   return {
+    async claim(id, from, args) {
+      if (from.length === 0) return null
+      const { state: _ignored, ...patch } = args.patch ?? {}
+      const set = setClause(patch)
+      const placeholders = from.map(() => "?").join(", ")
+      const result = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set ${set.sql}, "state" = ?, "claim_token" = ?, "lease_until" = ?, "attempts" = "attempts" + 1
+         where "id" = ? and "state" in (${placeholders}) and "deleted_at" is null
+         returning *`,
+        [...set.bindings, args.to, args.token, args.leaseUntil, id, ...from],
+      )
+      return rowsOf<ShipmentRow>(result)[0] ?? null
+    },
+
+    async finish(id, token, patch, options) {
+      const set = setClause(patch, options?.unsent?.updatedAt)
+      const uncount = options?.unsent ? `, "attempts" = greatest("attempts" - 1, 0)` : ""
+      const result = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set ${set.sql}, "claim_token" = null, "lease_until" = null${uncount}
+         where "id" = ? and "state" in ('creating', 'labeling') and "claim_token" = ? and "deleted_at" is null
+         returning *`,
+        [...set.bindings, id, token],
+      )
+      return rowsOf<ShipmentRow>(result)[0] ?? null
+    },
+
+    async expireLeases(mode, now) {
+      const created = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set "state" = 'unknown', "error_code" = 'lease_expired', "error" = ?,
+           "claim_token" = null, "lease_until" = null, "updated_at" = now()
+         where "mode" = ? and "state" = 'creating' and "lease_until" < ? and "deleted_at" is null
+         returning *`,
+        [LEASE_EXPIRED_ERROR, mode, now],
+      )
+      const labels = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set "state" = 'created', "error_code" = 'label_lease_expired', "error" = ?,
+           "claim_token" = null, "lease_until" = null, "updated_at" = now()
+         where "mode" = ? and "state" = 'labeling' and "lease_until" < ? and "deleted_at" is null
+         returning *`,
+        [LABEL_LEASE_EXPIRED_ERROR, mode, now],
+      )
+      return [...rowsOf<ShipmentRow>(created), ...rowsOf<ShipmentRow>(labels)]
+    },
+
     async insertIgnore(row) {
       const result = await sql.raw(
         `insert into "${SHIPMENT_TABLE}" ("id", "order_id", "display_id", "fulfillment_id", "return_id", "kind", "mode", "option_id", "service",

@@ -194,7 +194,7 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
     {
       id: "arm",
       title: t("guide.step.arm.title"),
-      state: state(live && s.writers.shipment.armed, "later"),
+      state: state(live && s.writers.shipment.armed),
       body: (
         <>
           {p("guide.step.arm.body1")}
