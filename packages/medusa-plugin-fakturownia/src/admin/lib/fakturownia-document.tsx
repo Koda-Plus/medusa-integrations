@@ -8,6 +8,7 @@ import { errorMessage, ksefFilePath, saveFile, useFakturowniaDocument, useFaktur
 import { PlanCard } from "./fakturownia-corrections"
 import {
   BuyerWarningText,
+  WatchText,
   DocumentActions,
   DocumentLinks,
   DocumentStatusBadge,
@@ -90,6 +91,7 @@ function Overview({ doc, corrected, lang }: { doc: DocumentDto; corrected: Docum
         ) : null}
       </div>
       <BuyerWarningText warning={doc.buyerWarning} />
+      <WatchText doc={doc} lang={lang} />
       {doc.error && doc.errorCode !== "adopted" ? (
         <Text size="xsmall" className={doc.status === "failed" || doc.status === "unknown" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}>
           {doc.error}
@@ -251,8 +253,12 @@ function EmailPanel({ doc, emails, writer, lang }: { doc: DocumentDto; emails: E
   const unpaidForReminder = !doc.paid && (doc.kind === "proforma" || doc.kind === "vat") && doc.status === "issued"
   const go = async (kind: "manual" | "reminder") => {
     try {
-      await send.mutateAsync({ id: doc.id, kind, to: to.trim() || undefined, attachPdf: pdf })
-      toast.success(t(kind === "reminder" ? "email.reminded" : "email.sent"))
+      const r = await send.mutateAsync({ id: doc.id, kind, to: to.trim() || undefined, attachPdf: pdf })
+      toast.success(
+        kind === "reminder" && typeof r.outstanding === "number"
+          ? t("email.remindedAmount", { amount: fmtMoney(r.outstanding, doc.currency, lang) })
+          : t(kind === "reminder" ? "email.reminded" : "email.sent"),
+      )
       setTo("")
     } catch (err) {
       toast.error(t("toast.error", { error: errorMessage(err) }))
@@ -337,6 +343,11 @@ export function EmailHistory({ emails, lang, showDocument = false }: { emails: E
           {e.subject ? (
             <Text size="xsmall" className="text-ui-fg-muted">
               {t("email.subject", { subject: e.subject })}
+            </Text>
+          ) : null}
+          {e.amount !== null && e.status === "sent" ? (
+            <Text size="xsmall" className="text-ui-fg-muted">
+              {t("email.amount", { amount: new Intl.NumberFormat(lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(e.amount) })}
             </Text>
           ) : null}
           {e.error ? (

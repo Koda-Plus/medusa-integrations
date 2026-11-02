@@ -11,6 +11,7 @@ import {
   CheckCircle,
   DocumentSeries,
   DocumentText,
+  Envelope,
   Eye,
   LockClosedSolid,
   MagnifyingGlass,
@@ -36,7 +37,7 @@ import type {
 } from "../../modules/fakturownia/lib/contract"
 import type { Reference } from "./fakturownia-guide"
 import { ToneBadge, type RowAction, type Tone } from "./fakturownia-blocks"
-import { errorMessage, openFile, pdfPath, useFakturowniaDocumentAction, useFakturowniaMarkIssued, type DocumentAction } from "./fakturownia-api"
+import { errorMessage, openFile, pdfPath, useFakturowniaDocumentAction, useFakturowniaEmail, useFakturowniaMarkIssued, type DocumentAction } from "./fakturownia-api"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -261,6 +262,7 @@ export function useDocumentActions(doc: DocumentDto, { onDone, onOpen, links = f
   const { t } = useTranslation("fakturownia")
   const prompt = usePrompt()
   const action = useFakturowniaDocumentAction()
+  const email = useFakturowniaEmail()
   const [marking, setMarking] = useState(false)
   const busy = (a: DocumentAction) => action.isPending && action.variables?.id === doc.id && action.variables?.action === a
 
@@ -285,7 +287,34 @@ export function useDocumentActions(doc: DocumentDto, { onDone, onOpen, links = f
     }
   }
 
+  /* A numbered document the buyer never got (0.4.0): e-mail it from the row. */
+  const sendToBuyer = async () => {
+    const confirmed = await prompt({
+      title: t("watch.sendTitle"),
+      description: t("watch.sendDescription", { number: doc.number ?? doc.displayId ?? doc.orderId }),
+      confirmText: t("watch.send"),
+      cancelText: t("actions.cancel"),
+      variant: "confirmation",
+    })
+    if (!confirmed) return
+    try {
+      await email.mutateAsync({ id: doc.id, kind: "manual" })
+      toast.success(t("email.sent"))
+      onDone?.()
+    } catch (err) {
+      toast.error(t("toast.error", { error: errorMessage(err) }))
+    }
+  }
+
   const actions: RowAction[] = [
+    {
+      key: "send-to-buyer",
+      label: t("watch.send"),
+      icon: <Envelope />,
+      loading: email.isPending && email.variables?.id === doc.id,
+      hidden: doc.watch?.kind !== "not_emailed" || !doc.actions.email,
+      onClick: () => void sendToBuyer(),
+    },
     { key: "retry", label: t("actions.retry"), icon: <ArrowPath />, loading: busy("retry"), hidden: !doc.actions.retry, onClick: () => void run("retry") },
     { key: "check", label: t("actions.checkRemote"), icon: <MagnifyingGlass />, loading: busy("check"), hidden: !doc.actions.reconcile, onClick: () => void run("check") },
     { key: "issue-again", label: t("actions.issueAgain"), icon: <Bolt />, danger: true, loading: busy("issue-again"), hidden: !doc.actions.issueAgain, onClick: () => void run("issue-again") },
@@ -499,6 +528,37 @@ export function BuyerWarningText({ warning }: { warning: BuyerWarningDto | null 
     <Text size="xsmall" className="text-ui-tag-orange-text">
       {text}
     </Text>
+  )
+}
+
+/**
+ * Why an issued document is under "Needs attention" although nothing failed
+ * (0.4.0): no KSeF number days after issue, with the exact state and KSeF's
+ * messages, or a KSeF number the buyer never got by e-mail.
+ */
+export function WatchText({ doc, lang }: { doc: DocumentDto; lang: string }) {
+  const { t } = useTranslation("fakturownia")
+  const w = doc.watch
+  if (!w) return null
+  if (w.kind === "not_emailed") {
+    return (
+      <Text size="xsmall" className="text-ui-tag-orange-text">
+        {t("watch.notEmailed", { time: fmtDateTime(w.since, lang) })}
+      </Text>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-y-0.5">
+      <Text size="xsmall" className={w.state === "error" ? "text-ui-tag-red-text" : "text-ui-tag-orange-text"}>
+        {t("watch.ksefStuck", { count: w.days })}: {t(`watch.state.${w.state}`)}
+        {w.govStatus && w.state === "error" ? <span className="font-mono"> [{w.govStatus}]</span> : null}
+      </Text>
+      {w.errors.map((e, i) => (
+        <Text key={i} size="xsmall" className="text-ui-fg-subtle">
+          {e}
+        </Text>
+      ))}
+    </div>
   )
 }
 

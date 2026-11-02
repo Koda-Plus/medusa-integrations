@@ -57,6 +57,7 @@ import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBa
 import { GuideView, usePromptSpec } from "../../lib/subiekt-guide-view"
 import { SubiektIcon } from "../../lib/subiekt-icon"
 import { KitSkeletonRows } from "../../lib/subiekt-kit"
+import { KitOrderProductsCell, useKitOrderProducts } from "../../lib/subiekt-order-products"
 import { BridgeSection, ProductsSection, WritersSection } from "../../lib/subiekt-panels"
 import {
   ConnectionBadge,
@@ -589,6 +590,7 @@ function TasksSection({
   const tasks = useSubiektTasks(filter, q, offset, PAGE_SIZE, poll || c.pending + c.running + c.unknown > 0)
   const retry = useSubiektRetry()
   const rows = tasks.data?.tasks ?? []
+  const products = useKitOrderProducts(rows.map((task) => task.orderId))
 
   useEffect(() => setOffset(0), [filter, q])
 
@@ -630,6 +632,7 @@ function TasksSection({
               <Table.HeaderCell>
                 <StoreColumn label={t("tasks.columns.order")} hint={t("store.orderMatching")} />
               </Table.HeaderCell>
+              <Table.HeaderCell>{t("tasks.columns.products")}</Table.HeaderCell>
               <Table.HeaderCell>{t("tasks.columns.operation")}</Table.HeaderCell>
               <Table.HeaderCell>{t("tasks.columns.document")}</Table.HeaderCell>
               <Table.HeaderCell>{t("tasks.columns.status")}</Table.HeaderCell>
@@ -640,14 +643,17 @@ function TasksSection({
           </Table.Header>
           <Table.Body>
             {tasks.isLoading ? (
-              <KitSkeletonRows cols={7} rows={4} />
+              <KitSkeletonRows cols={8} rows={4} />
             ) : rows.length === 0 ? (
-              <EmptyTableRow cols={7} icon={filter === "attention" ? <CheckCircle /> : <QueueList />} title={t(`tasks.emptyBy.${filter}`)} />
+              <EmptyTableRow cols={8} icon={filter === "attention" ? <CheckCircle /> : <QueueList />} title={t(`tasks.emptyBy.${filter}`)} />
             ) : (
               rows.map((task) => (
                 <Table.Row key={task.id} className="[&_td]:py-2.5">
                   <Table.Cell className="max-w-[260px]">
                     <StoreOrderCell orderId={task.orderId} displayId={task.displayId} />
+                  </Table.Cell>
+                  <Table.Cell>
+                    <KitOrderProductsCell data={products.data?.[task.orderId]} loading={products.isLoading} displayId={task.displayId} />
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">
                     {task.kind === "order.document" && (task.documentKind === "fs" || task.documentKind === "pa")
@@ -717,6 +723,7 @@ function DocumentsSection({
   const [offset, setOffset] = useState(0)
   const docs = useSubiektDocuments(kind, q, offset, PAGE_SIZE, poll)
   const rows = docs.data?.documents ?? []
+  const products = useKitOrderProducts(rows.map((d) => d.orderId))
   useEffect(() => setOffset(0), [kind, q])
 
   return (
@@ -754,6 +761,7 @@ function DocumentsSection({
               <Table.HeaderCell>
                 <StoreColumn label={t("documents.columns.order")} hint={t("store.orderMatching")} />
               </Table.HeaderCell>
+              <Table.HeaderCell>{t("documents.columns.products")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.issued")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.source")}</Table.HeaderCell>
               <Table.HeaderCell>{t("documents.columns.ksef")}</Table.HeaderCell>
@@ -762,9 +770,9 @@ function DocumentsSection({
           </Table.Header>
           <Table.Body>
             {docs.isLoading ? (
-              <KitSkeletonRows cols={6} rows={4} />
+              <KitSkeletonRows cols={7} rows={4} />
             ) : rows.length === 0 ? (
-              <EmptyTableRow cols={6} icon={<DocumentText />} title={t("documents.empty")} />
+              <EmptyTableRow cols={7} icon={<DocumentText />} title={t("documents.empty")} />
             ) : (
               rows.map((d) => (
                 <Table.Row key={d.id} className="[&_td]:py-2.5">
@@ -774,6 +782,9 @@ function DocumentsSection({
                   </Table.Cell>
                   <Table.Cell className="max-w-[260px]">
                     <StoreOrderCell orderId={d.orderId} displayId={d.displayId} />
+                  </Table.Cell>
+                  <Table.Cell>
+                    {d.orderId ? <KitOrderProductsCell data={products.data?.[d.orderId]} loading={products.isLoading} displayId={d.displayId} /> : null}
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap">{fmtDateTime(d.issuedAt, lang)}</Table.Cell>
                   <Table.Cell>{t(`documents.sources.${d.source}`, { defaultValue: d.source })}</Table.Cell>

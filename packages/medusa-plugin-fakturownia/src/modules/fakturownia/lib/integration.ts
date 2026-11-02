@@ -2,6 +2,7 @@ import type { DocumentRow, PlanRow } from "./dto"
 import type { CounterDraft, FactDraft, MessageDraft, SummaryDraft } from "./kit-routes"
 import type { SummaryState, Tone } from "./kit-contract"
 import { integrationEn, integrationPl } from "./integration-texts"
+import { notEmailed, stuckWithoutNumber, type WatchContext } from "./ksef-watch"
 import { goesToKsef, govState } from "./status"
 import { isUnpaid } from "./unpaid"
 
@@ -16,7 +17,9 @@ import { isUnpaid } from "./unpaid"
  * (not issued, a lost answer, a KSeF rejection), then orange (waits for a
  * person: a correction to approve or to send, a proforma of a canceled order
  * still active, an e-mail that failed, a NIP to check, an unpaid document
- * past the reminder age, an order whose trigger is met without a document),
+ * past the reminder age, an order whose trigger is met without a document,
+ * a VAT invoice still without a KSeF number days after issue, one with a
+ * number the buyer never got),
  * then blue (being issued, KSeF processing, an e-mail waiting for the KSeF
  * number), then green (issued). Nothing comes from order or cart metadata:
  * the rows are the plugin's record (the buyer fact says company or consumer
@@ -63,6 +66,8 @@ export interface SummaryContext {
   overdueOn: string
   /** A date in the answer's language (`ctx.date` of the kit). */
   date: (value: string | Date) => string
+  /** The KSeF watch of `lib/ksef-watch.ts` (0.4.0); without it neither line is said. */
+  watch?: WatchContext | null
 }
 
 interface Line {
@@ -127,6 +132,11 @@ function lines(rows: readonly DocumentRow[], plans: readonly PlanRow[], facts: O
     if (r.kind === "proforma" && r.status === "issued" && r.error_code === "reject_failed") out.push({ state: "attention", title: order("rejectFailed") })
     if (r.email_status === "failed") out.push({ state: "attention", title: order("emailFailed") })
     if (isUnpaid(r, converted) && r.issue_date && r.issue_date <= ctx.overdueOn) out.push({ state: "attention", title: order("unpaidOverdue", { date: ctx.date(r.issue_date) }) })
+    if (ctx.watch) {
+      const stuck = stuckWithoutNumber(r, ctx.watch)
+      if (stuck) out.push({ state: "attention", title: order("ksefStuck", { date: ctx.date(stuck.since) }) })
+      else if (notEmailed(r, ctx.watch)) out.push({ state: "attention", title: order("notEmailed") })
+    }
   }
   if (main && ISSUED(main) && warningOf(main)) out.push({ state: "attention", title: order("buyerWarning") })
   if (toIssue(rows, facts, ctx)) out.push({ state: "attention", title: order("toIssue") })

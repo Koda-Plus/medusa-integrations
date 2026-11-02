@@ -7,7 +7,14 @@
  *             `fields[invoice]=`), the least recently checked first, 40 per
  *             pass: `processing` becomes `ok` with the KSeF number, or a
  *             problem with its message. A payment recorded in Fakturownia
- *             (a bank import) is picked up on the way.
+ *             (a bank import) is picked up on the way, and so is
+ *             Fakturownia's own e-mail of the document (`email_status`,
+ *             `sent_time`).
+ *   late      (0.4.0) past those 14 days, up to 20 documents per pass, each
+ *             at most once an hour (`lib/ksef-watch.ts`): VAT invoices still
+ *             without a KSeF number until 60 days after issue, and numbered
+ *             ones the buyer may not have got yet, so a late number or a
+ *             late e-mail clears "Needs attention" by itself.
  *   e-mails   documents whose e-mail waits for the KSeF number.
  *   cancels   proformas of canceled orders whose rejection failed earlier.
  *   backlog   proforma flow: issued proformas whose order was fulfilled
@@ -17,11 +24,13 @@
  * the history in empty runs.
  */
 
-import { FINALS_PER_PASS, FINALS_WINDOW_DAYS, STATUS_WINDOW_DAYS, STATUSES_PER_PASS } from "../../modules/fakturownia/lib/constants"
+import { FINALS_PER_PASS, FINALS_WINDOW_DAYS, LATE_PER_PASS, STATUS_WINDOW_DAYS, STATUSES_PER_PASS } from "../../modules/fakturownia/lib/constants"
 import type { RunTrigger } from "../../modules/fakturownia/lib/contract"
 import type { DocumentRow } from "../../modules/fakturownia/lib/dto"
 import { describeError, FakturowniaApiError } from "../../modules/fakturownia/lib/errors"
-import { toRemoteDocument } from "../../modules/fakturownia/lib/exactly-once"
+import { toRemoteDocument, type RemoteDocument } from "../../modules/fakturownia/lib/exactly-once"
+import { lateReadFilters, type WatchContext } from "../../modules/fakturownia/lib/ksef-watch"
+import type { DocumentPatch } from "../../modules/fakturownia/lib/store"
 import { canIssue } from "../../modules/fakturownia/lib/options"
 import { goesToKsef, isGovFinal } from "../../modules/fakturownia/lib/status"
 import { enqueueDue, kickIssue } from "./documents"
@@ -29,9 +38,12 @@ import { expireEmailClaims } from "./emails"
 import { rejectProforma, sendEmailFor } from "./followups"
 import { demoKsefNext, govPatch, ksefChanged, recordKsefEvent } from "./ksef"
 import { clientFor, exclusive, fakturowniaService, listDocuments, patchDocument, queryOf, recordRun, type Scope } from "./runtime"
+import { watchContext } from "./watch"
 
 export interface StatusesStats {
   candidates: number
+  /** 0.4.0: documents read past the status window (no KSeF number yet, or a number the buyer may not have). */
+  late: number
   read: number
   changed: number
   accepted: number
@@ -46,7 +58,7 @@ export interface StatusesStats {
 }
 
 function emptyStats(): StatusesStats {
-  return { candidates: 0, read: 0, changed: 0, accepted: 0, problems: 0, missing: 0, emailsSent: 0, emailsWaiting: 0, emailsFailed: 0, rejected: 0, finalsQueued: 0, errors: [] }
+  return { candidates: 0, late: 0, read: 0, changed: 0, accepted: 0, problems: 0, missing: 0, emailsSent: 0, emailsWaiting: 0, emailsFailed: 0, rejected: 0, finalsQueued: 0, errors: [] }
 }
 
 /** What the status read asks for (KSeF.md, "Sprawdzanie statusu wysyłki"), and the payment on the way. */
@@ -64,7 +76,22 @@ export const GOV_FIELDS = [
   "gov_verification_link",
   "gov_link",
   "gov_corrected_invoice_number",
+  "email_status",
+  "sent_time",
 ] as const
+
+/**
+ * What a read says beyond KSeF (0.4.0): the moment the plugin first saw the
+ * KSeF number, and Fakturownia's own e-mail of the document.
+ */
+export function watchPatch(row: Pick<DocumentRow, "gov_id" | "ksef_number_at">, doc: Pick<RemoteDocument, "govId" | "emailStatus" | "sentTime">, now: Date): DocumentPatch {
+  return {
+    remote_email_status: doc.emailStatus,
+    remote_sent_at: doc.sentTime ? new Date(doc.sentTime) : null,
+    remote_email_checked_at: now,
+    ...(doc.govId && !row.ksef_number_at ? { ksef_number_at: now } : {}),
+  }
+}
 
 /** Reads the KSeF status of one document (simulated in demo mode), stores what changed and keeps it in the history. */
 async function refreshOne(scope: Scope, row: DocumentRow, stats: StatusesStats, now: Date): Promise<void> {
@@ -75,7 +102,7 @@ async function refreshOne(scope: Scope, row: DocumentRow, stats: StatusesStats, 
     if (next) {
       stats.changed += 1
       if (next.govStatus === "ok") stats.accepted += 1
-      await patchDocument(svc, row.id, { gov_status: next.govStatus, gov_id: next.govId, gov_error: null, gov_errors: null, gov_checked_at: now })
+      await patchDocument(svc, row.id, { gov_status: next.govStatus, gov_id: next.govId, gov_error: null, gov_errors: null, gov_checked_at: now, ...(next.govId && !row.ksef_number_at ? { ksef_number_at: now } : {}) })
       await recordKsefEvent(scope, row, { source: "refresh", govStatus: next.govStatus, govId: next.govId })
     } else {
       await patchDocument(svc, row.id, { gov_checked_at: now })
@@ -97,6 +124,7 @@ async function refreshOne(scope: Scope, row: DocumentRow, stats: StatusesStats, 
     if (patch.gov_error) stats.problems += 1
     await patchDocument(svc, row.id, {
       ...patch,
+      ...watchPatch(row, doc, now),
       ...(paidThere && !row.paid ? { paid: true, paid_at: now, pay_requested_at: null } : {}),
     })
     if (ksef) await recordKsefEvent(scope, row, { source: "refresh", govStatus: doc.govStatus, govId: doc.govId, errors: doc.govErrorList })
@@ -147,6 +175,29 @@ export async function ksefCandidates(scope: Scope, now: Date, limit: number = ST
 }
 
 /**
+ * The late documents of this pass (0.4.0, `lib/ksef-watch.ts`): past the
+ * status window, never one the window already reads, the least recently read
+ * first. Live mode only: the simulated KSeF of the demo has nothing late.
+ */
+export async function lateCandidates(scope: Scope, watch: WatchContext, skip: ReadonlySet<string>, limit: number = LATE_PER_PASS): Promise<DocumentRow[]> {
+  const svc = fakturowniaService(scope)
+  if (svc.isDemo() || limit <= 0) return []
+  const out: DocumentRow[] = []
+  const taken = new Set(skip)
+  for (const where of lateReadFilters(false, watch)) {
+    if (out.length >= limit) break
+    const rows = await listDocuments(svc, where, { take: limit + taken.size, order: { gov_checked_at: "ASC" } })
+    for (const r of rows) {
+      if (out.length >= limit) break
+      if (taken.has(r.id)) continue
+      taken.add(r.id)
+      out.push(r)
+    }
+  }
+  return out
+}
+
+/**
  * Proforma flow: fulfilled orders whose final document was never queued (the
  * event did not arrive). The proformas are chosen in the database, not yet
  * turned into a final document (`converted_at`), never checked first, then
@@ -193,13 +244,35 @@ export async function refreshStatuses(scope: Scope, trigger: RunTrigger): Promis
     /* KSeF */
     const candidates = (await ksefCandidates(scope, now)).filter((r) => goesToKsef(r.kind) && !isGovFinal(r.gov_status))
     stats.candidates = candidates.length
+    let down = false
     for (const row of candidates) {
       try {
         await refreshOne(scope, row, stats, now)
       } catch (err) {
         /* Fakturownia is not answering: the rest would only wait for the same timeout. */
         const code = describeError(err).code
-        if (code === "ERROR_NETWORK" || code === "ERROR_TIMEOUT" || code.startsWith("HTTP_5")) break
+        if (code === "ERROR_NETWORK" || code === "ERROR_TIMEOUT" || code.startsWith("HTTP_5")) {
+          down = true
+          break
+        }
+      }
+    }
+
+    /* Late: no KSeF number yet past the window, or a number the buyer may not have */
+    if (!down) {
+      try {
+        const late = await lateCandidates(scope, await watchContext(scope, now), new Set(candidates.map((r) => r.id)))
+        stats.late = late.length
+        for (const row of late) {
+          try {
+            await refreshOne(scope, row, stats, now)
+          } catch (err) {
+            const code = describeError(err).code
+            if (code === "ERROR_NETWORK" || code === "ERROR_TIMEOUT" || code.startsWith("HTTP_5")) break
+          }
+        }
+      } catch (err) {
+        if (stats.errors.length < 10) stats.errors.push(`late: ${svc.mask(describeError(err).message)}`)
       }
     }
 

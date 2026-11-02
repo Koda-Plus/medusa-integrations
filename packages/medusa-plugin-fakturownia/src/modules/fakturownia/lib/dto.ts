@@ -22,6 +22,7 @@ import type {
   WriterDto,
 } from "./contract"
 import { canIssueAgain, canMarkIssued, canReconcile, canRetry } from "./outbox"
+import { watchOf, type WatchContext } from "./ksef-watch"
 import { canResendKsef, goesToKsef, govState } from "./status"
 
 export interface DocumentRow {
@@ -79,6 +80,11 @@ export interface DocumentRow {
   reminder_at?: Date | string | null
   finals_checked_at?: Date | string | null
   converted_at?: Date | string | null
+  /* 0.4.0 */
+  ksef_number_at?: Date | string | null
+  remote_email_status?: string | null
+  remote_sent_at?: Date | string | null
+  remote_email_checked_at?: Date | string | null
   created_at?: Date | string | null
   updated_at?: Date | string | null
 }
@@ -131,6 +137,9 @@ export interface EmailRow {
   subject: string | null
   error: string | null
   requested_by: string | null
+  /* 0.4.0 */
+  amount?: number | string | null
+  reason?: string | null
   created_at?: Date | string | null
 }
 
@@ -255,8 +264,10 @@ function safeJson(text: string): unknown {
 /**
  * @param accountUrl The account panel address in live mode (null in demo mode),
  *   for "Open in Fakturownia". It never carries the token.
+ * @param watch The rules of `lib/ksef-watch.ts` for this mode; without them
+ *   `watch` is null.
  */
-export function toDocumentDto(r: DocumentRow, accountUrl: string | null = null): DocumentDto {
+export function toDocumentDto(r: DocumentRow, accountUrl: string | null = null, watch: WatchContext | null = null): DocumentDto {
   const status = (STATUSES.includes(r.status) ? r.status : "pending") as DocumentStatus
   const live = !r.demo && accountUrl !== null
   const remoteId = r.fakturownia_id && /^\d+$/.test(r.fakturownia_id) ? r.fakturownia_id : null
@@ -299,6 +310,10 @@ export function toDocumentDto(r: DocumentRow, accountUrl: string | null = null):
     emailStatus: (r.email_status && EMAIL.includes(r.email_status) ? r.email_status : null) as EmailStatus | null,
     emailedAt: iso(r.emailed_at),
     emailError: r.email_error ?? null,
+    ksefNumberAt: iso(r.ksef_number_at),
+    remoteEmailStatus: r.remote_email_status ?? null,
+    remoteSentAt: iso(r.remote_sent_at),
+    watch: watchOf(r, watch),
     demo: Boolean(r.demo),
     createdAt: iso(r.created_at),
     updatedAt: iso(r.updated_at),
@@ -409,6 +424,7 @@ export function toEmailDto(r: EmailRow, doc: Pick<DocumentRow, "number" | "displ
     subject: r.subject ?? null,
     error: r.error ?? null,
     requestedBy: r.requested_by ? names[r.requested_by] ?? r.requested_by : null,
+    amount: amount(r.amount),
     createdAt: iso(r.created_at),
     demo: Boolean(r.demo),
     documentNumber: doc?.number ?? null,

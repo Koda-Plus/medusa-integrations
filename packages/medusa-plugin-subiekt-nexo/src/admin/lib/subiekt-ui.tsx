@@ -217,6 +217,10 @@ export function runSummary(run: RunDto, t: Translate): string {
       failed: num(s.failed),
     })
   }
+  if (run.kind === "catchup") {
+    const vars = { queued: num(s.queued) + num(s.waiting), released: num(s.released), errors: num(s.errors) }
+    return t(vars.errors ? "runs.summary.catchupErrors" : "runs.summary.catchup", vars)
+  }
   return run.message ?? ""
 }
 

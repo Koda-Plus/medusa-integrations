@@ -25,6 +25,8 @@ plugins: [
       // writers: { corrections: true, emails: true, ksef: true },
       // emailPdf: true,
       // reminderAfterDays: 7,
+      // ksefStuckAfterDays: 3,
+      // notEmailedAfterHours: 24,
     },
   },
 ],`
