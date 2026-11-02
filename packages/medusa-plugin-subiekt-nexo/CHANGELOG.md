@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The parcel locker of an order reaches the Subiekt document. The InPost plugin of Koda Plus, InPost Pay and the InPost geowidget store the locker as `machine_id` (with `machine_name` and `machine_address`), a key the order reader did not read, so `shipping.pickup_point` stayed empty for their orders. `machine_id` is now read first, with its name and its address in one line, and `locker_code`, `locker` and `point` are read too. A nested point gives its code before its display name.
+
 ## 0.2.2 (2026-10-18)
 
 No change to the sync, the bridge contract or the tables: the shared admin kit moves from 1.0.1 to 1.0.9.

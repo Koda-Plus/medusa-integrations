@@ -180,3 +180,20 @@ test("pickup points are found under the usual keys", () => {
   assert.equal(pickupPoint({ carrier: "dpd" }), null)
   assert.equal(pickupPoint(null), null)
 })
+
+test("pickup points: the locker the InPost plugin, InPost Pay and the geowidget store (machine_id)", () => {
+  const provider = {
+    type: "paczkomat",
+    cod: false,
+    machine_id: "WAW01M",
+    machine_name: "Paczkomat WAW01M",
+    machine_address: { line1: "ul. Marszałkowska 1", line2: "00-950 Warszawa", city: "Warszawa", post_code: "00-950" },
+    inpost_option: "inpost-paczkomat",
+  }
+  assert.deepEqual(pickupPoint(provider), { id: "WAW01M", name: "Paczkomat WAW01M", address: "ul. Marszałkowska 1, 00-950 Warszawa" })
+  assert.deepEqual(pickupPoint({ ...provider, machine_address: { line1: "ul. Marszałkowska 1", line2: "", city: "Warszawa", post_code: "00-950" } })?.address, "ul. Marszałkowska 1, 00-950 Warszawa")
+  assert.deepEqual(pickupPoint({ inpost_pay: true, machine_id: "KRA01M", machine_name: "KRA01M" }), { id: "KRA01M", name: "KRA01M", address: null })
+  assert.equal(pickupPoint({ machine_id: "WAW01M", target_point: "POZ08M" })?.id, "WAW01M")
+  assert.equal(pickupPoint({ type: "kurier", machine_id: null, machine_name: null, machine_address: null }), null)
+  assert.equal(pickupPoint({ locker: { code: "LOD01M", name: "Paczkomat LOD01M" } })?.id, "LOD01M")
+})
