@@ -3,10 +3,11 @@ import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { ArrowDownTray, ArrowPath, CheckCircle, Clock, ExclamationCircle, History as HistoryIcon, ShieldCheck, ShoppingCart, Sparkles, Tag, TruckFast } from "@medusajs/icons"
+import { ArrowDownTray, ArrowPath, ArrowUturnLeft, ChartBar, CheckCircle, Clock, ExclamationCircle, History as HistoryIcon, ShieldCheck, ShoppingCart, Sparkles, Tag, TruckFast } from "@medusajs/icons"
 import { Container, InlineTip, toast } from "@medusajs/ui"
 import type { OfferFilter, OrderFilter, StatusResponse } from "../../../modules/vonhalsky/lib/contract"
-import { errorMessage, useImportNow, useRefreshOffers, useSimulateOrder, useVonHalskyStatus, vonHalskyKeys } from "../../lib/vonhalsky-api"
+import { errorMessage, useImportNow, useRefreshOffers, useSimulateOrder, useSyncNow, useVonHalskyStatus, vonHalskyKeys } from "../../lib/vonhalsky-api"
+import { CasesSection } from "../../lib/vonhalsky-cases"
 import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
 import { GuideView, usePromptSpec } from "../../lib/vonhalsky-guide-view"
 import { VonHalskyIcon } from "../../lib/vonhalsky-icon"
@@ -14,7 +15,8 @@ import { addPageTab, hostedNavIcon } from "../../lib/vonhalsky-kit"
 import { LogSection } from "../../lib/vonhalsky-log"
 import { OFFER_FILTERS, OffersSection } from "../../lib/vonhalsky-offers"
 import { ORDER_FILTERS, OrdersSection } from "../../lib/vonhalsky-orders"
-import { AccountSection, OrderSettingsSection, PricingSection, ShippingSection } from "../../lib/vonhalsky-settings"
+import { AccountSection, CategoryMappingSection, OfferDefaultsSection, OrderSettingsSection, PricingSection, ShippingSection } from "../../lib/vonhalsky-settings"
+import { StatsSection } from "../../lib/vonhalsky-stats"
 import { FilterBar, FilterButton, StatTile, StatTiles, type Tone } from "../../lib/vonhalsky-blocks"
 import { fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
 
@@ -22,13 +24,16 @@ import { fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
  * InPost Von Halsky by Koda Plus. Three views, switched in the header and
  * kept in the URL:
  *
- * - Panel: the counters (listed, blocked, imported, to ship, errors) and
- *   three sections: Offers, Orders, Sync log (`?section=`).
+ * - Panel: the counters (listed, blocked, imported, to ship, after sale,
+ *   errors) and five sections: Offers, Orders, After sale, Statistics,
+ *   Sync log (`?section=`).
  * - Setup guide (`?view=guide`).
- * - Settings (`?view=settings&tab=`): pricing, orders, shipping, account.
+ * - Settings (`?view=settings&tab=`): pricing, offers, categories, orders,
+ *   shipping, account.
  *
  * Deep links from hosts and boards: /vonhalsky?section=orders&filter=held,
- * /vonhalsky?section=offers&filter=blocked, /vonhalsky?section=orders&q=...
+ * /vonhalsky?section=offers&filter=pending, /vonhalsky?section=cases,
+ * /vonhalsky?section=orders&q=...
  *
  * One menu entry for InPost: when the InPost plugin of Koda Plus is
  * installed in the same app, this page is its "Von Halsky" tab
@@ -36,11 +41,11 @@ import { fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
  * parameter and the own sidebar entry steps aside. Without it the page
  * stands alone as before. The plugins meet only in the kit's registry.
  */
-const SETTINGS_TABS = ["pricing", "orders", "shipping", "account"] as const
+const SETTINGS_TABS = ["pricing", "offers", "categories", "orders", "shipping", "account"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
-const SECTIONS = ["offers", "orders", "log"] as const
+const SECTIONS = ["offers", "orders", "cases", "stats", "log"] as const
 type SectionId = (typeof SECTIONS)[number]
-const SECTION_ICON: Record<SectionId, ReactNode> = { offers: <Tag />, orders: <ShoppingCart />, log: <HistoryIcon /> }
+const SECTION_ICON: Record<SectionId, ReactNode> = { offers: <Tag />, orders: <ShoppingCart />, cases: <ArrowUturnLeft />, stats: <ChartBar />, log: <HistoryIcon /> }
 
 const VonHalskyPage = () => {
   const { t, i18n } = useTranslation("vonhalsky")
@@ -69,13 +74,20 @@ const VonHalskyPage = () => {
   const tiles: Array<{ key: string; value: string; tone: Tone; icon: ReactNode; go?: () => void; active?: boolean }> = s
     ? [
         { key: "listed", value: fmtNumber(s.counts.listed, lang), tone: s.counts.listed > 0 ? "green" : "grey", icon: <CheckCircle />, go: () => (setSection("offers"), setOfferFilter("listed")), active: section === "offers" && offerFilter === "listed" },
-        { key: "blocked", value: fmtNumber(s.counts.blocked, lang), tone: s.counts.blocked > 0 ? "orange" : "grey", icon: <ExclamationCircle />, go: () => (setSection("offers"), setOfferFilter("blocked")), active: section === "offers" && offerFilter === "blocked" },
+        { key: "blocked", value: fmtNumber(s.counts.blocked + s.counts.pending, lang), tone: s.counts.blocked + s.counts.pending > 0 ? "orange" : "grey", icon: <ExclamationCircle />, go: () => (setSection("offers"), setOfferFilter(s.counts.blocked > 0 || s.counts.pending === 0 ? "blocked" : "pending")), active: section === "offers" && (offerFilter === "blocked" || offerFilter === "pending") },
         { key: "orders", value: fmtNumber(s.counts.orders, lang), tone: s.counts.orders > 0 ? "green" : "grey", icon: <ShoppingCart />, go: () => (setSection("orders"), setOrderFilter("all")), active: section === "orders" && orderFilter === "all" },
         { key: "awaiting_shipment", value: fmtNumber(s.counts.awaiting_shipment, lang), tone: s.counts.awaiting_shipment > 0 ? "blue" : "grey", icon: <Clock />, go: () => (setSection("orders"), setOrderFilter("awaiting_shipment")), active: section === "orders" && orderFilter === "awaiting_shipment" },
+        { key: "cases_open", value: fmtNumber(s.counts.cases_open, lang), tone: s.counts.cases_open > 0 ? "orange" : "grey", icon: <ArrowUturnLeft />, go: () => setSection("cases"), active: section === "cases" },
         { key: "errors", value: fmtNumber(s.counts.errors, lang), tone: s.counts.errors > 0 ? "red" : "grey", icon: <ExclamationCircle />, go: () => (setSection("orders"), setOrderFilter("errors")), active: section === "orders" && orderFilter === "errors" },
       ]
     : []
-  const sectionCount: Record<SectionId, number | undefined> = s ? { offers: s.counts.offers, orders: s.counts.orders, log: undefined } : { offers: undefined, orders: undefined, log: undefined }
+  const sectionCount: Record<SectionId, number | undefined> = {
+    offers: s?.counts.offers,
+    orders: s?.counts.orders,
+    cases: s?.counts.cases_open,
+    stats: undefined,
+    log: undefined,
+  }
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -91,14 +103,14 @@ const VonHalskyPage = () => {
         {s ? <Warnings status={s} /> : null}
         {s && nav.view === "panel" ? (
           <>
-            <StatTiles columns={5}>
+            <StatTiles columns={6}>
               {tiles.map((tile) => (
                 <StatTile key={tile.key} icon={tile.icon} label={t(`stats.${tile.key}`)} value={tile.value} tone={tile.tone} active={tile.active} onClick={tile.go} />
               ))}
             </StatTiles>
             <FilterBar>
               {SECTIONS.map((id) => (
-                <FilterButton key={id} icon={SECTION_ICON[id]} label={t(`section.${id}`)} count={sectionCount[id]} active={section === id} onClick={() => setSection(id)} />
+                <FilterButton key={id} icon={SECTION_ICON[id]} label={t(`section.${id}`)} count={sectionCount[id]} attention={id === "cases"} active={section === id} onClick={() => setSection(id)} />
               ))}
             </FilterBar>
           </>
@@ -108,6 +120,8 @@ const VonHalskyPage = () => {
       {s && nav.view === "guide" ? <GuideView status={s} /> : null}
       {s && nav.view === "panel" && section === "offers" ? <OffersSection status={s} lang={lang} filter={offerFilter} onFilter={setOfferFilter} initialQuery={askedSection === "offers" ? initialQuery : ""} /> : null}
       {s && nav.view === "panel" && section === "orders" ? <OrdersSection status={s} lang={lang} filter={orderFilter} onFilter={setOrderFilter} initialQuery={askedSection === "orders" ? initialQuery : ""} /> : null}
+      {s && nav.view === "panel" && section === "cases" ? <CasesSection status={s} lang={lang} initialQuery={askedSection === "cases" ? initialQuery : ""} /> : null}
+      {s && nav.view === "panel" && section === "stats" ? <StatsSection lang={lang} /> : null}
       {s && nav.view === "panel" && section === "log" ? <LogSection lang={lang} /> : null}
       {s && nav.view === "settings" ? (
         <SettingsView
@@ -117,15 +131,19 @@ const VonHalskyPage = () => {
           onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
           tabs={[
             { id: "pricing", label: t("settings.tab.pricing") },
+            { id: "offers", label: t("settings.tab.offers") },
+            { id: "categories", label: t("settings.tab.categories"), badge: s.mode !== "off" && s.categories.count === 0 ? "!" : null, tone: "orange" },
             { id: "orders", label: t("settings.tab.orders") },
             { id: "shipping", label: t("settings.tab.shipping"), badge: s.settings.shipping.APM && s.settings.shipping.COURIER ? null : "!", tone: "orange" },
-            { id: "account", label: t("settings.tab.account"), badge: s.apiPending ? "!" : null, tone: "orange" },
+            { id: "account", label: t("settings.tab.account"), badge: s.mode === "off" ? "!" : null, tone: "orange" },
           ]}
         >
           {nav.tab === "pricing" ? <PricingSection status={s} lang={lang} /> : null}
+          {nav.tab === "offers" ? <OfferDefaultsSection status={s} /> : null}
+          {nav.tab === "categories" ? <CategoryMappingSection status={s} lang={lang} /> : null}
           {nav.tab === "orders" ? <OrderSettingsSection status={s} /> : null}
           {nav.tab === "shipping" ? <ShippingSection status={s} /> : null}
-          {nav.tab === "account" ? <AccountSection status={s} /> : null}
+          {nav.tab === "account" ? <AccountSection status={s} lang={lang} /> : null}
         </SettingsView>
       ) : null}
     </div>
@@ -138,6 +156,7 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
   const refresh = useRefreshOffers()
   const simulate = useSimulateOrder()
   const importNow = useImportNow()
+  const sync = useSyncNow()
   const mode = modeOf(status)
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
@@ -154,6 +173,21 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
         void refresh
           .mutateAsync()
           .then((r) => toast.success(t("toast.refreshed", { read: r.read, created: r.created, blocked: r.blocked })))
+          .catch((e) => toast.error(errorMessage(e))),
+    })
+    actions.push({
+      key: "sync",
+      label: t("actions.syncNow"),
+      icon: <ArrowPath />,
+      loading: sync.isPending,
+      onClick: () =>
+        void sync
+          .mutateAsync()
+          .then((r) => {
+            const failed = Object.values(r.report).filter((p) => p && !p.ok).length
+            if (failed > 0) toast.warning(t("toast.syncPartly", { count: failed }))
+            else toast.success(t("toast.synced"))
+          })
           .catch((e) => toast.error(errorMessage(e))),
     })
   }
@@ -193,8 +227,7 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
             <ModeBadge color={mode.tone} label={t(`mode.${mode.key}`)} title={t("demo.label")}>
               {status.mode === "demo" ? <DemoDetails /> : null}
             </ModeBadge>
-            {status.apiPending ? <ModeBadge color="orange" label={t("mode.pending")} /> : null}
-            <ModeBadge color={status.options.sendTracking ? "orange" : "grey"} label={status.options.sendTracking ? t("mode.tracking") : t("mode.noTracking")} />
+            {status.counts.commands_pending > 0 ? <ModeBadge color="orange" label={t("mode.commands", { count: status.counts.commands_pending })} /> : null}
           </>
         ) : null
       }
@@ -204,6 +237,7 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
         { icon: <ShieldCheck />, text: t("points.keys") },
         { icon: <ShoppingCart />, text: t("points.orders") },
         { icon: <TruckFast />, text: t("points.tracking") },
+        { icon: <ArrowUturnLeft />, text: t("points.afterSale") },
       ]}
       social={<AddStoreButton labels={community.addStore} />}
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
@@ -230,13 +264,14 @@ function DemoDetails() {
 /** Only what needs a person now; the demo note lives in the mode badge. */
 function Warnings({ status }: { status: StatusResponse }) {
   const { t } = useTranslation("vonhalsky")
+  const real = status.mode === "live" || status.mode === "sandbox"
   const notes: Array<{ key: string; variant: "warning" | "error" | "info"; label: string; text: string }> = []
   if (status.mode === "off" && status.missing.length > 0) notes.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }) })
   if (status.problems.length > 0) notes.push({ key: "problems", variant: "warning", label: t("missing.problemsLabel"), text: t("missing.problems", { list: status.problems.join("; ") }) })
-  if (status.apiPending) notes.push({ key: "pending", variant: "info", label: t("missing.pendingLabel"), text: t("missing.pending") })
-  if (status.mode !== "off" && status.mode !== "demo" && !status.settings.shipping.APM && !status.settings.shipping.COURIER) notes.push({ key: "shipping", variant: "warning", label: t("missing.shippingLabel"), text: t("missing.shipping") })
-  const attention = status.counts.held + status.counts.tracking_failed
-  if (attention > 0) notes.push({ key: "attention", variant: "error", label: t("missing.attentionLabel"), text: t("missing.attention", { count: attention }) })
+  if (real && status.categories.count === 0) notes.push({ key: "categories", variant: "info", label: t("missing.categoriesLabel"), text: t("missing.categories") })
+  if (real && !status.settings.shipping.APM && !status.settings.shipping.COURIER) notes.push({ key: "shipping", variant: "warning", label: t("missing.shippingLabel"), text: t("missing.shipping") })
+  if (status.counts.cases_open > 0) notes.push({ key: "cases", variant: "warning", label: t("missing.casesLabel"), text: t("missing.cases", { count: status.counts.cases_open }) })
+  if (status.counts.errors > 0) notes.push({ key: "attention", variant: "error", label: t("missing.attentionLabel"), text: t("missing.attention", { count: status.counts.errors }) })
   if (notes.length === 0) return null
   return (
     <div className="flex flex-col gap-y-2 px-6 py-4">
