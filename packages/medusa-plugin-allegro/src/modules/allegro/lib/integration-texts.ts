@@ -24,6 +24,7 @@ export const integrationEn = {
     mismatchAmounts: "{{allegro}} on Allegro, {{medusa}} in Medusa",
     heldReason: "Open the import to see why and retry",
     attentionHint: "Changed or cancelled on Allegro after the import",
+    handoffHint: "Shipping needs a person: open the import to see why",
     demo: "Sample data of the demo mode",
   },
   product: {
@@ -80,6 +81,7 @@ export const integrationPl = {
     mismatchAmounts: "{{allegro}} na Allegro, {{medusa}} w Medusie",
     heldReason: "Otwórz import, sprawdź powód i ponów",
     attentionHint: "Zmienione albo anulowane na Allegro po imporcie",
+    handoffHint: "Wysyłka wymaga człowieka: otwórz import i sprawdź powód",
     demo: "Przykładowe dane trybu demo",
   },
   product: {
