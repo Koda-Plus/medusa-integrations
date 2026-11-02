@@ -67,6 +67,7 @@ import {
   PLUGIN_EVENTS,
   STATUS_WINDOW_DAYS,
   STATUSES_PER_PASS,
+  SHIPPED_OUTSIDE_METADATA,
 } from "../../modules/baselinker/lib/constants"
 import type { RunTrigger } from "../../modules/baselinker/lib/contract"
 import { DEMO_SOURCE_ACCOUNTS, DEMO_STATUSES, DEMO_PRICE_GROUP } from "../../modules/baselinker/lib/demo"
@@ -462,7 +463,7 @@ const medusaOps: OrderOps = {
   },
   async fulfill(scope, orderId, items, blOrderId) {
     await createOrderFulfillmentWorkflow(scope as never).run({
-      input: { order_id: orderId, items, no_notification: true, metadata: { source: "baselinker", baselinker_order_id: blOrderId } },
+      input: { order_id: orderId, items, no_notification: true, metadata: { source: "baselinker", ...SHIPPED_OUTSIDE_METADATA, baselinker_order_id: blOrderId } },
     })
   },
 }

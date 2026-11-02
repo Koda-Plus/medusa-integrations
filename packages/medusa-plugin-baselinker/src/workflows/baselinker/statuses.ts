@@ -42,6 +42,7 @@ import {
   STATUS_BATCH_MAX_PAGES,
   STATUS_WINDOW_DAYS,
   STATUSES_PER_PASS,
+  SHIPPED_OUTSIDE_METADATA,
 } from "../../modules/baselinker/lib/constants"
 import type { RunTrigger } from "../../modules/baselinker/lib/contract"
 import { DEMO_STATUSES, demoOrder } from "../../modules/baselinker/lib/demo"
@@ -180,7 +181,7 @@ async function fulfill(scope: Scope, row: OrderRow, stats: StatusesStats): Promi
         items,
         no_notification: true,
         ...(o.stockLocationId ? { location_id: o.stockLocationId } : {}),
-        metadata: { source: "baselinker", baselinker_order_id: row.bl_order_id, baselinker_status_id: row.bl_status_id },
+        metadata: { source: "baselinker", ...SHIPPED_OUTSIDE_METADATA, baselinker_order_id: row.bl_order_id, baselinker_status_id: row.bl_status_id },
       },
     })
     await updateRow(svc, row.id, { fulfilled_at: new Date(), last_error: null, last_error_code: null })
