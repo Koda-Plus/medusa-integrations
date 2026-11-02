@@ -11,6 +11,7 @@ import { couponSentence } from "./coupons-sentence"
 import { StatusBadge, useFormat } from "./coupons-ui"
 import { ToneBadge } from "./coupons-blocks"
 import { PoolPicker, variantNames } from "./coupons-pool-picker"
+import { DayTimeRange, dayTimeOf, isoOf, type DayTime } from "./coupons-when"
 
 /**
  * THE EDIT FORM, full screen, built like the creator: 1. what it gives (and
@@ -28,8 +29,8 @@ type Form = {
   code: string
   mode: "code" | "automatic"
   value: number | null
-  startsAt: string
-  endsAt: string
+  startsAt: DayTime
+  endsAt: DayTime
   limit: number | null
   minimum: number | null
   audience: Audience
@@ -43,7 +44,6 @@ type Form = {
   terms: StoreTerms
 }
 
-const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "")
 const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x))
 
 function audienceOf(c: CouponDto, members: readonly string[]): Audience {
@@ -62,8 +62,8 @@ function formOf(c: CouponDto, members: readonly string[], code?: string): Form {
     code: code ?? c.code ?? "",
     mode: c.automatic ? "automatic" : "code",
     value: c.shape.value,
-    startsAt: day(c.startsAt),
-    endsAt: day(c.endsAt),
+    startsAt: dayTimeOf(c.startsAt, "start"),
+    endsAt: dayTimeOf(c.endsAt, "end"),
     limit: c.limit,
     minimum: c.shape.minimum,
     audience: audienceOf(c, members),
@@ -78,8 +78,6 @@ function formOf(c: CouponDto, members: readonly string[], code?: string): Form {
   }
 }
 
-/** A day of the form as an exact moment in the browser's time zone (the server runs in UTC). */
-const localDay = (d: string, time: string) => (d ? new Date(`${d}T${time}`).toISOString() : null)
 
 /** The form as a patch. Dates only when touched: the form keeps days, the coupon exact times. */
 function patchOf(f: Form, c: CouponDto, datesTouched: boolean, storeFeatures: readonly string[]): CouponPatch {
@@ -91,7 +89,8 @@ function patchOf(f: Form, c: CouponDto, datesTouched: boolean, storeFeatures: re
     code: f.code,
     mode: f.mode,
     ...(valueEditable(c) && f.value !== null ? { value: f.value } : {}),
-    ...(datesTouched ? { startsAt: localDay(f.startsAt, "00:00:00"), endsAt: localDay(f.endsAt, "23:59:59.999") } : {}),
+    /* A day and an optional time in the store's zone (the server runs in UTC); no time: the whole day. */
+    ...(datesTouched ? { startsAt: isoOf(f.startsAt, "start"), endsAt: isoOf(f.endsAt, "end") } : {}),
     limit: f.limit,
     minimum: f.minimum,
     groupIds: f.groupIds,
@@ -488,17 +487,18 @@ export function EditCouponModal({
                   </Text>
                 </Field>
                 <Field label={t("edit.validity")} hint={coupon.campaign && !copying ? t("edit.validityCampaign", { name: coupon.campaign.name }) : t("edit.validityHint")}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Text size="small">{t("edit.from")}</Text>
-                    <Input size="small" type="date" className="w-40" value={form.startsAt} onChange={(e) => (setDatesTouched(true), set("startsAt", e.target.value))} />
-                    <Text size="small">{t("edit.to")}</Text>
-                    <Input size="small" type="date" className="w-40" value={form.endsAt} onChange={(e) => (setDatesTouched(true), set("endsAt", e.target.value))} />
-                    {form.endsAt ? (
-                      <Button size="small" variant="transparent" onClick={() => (setDatesTouched(true), set("endsAt", ""))}>
-                        {t("edit.noEnd")}
-                      </Button>
-                    ) : null}
-                  </div>
+                  <DayTimeRange
+                    start={form.startsAt}
+                    end={form.endsAt}
+                    fromLabel={t("edit.from")}
+                    toLabel={t("edit.to")}
+                    endClear={t("edit.noEnd")}
+                    onChange={(next) => {
+                      setDatesTouched(true)
+                      set("startsAt", next.start)
+                      set("endsAt", next.end)
+                    }}
+                  />
                 </Field>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Field label={t("edit.limit")} hint={copying ? t("copy.limitHint") : t("edit.limitHint", { used: coupon.used })}>
@@ -512,7 +512,8 @@ export function EditCouponModal({
                   <Field label={t("fields.perCustomer")} hint={form.audience === "customer" ? t("fields.perCustomerHint") : t("fields.perCustomerOnlyCustomers")}>
                     <div className="flex flex-wrap items-center gap-3">
                       <Chips value={form.terms.perCustomerOrders ? "own" : "none"} options={[{ value: "none", label: t("fields.perCustomerNone") }, { value: "own", label: t("fields.perCustomerOwn") }]} onChange={(v) => setTerm("perCustomerOrders", v === "none" ? null : 1)} />
-                      {form.terms.perCustomerOrders ? <NumberInput value={form.terms.perCustomerOrders} onChange={(v) => setTerm("perCustomerOrders", v)} unit={t("fields.ordersUnit")} min={1} className="w-36" /> : null}
+                      {/* Pole widać zawsze; przy "bez ograniczeń" wyszarzone, "najwyżej" je odblokowuje. */}
+<NumberInput value={form.terms?.perCustomerOrders ?? 1} disabled={!form.terms?.perCustomerOrders} onChange={(v) => setTerm("perCustomerOrders", v)} unit={t("fields.timesUnit", { count: form.terms?.perCustomerOrders ?? 1 })} min={1} className="w-36" />
                     </div>
                   </Field>
                 ) : null}

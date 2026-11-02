@@ -106,7 +106,7 @@ export function Chips<T extends string | number>({ value, options, onChange }: {
 }
 
 /** A number field with its unit inside ("%", "PLN", "szt."). */
-export function NumberInput({ value, onChange, unit, min = 0, step = 1, className, placeholder }: { value: number | string | null | undefined; onChange: (v: number | null) => void; unit?: string; min?: number; step?: number; className?: string; placeholder?: string }) {
+export function NumberInput({ value, onChange, unit, min = 0, step = 1, className, placeholder, disabled }: { value: number | string | null | undefined; onChange: (v: number | null) => void; unit?: string; min?: number; step?: number; className?: string; placeholder?: string; disabled?: boolean }) {
   return (
     <div className={clx("relative", className ?? "w-32")}>
       <Input
@@ -115,6 +115,7 @@ export function NumberInput({ value, onChange, unit, min = 0, step = 1, classNam
         min={min}
         step={step}
         placeholder={placeholder}
+        disabled={disabled}
         className={unit ? "pr-12" : undefined}
         value={value === null || value === undefined ? "" : String(value)}
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value.replace(",", ".")))}

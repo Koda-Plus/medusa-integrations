@@ -17,9 +17,11 @@ import type {
   CodeMailPreviewResponse,
   CodeMailResponse,
   CodeMailSendResponse,
+  CodeMailStatsResponse,
   DeleteResponse,
 } from "../../modules/coupons/lib/contract"
 import { kitFetch } from "./coupons-kit"
+import { setStoreTimeZone } from "./coupons-zone"
 
 /** An error of the plugin's routes, with the creator's error keys when there are any. */
 export class CouponsRequestError extends Error {
@@ -51,7 +53,7 @@ export function errorMessage(err: unknown): string {
 const KEY = ["koda-coupons"] as const
 
 export function useCoupons() {
-  return useQuery({ queryKey: [...KEY, "list"], queryFn: () => call<ListResponse>("/admin/coupons"), placeholderData: keepPreviousData })
+  return useQuery({ queryKey: [...KEY, "list"], queryFn: () => call<ListResponse>("/admin/coupons").then((r) => (setStoreTimeZone(r.timeZone), r)), placeholderData: keepPreviousData })
 }
 
 export function useCoupon(id: string | null) {
@@ -59,7 +61,7 @@ export function useCoupon(id: string | null) {
 }
 
 export function useLookups(enabled: boolean) {
-  return useQuery({ queryKey: [...KEY, "lookups"], queryFn: () => call<LookupsResponse>("/admin/coupons/lookups"), enabled, staleTime: 60_000 })
+  return useQuery({ queryKey: [...KEY, "lookups"], queryFn: () => call<LookupsResponse>("/admin/coupons/lookups").then((r) => (setStoreTimeZone(r.timeZone), r)), enabled, staleTime: 60_000 })
 }
 
 /** The products of each picked pool (one row per variant), by pool id; a pool still loading is missing from the map. */
@@ -147,17 +149,29 @@ export function useCodeMail(id: string | null) {
   return useQuery({ queryKey: [...KEY, "code-mail", id], queryFn: () => call<CodeMailResponse>(`/admin/coupons/${id}/code-mail`), enabled: Boolean(id) })
 }
 
+/** The same for several coupons at once (the other codes of one e-mail), in their order. */
+export function useCodeMails(ids: readonly string[]) {
+  return useQueries({
+    queries: ids.map((id) => ({ queryKey: [...KEY, "code-mail", id], queryFn: () => call<CodeMailResponse>(`/admin/coupons/${id}/code-mail`) })),
+  })
+}
+
+/** What the e-mails of the code gave, per send (read only). */
+export function useCodeMailStats(id: string | null) {
+  return useQuery({ queryKey: [...KEY, "code-mail-stats", id], queryFn: () => call<CodeMailStatsResponse>(`/admin/coupons/${id}/code-mail/stats`), enabled: Boolean(id) })
+}
+
 /** The e-mail rendered by the store for the first person; sends nothing. */
 export function usePreviewCodeMail() {
   return useMutation({
-    mutationFn: (v: { id: string } & CodeMailInput) => call<CodeMailPreviewResponse>(`/admin/coupons/${v.id}/code-mail/preview`, { method: "POST", body: { customerIds: v.customerIds, message: v.message } }),
+    mutationFn: (v: { id: string } & CodeMailInput) => call<CodeMailPreviewResponse>(`/admin/coupons/${v.id}/code-mail/preview`, { method: "POST", body: { customerIds: v.customerIds, message: v.message, coupons: v.coupons, link: v.link } }),
   })
 }
 
 export function useSendCodeMail() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (v: { id: string } & CodeMailInput) => call<CodeMailSendResponse>(`/admin/coupons/${v.id}/code-mail`, { method: "POST", body: { customerIds: v.customerIds, message: v.message } }),
+    mutationFn: (v: { id: string } & CodeMailInput) => call<CodeMailSendResponse>(`/admin/coupons/${v.id}/code-mail`, { method: "POST", body: { customerIds: v.customerIds, message: v.message, coupons: v.coupons, link: v.link } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   })
 }

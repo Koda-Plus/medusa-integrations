@@ -8,18 +8,22 @@ import type { CodeMailAbility, CouponDto, ListResponse, NameMaps } from "../../.
 import { looksDeletable, sendBlockers } from "../../../modules/coupons/lib/code-mail"
 import { CouponsRequestError, errorMessage, useCoupon, useCoupons, useDeleteCoupon, useSetStatus } from "../../lib/coupons-api"
 import { SendCodeModal } from "../../lib/coupons-code-mail"
-import { GuideIntro, GuideSteps, HelpButtons, IntegrationHeader, ModeBadge, communityLabels, usePageNav, type GuideStep } from "../../lib/coupons-guide"
+import { CodeMailStats } from "../../lib/coupons-code-mail-stats"
+import { GuideIntro, GuideSteps, HelpButtons, IntegrationHeader, KitTabbedPage, ModeBadge, communityLabels, usePageNav, type GuideStep } from "../../lib/coupons-guide"
 import { EmptyState, EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/coupons-blocks"
 import { CouponsIcon } from "../../lib/coupons-icon"
-import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/coupons-kit"
-import { couponSentence } from "../../lib/coupons-sentence"
-import { StatusBadge, UsageCell, useFormat, usageWords } from "../../lib/coupons-ui"
+import { KitFetchingBar, KitLoading, KitSkeletonRows, announce, hostPageTabs } from "../../lib/coupons-kit"
+import { couponFacts, couponSentence } from "../../lib/coupons-sentence"
+import { CouponFactsList, StatusBadge, UsageCell, useFormat, usageWords } from "../../lib/coupons-ui"
 import { CreateCouponModal } from "../../lib/coupons-wizard"
 import { EditCouponModal } from "../../lib/coupons-edit"
 import { KIT_META } from "../../lib/coupons-kit-meta"
 
 /* The host of the koda.integration/1 cards learns about this plugin. */
 announce({ ns: "coupons", name: "Coupons", adminPath: "/coupons", Icon: CouponsIcon })
+
+/* Other pages (the store or plugins) can add their own tabs next to the coupons: addPageTab({ host: "coupons", ... }). */
+hostPageTabs({ id: "coupons", path: "/coupons", name: "Coupons" })
 
 /**
  * Coupons by Koda Plus. Panel: the tiles, the list (every promotion in one
@@ -457,6 +461,11 @@ function CouponDrawer({
                 <StatTile label={t("detail.lastUsed")} value={c.stats.lastUsedAt ? fmt.date(c.stats.lastUsedAt) : t("detail.never")} />
               </StatTiles>
               <div className="flex flex-col gap-y-2">
+                <Heading level="h3">{t("facts.title")}</Heading>
+                <CouponFactsList facts={couponFacts(c, detail.data.names, t, fmt, currency)} />
+              </div>
+              {c.codeSent?.length ? <CodeMailStats id={c.id} /> : null}
+              <div className="flex flex-col gap-y-2">
                 <Heading level="h3">{t("detail.ordersTitle")}</Heading>
                 {detail.data.orders.length === 0 ? (
                   <EmptyState compact icon={<Receipt />} title={t("detail.noOrders")} className="rounded-md border border-dashed border-ui-border-base" />
@@ -490,31 +499,10 @@ function CouponDrawer({
         </Drawer.Body>
         <Drawer.Footer>
           {c ? (
-            <div className="flex w-full items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Button size="small" variant="secondary" asChild>
-                  <a href={`/app/promotions/${c.id}`}>
-                    <ArrowUpRightOnBox />
-                    {t("detail.openInMedusa")}
-                  </a>
-                </Button>
-                {looksDeletable(c) ? (
-                  <Button
-                    size="small"
-                    variant="danger"
-                    isLoading={removal.pending}
-                    onClick={() =>
-                      void removal.remove(c).then((done) => {
-                        if (done) onClose()
-                      })
-                    }
-                  >
-                    <Trash />
-                    {t("remove.action")}
-                  </Button>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2">
+            /* Dwa rzędy: główne akcje w siatce 2x2 (nic się nie zawija ani nie przewija w wąskim
+               panelu), pod spodem Medusa i usuwanie. */
+            <div className="flex w-full flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2 [&>button]:w-full [&>button]:whitespace-nowrap">
                 {canMail(c, codeMail) ? (
                   <Button size="small" variant="secondary" onClick={() => onMail(c, detail.data?.names ?? ({} as NameMaps))}>
                     <PaperPlane />
@@ -533,6 +521,29 @@ function CouponDrawer({
                   <Button size="small" variant={c.medusaStatus === "active" ? "secondary" : "primary"} isLoading={setStatus.isPending} onClick={() => void toggle()}>
                     {c.medusaStatus === "active" ? <PauseSolid /> : <PlaySolid />}
                     {c.medusaStatus === "active" ? t("detail.pause") : t("detail.activate")}
+                  </Button>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <Button size="small" variant="transparent" asChild>
+                  <a href={`/app/promotions/${c.id}`}>
+                    <ArrowUpRightOnBox />
+                    {t("detail.openInMedusa")}
+                  </a>
+                </Button>
+                {looksDeletable(c) ? (
+                  <Button
+                    size="small"
+                    variant="danger"
+                    isLoading={removal.pending}
+                    onClick={() =>
+                      void removal.remove(c).then((done) => {
+                        if (done) onClose()
+                      })
+                    }
+                  >
+                    <Trash />
+                    {t("remove.action")}
                   </Button>
                 ) : null}
               </div>
@@ -622,6 +633,16 @@ function Settings({ data }: { data: ListResponse }) {
   )
 }
 
+/** The route: the coupons, and next to them the tabs other pages added (none: the page as always). */
+const CouponsRoute = () => {
+  const { t } = useTranslation("coupons")
+  return (
+    <KitTabbedPage host="coupons" label={t("tabs.label")} own={{ id: "coupons", label: t("tabs.coupons"), Icon: CouponsIcon }}>
+      <CouponsPage />
+    </KitTabbedPage>
+  )
+}
+
 export const config = defineRouteConfig({
   label: "nav",
   translationNs: "coupons",
@@ -629,4 +650,4 @@ export const config = defineRouteConfig({
   icon: CouponsIcon,
 })
 
-export default CouponsPage
+export default CouponsRoute

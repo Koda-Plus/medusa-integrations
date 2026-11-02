@@ -137,12 +137,18 @@ export interface CodeSentEntry {
   at: string
   /** The admin who sent it (e-mail or user id), null when unknown. */
   by: string | null
+  /** One send of several codes in one e-mail: the same id on each coupon of it. Missing on older rows. */
+  campaign?: string | null
+  /** Every code of that e-mail (this one too), when there was more than one. */
+  codes?: string[]
 }
 
 /** What the panel can do with e-mails of a code (options sendCode, previewCode). */
 export interface CodeMailAbility {
   send: boolean
   preview: boolean
+  /** The store's e-mail can carry a button that opens the shop with the code applied (option codeLink). */
+  link?: boolean
 }
 
 /** A person the code can go to: from the coupon's customer rule, from earlier sends, or picked now. */
@@ -171,7 +177,27 @@ export interface CodeMailResponse {
 /** POST /admin/coupons/:id/code-mail (send) and /code-mail/preview. */
 export interface CodeMailInput {
   customerIds: string[]
+  /**
+   * One coupon: what it gives, as the customer reads it ("What it gives").
+   * Several coupons: the instruction shared by all codes of the e-mail.
+   */
   message: string
+  /**
+   * Several codes in one e-mail: every coupon of the send (the one of the
+   * address first) with its own sentence. Missing or one: a single code.
+   */
+  coupons?: CodeMailCouponInput[]
+  /** A button that opens the shop with the code applied (only when the store offers it). Default true. */
+  link?: boolean
+  /** An optional note of the sender under the instruction (e.g. a greeting or a deadline), at most MESSAGE_MAX characters. */
+  senderNote?: string | null
+}
+
+/** One coupon of a send of several codes. */
+export interface CodeMailCouponInput {
+  id: string
+  /** What it gives, as the customer reads it. */
+  sentence: string
 }
 
 export interface CodeMailPreviewResponse {
@@ -191,6 +217,64 @@ export interface CodeMailSendResponse {
   /** False when the e-mails went out but the record on the coupon was not saved. */
   recorded: boolean
   coupon: CouponDto
+  /** Every coupon of the send as it is now (the one of the address first). */
+  coupons?: CouponDto[]
+  /** The id shared by the coupons of a send of several codes, null for one code. */
+  campaign?: string | null
+}
+
+/** What happened to one e-mail of the code, as the store reports it (option codeMailDelivery). */
+export type CodeMailDeliveryState = "sent" | "delivered" | "opened" | "clicked" | "bounced" | "failed" | "complained" | "suppressed" | "pending"
+
+/** Delivered (opened included), opened and failed e-mails; null: the store reports no delivery. */
+export interface CodeMailDeliveryCounts {
+  delivered: number
+  opened: number
+  failed: number
+}
+
+/** One send of the code (one click of "Send the code") and what it gave. */
+export interface CodeMailCampaignDto {
+  at: string
+  by: string | null
+  /** The other codes of the same e-mail (a send of several codes), empty for one code. */
+  withCodes?: string[]
+  recipients: number
+  delivery: CodeMailDeliveryCounts | null
+  /** People of this send who ordered with the code after it. */
+  buyers: number
+  orders: number
+  /** Revenue of those orders, in the basis of CodeMailStatsResponse.revenueBasis. */
+  revenue: number
+  /** buyers / recipients in percent, one decimal. */
+  conversion: number | null
+}
+
+export interface CodeMailStatsTotals {
+  recipients: number
+  delivery: CodeMailDeliveryCounts | null
+  buyers: number
+  orders: number
+  revenue: number
+  conversion: number | null
+  /** Every non-canceled order with the code, by anyone. */
+  allOrders: number
+  allRevenue: number
+  /** Orders with the code by people who never got the e-mail (or placed before it). */
+  otherOrders: number
+  otherRevenue: number
+}
+
+/** GET /admin/coupons/:id/code-mail/stats */
+export interface CodeMailStatsResponse {
+  code: string
+  currency: string
+  /** net: the store's revenue rule without VAT (option orderRevenue); gross: the order total. */
+  revenueBasis: "net" | "gross"
+  /** The store reports delivery of the e-mails (option codeMailDelivery). */
+  deliveryKnown: boolean
+  campaigns: CodeMailCampaignDto[]
+  totals: CodeMailStatsTotals
 }
 
 /** DELETE /admin/coupons/:id */
@@ -220,6 +304,26 @@ export interface NameMaps {
   nobody?: string | null
   /** The store's own rules of its promotions, by promotion id (option storeRules). */
   storeRules?: Record<string, { text: string; replacesDiscount?: boolean }>
+  /**
+   * Every coupon code of the store, in upper case: a discount on delivery or
+   * not, and whether it can still apply (not ended, not used up). The
+   * sentence says "free delivery" and "other coupons" instead of listing the
+   * codes a coupon adds up with or never goes with.
+   */
+  couponCodes?: Record<string, CouponCodeKind>
+  /** The member groups (option memberGroupIds) and their words in the sentence (option memberGroupsLabel). */
+  members?: MemberGroups | null
+}
+
+export interface CouponCodeKind {
+  shipping: boolean
+  live: boolean
+}
+
+export interface MemberGroups {
+  ids: string[]
+  /** By language, "*" for every language; null: the plugin's own words. */
+  label: Record<string, string> | null
 }
 
 export interface CouponTiles {
@@ -245,6 +349,8 @@ export interface ListResponse {
   tiles: CouponTiles
   /** E-mails of a code (options sendCode, previewCode); missing from older servers. */
   codeMail?: CodeMailAbility
+  /** The store's time zone for days and times (option timeZone), null: the admin's own. */
+  timeZone?: string | null
 }
 
 export interface CouponOrderDto {
@@ -271,6 +377,10 @@ export interface LookupsResponse {
   currencyCode: string
   /** The store's own terms the creator and the edit form offer (option storeTerms), null without them. */
   store: StoreLookups | null
+  /** The words for the member groups in the sentence (option memberGroupsLabel). */
+  memberGroupsLabel?: Record<string, string> | null
+  /** The store's time zone for days and times (option timeZone), null: the admin's own. */
+  timeZone?: string | null
 }
 
 /** A product (one variant) of a store's pool, for leaving single products out of a discount. */

@@ -23,7 +23,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       coupons,
       names,
       tiles,
-      codeMail: { send: Boolean(o.sendCode), preview: Boolean(o.sendCode && o.previewCode) },
+      codeMail: { send: Boolean(o.sendCode), preview: Boolean(o.sendCode && o.previewCode), link: Boolean(o.sendCode && o.codeLink) },
+      timeZone: o.timeZone,
     }
     res.json(body)
   } catch (err) {
