@@ -93,6 +93,7 @@ export const PLAN_ORDER_FIELDS: readonly string[] = [
   "fulfillments.id",
   "fulfillments.provider_id",
   "fulfillments.data",
+  "fulfillments.metadata",
   "fulfillments.canceled_at",
   "fulfillments.shipped_at",
   "fulfillments.delivered_at",
