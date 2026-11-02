@@ -54,7 +54,8 @@ jobs:
   smoke:
     name: smoke test in fresh Medusa apps
     needs: check
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 has no Chromium build for ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16
