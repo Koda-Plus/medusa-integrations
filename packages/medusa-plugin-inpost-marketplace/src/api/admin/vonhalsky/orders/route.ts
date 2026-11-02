@@ -3,7 +3,7 @@ import type { OrderFilter, OrdersResponse } from "../../../../modules/vonhalsky/
 import { orderFilter, toOrderDto, vonHalskySvc } from "../../../../modules/vonhalsky/lib/store"
 import { intParam, searchParam } from "../../../vonhalsky/admin-helpers"
 
-const FILTERS: OrderFilter[] = ["all", "awaiting_shipment", "tracking_sent", "held", "errors"]
+const FILTERS: OrderFilter[] = ["all", "awaiting_shipment", "tracking_waiting", "held", "errors"]
 
 /**
  * GET /admin/vonhalsky/orders?filter=&q=&offset=&limit=: the marketplace

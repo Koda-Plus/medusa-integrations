@@ -1,8 +1,17 @@
 /**
  * MARKETPLACE ORDERS INTO MEDUSA ORDERS: the pure parts. Reading an order in
- * the shape of the public SDK's `Order` model (the wire format is camelCase,
- * snake_case is accepted too), deciding whether and how it becomes a Medusa
- * order, and what an existing row means for a second import.
+ * the shape of the seller API's `Order` (camelCase; snake_case is accepted
+ * too), deciding whether and how it becomes a Medusa order, and what an
+ * existing row means for a second import.
+ *
+ * WHAT THE WIRE REALLY SENDS (InPost's FAQ, not only the OpenAPI file):
+ *   every piece is its own `orderLines` entry, without a quantity; the parser
+ *   adds the pieces up per offer and price;
+ *   a phone number is `{ countryPrefix, number }`, a "+48..." string in the spec;
+ *   `customer` and `invoice` exist only once the order is accepted and paid
+ *   (`paymentDetails.payments` holds at least one payment);
+ *   `delivery.email` is a per order address of InPost's that links a ShipX
+ *   shipment created with it to this order.
  *
  * NEVER INVENT A PRODUCT: a line whose offer is not one of ours (by the
  * offer id, then the external id, then the SKU) holds the whole order with
@@ -12,6 +21,7 @@
 import type { MarketplaceAddress, MarketplaceOrder, MarketplaceOrderLine } from "./client"
 import { DEMO_ORDER_MARKER, MARKETPLACE_REF_KEY, marketplaceRef } from "./constants"
 import { toMinor } from "./pricing"
+import { parseParcels } from "./remote"
 
 type Raw = Record<string, unknown>
 
@@ -21,6 +31,11 @@ const text = (v: unknown, max = 300): string | null => {
   if (typeof v !== "string") return null
   const s = v.trim().slice(0, max)
   return s ? s : null
+}
+const isoDate = (v: unknown): string | null => {
+  const s = text(v, 60)
+  const t = s ? Date.parse(s) : NaN
+  return Number.isFinite(t) ? new Date(t).toISOString() : null
 }
 /** The camelCase key of the wire format, or its snake_case twin. */
 function pick(o: Raw, camel: string): unknown {
@@ -32,6 +47,17 @@ function pick(o: Raw, camel: string): unknown {
 function money(v: unknown): { minor: number | null; currency: string | null } {
   const m = obj(v)
   return { minor: toMinor(m.amount), currency: text(m.currency, 3)?.toUpperCase() ?? null }
+}
+
+/** "+48501606802" from either shape the API sends. */
+export function phoneOf(v: unknown): string | null {
+  if (typeof v === "string" || typeof v === "number") return text(v, 30)?.replace(/\s+/g, "") ?? null
+  const p = obj(v)
+  const number = text(p.number, 20)?.replace(/\s+/g, "")
+  if (!number) return null
+  if (number.startsWith("+")) return number
+  const prefix = text(pick(p, "countryPrefix"), 6)?.replace(/\s+/g, "")
+  return prefix ? `${prefix.startsWith("+") ? prefix : `+${prefix}`}${number}` : number
 }
 
 function address(v: unknown): MarketplaceAddress | null {
@@ -47,11 +73,43 @@ function address(v: unknown): MarketplaceAddress | null {
   return Object.values(out).some(Boolean) ? out : null
 }
 
+/** One wire line (one piece, or more when a `quantity` is sent) before adding up. */
+function readLine(l: Raw): MarketplaceOrderLine {
+  const offer = obj(l.offer ?? l)
+  const product = obj(offer.product)
+  const final = money(pick(offer, "finalPrice"))
+  const price = final.minor !== null ? final : money(offer.price)
+  const program = obj(pick(offer, "programPrice"))
+  const qtyRaw = l.quantity ?? offer.quantity
+  const qty = qtyRaw === undefined || qtyRaw === null ? 1 : Number(qtyRaw)
+  return {
+    offerId: text(pick(offer, "offerId"), 80) ?? "",
+    externalId: text(pick(offer, "externalId"), 80),
+    sku: text(product.sku, 120),
+    ean: text(product.ean, 20),
+    name: text(product.name) ?? "",
+    quantity: Number.isInteger(qty) && qty > 0 ? qty : 0,
+    unitPriceMinor: price.minor ?? 0,
+    basePriceMinor: money(pick(offer, "basePrice")).minor,
+    promotionPriceMinor: money(pick(offer, "promotionPrice")).minor,
+    programDiscountMinor: money(program.discount).minor,
+  }
+}
+
+/** Pieces of the same offer at the same price become one line with their count. */
+export function addUpLines(lines: readonly MarketplaceOrderLine[]): MarketplaceOrderLine[] {
+  const out: MarketplaceOrderLine[] = []
+  for (const l of lines) {
+    const same = out.find((x) => x.offerId === l.offerId && x.externalId === l.externalId && x.unitPriceMinor === l.unitPriceMinor && x.quantity > 0 && l.quantity > 0)
+    if (same) same.quantity += l.quantity
+    else out.push({ ...l })
+  }
+  return out
+}
+
 /**
  * One marketplace order from its JSON. Lenient: missing fields become null,
  * so `planImport` can say exactly what is missing instead of a parse error.
- * The SDK's `OrderLineItem` names no quantity; a `quantity` field is read
- * when present, else every line counts as one item.
  */
 export function parseMarketplaceOrder(input: unknown): MarketplaceOrder {
   const o = obj(input)
@@ -59,37 +117,30 @@ export function parseMarketplaceOrder(input: unknown): MarketplaceOrder {
   const customer = obj(o.customer)
   const invoiceRaw = o.invoice ? obj(o.invoice) : null
   const payment = obj(pick(o, "paymentDetails"))
+  const payments = (Array.isArray(payment.payments) ? payment.payments : []).map(obj)
   const total = money(pick(o, "finalPrice"))
   const dPrice = money(delivery.price)
   const rawLines = (Array.isArray(pick(o, "orderLines")) ? (pick(o, "orderLines") as unknown[]) : []).map(obj)
-  const lines: MarketplaceOrderLine[] = rawLines.map((l) => {
-    const offer = obj(l.offer ?? l)
-    const product = obj(offer.product)
-    const price = money(offer.price)
-    const qty = Number(l.quantity ?? offer.quantity ?? 1)
-    return {
-      offerId: text(pick(offer, "offerId"), 80) ?? "",
-      externalId: text(pick(offer, "externalId"), 80),
-      sku: text(product.sku, 120),
-      ean: text(product.ean, 20),
-      name: text(product.name) ?? "",
-      quantity: Number.isInteger(qty) && qty > 0 ? qty : 0,
-      unitPriceMinor: price.minor ?? 0,
-    }
-  })
+  const lines = addUpLines(rawLines.map(readLine))
   const typeRaw = text(pick(delivery, "deliveryType"), 20)?.toUpperCase()
   const paymentType = text(pick(payment, "selectedPaymentType"), 40)?.toUpperCase() ?? text(pick(o, "paymentType"), 40)?.toUpperCase() ?? null
+  const paidAt =
+    payments
+      .map((p) => isoDate(pick(p, "paymentDate")))
+      .filter((d): d is string => Boolean(d))
+      .sort()[0] ?? null
   return {
     id: text(o.id, 80) ?? "",
     status: text(o.status, 20)?.toUpperCase() ?? "UNKNOWN",
     createdAt: text(pick(o, "createdAt"), 40),
+    updatedAt: text(pick(o, "updatedAt"), 40),
     currency: total.currency ?? (rawLines.length > 0 ? money(obj(obj(rawLines[0].offer ?? rawLines[0]).price)).currency : null) ?? "PLN",
     totalMinor: total.minor,
     buyer: {
       firstName: text(pick(customer, "firstName"), 120),
       lastName: text(pick(customer, "lastName"), 120),
       email: text(customer.email, 200),
-      phone: text(pick(customer, "phoneNumber"), 30),
+      phone: phoneOf(pick(customer, "phoneNumber")),
       address: address(customer.address),
     },
     delivery: {
@@ -97,8 +148,11 @@ export function parseMarketplaceOrder(input: unknown): MarketplaceOrder {
       point: text(pick(delivery, "deliveryPoint"), 40),
       name: text(delivery.name, 120),
       address: address(delivery.address),
-      phone: text(pick(delivery, "phoneNumber"), 30),
+      phone: phoneOf(pick(delivery, "phoneNumber")),
+      email: text(delivery.email, 200),
       priceMinor: dPrice.minor ?? 0,
+      expectedAt: isoDate(pick(delivery, "expectedDeliveryDate")),
+      parcels: parseParcels(delivery.parcels),
     },
     invoice: invoiceRaw
       ? {
@@ -106,13 +160,54 @@ export function parseMarketplaceOrder(input: unknown): MarketplaceOrder {
           taxId: text(pick(invoiceRaw, "taxId"), 30),
           firstName: text(pick(invoiceRaw, "firstName"), 120),
           lastName: text(pick(invoiceRaw, "lastName"), 120),
+          email: text(invoiceRaw.email, 200),
           address: address(invoiceRaw.address),
         }
       : null,
     lines,
     paymentType,
-    paid: paymentType !== "CASH_ON_DELIVERY",
+    /* Paid means InPost booked a payment; cash on delivery is the courier's, not the marketplace's. */
+    paid: payments.length > 0 && paymentType !== "CASH_ON_DELIVERY",
+    paidAt,
     comment: text(o.comment, 500),
+  }
+}
+
+
+/**
+ * What an order row keeps of a marketplace order, on import and on every
+ * later read: statuses, money, parcels and dates. No name, address, e-mail
+ * or phone of the buyer.
+ */
+export function orderFacts(order: MarketplaceOrder): Record<string, unknown> {
+  const units = order.lines.reduce((s, l) => s + l.quantity, 0)
+  const base = order.lines.reduce((s, l) => s + (l.basePriceMinor ?? l.unitPriceMinor) * l.quantity, 0)
+  const promo = order.lines.reduce((s, l) => s + (l.basePriceMinor !== null && l.promotionPriceMinor !== null ? Math.max(0, l.basePriceMinor - l.promotionPriceMinor) * l.quantity : 0), 0)
+  const program = order.lines.reduce((s, l) => s + (l.programDiscountMinor ?? 0) * l.quantity, 0)
+  const parcels = order.delivery.parcels
+  const firstParcel = parcels
+    .map((p) => p.createdAt)
+    .filter((d): d is string => Boolean(d))
+    .sort()[0]
+  const date = (v: string | null) => (v ? new Date(v) : null)
+  return {
+    remote_status: order.status,
+    remote_updated_at: date(order.updatedAt),
+    delivery_type: order.delivery.type === "UNKNOWN" ? null : order.delivery.type,
+    delivery_point: order.delivery.point,
+    payment_type: order.paymentType,
+    currency_code: order.currency.toLowerCase(),
+    total_minor: order.totalMinor,
+    placed_at: date(order.createdAt),
+    paid_at: date(order.paidAt),
+    buyer_kind: order.invoice ? (order.invoice.companyName || order.invoice.taxId ? "COMPANY" : "PERSON") : null,
+    delivery_minor: order.delivery.priceMinor,
+    base_total_minor: units > 0 ? base : null,
+    promotion_discount_minor: promo,
+    program_discount_minor: program,
+    parcels: parcels.map((p) => ({ trackingNumber: p.trackingNumber, createdAt: p.createdAt, status: p.status })),
+    shipped_at: firstParcel ? new Date(firstParcel) : null,
+    expected_delivery_at: date(order.delivery.expectedAt),
   }
 }
 
@@ -172,7 +267,7 @@ export interface MedusaOrderInput {
   metadata: Record<string, unknown>
 }
 
-export type HoldCode = "no_id" | "no_lines" | "bad_line" | "unmapped_lines" | "currency_mismatch" | "no_region" | "no_channel" | "no_address" | "cancelled"
+export type HoldCode = "no_id" | "no_lines" | "bad_line" | "unmapped_lines" | "currency_mismatch" | "no_region" | "no_channel" | "no_address" | "cancelled" | "unpaid" | "not_accepted"
 
 export type ImportDecision =
   | { kind: "create"; order: MedusaOrderInput; email: string | null; paid: boolean; lines: Array<{ offer_id: string; variant_id: string; sku: string | null; title: string; quantity: number; unit_price_minor: number }> }
@@ -219,6 +314,14 @@ export function planImport(order: MarketplaceOrder, ctx: ImportContext): ImportD
   if (!order.id) return { kind: "hold", code: "no_id", reason: "The marketplace order has no id." }
   if (order.status === "CANCELED" || order.status === "REFUSED" || order.status === "REJECTED") {
     return { kind: "hold", code: "cancelled", reason: `The marketplace order is ${order.status}: it is not imported.` }
+  }
+  /* Unpaid orders wait: InPost rejects them after 12 hours, and the sync imports them once paid. */
+  if (!order.paid && order.paymentType !== "CASH_ON_DELIVERY") {
+    return { kind: "hold", code: "unpaid", reason: "The buyer has not paid yet: the order is imported once the marketplace books the payment." }
+  }
+  /* The buyer's name, phone and invoice come with the acceptance (InPost FAQ). */
+  if (order.status === "CREATED") {
+    return { kind: "hold", code: "not_accepted", reason: "The marketplace has not accepted the order yet: it is imported once ACCEPTED." }
   }
   if (order.lines.length === 0) return { kind: "hold", code: "no_lines", reason: "The marketplace order has no lines." }
   if (!ctx.regionId || !ctx.currency) return { kind: "hold", code: "no_region", reason: "No PLN region for marketplace orders: create one or pick it in Settings." }
@@ -295,7 +398,8 @@ export function planImport(order: MarketplaceOrder, ctx: ImportContext): ImportD
   return {
     kind: "create",
     order: medusa,
-    email: order.buyer.email,
+    /* InPost's per order address first: a ShipX shipment sent with it is linked to this order (and InPost relays mail to the buyer). */
+    email: order.delivery.email ?? order.buyer.email,
     paid: order.paid,
     lines: lines.map(({ ref, line }) => ({ offer_id: line.offerId, variant_id: ref.variantId, sku: ref.sku, title: ref.title ?? line.name, quantity: line.quantity, unit_price_minor: line.unitPriceMinor })),
   }

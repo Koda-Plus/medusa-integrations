@@ -1,26 +1,21 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
-import { readSettings } from "../modules/vonhalsky/lib/store"
-import { importNewOrders } from "../workflows/vonhalsky/orders"
-import { clientOf, optionsOf } from "../workflows/vonhalsky/runtime"
+import { runSync } from "../workflows/vonhalsky/sync"
+import { optionsOf } from "../workflows/vonhalsky/runtime"
 
 /**
- * ORDER IMPORT, EVERY 15 MINUTES, only when a person switched "Import
- * automatically" on (Settings, Orders) and the seller API client is
- * available. In this version the live client is pending, so the job does
- * nothing in sandbox and live; demo has no marketplace buyers of its own
- * (orders come from "Simulate an order"). Never throws.
+ * THE SYNC, EVERY 5 MINUTES, whenever the plugin has a client (live,
+ * sandbox or demo): marketplace commands and offer changes, price and stock
+ * (when that setting is on), new and changed orders (imported only when
+ * "Import automatically" is on), returns, claims and refunds, the category
+ * tree once a week and a daily snapshot. Each part logs its own failure;
+ * the job never throws.
  */
-export default async function vonHalskyImportOrdersJob(container: MedusaContainer): Promise<void> {
-  const o = optionsOf(container)
-  if (o.mode === "off" || o.demo) return
-  const client = clientOf(container)
-  if (!client?.available) return
-  const settings = await readSettings(container)
-  if (!settings.orders.autoImport) return
-  await importNewOrders(container).catch(() => undefined)
+export default async function vonHalskySyncJob(container: MedusaContainer): Promise<void> {
+  if (optionsOf(container).mode === "off") return
+  await runSync(container).catch(() => undefined)
 }
 
 export const config = {
-  name: "vonhalsky-import-orders",
-  schedule: "*/15 * * * *",
+  name: "vonhalsky-sync",
+  schedule: "*/5 * * * *",
 }

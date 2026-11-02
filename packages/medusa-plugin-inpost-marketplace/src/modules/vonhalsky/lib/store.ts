@@ -1,7 +1,7 @@
 import { BLOCKING_REASONS, WARNING_CODES, type BlockingReason, type WarningCode } from "./eligibility"
 import { IMPORT_LEASE_MS } from "./orders"
-import { LOG_KEEP_DAYS, MAX_EVENTS, OFFER_STATUSES, ORDER_STATUSES, SETTING_KEYS, TRACKING_STATUSES, VONHALSKY_MODULE, type ImportStatus, type OfferStatus, type TrackingStatus } from "./constants"
-import type { EventDto, LogDto, MarketplaceOrderDto, OfferDto, OrderLineDto, VonHalskySettings } from "./contract"
+import { CASE_KINDS, LOG_KEEP_DAYS, MAX_EVENTS, OFFER_STATUSES, ORDER_STATUSES, SETTING_KEYS, TRACKING_STATUSES, VONHALSKY_MODULE, type CaseKind, type ImportStatus, type OfferStatus, type TrackingStatus } from "./constants"
+import type { CaseDto, CaseLineDto, EventDto, LogDto, MarketplaceOrderDto, OfferDefaults, OfferDto, OrderLineDto, ParcelDto, PromotionDto, VonHalskySettings } from "./contract"
 import type { ResolvedVonHalskyOptions } from "./options"
 import { fromMinor, parseMarkup } from "./pricing"
 import { normalizeMapping } from "./shipping"
@@ -23,7 +23,30 @@ export function vonHalskySvc(scope: Scope): any {
 /* ------------------------------------------------------------------ */
 
 /** The settings: what the admin saved, else the options, else the defaults. */
-export function settingsFrom(rows: Array<{ key: string; value: unknown }>, o: Pick<ResolvedVonHalskyOptions, "markupPercent" | "salesChannelId" | "regionId" | "autoImport">): VonHalskySettings {
+/** Medusa category id to marketplace leaf id; anything else is dropped. */
+export function categoryMapOf(v: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out
+  for (const [k, id] of Object.entries(v as Record<string, unknown>)) {
+    if (/^pcat_[A-Za-z0-9]+$/.test(k) && typeof id === "string" && /^[A-Za-z0-9-]{1,80}$/.test(id)) out[k] = id
+  }
+  return out
+}
+
+const policy = (v: unknown): string => (typeof v === "string" ? v.trim().slice(0, 5000) : "")
+
+export function offerDefaultsOf(v: unknown, o: Pick<ResolvedVonHalskyOptions, "daysToShip" | "syncPriceStock">): OfferDefaults {
+  const d = (v && typeof v === "object" ? v : {}) as Record<string, unknown>
+  const days = Number(d.daysToShip)
+  return {
+    daysToShip: Number.isInteger(days) && days >= 0 && days <= 60 ? days : o.daysToShip,
+    returnPolicy: policy(d.returnPolicy),
+    complaintPolicy: policy(d.complaintPolicy),
+    syncPriceStock: typeof d.syncPriceStock === "boolean" ? d.syncPriceStock : o.syncPriceStock,
+  }
+}
+
+export function settingsFrom(rows: Array<{ key: string; value: unknown }>, o: Pick<ResolvedVonHalskyOptions, "markupPercent" | "salesChannelId" | "regionId" | "autoImport" | "daysToShip" | "syncPriceStock">): VonHalskySettings {
   const byKey = new Map(rows.map((r) => [r.key, r.value]))
   const pricing = (byKey.get(SETTING_KEYS.pricing) ?? {}) as Record<string, unknown>
   const orders = (byKey.get(SETTING_KEYS.orders) ?? {}) as Record<string, unknown>
@@ -38,7 +61,37 @@ export function settingsFrom(rows: Array<{ key: string; value: unknown }>, o: Pi
       autoImport: typeof orders.autoImport === "boolean" ? orders.autoImport : o.autoImport,
     },
     shipping: normalizeMapping(byKey.get(SETTING_KEYS.shipping)),
+    categories: categoryMapOf(byKey.get(SETTING_KEYS.categories)),
+    offerDefaults: offerDefaultsOf(byKey.get(SETTING_KEYS.offerDefaults), o),
   }
+}
+
+/** Where the sync stands: the newest event ids seen and the time of the last runs. */
+export interface SyncState {
+  offerEventId: string | null
+  orderEventId: string | null
+  /** ISO times of the last run of each part. */
+  at: Record<string, string>
+}
+
+export async function readSyncState(scope: Scope): Promise<SyncState> {
+  try {
+    const rows = ((await vonHalskySvc(scope).listVonHalskySettings({ key: SETTING_KEYS.sync })) ?? []) as Array<{ value: unknown }>
+    const v = (rows[0]?.value ?? {}) as Record<string, unknown>
+    const at = v.at && typeof v.at === "object" ? (v.at as Record<string, unknown>) : {}
+    return {
+      offerEventId: typeof v.offerEventId === "string" ? v.offerEventId : null,
+      orderEventId: typeof v.orderEventId === "string" ? v.orderEventId : null,
+      at: Object.fromEntries(Object.entries(at).filter((e): e is [string, string] => typeof e[1] === "string")),
+    }
+  } catch {
+    return { offerEventId: null, orderEventId: null, at: {} }
+  }
+}
+
+export async function writeSyncState(scope: Scope, patch: Partial<SyncState>): Promise<void> {
+  const now = await readSyncState(scope)
+  await writeSetting(scope, SETTING_KEYS.sync, { ...now, ...patch, at: { ...now.at, ...(patch.at ?? {}) } })
 }
 
 export async function readSettings(scope: Scope): Promise<VonHalskySettings> {
@@ -75,7 +128,27 @@ const oneOf = <T extends string>(v: unknown, known: readonly T[], fallback: T): 
 
 const minor = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null)
 
-export function toOfferDto(row: Record<string, any>, extra: { thumbnail?: string | null } = {}): OfferDto {
+const jsonObj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null)
+const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null)
+
+function promotionOf(v: unknown): PromotionDto | null {
+  const p = jsonObj(v)
+  if (!p) return null
+  const mode = p.mode === "PERCENTAGE" || p.mode === "FIXED_PRICE" || p.mode === "AMOUNT" ? p.mode : null
+  return { start: str(p.start), end: str(p.end), status: str(p.status), mode, value: typeof p.value === "number" ? p.value : null }
+}
+
+function parcelsOf(v: unknown): ParcelDto[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .map(jsonObj)
+    .filter((p): p is Record<string, unknown> => Boolean(p) && typeof p!.trackingNumber === "string")
+    .map((p) => ({ trackingNumber: String(p.trackingNumber), createdAt: str(p.createdAt), status: str(p.status) }))
+}
+
+export function toOfferDto(row: Record<string, any>, extra: { thumbnail?: string | null; categoryPath?: string | null } = {}): OfferDto {
+  const hint = jsonObj(row.hint)
+  const cmdStatus = row.command_status === "PENDING" || row.command_status === "SUCCESS" || row.command_status === "FAILURE" ? row.command_status : null
   return {
     id: String(row.id),
     variant_id: String(row.variant_id ?? ""),
@@ -102,6 +175,29 @@ export function toOfferDto(row: Record<string, any>, extra: { thumbnail?: string
     listed_at: iso(row.listed_at),
     synced_at: iso(row.synced_at),
     error: row.error ?? null,
+    category_id: row.category_id ?? null,
+    category_path: extra.categoryPath ?? null,
+    category_source: row.category_source === "map" || row.category_source === "hint" || row.category_source === "manual" ? row.category_source : null,
+    hint: hint ? { productId: str(hint.productId), categoryId: str(hint.categoryId), name: str(hint.name), brand: str(hint.brand) } : null,
+    remote_price: fromMinor(minor(row.remote_price_minor)),
+    remote_final_price: fromMinor(minor(row.remote_final_price_minor)),
+    remote_stock: minor(row.remote_stock),
+    promotion: promotionOf(row.promotion),
+    program: row.program === "IN" || row.program === "OUT" ? row.program : null,
+    validation: Array.isArray(row.validation)
+      ? row.validation
+          .map(jsonObj)
+          .filter((v: Record<string, unknown> | null): v is Record<string, unknown> => Boolean(v))
+          .map((v: Record<string, unknown>) => ({ code: String(v.code ?? "UNKNOWN"), message: str(v.message) }))
+      : [],
+    command: row.command_id && cmdStatus ? { id: String(row.command_id), kind: String(row.command_kind ?? ""), status: cmdStatus, at: iso(row.command_at) } : null,
+    image_count: minor(row.image_count),
+    published_at: iso(row.published_at),
+    attributes: Array.isArray(row.attributes)
+      ? row.attributes
+          .filter((a: unknown): a is { id: unknown; values: unknown } => Boolean(a) && typeof a === "object")
+          .map((a: { id: unknown; values: unknown }) => ({ id: String(a.id), values: Array.isArray(a.values) ? a.values.map(String) : [] }))
+      : [],
   }
 }
 
@@ -156,12 +252,61 @@ export function toOrderDto(row: Record<string, any>): MarketplaceOrderDto {
     lines: linesOf(row.lines),
     tracking_status: oneOf<TrackingStatus>(row.tracking_status, TRACKING_STATUSES, "none"),
     tracking_numbers: Array.isArray(row.tracking_numbers) ? row.tracking_numbers.map(String) : [],
-    tracking_sent_at: iso(row.tracking_sent_at),
+    parcels: parcelsOf(row.parcels),
     imported_at: iso(row.imported_at),
+    placed_at: iso(row.placed_at),
+    paid_at: iso(row.paid_at),
+    shipped_at: iso(row.shipped_at),
+    expected_delivery_at: iso(row.expected_delivery_at),
+    buyer_kind: row.buyer_kind ?? null,
+    delivery: fromMinor(minor(row.delivery_minor)),
+    refunded: fromMinor(minor(row.refunded_minor)),
+    returns_count: Number(row.returns_count) || 0,
+    claims_count: Number(row.claims_count) || 0,
     error: row.error ?? null,
     events: eventsOf(row.events),
     created_at: iso(row.created_at) ?? new Date(0).toISOString(),
     updated_at: iso(row.updated_at) ?? new Date(0).toISOString(),
+  }
+}
+
+function caseLinesOf(v: unknown): CaseLineDto[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .map(jsonObj)
+    .filter((l): l is Record<string, unknown> => Boolean(l))
+    .map((l) => ({ offerId: str(l.offerId), name: str(l.name), ean: str(l.ean), quantity: Number(l.quantity) || 1, price: fromMinor(minor(l.priceMinor)), reason: str(l.reason) }))
+}
+
+/** Whether the seller has to act on a case. */
+export function caseOpen(row: { kind: string; status?: string | null; sub_status?: string | null; source?: string | null }): boolean {
+  if (row.kind === "return") return row.status === "NEW"
+  if (row.kind === "claim") return !row.sub_status && row.status !== "APPROVED" && row.status !== "REJECTED"
+  return row.sub_status === "DECLINED"
+}
+
+export function toCaseDto(row: Record<string, any>, order: { order_id: string | null; display_id: number | null } | null = null): CaseDto {
+  return {
+    id: String(row.id),
+    kind: oneOf<CaseKind>(row.kind, CASE_KINDS, "return"),
+    remote_id: String(row.remote_id ?? ""),
+    display_id: row.display_id ?? null,
+    marketplace_order_id: row.marketplace_order_id ?? null,
+    order_id: order?.order_id ?? null,
+    display_order_id: order?.display_id ?? null,
+    status: row.status ?? null,
+    sub_status: row.sub_status ?? null,
+    source: row.source ?? null,
+    reason: row.reason ?? null,
+    amount: fromMinor(minor(row.amount_minor)),
+    lines: caseLinesOf(row.lines),
+    refund_id: row.refund_id ?? null,
+    opened_at: iso(row.opened_at),
+    expires_at: iso(row.expires_at),
+    decided_at: iso(row.decided_at),
+    open: caseOpen({ kind: String(row.kind), status: row.status, sub_status: row.sub_status, source: row.source }),
+    demo: row.demo === true,
+    events: eventsOf(row.events),
   }
 }
 
@@ -182,20 +327,32 @@ export function toLogDto(row: Record<string, any>): LogDto {
 /* Filters                                                             */
 /* ------------------------------------------------------------------ */
 
-/** The order rows a panel filter means. `errors`: held imports and tracking that failed. */
+/** The order rows a panel filter means. `errors`: held imports. */
 export function orderFilter(filter: string): Record<string, unknown> {
   switch (filter) {
     case "awaiting_shipment":
-      return { status: "imported", tracking_status: ["none", "pending_api"] }
-    case "tracking_sent":
-      return { tracking_status: "sent" }
+      return { status: "imported", shipped_at: null, remote_status: { $nin: ["CANCELED", "REFUSED", "REJECTED"] } }
+    case "tracking_waiting":
+      return { tracking_status: "waiting" }
     case "held":
-      return { status: "held" }
     case "errors":
-      return { $or: [{ status: "held" }, { tracking_status: "failed" }] }
+      return { status: "held" }
     default:
       return {}
   }
+}
+
+/** The offer rows a panel filter means. `pending`: the marketplace keeps them PENDING or REJECTED. */
+export function offerFilter(filter: string): Record<string, unknown> {
+  if (filter === "pending") return { remote_status: ["PENDING", "REJECTED"], status: { $ne: "closed" } }
+  return (OFFER_STATUSES as readonly string[]).includes(filter) ? { status: filter } : {}
+}
+
+/** The case rows a panel filter means. */
+export function caseFilter(filter: string): Record<string, unknown> {
+  if ((CASE_KINDS as readonly string[]).includes(filter)) return { kind: filter }
+  if (filter === "open") return { $or: [{ kind: "return", status: "NEW" }, { kind: "claim", sub_status: null, status: { $nin: ["APPROVED", "REJECTED"] } }, { kind: "refund", sub_status: "DECLINED" }] }
+  return {}
 }
 
 /** An `importing` row whose lease ran out counts as held (the attempt died). */
@@ -210,7 +367,7 @@ export function staleImport(row: { status: string; updated_at?: Date | string | 
 /* ------------------------------------------------------------------ */
 
 export interface LogInput {
-  area: "offers" | "orders" | "tracking" | "settings"
+  area: "offers" | "orders" | "tracking" | "settings" | "cases" | "categories" | "sync"
   action: string
   outcome?: "ok" | "warning" | "error"
   message: string

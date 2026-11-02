@@ -19,13 +19,15 @@ import { randomUUID } from "node:crypto"
 import { Modules } from "@medusajs/framework/utils"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import * as coreFlows from "@medusajs/medusa/core-flows"
-import { isPending, type MarketplaceOrder } from "../../modules/vonhalsky/lib/client"
+import { PAGE_MAX, type MarketplaceOrder } from "../../modules/vonhalsky/lib/client"
 import { DEMO_SALES_CHANNEL } from "../../modules/vonhalsky/lib/constants"
 import { demoOrder } from "../../modules/vonhalsky/lib/demo"
 import { handoffRequest, handoffResult, importTotalMinor, keptWithoutProvider, refused, type HandoffOutcome } from "../../modules/vonhalsky/lib/handoff"
-import { importAction, planImport, type ImportContext, type MedusaOrderInput, type OfferRef } from "../../modules/vonhalsky/lib/orders"
+import { trackingStatus } from "../../modules/vonhalsky/lib/offer-sync"
+import { importAction, orderFacts, planImport, type ImportContext, type MedusaOrderInput, type OfferRef } from "../../modules/vonhalsky/lib/orders"
+import { newerThan, type RemoteEvent } from "../../modules/vonhalsky/lib/remote"
 import { shippingOptionFor } from "../../modules/vonhalsky/lib/shipping"
-import { logSync, readSettings, toOrderDto, vonHalskySvc, withEvent, type Scope } from "../../modules/vonhalsky/lib/store"
+import { logSync, readSettings, readSyncState, toOrderDto, vonHalskySvc, withEvent, writeSyncState, type Scope } from "../../modules/vonhalsky/lib/store"
 import type { MarketplaceOrderDto } from "../../modules/vonhalsky/lib/contract"
 import { completeOrder, createDraft } from "./medusa-order"
 import { VonHalskyFlowError, demoClientOf, errorText, optionsOf, queryOf, requireClient, withLock, type QueryLike } from "./runtime"
@@ -196,15 +198,7 @@ export async function importMarketplaceOrder(container: MedusaContainer, order: 
     if (action.kind === "already") return { kind: "already" as const, order: toOrderDto(row!) }
     if (action.kind === "busy") return { kind: "busy" as const, order: toOrderDto(row!) }
 
-    const base = {
-      remote_status: order.status,
-      delivery_type: order.delivery.type === "UNKNOWN" ? null : order.delivery.type,
-      delivery_point: order.delivery.point,
-      payment_type: order.paymentType,
-      currency_code: order.currency.toLowerCase(),
-      total_minor: order.totalMinor,
-      placed_at: order.createdAt ? new Date(order.createdAt) : null,
-    }
+    const base = orderFacts(order)
     if (!row) {
       row = await svc.createVonHalskyOrders({
         marketplace_order_id: order.id,
@@ -228,7 +222,7 @@ export async function importMarketplaceOrder(container: MedusaContainer, order: 
     try {
       let orderId = action.kind === "finish" ? action.orderId : null
       let lines = row!.lines ?? null
-      let email: string | null = order.buyer.email
+      let email: string | null = order.delivery.email ?? order.buyer.email
       if (!orderId) {
         const target = await resolveTarget(container, true)
         const settings = await readSettings(container)
@@ -280,11 +274,6 @@ export async function importMarketplaceOrder(container: MedusaContainer, order: 
         demo: o.demo,
         refs: { marketplace_order_id: order.id, order_id: placed.orderId },
       })
-      /* Accept on the marketplace (demo: noted by the simulated client). Never undoes the import. */
-      const client = requireClient(container)
-      await client.acceptOrder(order.id).catch(async (err) => {
-        await logSync(container, { area: "orders", action: "accept", outcome: isPending(err) ? "warning" : "error", message: errorText(err, container), demo: o.demo })
-      })
       return { kind: "imported", order: toOrderDto(updated) }
     } catch (err) {
       return hold(`Medusa refused the order: ${errorText(err, container)}`, "workflow_error")
@@ -308,7 +297,16 @@ export async function simulateOrder(container: MedusaContainer): Promise<ImportO
   const id = `demo-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8)}`
   const order = demoOrder(
     id,
-    listed.map((r) => ({ remoteId: String(r.remote_id ?? ""), variantId: String(r.variant_id), sku: r.sku ?? null, ean: r.ean ?? null, title: String(r.title ?? r.sku ?? ""), priceMinor: Number(r.price_minor) || 0, stock: Number(r.stock) || 0 })),
+    listed.map((r) => ({
+      remoteId: String(r.remote_id ?? ""),
+      variantId: String(r.variant_id),
+      sku: r.sku ?? null,
+      ean: r.ean ?? null,
+      title: String(r.title ?? r.sku ?? ""),
+      priceMinor: Number(r.remote_price_minor ?? r.price_minor) || 0,
+      finalPriceMinor: typeof r.remote_final_price_minor === "number" ? r.remote_final_price_minor : null,
+      stock: Number(r.stock) || 0,
+    })),
     Number(count) || 0,
   )
   if (!order) throw new VonHalskyFlowError(409, "no_priced_offers", "None of the listed offers has a price.")
@@ -316,30 +314,151 @@ export async function simulateOrder(container: MedusaContainer): Promise<ImportO
   return importMarketplaceOrder(container, order, "demo")
 }
 
-/** Imports what the marketplace has new (the scheduled job and the "Import now" button). */
-export async function importNewOrders(container: MedusaContainer): Promise<{ imported: number; held: number; seen: number }> {
+/**
+ * A marketplace order read again: the row's facts (status, payment,
+ * parcels, refunds...) follow it, and the tracking status compares
+ * Medusa's numbers with the parcels the marketplace shows.
+ */
+export async function refreshOrderRow(container: MedusaContainer, order: MarketplaceOrder): Promise<Row | null> {
+  const svc = vonHalskySvc(container)
+  const row = await rowOf(container, order.id)
+  if (!row) return null
+  const facts = orderFacts(order)
+  const numbers = Array.isArray(row.tracking_numbers) ? row.tracking_numbers.map(String) : []
+  const tracking = trackingStatus(numbers, order.delivery.parcels)
+  const events: Array<{ kind: string; message: string }> = []
+  if (row.remote_status && row.remote_status !== order.status) events.push({ kind: "status", message: `Marketplace status ${row.remote_status} to ${order.status}` })
+  const before = new Set((Array.isArray(row.parcels) ? row.parcels : []).map((p: { trackingNumber?: string }) => p?.trackingNumber))
+  for (const p of order.delivery.parcels) if (!before.has(p.trackingNumber)) events.push({ kind: "parcel", message: `Parcel ${p.trackingNumber} on the marketplace` })
+  let history = row.events
+  for (const e of events) history = withEvent(history, e)
+  const ended = ["CANCELED", "REFUSED", "REJECTED"].includes(order.status)
+  if (ended && row.status === "imported" && row.remote_status !== order.status) {
+    const o = optionsOf(container)
+    await logSync(container, {
+      area: "orders",
+      action: "cancelled",
+      outcome: "warning",
+      message: `Marketplace order ${order.id} is ${order.status}: cancel Medusa order #${row.display_id ?? row.order_id} (its reservations stay until then).`,
+      demo: o.demo,
+      refs: { marketplace_order_id: order.id, order_id: row.order_id ?? null },
+    })
+  }
+  return svc.updateVonHalskyOrders({ id: row.id, ...facts, tracking_status: tracking, events: history })
+}
+
+export interface OrderSyncResult {
+  imported: number
+  held: number
+  updated: number
+  seen: number
+}
+
+/**
+ * What the marketplace has new or changed: the order events since the last
+ * one seen (newest first, paged back with `untilId` until the known one),
+ * then the orders changed since the last run (`updatedAtGte`), because
+ * events live 72 hours only. A new order is imported when automatic import
+ * is on (or when asked from the admin) and the marketplace has ACCEPTED it
+ * (a paid order still CREATED is accepted here first); one waiting for that
+ * gets no row and comes back with its next change. An import also reads the
+ * ACCEPTED orders changed since the last import (at most 14 days back, 3 on
+ * the very first), so orders that came while import was off are not lost.
+ * A known order gets its facts again; a held one is tried again.
+ */
+export async function importNewOrders(container: MedusaContainer, opts: { importNew?: boolean } = {}): Promise<OrderSyncResult> {
   const o = optionsOf(container)
   const client = requireClient(container)
-  if (o.demo) {
-    await logSync(container, { area: "orders", action: "import", message: "Demo: the simulated marketplace has no buyers of its own; use Simulate an order.", demo: true })
-    return { imported: 0, held: 0, seen: 0 }
-  }
-  try {
-    const { orders } = await client.listNewOrders(null)
-    let imported = 0
-    let held = 0
-    for (const order of orders.slice(0, 50)) {
-      const r = await importMarketplaceOrder(container, order, "api")
-      if (r.kind === "imported") imported += 1
-      if (r.kind === "held") held += 1
+  const settings = await readSettings(container)
+  const importNew = opts.importNew ?? settings.orders.autoImport
+  return withLock("orders-sync", async () => {
+    const state = await readSyncState(container)
+    const started = new Date()
+    try {
+      /* 1. Events, newest first, back to the last one seen (at most 10 pages). */
+      const ids = new Set<string>()
+      let newest: string | null = null
+      let until: string | null = null
+      for (let page = 0; page < 10; page += 1) {
+        const batch: RemoteEvent[] = await client.orderEvents({ limit: 100, untilId: until })
+        if (page === 0) newest = batch[0]?.id ?? state.orderEventId
+        const { fresh, reachedKnown } = newerThan(batch, state.orderEventId)
+        for (const e of fresh) ids.add(e.subjectId)
+        if (reachedKnown || batch.length < 100 || !state.orderEventId) break
+        until = batch[batch.length - 1].id
+      }
+      /* 2. Orders changed since the last run (ten minutes of overlap), or the last three days on the first run. */
+      const DAY = 24 * 60 * 60 * 1000
+      const lastRun = state.at.orders ? new Date(state.at.orders) : new Date(Date.now() - 3 * DAY)
+      const changed: MarketplaceOrder[] = []
+      const read = async (since: Date, statuses: string[] | null) => {
+        const iso = new Date(since.getTime() - 10 * 60 * 1000).toISOString()
+        for (let offset = 0; offset < PAGE_MAX * 10; offset += PAGE_MAX) {
+          const { orders, total } = await client.listOrders({ offset, limit: PAGE_MAX, updatedSince: iso, statuses })
+          changed.push(...orders)
+          if (orders.length < PAGE_MAX || offset + PAGE_MAX >= total) break
+        }
+      }
+      await read(lastRun, null)
+      if (importNew) {
+        const lastImport = state.at.ordersImport ? new Date(state.at.ordersImport) : new Date(Date.now() - 3 * DAY)
+        const floor = new Date(Date.now() - 14 * DAY)
+        if (lastImport < lastRun) await read(lastImport < floor ? floor : lastImport, ["ACCEPTED"])
+      }
+      const byId = new Map(changed.map((x) => [x.id, x]))
+      for (const id of ids) {
+        if (byId.has(id)) continue
+        const one = await client.getOrder(id).catch(() => null)
+        if (one) byId.set(id, one)
+      }
+      let imported = 0
+      let held = 0
+      let updated = 0
+      let waiting = 0
+      for (let order of byId.values()) {
+        const row = await rowOf(container, order.id)
+        if (!row && !importNew) continue
+        if (!row && order.status === "CREATED") {
+          if (!order.paid) {
+            waiting += 1
+            continue
+          }
+          /* InPost accepts a merchant's paid orders itself; one still CREATED is accepted here and read again. */
+          await client.acceptOrder(order.id).catch(async (err) => {
+            await logSync(container, { area: "orders", action: "accept", outcome: "warning", message: `Order ${order.id}: ${errorText(err, container)}`, demo: o.demo })
+          })
+          const again = await client.getOrder(order.id).catch(() => null)
+          if (!again || again.status === "CREATED") {
+            waiting += 1
+            continue
+          }
+          order = again
+        }
+        if (!row || row.status === "held" || row.status === "importing") {
+          const r = await importMarketplaceOrder(container, order, "api")
+          if (r.kind === "imported") imported += 1
+          if (r.kind === "held") held += 1
+        }
+        if (await refreshOrderRow(container, order)) updated += 1
+      }
+      await writeSyncState(container, { orderEventId: newest, at: { orders: started.toISOString(), ...(importNew ? { ordersImport: started.toISOString() } : {}) } })
+      if (imported || held || ids.size) {
+        await logSync(container, {
+          area: "orders",
+          action: "sync",
+          outcome: held ? "warning" : "ok",
+          message: `${byId.size} marketplace orders read: ${imported} imported, ${held} held, ${updated} updated${waiting ? `, ${waiting} not accepted or paid yet` : ""}.`,
+          count: byId.size,
+          demo: o.demo,
+        })
+      }
+      return { imported, held, updated, seen: byId.size }
+    } catch (err) {
+      const message = errorText(err, container)
+      await logSync(container, { area: "orders", action: "sync", outcome: "error", message, demo: o.demo })
+      throw new VonHalskyFlowError(502, "import_failed", message)
     }
-    return { imported, held, seen: orders.length }
-  } catch (err) {
-    const message = errorText(err, container)
-    await logSync(container, { area: "orders", action: "import", outcome: isPending(err) ? "warning" : "error", message })
-    if (isPending(err)) throw new VonHalskyFlowError(501, "api_pending", message)
-    throw new VonHalskyFlowError(502, "import_failed", message)
-  }
+  })
 }
 
 /** Retries a held import: the order is read again from the marketplace (demo: from the simulated one). */
@@ -353,9 +472,7 @@ export async function retryOrder(container: MedusaContainer, rowId: string): Pro
   try {
     order = await client.getOrder(String(row.marketplace_order_id))
   } catch (err) {
-    const message = errorText(err, container)
-    if (isPending(err)) throw new VonHalskyFlowError(501, "api_pending", message)
-    throw new VonHalskyFlowError(502, "fetch_failed", message)
+    throw new VonHalskyFlowError(502, "fetch_failed", errorText(err, container))
   }
   if (!order) throw new VonHalskyFlowError(410, "order_gone", row.demo ? "The simulated order is no longer in memory (the server restarted): simulate a new one." : "The marketplace does not know this order any more.")
   return importMarketplaceOrder(container, order, "retry")

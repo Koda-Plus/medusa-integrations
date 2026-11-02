@@ -3,19 +3,37 @@
  * (and the compliance plugin when it is installed). Each missing piece is a
  * stable code the admin translates, so a person sees exactly what to fix.
  *
- * The marketplace matches offers by EAN, brand and manufacturer part number,
- * and asks for GPSR manufacturer data (the public SDK's `GpsrInfo` and
- * `Manufacturer` models: a name and an e-mail, an address). What blocks a
- * listing here is what an offer cannot go out without; what only weakens it
- * is a warning.
+ * What the seller API requires of an offer (OpenAPI 1.7.6, guidelines):
+ * a name, a description, a brand, a leaf category, at least one image, an
+ * EAN or else the brand with the manufacturer part number, a gross price,
+ * and GPSR manufacturer data (a name and an e-mail) unless the category is
+ * outside GPSR or the product was on the EU market before 13 December 2024.
+ * Package dimensions are optional, but each side is at most 1200 mm and the
+ * three together at most 2200 mm. Required attributes of the category are
+ * checked when the category's definitions were read.
  */
 
 import type { GpsrManufacturer } from "./gpsr"
+import { plainText } from "./offer-payload"
 
-export const BLOCKING_REASONS = ["no_title", "no_ean", "invalid_ean", "no_brand", "no_gpsr", "gpsr_incomplete", "no_price", "not_published"] as const
+export const BLOCKING_REASONS = [
+  "no_title",
+  "no_ean",
+  "invalid_ean",
+  "no_brand",
+  "no_description",
+  "no_image",
+  "no_category",
+  "attributes_missing",
+  "no_gpsr",
+  "gpsr_incomplete",
+  "too_large",
+  "no_price",
+  "not_published",
+] as const
 export type BlockingReason = (typeof BLOCKING_REASONS)[number]
 
-export const WARNING_CODES = ["no_mpn", "no_stock", "no_image"] as const
+export const WARNING_CODES = ["no_mpn", "no_stock", "no_dimensions", "one_image"] as const
 export type WarningCode = (typeof WARNING_CODES)[number]
 
 export interface VariantFacts {
@@ -24,6 +42,9 @@ export interface VariantFacts {
   sku: string | null
   title: string | null
   thumbnail: string | null
+  /** Image URLs in order (the thumbnail first), at most 20. */
+  images: string[]
+  description: string | null
   /** Medusa's product status: only "published" products are offered. */
   productStatus: string | null
   ean: string | null
@@ -31,9 +52,27 @@ export interface VariantFacts {
   mpn: string | null
   manufacturer: GpsrManufacturer | null
   gpsrSource: "compliance" | "metadata" | null
+  /** The product was on the EU market before 13 December 2024 (metadata `gpsr_exempt`). */
+  gpsrExempt: boolean
+  /** Medusa category ids of the product. */
+  categoryIds: string[]
+  /** Package dimensions in mm and weight in g, null when unknown. */
+  dimension: { width: number; height: number; length: number; weight: number } | null
+  /** A per product VAT rate (percent), null for the default. */
+  vatRate: number | null
   /** The Medusa PLN price in minor units, null without a PLN price. */
   basePriceMinor: number | null
   stock: number
+}
+
+/** What the offer row adds to the facts: the chosen category and its definitions, the attribute values. */
+export interface OfferContext {
+  categoryId: string | null
+  /** The category needs no GPSR data. */
+  gpsrFree: boolean
+  /** Required attribute ids of the category; null while unknown (not read yet). */
+  requiredAttributes: string[] | null
+  attributes: Array<{ id: string; values: string[] }>
 }
 
 /** Digits only, or null. Spaces and dashes people type are dropped. */
@@ -53,39 +92,60 @@ export function validGtin(value: string): boolean {
   return (10 - (sum % 10)) % 10 === check
 }
 
+/** The marketplace's package limits: each side at most 1200 mm, the three at most 2200 mm. */
+export function fitsPackage(d: { width: number; height: number; length: number }): boolean {
+  return d.width <= 1200 && d.height <= 1200 && d.length <= 1200 && d.width + d.height + d.length <= 2200
+}
+
 export interface Eligibility {
   reasons: BlockingReason[]
   warnings: WarningCode[]
   listable: boolean
 }
 
-export function eligibility(f: VariantFacts): Eligibility {
+const filled = (v: string | null | undefined): boolean => Boolean(v && v.trim())
+
+export function eligibility(f: VariantFacts, ctx: OfferContext = { categoryId: null, gpsrFree: false, requiredAttributes: null, attributes: [] }): Eligibility {
   const reasons: BlockingReason[] = []
   const warnings: WarningCode[] = []
-  if (!f.title || !f.title.trim()) reasons.push("no_title")
+  if (!filled(f.title)) reasons.push("no_title")
   if (f.productStatus && f.productStatus !== "published") reasons.push("not_published")
   const ean = normalizeEan(f.ean)
-  if (!ean) reasons.push("no_ean")
-  else if (!validGtin(ean)) reasons.push("invalid_ean")
-  if (!f.brand || !f.brand.trim()) reasons.push("no_brand")
-  if (!f.manufacturer) reasons.push("no_gpsr")
-  else if (!f.manufacturer.name || !f.manufacturer.email || !f.manufacturer.address) reasons.push("gpsr_incomplete")
+  /* An EAN, or else the brand with the manufacturer part number. */
+  if (ean && !validGtin(ean)) reasons.push("invalid_ean")
+  else if (!ean && !filled(f.mpn)) reasons.push("no_ean")
+  if (!filled(f.brand)) reasons.push("no_brand")
+  /* What the marketplace gets is the text of the HTML: markup alone is no description. */
+  if (!filled(f.description ? plainText(f.description) : null)) reasons.push("no_description")
+  if (f.images.length === 0) reasons.push("no_image")
+  if (!ctx.categoryId) reasons.push("no_category")
+  else if (ctx.requiredAttributes) {
+    const have = new Set(ctx.attributes.filter((a) => a.values.some((v) => v.trim())).map((a) => a.id))
+    if (ctx.requiredAttributes.some((id) => !have.has(id))) reasons.push("attributes_missing")
+  }
+  if (!ctx.gpsrFree && !f.gpsrExempt) {
+    if (!f.manufacturer) reasons.push("no_gpsr")
+    else if (!filled(f.manufacturer.name) || !filled(f.manufacturer.email)) reasons.push("gpsr_incomplete")
+  }
+  if (f.dimension && !fitsPackage(f.dimension)) reasons.push("too_large")
   if (f.basePriceMinor === null || !(f.basePriceMinor > 0)) reasons.push("no_price")
-  if (!f.mpn || !f.mpn.trim()) warnings.push("no_mpn")
+  if (ean && !filled(f.mpn)) warnings.push("no_mpn")
   if (!(f.stock > 0)) warnings.push("no_stock")
-  if (!f.thumbnail) warnings.push("no_image")
+  if (!f.dimension) warnings.push("no_dimensions")
+  if (f.images.length === 1) warnings.push("one_image")
   return { reasons, warnings, listable: reasons.length === 0 }
 }
 
 /**
  * The status an offer row should have after its facts were read again:
  * a blocked offer that is fixed goes back to draft (never straight to
- * listed: a person lists it), a listed one that lost a required field is
- * blocked, closed stays closed.
+ * listed: a person lists it), closed stays closed. A listed offer stays
+ * listed even when a field went missing in Medusa: it is on the marketplace
+ * already (its price and stock still sync) and `reasons` shows what to fix.
  */
 export function nextOfferStatus(current: string | null, listable: boolean): "draft" | "listed" | "blocked" | "closed" {
   if (current === "closed") return "closed"
-  if (!listable) return "blocked"
+  if (!listable) return current === "listed" ? "listed" : "blocked"
   if (current === "listed") return "listed"
   return "draft"
 }
