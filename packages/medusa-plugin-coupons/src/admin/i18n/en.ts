@@ -116,7 +116,7 @@ const en = {
     until: "until {{date}}",
     between: "from {{from}} until {{to}}",
     onlyOn: "only on {{date}}",
-    onlyOnHours: "only on {{date}}, {{from}}–{{to}}",
+    onlyOnHours: "only on {{date}}, {{from}}-{{to}}",
     onlyOnFrom: "only on {{date}} from {{time}}",
     onlyOnUntil: "only on {{date}} until {{time}}",
     dateTime: "{{date}} {{time}}",
