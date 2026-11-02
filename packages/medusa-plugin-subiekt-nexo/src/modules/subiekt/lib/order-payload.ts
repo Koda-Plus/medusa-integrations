@@ -221,27 +221,35 @@ function iso(value: string | Date | null | undefined): string {
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
 }
 
-const PICKUP_KEYS = ["pickup_point", "target_point", "point_id", "locker_id", "parcel_locker", "paczkomat"]
+/**
+ * Keys holding a point as a string or an object. `machine_id` (with its flat
+ * siblings) is read before them: the InPost plugin of Koda Plus, InPost Pay
+ * and the InPost geowidget store only that, and the InPost plugin ships to it.
+ */
+const PICKUP_KEYS = ["pickup_point", "target_point", "point_id", "locker_id", "parcel_locker", "paczkomat", "locker_code", "locker", "point"]
+
+/** A point address in one line: "ul. Marszałkowska 1, 00-950 Warszawa", the post code and city when there is no second line. */
+function addressLine(addr: unknown): string | null {
+  if (typeof addr === "string") return text(addr)
+  if (!addr || typeof addr !== "object") return null
+  const a = addr as Record<string, unknown>
+  const town = text(a.line2) ?? ([text(a.post_code) ?? text(a.postcode) ?? text(a.postal_code), text(a.city)].filter(Boolean).join(" ") || null)
+  return [text(a.line1) ?? text(a.street), town].filter(Boolean).join(", ") || null
+}
 
 /** Pickup point from shipping method data (InPost and similar providers), best effort. */
 export function pickupPoint(data: Record<string, unknown> | null | undefined): { id: string; name: string | null; address: string | null } | null {
   if (!data || typeof data !== "object") return null
+  const machine = text(data.machine_id)
+  if (machine) return { id: machine, name: text(data.machine_name), address: addressLine(data.machine_address) }
   for (const key of PICKUP_KEYS) {
     const value = data[key]
     if (typeof value === "string" && value.trim()) return { id: value.trim(), name: null, address: null }
     if (value && typeof value === "object") {
       const v = value as Record<string, unknown>
-      const id = text(v.id) ?? text(v.name) ?? text(v.code)
-      if (id) {
-        const addr = v.address
-        const addressText =
-          typeof addr === "string"
-            ? text(addr)
-            : addr && typeof addr === "object"
-              ? [text((addr as Record<string, unknown>).line1), text((addr as Record<string, unknown>).line2)].filter(Boolean).join(", ") || null
-              : null
-        return { id, name: text(v.name) ?? text(v.label), address: addressText }
-      }
+      /* The code before a display name, as the InPost plugin reads a nested locker. */
+      const id = text(v.id) ?? text(v.code) ?? text(v.name)
+      if (id) return { id, name: text(v.name) ?? text(v.label), address: addressLine(v.address) }
     }
   }
   return null
