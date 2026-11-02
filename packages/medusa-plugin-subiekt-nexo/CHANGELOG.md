@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+No migration and no change to the bridge contract: everything reads tables the plugin already has and `GET /v1/orders/{id}` from contract 1.0.
+
+### Added
+
+- Safety net job `subiekt-catch-up`, every 10 minutes: recent orders (by default older than 10 minutes and younger than 7 days) with neither an `order.create` task nor a ZK get their task, through the same function as the `order.placed` subscriber (same payment rule: prepaid waits for the capture). A task waiting for a payment whose `payment.captured` never arrived is released when the order is paid. Never looks before the first ZK task of the database, so configuring the plugin late does not send old orders. Failed or canceled tasks are never touched. One run at a time across processes (transaction-scoped advisory lock) and per process; the unique index of `subiekt_task` keeps one row per order. Runs that queued something are in the history as "Safety net". Options `catchUpEnabled` (default `true`), `catchUpMinAgeMinutes` (`10`), `catchUpMaxAgeDays` (`7`); `POST /admin/subiekt/sync` takes `"catchup"`.
+- **Check in Subiekt** on the order widget (`POST /admin/subiekt/orders/:id/check`): the documents the bridge reports for the order against the plugin tables, each one `missing` (only in Subiekt), `status_differs` (Subiekt realized or canceled it), `same` or `only_local` (the bridge no longer reports it). **Link** (`POST /admin/subiekt/orders/:id/link`) records a document only Subiekt has, from a fresh bridge answer, and settles the `order.create` (ZK) or `order.document` (FS, PA) task waiting for it, so no second document is created; on a known document it records the status Subiekt shows. A linked ZK or WZ queues the sales document like one from the bridge. New document source `linked`.
+- Products column (the kit's order products cell) in the queue and documents lists of the admin page.
+
+### Changed
+
+- The order widget shows each document's kind in words, its warehouse, the document it came from, and "Realized in Subiekt" for a completed ZK.
+- The `order.placed` subscriber queues through `queueOrderCreate` (exported from `src/workflows/subiekt/catch-up.ts`), shared with the safety net.
+
+### Not covered
+
+- The contract has no way to ask the bridge for orders it knows by date, so the safety net only finds orders Medusa has and the plugin lacks, not documents created in Subiekt by hand for an order the plugin never queued; **Check in Subiekt** on the order covers those one by one.
+- A document the plugin stored and the bridge no longer reports (deleted in Subiekt) is shown as "Only in Medusa" and never changed automatically.
+
 ## 0.2.2 (2026-10-18)
 
 No change to the sync, the bridge contract or the tables: the shared admin kit moves from 1.0.1 to 1.0.9.

@@ -3,7 +3,7 @@ import type { OrderDocumentsResponse } from "../../../../../modules/fakturownia/
 import { manualKind } from "../../../../../modules/fakturownia/lib/document"
 import { orderFacts } from "../../../../../workflows/fakturownia/documents"
 import { documentsOfOrder, listPlans, loadOrder } from "../../../../../workflows/fakturownia/runtime"
-import { documentDto, fakturowniaService, planDtos, writersDto } from "../../helpers"
+import { documentDto, fakturowniaService, planDtos, watchContext, writersDto } from "../../helpers"
 
 /**
  * GET /admin/fakturownia/orders/:orderId
@@ -28,6 +28,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       canIssue = !facts.canceled && !rows.some((r) => r.kind === nextKind) && !(nextKind === "proforma" && hasFinal)
     }
   }
+  const watch = await watchContext(req.scope)
   const plans = await listPlans(svc, { order_id: req.params.orderId, demo: svc.isDemo(), status: { $ne: "obsolete" } }, { take: 50, order: { created_at: "DESC" } })
   const body: OrderDocumentsResponse = {
     mode: o.demo ? "demo" : "live",
@@ -35,7 +36,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     canIssue,
     nextKind,
     waitingFor: svc.isConfigured() ? o.trigger : null,
-    documents: rows.map((r) => documentDto(svc, r)),
+    documents: rows.map((r) => documentDto(svc, r, watch)),
     plans: await planDtos(req.scope, plans),
     corrections: o.corrections,
     writers: await writersDto(req.scope),

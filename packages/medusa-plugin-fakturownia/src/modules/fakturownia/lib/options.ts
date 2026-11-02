@@ -1,6 +1,8 @@
 import {
   DEFAULT_COD_PROVIDERS,
+  DEFAULT_KSEF_STUCK_AFTER_DAYS,
   DEFAULT_LANG,
+  DEFAULT_NOT_EMAILED_AFTER_HOURS,
   DEFAULT_PAYMENT_TERM_DAYS,
   DEFAULT_QUANTITY_UNIT,
   DEFAULT_RECEIPT_KIND,
@@ -114,6 +116,19 @@ export interface FakturowniaPluginOptions {
   nipSources?: Array<string | { entity: string; customerField?: string; nipField?: string; nameField?: string | null }> | string
   /** The seller department by sales channel id, like { "sc_01J...": 123 }. Others use departmentId. */
   departmentsBySalesChannel?: Record<string, number | string>
+  /**
+   * A VAT invoice or correction still without a KSeF number this many days
+   * after issue goes to "Needs attention", with its exact KSeF state. Default
+   * 3; 0 turns it off. Only on an account where KSeF gave a number before.
+   */
+  ksefStuckAfterDays?: number | string
+  /**
+   * A document with a KSeF number that neither Fakturownia nor the plugin
+   * e-mailed this many hours after the number appeared goes to "Needs
+   * attention". Default 24; 0 turns it off. Only when `sendByEmail` is on or
+   * Fakturownia was seen e-mailing a document of the account.
+   */
+  notEmailedAfterHours?: number | string
   /** Stores running the integration, shown in the admin ("Running in production"). */
   references?: ReferenceOption[]
 }
@@ -154,6 +169,10 @@ export interface ResolvedFakturowniaOptions {
   nipSources: NipSource[]
   /** [sales channel id, department id], in the order given. */
   departmentsBySalesChannel: Array<[string, number]>
+  /** 0: off. */
+  ksefStuckAfterDays: number
+  /** 0: off. */
+  notEmailedAfterHours: number
   references: ResolvedReference[]
 }
 
@@ -307,6 +326,8 @@ export function resolveOptions(o: FakturowniaPluginOptions | undefined | null): 
     reminderAfterDays: bounded(opts.reminderAfterDays, DEFAULT_REMINDER_AFTER_DAYS, 0, 365),
     nipSources: resolveNipSources(opts.nipSources, taxIdMetadataKeys),
     departmentsBySalesChannel: channelDepartments(opts.departmentsBySalesChannel),
+    ksefStuckAfterDays: bounded(opts.ksefStuckAfterDays, DEFAULT_KSEF_STUCK_AFTER_DAYS, 0, 60),
+    notEmailedAfterHours: bounded(opts.notEmailedAfterHours, DEFAULT_NOT_EMAILED_AFTER_HOURS, 0, 720),
     references: resolveReferences(opts.references),
   }
 }

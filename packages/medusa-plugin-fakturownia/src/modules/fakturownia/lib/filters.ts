@@ -6,6 +6,7 @@
  */
 
 import type { DocumentFilter } from "./contract"
+import { watchFilters, type WatchContext } from "./ksef-watch"
 import { GOV_PROBLEMS } from "./status"
 import { unpaidFilters } from "./unpaid"
 
@@ -25,12 +26,14 @@ export const DOCUMENT_FILTERS: readonly DocumentFilter[] = ["all", "pending", "i
  * every number equals the length of its list. Alternatives go under `$and`
  * (never a bare `$or`), so a search can be added without replacing them.
  *
- *   attention  failed, unknown or needing a correction, and a proforma of a
- *              canceled order whose rejection Fakturownia refused
+ *   attention  failed, unknown or needing a correction, a proforma of a
+ *              canceled order whose rejection Fakturownia refused, and with
+ *              `watch` (0.4.0, `lib/ksef-watch.ts`) a document stuck without
+ *              a KSeF number or one with a number the buyer never got
  *   unpaid     `lib/unpaid.ts`
  *   ksef       a VAT invoice or correction KSeF rejected (or could not take)
  */
-export function documentFilters(filter: DocumentFilter, demo: boolean): Record<string, unknown> {
+export function documentFilters(filter: DocumentFilter, demo: boolean, watch: WatchContext | null = null): Record<string, unknown> {
   const where: Record<string, unknown> = { demo }
   switch (filter) {
     case "pending":
@@ -40,7 +43,15 @@ export function documentFilters(filter: DocumentFilter, demo: boolean): Record<s
       where.status = "issued"
       break
     case "attention":
-      where.$and = [{ $or: [{ status: ["failed", "unknown", "needs_correction"] }, { status: "issued", kind: "proforma", error_code: "reject_failed" }] }]
+      where.$and = [
+        {
+          $or: [
+            { status: ["failed", "unknown", "needs_correction"] },
+            { status: "issued", kind: "proforma", error_code: "reject_failed" },
+            ...(watch ? watchFilters(watch) : []),
+          ],
+        },
+      ]
       break
     case "unpaid":
       return unpaidFilters(demo)

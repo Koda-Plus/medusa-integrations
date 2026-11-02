@@ -110,8 +110,9 @@ export function UnpaidSection({ status, lang, onOpenDocument }: { status: Status
   const rows = q.data?.documents ?? []
   const remind = async (id: string) => {
     try {
-      await send.mutateAsync({ id, kind: "reminder" })
-      toast.success(t("email.reminded"))
+      const r = await send.mutateAsync({ id, kind: "reminder" })
+      const doc = rows.find((x) => x.document.id === id)?.document
+      toast.success(typeof r.outstanding === "number" ? t("email.remindedAmount", { amount: fmtMoney(r.outstanding, doc?.currency, lang) }) : t("email.reminded"))
       void q.refetch()
     } catch (err) {
       toast.error(t("toast.error", { error: errorMessage(err) }))
@@ -180,6 +181,12 @@ export function UnpaidSection({ status, lang, onOpenDocument }: { status: Status
                   {r.lastReminderAt ? (
                     <Text size="xsmall" className="text-ui-fg-muted">
                       {t("unpaid.last", { time: fmtDateTime(r.lastReminderAt, lang) })}
+                    </Text>
+                  ) : null}
+                  {r.lastRefusal ? (
+                    <Text size="xsmall" className="text-ui-tag-orange-text" title={r.lastRefusal.message ?? undefined}>
+                      {r.lastRefusal.reason ? t(`unpaid.refused.${r.lastRefusal.reason}`) : r.lastRefusal.message}
+                      {r.lastRefusal.at ? ` (${fmtDateTime(r.lastRefusal.at, lang)})` : ""}
                     </Text>
                   ) : null}
                 </Table.Cell>

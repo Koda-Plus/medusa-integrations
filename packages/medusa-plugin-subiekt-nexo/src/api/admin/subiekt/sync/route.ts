@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { ActionResponse, RunKind } from "../../../../modules/subiekt/lib/contract"
+import { runCatchUp } from "../../../../workflows/subiekt/catch-up"
 import { pullEvents } from "../../../../workflows/subiekt/events"
 import { isRunning } from "../../../../workflows/subiekt/runtime"
 import { runStockSync } from "../../../../workflows/subiekt/sync-subiekt-stock"
@@ -7,10 +8,10 @@ import { runProductSync } from "../../../../workflows/subiekt/sync-subiekt-produ
 import { runDueTasks } from "../../../../workflows/subiekt/tasks"
 import { subiektService } from "../helpers"
 
-const ACTIONS: Record<string, RunKind> = { stock: "stock", events: "events", tasks: "tasks", products: "products" }
+const ACTIONS: Record<string, RunKind> = { stock: "stock", events: "events", tasks: "tasks", products: "products", catchup: "catchup" }
 
 /**
- * POST /admin/subiekt/sync  { "what": "stock" | "events" | "tasks" | "products" }
+ * POST /admin/subiekt/sync  { "what": "stock" | "events" | "tasks" | "products" | "catchup" }
  *
  * Runs the same code as the scheduled job, now. Answers 202 right away and
  * works in the background; the admin polls GET /admin/subiekt while the kind
@@ -22,7 +23,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   const what = String((req.body as { what?: unknown } | undefined)?.what ?? "")
   const kind = ACTIONS[what]
   if (!kind) {
-    res.status(400).json({ message: "`what` must be one of: stock, events, tasks, products." })
+    res.status(400).json({ message: "`what` must be one of: stock, events, tasks, products, catchup." })
     return
   }
   if (mode === "live" && !svc.isConfigured()) {
@@ -40,6 +41,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     events: () => pullEvents(req.scope, "manual"),
     tasks: () => runDueTasks(req.scope, "manual"),
     products: () => runProductSync(req.scope, "manual"),
+    catchup: () => runCatchUp(req.scope, "manual"),
     health: () => Promise.resolve(null),
   }
   const run = runs[kind]

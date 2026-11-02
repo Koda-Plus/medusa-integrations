@@ -297,7 +297,8 @@ export type SubiektMode = "demo" | "live"
 export type TaskKind = "order.create" | "order.cancel" | "order.fulfill" | "order.document"
 /** `unknown`: the bridge may or may not have created the document; the next attempt asks before it creates. */
 export type TaskStatus = "waiting" | "pending" | "running" | "unknown" | "succeeded" | "failed" | "canceled"
-export type RunKind = "stock" | "events" | "tasks" | "health" | "products"
+/** `catchup` since 0.3.0: the safety net that queues orders the subscriber missed. */
+export type RunKind = "stock" | "events" | "tasks" | "health" | "products" | "catchup"
 export type RunTrigger = "schedule" | "manual" | "webhook" | "event" | "auto"
 export type RunStatus = "success" | "partial" | "error" | "skipped"
 export type WriterKey = "prices" | "products" | "documents" | "contractors"
@@ -463,6 +464,8 @@ export interface SubiektStatusResponse {
     nipSources: string[]
     salesDocument: "none" | "fs" | "pa" | "auto"
     salesDocumentAfter: "wz" | "zk"
+    /** Since 0.3.0: the safety net job. */
+    catchUp: { enabled: boolean; minAgeMinutes: number; maxAgeDays: number }
     /** A Cloudflare Access service token is set (never the token itself). */
     cfAccess: boolean
   }
@@ -493,7 +496,7 @@ export interface SubiektStatusResponse {
   }
   lastRuns: Partial<Record<RunKind, RunDto>>
   running: RunKind[]
-  schedules: { tasks: string; events: string; stock: string; products: string }
+  schedules: { tasks: string; events: string; stock: string; products: string; catchup: string | null }
   references: ReferenceDto[]
 }
 
@@ -528,6 +531,37 @@ export interface OrderSubiektResponse {
     writerActive: boolean
     supported: boolean
   }
+}
+
+/** Since 0.3.0: one document of an order, the bridge against the plugin tables. */
+export interface ReconcileEntryDto {
+  kind: string
+  number: string
+  /** `missing`: only in Subiekt. `status_differs`: Subiekt says another status. `only_local`: the bridge does not report it. */
+  state: "missing" | "status_differs" | "same" | "only_local"
+  /** `open`, `completed` (realized in Subiekt) or `canceled`, as the bridge says. */
+  remoteStatus: string | null
+  localStatus: string | null
+  issuedAt: string | null
+  ksefNumber: string | null
+}
+
+/** Since 0.3.0: POST /admin/subiekt/orders/:id/check. */
+export interface OrderCheckResponse {
+  mode: SubiektMode
+  orderId: string
+  checkedAt: string
+  /** The bridge knows the order (it answered 200, not 404). */
+  foundInSubiekt: boolean
+  entries: ReconcileEntryDto[]
+}
+
+/** Since 0.3.0: POST /admin/subiekt/orders/:id/link. */
+export interface LinkDocumentResponse {
+  document: DocumentDto
+  /** The queue task the document settled, if any. */
+  settledTaskId: string | null
+  check: OrderCheckResponse
 }
 
 export interface ActionResponse {
