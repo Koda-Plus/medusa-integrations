@@ -43,7 +43,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     const chosen: OrderDpdResponse["chosen"] = picked
       ? { optionId: picked.read.spec.id, optionKind: picked.read.spec.kind, cod: picked.read.spec.cod, pudoId: picked.read.pudoId, country: picked.read.country, methodName: picked.method.name ?? null }
       : null
-    const rows = await listShipments(svc, { order_id: orderId, mode: svc.mode() }, { take: 50, order: { created_at: "ASC" } })
+    const rows = await listShipments(svc, { order_id: orderId, mode: svc.mode() }, { take: 50, order: { created_at: "ASC", id: "ASC" } })
     const events = rows.length > 0 ? await listEvents(svc, { shipment_id: rows.map((r) => r.id) }, { take: 60, order: { occurred_at: "DESC" } }) : []
     const body: OrderDpdResponse = {
       mode: svc.mode(),

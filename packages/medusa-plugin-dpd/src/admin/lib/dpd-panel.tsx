@@ -5,9 +5,9 @@ import { Table, Text } from "@medusajs/ui"
 import { ATTENTION_GROUPS, type CountsDto, type ShipmentDto, type ShipmentFilter, type StatusResponse } from "../../modules/dpd/lib/contract"
 import { useDpdShipments } from "./dpd-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, ToneBadge, useDebouncedValue } from "./dpd-blocks"
-import { nb } from "./dpd-guide"
 import { KitFetchingBar, KitSkeletonRows } from "./dpd-kit"
-import { Destination, GROUP_ICON, KindBadges, MedusaMark, OrderCell, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "./dpd-ui"
+import { PlanDrawer, ShipmentActionBar } from "./dpd-plan"
+import { Destination, ErrorText, GROUP_ICON, KindBadges, MedusaMark, OrderCell, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "./dpd-ui"
 
 const PAGE_SIZE = 15
 
@@ -38,11 +38,7 @@ function StatusCell({ shipment: s, lang }: { shipment: ShipmentDto; lang: string
   return (
     <div className="flex max-w-[280px] flex-col items-start gap-y-1">
       <ShipmentStatus shipment={s} />
-      {s.error && (s.state === "failed" || s.state === "unknown" || s.state === "ambiguous" || s.state === "abandoned_unknown") ? (
-        <Text size="xsmall" className="text-ui-tag-red-text">
-          {nb(s.error)}
-        </Text>
-      ) : null}
+      <ErrorText shipment={s} />
       {s.problems.length > 0 ? <ProblemList items={s.problems} /> : null}
       {s.handedOverAt ? (
         <Text size="xsmall" className="text-ui-fg-muted">
@@ -61,6 +57,7 @@ export function ShipmentsSection({
   initialQuery = "",
   seeding = false,
   seedFailed = false,
+  onSettings,
 }: {
   status: StatusResponse
   lang: string
@@ -72,11 +69,16 @@ export function ShipmentsSection({
   seeding?: boolean
   /** Demo mode: building the sample shipments failed; the page shows the error with Retry above. */
   seedFailed?: boolean
+  /** Opens Settings, Writers (from the plan of a shipment when the writer is not armed). */
+  onSettings?: () => void
 }) {
   const { t } = useTranslation("dpd")
   const [search, setSearch] = useState(initialQuery)
   const q = useDebouncedValue(search.trim())
   const [page, setPage] = useState(0)
+  /* The shipment whose plan is open in the drawer. */
+  const [planFor, setPlanFor] = useState<string | null>(null)
+  const writerArmed = status.writers.shipment.armed
   useEffect(() => setPage(0), [filter, q])
   const list = useDpdShipments(filter, q, page * PAGE_SIZE, PAGE_SIZE)
   const rows = list.data?.shipments ?? []
@@ -140,14 +142,15 @@ export function ShipmentsSection({
               <Table.HeaderCell>{t("shipments.col.status")}</Table.HeaderCell>
               <Table.HeaderCell>{t("shipments.col.waybills")}</Table.HeaderCell>
               <Table.HeaderCell className="text-right">{t("shipments.col.cod")}</Table.HeaderCell>
+              <Table.HeaderCell className="text-right">{t("shipments.col.actions")}</Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {list.isLoading ? <KitSkeletonRows cols={6} rows={5} /> : null}
-            {!list.isLoading && list.isError ? <EmptyTableRow cols={6} icon={GROUP_ICON.problems} title={t("shipments.failed")} /> : null}
+            {list.isLoading ? <KitSkeletonRows cols={7} rows={5} /> : null}
+            {!list.isLoading && list.isError ? <EmptyTableRow cols={7} icon={GROUP_ICON.problems} title={t("shipments.failed")} /> : null}
             {!list.isLoading && !list.isError && rows.length === 0 ? (
               <EmptyTableRow
-                cols={6}
+                cols={7}
                 icon={GROUP_ICON[filter]}
                 title={fresh ? t(emptyTitle) : t("shipments.empty")}
                 points={showHint ? [{ icon: <TruckFast />, text: t(emptyHint) }] : undefined}
@@ -176,6 +179,9 @@ export function ShipmentsSection({
                 <Table.Cell className="whitespace-nowrap text-right tabular-nums">
                   {s.codAmount ? fmtMoney(s.codAmount, s.currency, lang) : s.cod ? <span className="text-ui-fg-muted">{t("shipments.codLater")}</span> : ""}
                 </Table.Cell>
+                <Table.Cell className="text-right">
+                  <ShipmentActionBar shipment={s} writerArmed={writerArmed} writer={status.writers.shipment} onPlan={() => setPlanFor(s.id)} />
+                </Table.Cell>
               </Table.Row>
             ))}
           </Table.Body>
@@ -192,6 +198,22 @@ export function ShipmentsSection({
         nextPage={() => setPage((x) => x + 1)}
         translations={{ of: t("pagination.of"), results: t("pagination.results"), pages: t("pagination.pages"), prev: t("pagination.prev"), next: t("pagination.next") }}
       />
+      {planFor ? (
+        <PlanDrawer
+          shipmentId={planFor}
+          lang={lang}
+          writer={status.writers.shipment}
+          onClose={() => setPlanFor(null)}
+          onSettings={
+            onSettings
+              ? () => {
+                  setPlanFor(null)
+                  onSettings()
+                }
+              : undefined
+          }
+        />
+      ) : null}
     </Section>
   )
 }

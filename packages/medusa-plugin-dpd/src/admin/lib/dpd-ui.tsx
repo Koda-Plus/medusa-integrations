@@ -19,6 +19,7 @@ import { Copy, Text, clx } from "@medusajs/ui"
 import type { ProblemDto, SenderProblemDto, ShipmentDto, ShipmentFilter, ShipmentStage, ShipmentState, StatusResponse } from "../../modules/dpd/lib/contract"
 import { ToneBadge, type Tone } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
+import { fmtMoney, problemDetail } from "./dpd-logic"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -41,17 +42,8 @@ export function fmtNumber(value: unknown, lang: string): string {
   }
 }
 
-/** "199.99" and "PLN" in the admin's format: "199,99 zł" or "PLN 199.99". */
-export function fmtMoney(amount: string | null | undefined, currency: string | null | undefined, lang: string): string {
-  if (amount === null || amount === undefined || amount === "") return ""
-  const n = Number(amount)
-  if (!Number.isFinite(n)) return amount
-  try {
-    return new Intl.NumberFormat(lang, { style: "currency", currency: (currency || "PLN").toUpperCase() }).format(n)
-  } catch {
-    return `${amount} ${currency ?? ""}`.trim()
-  }
-}
+/* Money in the admin's format lives with the plain logic (node --test reads it there). */
+export { fmtMoney }
 
 /** The mode of the plugin in one word, for the header badge: demo, not configured, sandbox or live. */
 export function modeOf(s: StatusResponse | undefined): { key: "demo" | "sandbox" | "live" | "notConfigured" | "unknown"; tone: Exclude<Tone, "purple"> } {
@@ -220,18 +212,24 @@ export function WaybillCell({ shipment }: { shipment: Pick<ShipmentDto, "waybill
   )
 }
 
-/** Problems of a row, translated; an unknown code falls back to the code and its detail. */
-export function ProblemList({ items }: { items: ProblemDto[] }) {
+/**
+ * Problems of a row or a plan, translated; an unknown code falls back to the
+ * code and its detail, an amount goes in as money of the admin's language. Orange is for the warnings of a plan (`warning.*`),
+ * red for what blocks (`problem.*`).
+ */
+export function ProblemList({ items, tone = "red" }: { items: ProblemDto[]; tone?: "red" | "orange" }) {
   const { t, i18n } = useTranslation("dpd")
+  const lang = i18n.language || "en"
   if (items.length === 0) return null
   return (
     <ul className="flex flex-col gap-y-0.5">
       {items.map((p, i) => {
-        const key = `problem.${p.code}`
-        const text = i18n.exists(key, { ns: "dpd" }) ? t(key, { detail: p.detail ?? p.field ?? "" }) : nb(`${p.code}${p.detail ? `: ${p.detail}` : ""}`)
+        const key = tone === "orange" ? `warning.${p.code}` : `problem.${p.code}`
+        /* An amount (order_paid) is formatted in the admin's language; the detail stays for the logs. */
+        const text = i18n.exists(key, { ns: "dpd" }) ? t(key, { detail: problemDetail(p, lang) }) : nb(`${p.code}${p.detail ? `: ${p.detail}` : ""}`)
         return (
           <li key={`${p.code}-${i}`} className="flex gap-x-1.5">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-ui-tag-red-icon" />
+            <span className={clx("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", tone === "orange" ? "bg-ui-tag-orange-icon" : "bg-ui-tag-red-icon")} />
             <Text size="xsmall" className="text-ui-fg-subtle">
               {text}
             </Text>
@@ -239,6 +237,29 @@ export function ProblemList({ items }: { items: ProblemDto[] }) {
         )
       })}
     </ul>
+  )
+}
+
+/** The states whose error a person should read. */
+const ERROR_STATES: readonly ShipmentState[] = ["failed", "unknown", "ambiguous", "abandoned_unknown"]
+
+/**
+ * What went wrong with a row, in the admin's language: the text of its error
+ * code when the dictionary has one, else the stored (masked) message. Shown
+ * for refused, unclear and mismatched rows, and for a row with waybills whose
+ * label did not come. The stored message stays in the tooltip.
+ */
+export function ErrorText({ shipment: s }: { shipment: Pick<ShipmentDto, "state" | "error" | "errorCode"> }) {
+  const { t, i18n } = useTranslation("dpd")
+  const shown = ERROR_STATES.includes(s.state) || (s.state === "created" && Boolean(s.errorCode))
+  if (!shown) return null
+  const key = s.errorCode ? `errorCode.${s.errorCode}` : ""
+  const text = key && i18n.exists(key, { ns: "dpd" }) ? t(key) : s.error ? nb(s.error) : ""
+  if (!text) return null
+  return (
+    <Text size="xsmall" className={s.state === "created" ? "text-ui-tag-orange-text" : "text-ui-tag-red-text"} title={s.error ? nb(s.error) : undefined}>
+      {text}
+    </Text>
   )
 }
 

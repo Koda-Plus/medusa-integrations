@@ -1,0 +1,73 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "receiver": {
+            "company": "Odbiorca Testowy",
+            "name": "Anna Przykładowa",
+            "address": "Przykładowa 2",
+            "city": "Kraków",
+            "countryCode": "PL",
+            "postalCode": "99999",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "parcels": [
+            {
+              "reference": "probe-mvzj6089-Va-1",
+              "weight": 1
+            }
+          ],
+          "reference": "probe-mvzj6089-Va"
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "sessionId": 244462959,
+      "beginTime": null,
+      "endTime": null,
+      "packages": [
+        {
+          "status": "OK",
+          "reference": "probe-mvzj6089-Va",
+          "validationInfo": [],
+          "parcels": [
+            {
+              "status": "OK",
+              "reference": "probe-mvzj6089-Va-1",
+              "waybill": "0000899044900Q",
+              "validationInfo": []
+            }
+          ]
+        }
+      ],
+      "traceId": "0a5f1c8e-fe3a-450c-a5da-93ca10c15a86"
+    }
+  }
+}

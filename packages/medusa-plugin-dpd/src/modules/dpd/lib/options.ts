@@ -1,6 +1,10 @@
 import {
+  AUTO_CREATE_MAX_AGE_HOURS_MAX,
   COD_CURRENCIES,
+  DEFAULT_AUTO_CREATE_MAX_AGE_HOURS,
   DEFAULT_COD_COUNTRIES,
+  DEFAULT_REQUESTS_PER_MINUTE,
+  DEFAULT_TIMEOUT_MS,
   DEFAULT_DOCUMENT_RETENTION_DAYS,
   DEFAULT_LABEL_PAGE,
   BOX_SIDE_MAX_CM,
@@ -10,7 +14,11 @@ import {
   DPDSERVICES_HOSTS,
   EU_COUNTRIES,
   LABEL_PAGES,
+  REQUESTS_PER_MINUTE_MAX,
+  REQUESTS_PER_MINUTE_MIN,
   SHIPMENT_STAGES,
+  TIMEOUT_MAX_MS,
+  TIMEOUT_MIN_MS,
   TRACKING_MODES,
   type CodCurrency,
   type DpdMode,
@@ -79,7 +87,7 @@ export type DpdPluginOptions = {
   orderer?: DpdOrdererOption | string
   /** A sender per stock location id, for stores shipping from several warehouses. Object or JSON. */
   senders?: Record<string, DpdSenderOption> | string
-  /** The label page by default: "A4" (default) or "LBL_PRINTER". Chosen again when printing. */
+  /** The label page by default: "A4" (default) or "LBL_PRINTER". Chosen per shipment when it is created; no reprint in another format yet. */
   labelPage?: LabelPage | string
   /** Destination countries (ISO alpha-2), default the EU. Countries outside the EU are not supported in v1. */
   countries?: string[] | string
@@ -99,6 +107,12 @@ export type DpdPluginOptions = {
   documentRetentionDays?: number | string
   /** With the shipment writer armed: create the shipment as soon as a fulfillment is created. Default false. */
   autoCreate?: boolean | string
+  /** The periodic pass creates automatically only fulfillments younger than this many hours. Default 24, 1 to 720. */
+  autoCreateMaxAgeHours?: number | string
+  /** How long a DPDServices call may take, in milliseconds. Default 20000, 5000 to 45000. */
+  timeoutMs?: number | string
+  /** DPDServices calls per minute from one process. Default 60, 10 to 600. */
+  requestsPerMinute?: number | string
   /** HARD SWITCH of the DPD writes that create parcels. Default false (true in demo mode, simulated). */
   shipmentWriter?: boolean | string
   /** HARD SWITCH of the courier orders. Default false (true in demo mode, simulated). */
@@ -141,6 +155,9 @@ export type ResolvedDpdOptions = {
   statusMap: Record<string, ShipmentStage>
   documentRetentionDays: number
   autoCreate: boolean
+  autoCreateMaxAgeHours: number
+  timeoutMs: number
+  requestsPerMinute: number
   writers: Record<WriterKey, boolean>
   /** Values that were set but ignored, for the admin and the boot log. */
   problems: string[]
@@ -433,6 +450,9 @@ export function resolveOptions(o: DpdPluginOptions | undefined | null): Resolved
     statusMap: resolveStatusMap(opts.statusMap, problems),
     documentRetentionDays: bounded(opts.documentRetentionDays, DEFAULT_DOCUMENT_RETENTION_DAYS, 1, 3650, "documentRetentionDays", problems),
     autoCreate: flag(opts.autoCreate, "autoCreate"),
+    autoCreateMaxAgeHours: bounded(opts.autoCreateMaxAgeHours, DEFAULT_AUTO_CREATE_MAX_AGE_HOURS, 1, AUTO_CREATE_MAX_AGE_HOURS_MAX, "autoCreateMaxAgeHours", problems),
+    timeoutMs: bounded(opts.timeoutMs, DEFAULT_TIMEOUT_MS, TIMEOUT_MIN_MS, TIMEOUT_MAX_MS, "timeoutMs", problems),
+    requestsPerMinute: bounded(opts.requestsPerMinute, DEFAULT_REQUESTS_PER_MINUTE, REQUESTS_PER_MINUTE_MIN, REQUESTS_PER_MINUTE_MAX, "requestsPerMinute", problems),
     writers,
     problems,
   }

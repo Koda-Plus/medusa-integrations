@@ -1,7 +1,7 @@
 {
   "name": "@koda-plus/medusa-plugin-dpd",
-  "version": "0.1.0",
-  "description": "Work in progress: DPD by Koda Plus, the DPD Polska courier and DPD Pickup points for Medusa, with cash on delivery. This version has the fulfillment provider with five options, records each DPD fulfillment, the admin page with an order card, the writers (held off) and a demo mode; shipments, labels, tracking and returns on the DPD Polska web services come in the next versions.",
+  "version": "0.2.0",
+  "description": "Work in progress: DPD by Koda Plus, the DPD Polska courier and DPD Pickup points for Medusa, with cash on delivery. This version creates DPD courier shipments within Poland, with or without cash on delivery, from a plan a person confirms (or automatically), gets and stores their labels, and resolves unclear answers by looking the shipment up in DPD; the provider has five options, the admin page an order card, the writers and a demo mode. DPD Pickup shipments, courier orders, tracking, returns and shipments abroad come in the next versions.",
   "author": {
     "name": "Koda Plus",
     "email": "kontakt@koda.plus",

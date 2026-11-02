@@ -1,15 +1,19 @@
 /**
- * THE SHIPMENT ROWS of the DPD fulfillments. Stage 1 records them and
- * cancels them with their fulfillment; the plan, the waybills, the label and
- * the handover come in the stages that talk to DPD, and they all start from
- * the row recorded here.
+ * THE SHIPMENT ROWS of the DPD fulfillments: recorded with their
+ * fulfillment (with the problems of their plan, and created at once when
+ * autoCreate and the armed shipment writer say so), canceled with it while
+ * nothing was sent. The plan, the waybills and the label (plan.ts,
+ * create.ts) and the handover all start from the row recorded here.
  */
 
 import { isDpdProviderId } from "../../modules/dpd/lib/constants"
 import type { ProblemDto } from "../../modules/dpd/lib/contract"
 import type { ShipmentRow } from "../../modules/dpd/lib/dto"
+import { canCallDpd } from "../../modules/dpd/lib/options"
 import { checkMethodData, pickDpdMethod, readFulfillmentData } from "../../modules/dpd/lib/option-data"
-import { dpdService, listShipments, loadOrder, recordEvent, storeFor, type Scope } from "./runtime"
+import { createShipment } from "./create"
+import { refreshProblems } from "./plan"
+import { dpdService, inBackground, isArmed, listShipments, loadOrder, recordEvent, storeFor, type Scope } from "./runtime"
 
 /**
  * A fulfillment was created. When its provider is DPD (`dpd_*`), one row is
@@ -99,7 +103,14 @@ export async function recordFulfillment(scope: Scope, orderId: string, fulfillme
     data: { action: "recorded", option: read.spec.id, ...(codes.length > 0 ? { problems: codes } : {}) },
     mode,
   })
-  return row
+  if (row.state !== "pending") return row
+  /* The problems of the plan replace those of the checkout: they are what stands between the row and DPD. */
+  const planned = await refreshProblems(scope, row)
+  const o = svc.getOptions()
+  if (o.autoCreate && planned.problems === null && (o.demo || canCallDpd(o)) && (await isArmed(svc, "shipment"))) {
+    inBackground(scope, `auto create ${planned.id}`, () => createShipment(scope, planned.id, { actor: "system", trigger: "auto" }))
+  }
+  return planned
 }
 
 /** States in which nothing was sent to DPD yet: the row is canceled with its fulfillment. */
@@ -110,7 +121,9 @@ const CANCELABLE: readonly string[] = ["pending", "failed", "skipped"]
  * of the current mode is canceled when nothing was sent to DPD yet (pending,
  * failed, skipped). A row DPD already knows (creating, created, labeled,
  * unknown...) is left as it is: DPDServices cannot cancel a shipment, so the
- * plugin never pretends it did; the history and the log say so once.
+ * plugin never pretends it did; the history and the log say so once. An
+ * unknown row becomes abandoned_unknown: the lookup then tells whether DPD
+ * has it (to keep it out of the handover) or not (canceled).
  * Idempotent: a row already canceled is returned as it is, and the history
  * line has a dedupe key. Returns the row, or null when the fulfillment has
  * none.
@@ -131,6 +144,25 @@ export async function onFulfillmentCanceled(scope: Scope, fulfillmentId: string)
     if (canceled) now = canceled
   }
   if (!canceled && now.state === "canceled") return now
+  /* An unclear row may exist in DPD: it is kept apart (abandoned_unknown), so a lookup tells whether it must be excluded from the handover. */
+  if (!canceled && now.state === "unknown") {
+    const abandoned = await store.transition(row.id, ["unknown"], { state: "abandoned_unknown" })
+    if (abandoned) {
+      await recordEvent(scope, {
+        shipment_id: row.id,
+        order_id: row.order_id,
+        kind: "action",
+        source: "system",
+        message:
+          "The Medusa fulfillment was canceled while the answer of DPD was unclear: the shipment may exist in DPD. It is checked in DPD; if it exists, exclude it from the handover to the courier.",
+        data: { action: "abandoned", outcome: "abandoned", state: "abandoned_unknown" },
+        dedupe_key: `fulfillment_canceled:${row.id}`,
+        mode,
+      })
+      return abandoned
+    }
+    now = (await listShipments(svc, { id: row.id }, { take: 1 }))[0] ?? now
+  }
   if (!canceled) {
     svc
       .getLogger()

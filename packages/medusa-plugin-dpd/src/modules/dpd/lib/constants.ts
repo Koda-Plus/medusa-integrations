@@ -4,9 +4,9 @@
  *
  * What comes from DPD (the DPDServices OpenAPI 5.27.0, the InfoServices,
  * MyPudoAPI and PudoFinder documentation): the hosts, the label pages, the
- * cash on delivery currencies and the shape of a Pickup point id. Stage 1 of
- * the plugin calls none of the hosts; they are here so later stages and the
- * admin read one source.
+ * cash on delivery currencies and the shape of a Pickup point id. Stage 2
+ * calls DPDServices (generatePackagesNumbers and generateSpedLabels); the
+ * other hosts are here so later stages and the admin read one source.
  */
 
 /** Container key of the data module (and the namespace of tables, routes and files). */
@@ -155,7 +155,9 @@ export type ShipmentKind = (typeof SHIPMENT_KINDS)[number]
  *   failed             DPD refused clearly; a person fixes and tries again
  *   unknown            no clear answer (timeout, 5xx on a write): resolved
  *                      by a lookup before anything is sent again
- *   ambiguous          the lookup found more than one match: for a person
+ *   ambiguous          DPD's waybills do not match what was sent (their
+ *                      number or set), or DPD reports the reference taken
+ *                      and finds no shipment under it: for a person
  *   abandoned_unknown  canceled while unknown: the parcel may exist in DPD
  *   skipped            shipped outside Medusa
  *   canceled           the fulfillment or the shipment was canceled
@@ -206,3 +208,50 @@ export const BOX_SIDE_MAX_CM = 300
 
 /** The rows the demo builds from the store's newest orders. */
 export const DEMO_ROWS = 16
+
+/* ------------------------------------------------------------------ */
+/* Stage 2: the courier in Poland, labels, cash on delivery            */
+/* ------------------------------------------------------------------ */
+
+/** The client never waits longer than this for its pacing slot: it sends nothing and answers rate_limited instead. */
+export const PACING_MAX_WAIT_MS = 15_000
+/**
+ * A claim of generatePackagesNumbers (and the adoption label call in the
+ * same claim) lasts this long. It must exceed 2 x (TIMEOUT_MAX_MS +
+ * PACING_MAX_WAIT_MS): two calls, each waiting for its slot at most and
+ * then for its answer at most.
+ */
+export const CREATE_LEASE_MS = 180_000
+/** A claim of generateSpedLabels, the same bound as CREATE_LEASE_MS. */
+export const LABEL_LEASE_MS = 180_000
+/** An unclear row is looked up in DPD only this long after it last changed (updated_at). */
+export const UNKNOWN_SETTLE_MS = 120_000
+export const DEFAULT_TIMEOUT_MS = 20_000
+export const TIMEOUT_MIN_MS = 5_000
+export const TIMEOUT_MAX_MS = 45_000
+export const DEFAULT_REQUESTS_PER_MINUTE = 60
+/** The lowest requestsPerMinute: a slower pace would make the pacing wait longer than PACING_MAX_WAIT_MS. */
+export const REQUESTS_PER_MINUTE_MIN = 10
+export const REQUESTS_PER_MINUTE_MAX = 600
+export const DEFAULT_AUTO_CREATE_MAX_AGE_HOURS = 24
+export const AUTO_CREATE_MAX_AGE_HOURS_MAX = 720
+/** The shipment pass: expire leases, look up unclear rows, auto create. Stage 5 adds statuses to the same job. */
+export const SYNC_SCHEDULE = "*/5 * * * *"
+export const LOOKUP_BATCH = 20
+export const AUTO_BATCH = 10
+/** The pass asks again for the label of a row claimed at most this many times (attempts counts the create claim too); past it a person asks. */
+export const AUTO_LABEL_MAX_ATTEMPTS = 5
+/** Parcels (boxes) in one package: DPDServices SinglePackage.parcels maxItems. */
+export const MAX_BOXES = 100
+/** package.reference and parcel.reference: at most 50 characters. */
+export const REFERENCE_MAX = 50
+/** Text limits of SenderOrReceiver in DPDServices. */
+export const DPD_TEXT_LIMITS = { company: 100, name: 100, address: 100, city: 50, email: 100, ref: 100 } as const
+/** The payer FID of the simulated requests of demo mode (never sent anywhere). */
+export const DEMO_PAYER_FID = 1
+/** The label every stage 2 call asks for. */
+export const LABEL_OUTPUT = { outputDocFormat: "PDF", outputType: "BIC3", variant: "STANDARD" } as const
+export const DPDSERVICES_PATHS = {
+  numbers: "/public/shipment/v1/generatePackagesNumbers",
+  labels: "/public/shipment/v1/generateSpedLabels",
+} as const

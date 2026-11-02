@@ -164,9 +164,15 @@ test("several DPD methods: the one of the fulfillment's shipping option; without
   assert.equal((await recordFulfillment(draft.container, ORDER, FUL))?.option_id, "dpd-courier", "a draft order without checkout data is DPD's too")
 })
 
-test("recording trusts the order, not the checkout: the courier's country from the address, the checks run again into problems", async () => {
+test("recording trusts the order, not the checkout: the courier's country from the address, the plan's problems on the row (E18)", async () => {
+  const codes = (row: Row | null) => ((row?.problems as Array<{ code: string }> | null) ?? []).map((p) => p.code)
+  /* A courier order with the variant weights plans clean; a Pickup option is not sent in stage 2. */
+  const clean = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-courier", dpd_country: "PL" }, { items: [{ id: "li_1", quantity: 2, variant: { weight: 1200 } }] })])
+  assert.equal((await recordFulfillment(clean.container, ORDER, FUL))?.problems, null, "a courier order that plans has no problems")
   const s = setup(SANDBOX, [withFulfillment(PICKUP_DATA)])
-  assert.equal((await recordFulfillment(s.container, ORDER, FUL))?.problems, null, "a clean order has no problems")
+  assert.deepEqual(codes(await recordFulfillment(s.container, ORDER, FUL)), ["option_later"], "Pickup comes in a later stage")
+  const noWeight = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-courier", dpd_country: "PL" })])
+  assert.deepEqual(codes(await recordFulfillment(noWeight.container, ORDER, FUL)), ["weight_missing"], "no variant weight and no default box")
 
   /* The checkout saw Poland; the address was changed to Germany afterwards. */
   const moved = setup(SANDBOX, [
@@ -174,21 +180,22 @@ test("recording trusts the order, not the checkout: the courier's country from t
   ])
   const row = await recordFulfillment(moved.container, ORDER, FUL)
   assert.equal(row?.country_code, "DE", "the address of the order, not the checkout's country")
-  assert.deepEqual((row?.problems as Array<{ code: string }>).map((p) => p.code), ["cod_country_unsupported"])
+  assert.deepEqual(codes(row), ["receiver_name_missing", "abroad_later", "weight_missing", "cod_country_unsupported"])
   assert.match(String(moved.events.rows[0].message), /cod_country_unsupported/)
 
   const outside = setup({ ...SANDBOX, countries: "PL" }, [withFulfillment({ dpd_option: "dpd-courier", dpd_country: "PL" }, { shipping_address: { address_1: "Musterstr. 1", city: "Berlin", postal_code: "10115", country_code: "de" } })])
-  assert.deepEqual(((await recordFulfillment(outside.container, ORDER, FUL))?.problems as Array<{ code: string }>).map((p) => p.code), ["country_unsupported"])
+  assert.ok(codes(await recordFulfillment(outside.container, ORDER, FUL)).includes("country_unsupported"))
   const noAddress = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-courier", dpd_country: "PL" }, { shipping_address: null })])
   const bare = await recordFulfillment(noAddress.container, ORDER, FUL)
   assert.equal(bare?.country_code, null)
-  assert.deepEqual((bare?.problems as Array<{ code: string }>).map((p) => p.code), ["address_incomplete"])
+  assert.deepEqual(codes(bare), ["address_incomplete", "weight_missing"])
   const currency = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-pickup-cod", dpd_pudo_id: "PL14509" }, { currency_code: "eur" })])
   const eur = await recordFulfillment(currency.container, ORDER, FUL)
   assert.equal(eur?.country_code, "PL", "a Pickup point keeps the country of its id")
-  assert.deepEqual((eur?.problems as Array<{ code: string }>).map((p) => p.code), ["cod_currency_unsupported"])
+  assert.deepEqual(codes(eur), ["option_later"])
+  assert.match(String(currency.events.rows[0].message), /cod_currency_unsupported/, "the checks of the checkout still speak in the history")
   const noPoint = setup(SANDBOX, [withFulfillment({ ...OPTION_PICKUP }, { shipping_methods: [] })])
-  assert.deepEqual(((await recordFulfillment(noPoint.container, ORDER, FUL))?.problems as Array<{ code: string }>).map((p) => p.code), ["pudo_missing"])
+  assert.deepEqual(codes(await recordFulfillment(noPoint.container, ORDER, FUL)), ["option_later"])
 
   for (const x of [moved, outside, noAddress, currency]) {
     const stored = JSON.stringify(x.shipments.rows) + JSON.stringify(x.events.rows)

@@ -1,23 +1,26 @@
 import { useState, type ReactNode } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
 import { ArchiveBox, History as HistoryIcon, TruckFast } from "@medusajs/icons"
 import { Button, Heading, Text } from "@medusajs/ui"
 import type { EventDto, ShipmentDto } from "../../modules/dpd/lib/contract"
+import { WRITER_OPTION } from "../../modules/dpd/lib/writers"
 import { useDpdOrder } from "../lib/dpd-api"
 import { EmptyState, ToneBadge } from "../lib/dpd-blocks"
 import { nb } from "../lib/dpd-guide"
 import { DpdIcon, DpdMark } from "../lib/dpd-icon"
 import { KitLoading, WidgetFrame, hostable } from "../lib/dpd-kit"
-import { Destination, KindBadges, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "../lib/dpd-ui"
+import { PlanDrawer, ShipmentActionBar } from "../lib/dpd-plan"
+import { Destination, ErrorText, KindBadges, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "../lib/dpd-ui"
 
 /**
  * Order page, side column: the DPD option the customer chose (courier or
  * Pickup point, cash on delivery, the point id), then each DPD shipment or
  * return of the order with its state, waybills, cash on delivery, problems
- * and history. Hidden on orders that do not go with DPD.
+ * and history, with the actions of each shipment and the same plan drawer as
+ * the Panel. Hidden on orders that do not go with DPD.
  *
  * A host (an app that shows every integration as tabs of one card) embeds it
  * with `embedded`: no frame and header of its own, a line while loading and
@@ -27,6 +30,9 @@ const DpdOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { embe
   const { t, i18n } = useTranslation("dpd")
   const lang = i18n.language || "en"
   const q = useDpdOrder(data.id)
+  const navigate = useNavigate()
+  /* The shipment whose plan is open in the drawer. */
+  const [planFor, setPlanFor] = useState<string | null>(null)
   const info = q.data
   if (q.isLoading) return embedded ? <KitLoading label={t("widget.loading")} /> : null
   if (!info) return embedded ? <EmptyState compact icon={<TruckFast />} title={t("widget.failed")} /> : null
@@ -80,8 +86,19 @@ const DpdOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { embe
           points={info.configured ? [{ icon: <TruckFast />, text: t("widget.noneHint") }] : undefined}
         />
       ) : (
-        info.shipments.map((s) => <ShipmentBlock key={s.id} shipment={s} lang={lang} events={info.events.filter((e) => e.shipmentId === s.id)} />)
+        info.shipments.map((s) => (
+          <ShipmentBlock
+            key={s.id}
+            shipment={s}
+            lang={lang}
+            writerArmed={info.writers.shipment.armed}
+            writerAllowed={info.writers.shipment.allowed}
+            onPlan={() => setPlanFor(s.id)}
+            events={info.events.filter((e) => e.shipmentId === s.id)}
+          />
+        ))
       )}
+      {planFor ? <PlanDrawer shipmentId={planFor} lang={lang} writer={info.writers.shipment} onClose={() => setPlanFor(null)} onSettings={() => navigate("/dpd?view=settings&tab=writers")} /> : null}
     </WidgetFrame>
   )
 }
@@ -97,10 +114,24 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function ShipmentBlock({ shipment: s, lang, events }: { shipment: ShipmentDto; lang: string; events: EventDto[] }) {
+function ShipmentBlock({
+  shipment: s,
+  lang,
+  writerArmed,
+  writerAllowed,
+  onPlan,
+  events,
+}: {
+  shipment: ShipmentDto
+  lang: string
+  writerArmed: boolean
+  /** The options allow the shipment writer: when not, arming it would not help and the badge says so. */
+  writerAllowed: boolean
+  onPlan: () => void
+  events: EventDto[]
+}) {
   const { t } = useTranslation("dpd")
   const [showHistory, setShowHistory] = useState(false)
-  const failed = s.state === "failed" || s.state === "unknown" || s.state === "ambiguous" || s.state === "abandoned_unknown"
   return (
     <div className="flex flex-col gap-y-3 px-6 py-4">
       <div className="flex items-center justify-between gap-x-2">
@@ -129,13 +160,14 @@ function ShipmentBlock({ shipment: s, lang, events }: { shipment: ShipmentDto; l
           <Text size="small">{fmtDateTime(s.handedOverAt, lang)}</Text>
         </Line>
       ) : null}
-      {s.error && failed ? (
-        <Text size="xsmall" className="text-ui-tag-red-text">
-          {nb(s.error)}
-        </Text>
-      ) : null}
+      <ErrorText shipment={s} />
       {s.problems.length > 0 ? <ProblemList items={s.problems} /> : null}
-      {s.state === "pending" ? <ToneBadge tone="orange">{t("widget.waitingForArm")}</ToneBadge> : null}
+      {s.state === "pending" ? (
+        <ToneBadge tone="orange" title={writerAllowed ? undefined : t("writers.blockedHint", { option: `${WRITER_OPTION.shipment}: true` })}>
+          {!writerAllowed ? t("actionError.writer_off") : writerArmed ? t("widget.toCreate") : t("widget.waitingForArm")}
+        </ToneBadge>
+      ) : null}
+      <ShipmentActionBar shipment={s} writerArmed={writerArmed} writer={{ allowed: writerAllowed }} onPlan={onPlan} />
       {events.length > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button size="small" variant="transparent" onClick={() => setShowHistory(!showHistory)}>

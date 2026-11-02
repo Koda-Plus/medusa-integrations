@@ -1,7 +1,18 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type DpdModuleService from "../../../modules/dpd/service"
-import { SHIPMENT_GROUPS, type ErrorResponse, type EventDto, type OptionsSummaryDto, type ShipmentFilter, type StatusResponse, type WriterDto, type WriterKey } from "../../../modules/dpd/lib/contract"
-import { countsOf, toEventDto, toWriterDto, type EventRow } from "../../../modules/dpd/lib/dto"
+import { LABEL_PAGES, type LabelPage } from "../../../modules/dpd/lib/constants"
+import {
+  SHIPMENT_GROUPS,
+  type ActionResponse,
+  type ErrorResponse,
+  type EventDto,
+  type OptionsSummaryDto,
+  type ShipmentFilter,
+  type StatusResponse,
+  type WriterDto,
+  type WriterKey,
+} from "../../../modules/dpd/lib/contract"
+import { countsOf, toEventDto, toShipmentDto, toWriterDto, type EventRow, type ShipmentRow } from "../../../modules/dpd/lib/dto"
 import type { ResolvedDpdOptions } from "../../../modules/dpd/lib/options"
 import { secretState } from "../../../modules/dpd/lib/security"
 import { DEMO_SEEDED_KEY } from "../../../modules/dpd/lib/settings"
@@ -12,6 +23,42 @@ import { ActionError, actorNames, dpdService, getSetting, settingsOf, storeFor, 
 /* Only files named `route.ts` register routes; this one is a helper. */
 
 export { dpdService, ActionError }
+
+/** A shipment id of a route: letters, digits and "_" only, at most 64 characters. */
+export const SHIPMENT_ID = /^[A-Za-z0-9_]{1,64}$/
+
+/** `Cache-Control: private, no-store` on an answer about one shipment (a plan carries the receiver read live from the order). */
+export function noStore(res: MedusaResponse): void {
+  const r = res as MedusaResponse & { setHeader?: (name: string, value: string) => unknown }
+  if (typeof r.setHeader === "function") r.setHeader("Cache-Control", "private, no-store")
+}
+
+/** The `:id` of a shipment route, or a 400 invalid. */
+export function shipmentIdOf(req: MedusaRequest): string {
+  const id = String((req.params as Record<string, unknown> | undefined)?.id ?? "")
+  if (!SHIPMENT_ID.test(id)) throw new ActionError(400, "invalid", "The shipment id is not valid.")
+  return id
+}
+
+/** The label page of a request body: absent gives null, anything but A4 or LBL_PRINTER a 400 invalid. */
+export function pageOf(body: Record<string, unknown>): LabelPage | null {
+  const page = body.page
+  if (page === undefined || page === null || page === "") return null
+  if (typeof page === "string" && (LABEL_PAGES as readonly string[]).includes(page)) return page as LabelPage
+  throw new ActionError(400, "invalid", "page is A4 or LBL_PRINTER.")
+}
+
+/** The answer of an action route: `{ shipment }` of the row it returns, or the refusal. Private, no-store. */
+export async function respondShipment(req: MedusaRequest, res: MedusaResponse, work: () => Promise<ShipmentRow>): Promise<void> {
+  noStore(res)
+  try {
+    const row = await work()
+    const body: ActionResponse = { shipment: toShipmentDto(row) }
+    res.json(body)
+  } catch (err) {
+    sendError(req.scope, res, err)
+  }
+}
 
 /** The user id of an admin request (who armed a writer). */
 export function actorOf(req: MedusaRequest): string | null {
@@ -43,15 +90,15 @@ export function isFilter(v: unknown): v is ShipmentFilter {
 }
 
 /** An ErrorResponse with its status. */
-export function refuse(res: MedusaResponse, status: number, code: ErrorResponse["code"], message: string): void {
-  const body: ErrorResponse = { code, message }
+export function refuse(res: MedusaResponse, status: number, code: ErrorResponse["code"], message: string, fields?: ErrorResponse["fields"]): void {
+  const body: ErrorResponse = fields && fields.length > 0 ? { code, message, fields } : { code, message }
   res.status(status).json(body)
 }
 
 /** An error as an answer: refusals with their status, anything else 500 with a plain sentence (the details stay in the log, masked). */
 export function sendError(scope: Scope, res: MedusaResponse, err: unknown): void {
   if (err instanceof ActionError) {
-    refuse(res, err.status, err.code, err.message)
+    refuse(res, err.status, err.code, err.message, err.fields)
     return
   }
   let svc: DpdModuleService | null = null

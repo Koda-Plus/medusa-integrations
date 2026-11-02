@@ -7,6 +7,7 @@ import { WRITERS, WRITER_OPTION } from "../../modules/dpd/lib/writers"
 import { errorMessage, useDpdWriter } from "./dpd-api"
 import { EmptyState, Section, ToneBadge } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
+import { isLaterWriter } from "./dpd-logic"
 import { Fact, fmtDateTime, modeOf, useSenderProblemText } from "./dpd-ui"
 
 /** The tabs of Settings, in the URL as `?view=settings&tab=`. */
@@ -235,8 +236,9 @@ function WriterRow({ writer, lang, busy, onFlip }: { writer: WriterDto; lang: st
                 ? t(writer.on ? "writers.onBy" : "writers.offBy", { who: writer.updatedBy ?? "-", time: fmtDateTime(writer.updatedAt, lang) })
                 : t("writers.never")}
         </Text>
-        {writer.armed ? (
-          <Text size="xsmall" className="text-ui-tag-orange-text">
+        {/* Only the writers this version does not use yet; the shipment writer creates shipments now. */}
+        {isLaterWriter(writer.key) ? (
+          <Text size="xsmall" className={writer.armed ? "text-ui-tag-orange-text" : "text-ui-fg-muted"}>
             {t("writers.later")}
           </Text>
         ) : null}

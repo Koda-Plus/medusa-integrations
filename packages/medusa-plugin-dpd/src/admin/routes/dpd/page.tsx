@@ -12,6 +12,7 @@ import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView
 import { GuideView, usePromptSpec } from "../../lib/dpd-guide-view"
 import { DpdIcon, DpdMark } from "../../lib/dpd-icon"
 import { KitLoading } from "../../lib/dpd-kit"
+import { writingWriters } from "../../lib/dpd-logic"
 import { DemoDetails, FILTERS, ShipmentsSection } from "../../lib/dpd-panel"
 import { AccountSection, SETTINGS_TABS, SenderSection, WritersSection, type SettingsTabId } from "../../lib/dpd-settings"
 import { GROUP_ICON, fmtNumber, modeOf, useSenderProblemText } from "../../lib/dpd-ui"
@@ -136,7 +137,18 @@ const DpdPage = () => {
 
       {s && nav.view === "guide" ? <GuideView status={s} /> : null}
 
-      {s && nav.view === "panel" ? <ShipmentsSection status={s} lang={lang} filter={filter} onFilter={setFilter} initialQuery={initialQuery} seeding={seeding} seedFailed={seed.isError} /> : null}
+      {s && nav.view === "panel" ? (
+        <ShipmentsSection
+          status={s}
+          lang={lang}
+          filter={filter}
+          onFilter={setFilter}
+          initialQuery={initialQuery}
+          seeding={seeding}
+          seedFailed={seed.isError}
+          onSettings={() => nav.go("settings", "writers")}
+        />
+      ) : null}
 
       {s && nav.view === "settings" ? (
         <SettingsView
@@ -183,7 +195,9 @@ function Header({
   const prompt = usePrompt()
   const reset = useDpdDemoReset()
   const mode = modeOf(status)
-  const armed = status ? Object.values(status.writers).filter((w) => w.armed).length : 0
+  /* Only the writers that write in this version: an armed later writer (pickup, statuses) writes nothing yet. */
+  const armedWriters = writingWriters(status?.writers)
+  const armed = armedWriters.length
   /* Still armed while the options turn it off: it does not write, but it waits to be disarmed. */
   const stale = status ? Object.values(status.writers).filter((w) => w.on && !w.allowed).length : 0
   const promptSpec = usePromptSpec()
@@ -225,7 +239,7 @@ function Header({
             </ModeBadge>
             {armed > 0 ? (
               <ModeBadge color="orange" label={t("mode.writing", { count: armed })} title={t("writers.title")}>
-                <span>{t("writers.later")}</span>
+                <span>{armedWriters.map((w) => t(`writers.names.${w.key}`)).join(", ")}</span>
               </ModeBadge>
             ) : (
               <ModeBadge color="grey" label={t("mode.readOnly")} />

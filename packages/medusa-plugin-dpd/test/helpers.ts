@@ -6,20 +6,36 @@
  *   memoryStore  the atomic store with the SAME rules as the SQL one: one
  *                row per fulfillment, kind and mode, transitions only from
  *                the given states and only on PATCHABLE_COLUMNS, events
- *                deduplicated, one setting per key, the groups of groupOf
+ *                deduplicated, one setting per key, the groups of groupOf,
+ *                claims with a token and a lease, finish by the owner only,
+ *                leases that ran out taken back
  *   setup   a fake Medusa container: the DPD module service (the generated
  *           CRUD of the five tables over Tables, the options, masking),
- *           the memory store, Query over a list of orders, the event bus and
- *           a logger
+ *           the memory store, Query over a list of orders, the event bus,
+ *           a logger, the fulfillment module (retrieve and update of the
+ *           fulfillments of the orders) and, given a FakeDpdServices, the
+ *           DPDServices client over its fetch under "dpdServicesClient"
+ *   settle  waits until the work started in the background is done
  *
- * Stage 1 talks to nobody, so there is no fake DPD here yet; later stages
- * add one behind `fetch`.
+ * Nothing here reaches a network: without a fake the client is the demo
+ * client (demo mode) or none.
  */
 import { resolveOptions, missingOptions, secretsOf, type DpdPluginOptions, type ResolvedDpdOptions } from "../src/modules/dpd/lib/options.ts"
 import { maskSecrets } from "../src/modules/dpd/lib/security.ts"
 import { senderProblems } from "../src/modules/dpd/lib/sender.ts"
 import { groupOf } from "../src/modules/dpd/lib/contract.ts"
-import { PATCHABLE_COLUMNS, searchText, type DpdStore, type NewEvent, type NewShipment } from "../src/modules/dpd/lib/store.ts"
+import { createDpdServicesClient } from "../src/modules/dpd/lib/dpdservices.ts"
+import {
+  CLAIMED_STATES,
+  LABEL_LEASE_EXPIRED_ERROR,
+  LEASE_EXPIRED_ERROR,
+  PATCHABLE_COLUMNS,
+  searchText,
+  type DpdStore,
+  type NewEvent,
+  type NewShipment,
+} from "../src/modules/dpd/lib/store.ts"
+import type { FakeDpdServices } from "./fake-dpdservices.ts"
 
 export type Row = Record<string, unknown>
 
@@ -51,12 +67,24 @@ function time(v: unknown): number {
   return v instanceof Date ? v.getTime() : new Date(String(v)).getTime()
 }
 
+/** A comparable value: numbers as numbers, dates and date strings as their time. */
+function comparable(v: unknown): number {
+  return typeof v === "number" ? v : time(v)
+}
+
 function sortKey(v: unknown): number | string | null {
   if (v instanceof Date) return v.getTime()
   if (typeof v === "number" || typeof v === "string") return v
   return null
 }
 
+/**
+ * A row against a filter of the generated service's list methods (MikroORM):
+ * a value, null (is null), an array (in), $or and $and, and the operators
+ * $in, $nin, $ne, $lt, $lte, $gt, $gte, $ilike. As in SQL, a NULL column
+ * matches no comparison: `$ne: "x"` and `$nin` leave out the rows where the
+ * column is null (only `$ne: null`, is not null, is about null itself).
+ */
 export function matches(row: Row, filter: Row): boolean {
   for (const [key, cond] of Object.entries(filter)) {
     if (key === "$or") {
@@ -74,10 +102,15 @@ export function matches(row: Row, filter: Row): boolean {
       if (v !== null && v !== undefined) return false
     } else if (cond && typeof cond === "object" && !(cond instanceof Date)) {
       const c = cond as Row
-      if ("$nin" in c && (v === null || v === undefined || (c.$nin as unknown[]).includes(v))) return false
-      if ("$ne" in c && v === c.$ne) return false
-      if ("$lte" in c && !(v !== null && v !== undefined && time(v) <= time(c.$lte))) return false
-      if ("$gte" in c && !(v !== null && v !== undefined && time(v) >= time(c.$gte))) return false
+      const isNull = v === null || v === undefined
+      const compare = (bound: unknown, ok: (a: number, b: number) => boolean) => !isNull && ok(comparable(v), comparable(bound))
+      if ("$in" in c && (isNull || !(c.$in as unknown[]).includes(v))) return false
+      if ("$nin" in c && (isNull || (c.$nin as unknown[]).includes(v))) return false
+      if ("$ne" in c && (c.$ne === null ? isNull : isNull || v === c.$ne)) return false
+      if ("$lt" in c && !compare(c.$lt, (a, b) => a < b)) return false
+      if ("$lte" in c && !compare(c.$lte, (a, b) => a <= b)) return false
+      if ("$gt" in c && !compare(c.$gt, (a, b) => a > b)) return false
+      if ("$gte" in c && !compare(c.$gte, (a, b) => a >= b)) return false
       if ("$ilike" in c) {
         const needle = String(c.$ilike).replace(/^%|%$/g, "").toLowerCase()
         if (!String(v ?? "").toLowerCase().includes(needle)) return false
@@ -200,7 +233,41 @@ function searchHit(r: Row, q: string): boolean {
 
 export function memoryStore(shipments: Table, events: Table, settings: Table): DpdStore {
   const live = (id: string) => shipments.rows.find((r) => r.id === id && !r.deleted_at)
+  const apply = (r: Row, patch: object, withState: boolean) => {
+    const values = patch as Row
+    for (const column of PATCHABLE_COLUMNS) {
+      if (!withState && column === "state") continue
+      if (column in values && values[column] !== undefined) r[column] = values[column]
+    }
+  }
   return {
+    async claim(id, from, args) {
+      const r = live(id)
+      if (from.length === 0 || !r || !from.includes(String(r.state))) return null
+      apply(r, args.patch ?? {}, false)
+      Object.assign(r, { state: args.to, claim_token: args.token, lease_until: args.leaseUntil, attempts: Number(r.attempts ?? 0) + 1, updated_at: new Date() })
+      return { ...r } as never
+    },
+    async finish(id, token, patch, options) {
+      const r = live(id)
+      if (!r || !CLAIMED_STATES.includes(String(r.state)) || r.claim_token !== token) return null
+      apply(r, patch, true)
+      Object.assign(r, { claim_token: null, lease_until: null, updated_at: options?.unsent?.updatedAt ?? new Date() })
+      if (options?.unsent) r.attempts = Math.max(Number(r.attempts ?? 0) - 1, 0)
+      return { ...r } as never
+    },
+    async expireLeases(mode, now) {
+      const out: Row[] = []
+      for (const r of shipments.rows) {
+        if (r.deleted_at || r.mode !== mode || !(r.lease_until instanceof Date) || r.lease_until.getTime() >= now.getTime()) continue
+        if (r.state === "creating") Object.assign(r, { state: "unknown", error_code: "lease_expired", error: LEASE_EXPIRED_ERROR })
+        else if (r.state === "labeling") Object.assign(r, { state: "created", error_code: "label_lease_expired", error: LABEL_LEASE_EXPIRED_ERROR })
+        else continue
+        Object.assign(r, { claim_token: null, lease_until: null, updated_at: new Date() })
+        out.push({ ...r })
+      }
+      return out as never
+    },
     async insertIgnore(row: NewShipment) {
       if (row.fulfillment_id && shipments.rows.some((r) => !r.deleted_at && r.fulfillment_id === row.fulfillment_id && r.kind === row.kind && r.mode === row.mode)) return null
       return shipments.insert({ ...NEW_SHIPMENT_COLUMNS, ...row, problems: row.problems ?? null }) as never
@@ -270,6 +337,9 @@ export function memoryStore(shipments: Table, events: Table, settings: Table): D
 /* The fake Medusa container                                           */
 /* ------------------------------------------------------------------ */
 
+/** A row of the fake fulfillment module: its id and the provider data the plugin merges into. */
+export type FakeFulfillment = { id: string; data: Row }
+
 export type Container = { resolve: <T = unknown>(key: string, opts?: { allowUnregistered?: boolean }) => T }
 
 export type Setup = {
@@ -284,6 +354,23 @@ export type Setup = {
   emitted: Array<{ name: string; data: Row }>
   logs: string[]
   orders: Map<string, Row>
+  /** The fulfillment module's rows (id, data), filled from the orders' fulfillments. */
+  fulfillments: Map<string, FakeFulfillment>
+  fake: FakeDpdServices | null
+}
+
+export type SetupExtra = {
+  /** The DPDServices behind the client; without one no client is registered. */
+  fake?: FakeDpdServices
+  /** Registers no fulfillment module (as when Medusa has none). */
+  noFulfillmentModule?: boolean
+  /** The pace of the client over the fake (default: so fast it never waits); a slow one makes the pacing refuse calls without sending them. */
+  requestsPerMinute?: number
+}
+
+/** Waits until the work started with setImmediate (inBackground) and its promises are done. */
+export async function settle(rounds = 30): Promise<void> {
+  for (let i = 0; i < rounds; i += 1) await new Promise<void>((resolve) => setImmediate(resolve))
 }
 
 /** The generated CRUD of one table, under Medusa's method names (`listDpdShipments`, `createDpdShipments`...). */
@@ -302,7 +389,7 @@ function crud(singular: string, plural: string, table: Table): Record<string, (.
   }
 }
 
-export function setup(options: DpdPluginOptions, orders: Row[] = []): Setup {
+export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: SetupExtra = {}): Setup {
   const o = resolveOptions(options)
   const shipments = new Table("dpdshp", SHIPMENT_DEFAULTS)
   const documents = new Table("dpddoc", DOCUMENT_DEFAULTS)
@@ -346,6 +433,37 @@ export function setup(options: DpdPluginOptions, orders: Row[] = []): Setup {
     },
     event_bus: { emit: async (e: { name: string; data: Row } | Array<{ name: string; data: Row }>) => void emitted.push(...(Array.isArray(e) ? e : [e])) },
   }
+  const fulfillments = new Map<string, FakeFulfillment>()
+  for (const o of orders) {
+    for (const f of (o.fulfillments as Row[] | undefined) ?? []) fulfillments.set(String(f.id), { id: String(f.id), data: structuredClone((f.data as Row | null | undefined) ?? {}) })
+  }
+  if (!extra.noFulfillmentModule) {
+    registry.fulfillment = {
+      retrieveFulfillment: async (id: string) => {
+        const f = fulfillments.get(id)
+        if (!f) throw new Error(`Fulfillment with id: ${id} was not found`)
+        return structuredClone(f)
+      },
+      updateFulfillment: async (id: string, data: Row) => {
+        const f = fulfillments.get(id)
+        if (!f) throw new Error(`Fulfillment with id: ${id} was not found`)
+        Object.assign(f, structuredClone(data))
+        return structuredClone(f)
+      },
+    }
+  }
+  const fake = extra.fake ?? null
+  if (fake) {
+    registry.dpdServicesClient = createDpdServicesClient({
+      host: fake.host,
+      login: fake.login,
+      password: fake.password,
+      masterFid: 1000,
+      requestsPerMinute: extra.requestsPerMinute ?? 600_000,
+      fetchImpl: fake.fetch,
+      sleep: async () => {},
+    })
+  }
   const container: Container = {
     resolve: <T = unknown>(key: string, opts?: { allowUnregistered?: boolean }): T => {
       if (!(key in registry)) {
@@ -355,7 +473,7 @@ export function setup(options: DpdPluginOptions, orders: Row[] = []): Setup {
       return registry[key] as T
     },
   }
-  return { container, options: o, shipments, documents, events, dispatches, settings, store, emitted, logs, orders: orderMap }
+  return { container, options: o, shipments, documents, events, dispatches, settings, store, emitted, logs, orders: orderMap, fulfillments, fake }
 }
 
 /** Arms a writer in the settings table, as the admin route does. */

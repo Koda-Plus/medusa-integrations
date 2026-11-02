@@ -10,6 +10,8 @@ import { readdirSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import en from "../src/admin/i18n/en.ts"
+import { writingWriters } from "../src/admin/lib/dpd-logic.ts"
+import type { WriterKey } from "../src/modules/dpd/lib/contract.ts"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const page = readFileSync(join(root, "src/admin/routes/dpd/page.tsx"), "utf8")
@@ -55,4 +57,22 @@ test("page: Refresh spins for the person's own refresh only, a reset re-arms the
   assert.ok(!/onResetDone\(\)\s*try/.test(page), "never re-armed before the reset is sent")
   assert.match(page, /badge: Object\.values\(s\.writers\)\.filter\(\(w\) => w\.on\)\.length/)
   assert.match(page, /seedFailed=\{seed\.isError\}/)
+})
+
+test("page: the writing badge lists only the writers that write in this version, never an armed later writer", () => {
+  const w = (key: WriterKey, armed: boolean) => ({ key, armed, allowed: armed, on: armed, updatedBy: null, updatedAt: null })
+  const all = { shipment: w("shipment", true), pickup: w("pickup", true), fulfillmentStatus: w("fulfillmentStatus", true) }
+  assert.deepEqual(writingWriters(all).map((x) => x.key), ["shipment"])
+  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false) }), [], "armed later writers alone: read only")
+  assert.deepEqual(writingWriters(undefined), [])
+  /* The header counts and names the writers from writingWriters, not every armed writer. */
+  assert.match(page, /const armedWriters = writingWriters\(status\?\.writers\)/)
+  assert.ok(!/Object\.values\(status\.writers\)\.filter\(\(w\) => w\.armed\)/.test(page), "no armed writer counted as writing")
+})
+
+test("plan drawer: Confirm waits while the plan is read again, the hash on screen may be the old one", () => {
+  const plan = readFileSync(join(root, "src/admin/lib/dpd-plan.tsx"), "utf8")
+  const canCreate = plan.match(/const canCreate = ([^\n]+)/)?.[1] ?? ""
+  assert.match(canCreate, /!q\.isFetching/)
+  assert.match(plan, /disabled=\{!canCreate\}/)
 })

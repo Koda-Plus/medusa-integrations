@@ -1,0 +1,116 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "IGNORE_ERRORS",
+      "packages": [
+        {
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "receiver": {
+            "company": "Odbiorca Testowy",
+            "name": "Anna Przykładowa",
+            "address": "Przykładowa 2",
+            "city": "Kraków",
+            "countryCode": "PL",
+            "postalCode": "99999",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "parcels": [
+            {
+              "reference": "probe-mvzj6089-Vg1-1",
+              "weight": 1
+            }
+          ],
+          "reference": "probe-mvzj6089-Vg1"
+        },
+        {
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "receiver": {
+            "company": "Odbiorca Testowy",
+            "name": "Anna Przykładowa",
+            "address": "Przykładowa 2",
+            "city": "Kraków",
+            "countryCode": "PL",
+            "postalCode": "30001",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "parcels": [
+            {
+              "reference": "probe-mvzj6089-Vg2-1",
+              "weight": 1
+            }
+          ],
+          "reference": "probe-mvzj6089-Vg2"
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "sessionId": 244462963,
+      "beginTime": null,
+      "endTime": null,
+      "packages": [
+        {
+          "status": "OK",
+          "reference": "probe-mvzj6089-Vg1",
+          "validationInfo": [],
+          "parcels": [
+            {
+              "status": "OK",
+              "reference": "probe-mvzj6089-Vg1-1",
+              "waybill": "0000899045156Q",
+              "validationInfo": []
+            }
+          ]
+        },
+        {
+          "status": "OK",
+          "reference": "probe-mvzj6089-Vg2",
+          "validationInfo": [],
+          "parcels": [
+            {
+              "status": "OK",
+              "reference": "probe-mvzj6089-Vg2-1",
+              "waybill": "0000899045264Q",
+              "validationInfo": []
+            }
+          ]
+        }
+      ],
+      "traceId": "4a7a03a2-2dd9-45f6-bce5-852de49e9a6d"
+    }
+  }
+}

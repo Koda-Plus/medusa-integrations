@@ -2,16 +2,17 @@
  * The atomic store: the SQL checked as text with a recording runner (each
  * decision is one statement with the condition that makes it safe when two
  * processes race, only known column names reach the SQL), the Panel group in
- * SQL checked branch by branch against groupOf, and the memory store of the
- * tests held to the same rules.
+ * SQL checked branch by branch against groupOf, the claims with a token and
+ * a lease (stage 2), and the memory store of the tests held to the same
+ * rules.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { SHIPMENT_STAGES, SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
 import { groupOf } from "../src/modules/dpd/lib/contract.ts"
 import { countsOf, rowGroup } from "../src/modules/dpd/lib/dto.ts"
-import { createSqlStore, GROUP_SQL, like, PATCHABLE_COLUMNS, searchClause, setClause, type NewShipment, type SqlRunner } from "../src/modules/dpd/lib/store.ts"
-import { memoryStore, Table, SHIPMENT_DEFAULTS, type Row } from "./helpers.ts"
+import { createSqlStore, GROUP_SQL, LABEL_LEASE_EXPIRED_ERROR, LEASE_EXPIRED_ERROR, like, PATCHABLE_COLUMNS, searchClause, setClause, type NewShipment, type SqlRunner } from "../src/modules/dpd/lib/store.ts"
+import { matches, memoryStore, Table, SHIPMENT_DEFAULTS, type Row } from "./helpers.ts"
 
 function recorder(rows: unknown[] = [{ id: "dpdshp_1" }]) {
   const calls: Array<{ sql: string; bindings: readonly unknown[] }> = []
@@ -201,4 +202,114 @@ test("memory counts and lists: per mode, by group, searched, paged, newest first
   const page = await store.list({ mode: "sandbox", filter: "all", offset: 2, limit: 2 })
   assert.equal(page.rows.length, 1)
   assert.equal(page.count, 3)
+})
+
+test("claim: one statement from the given states, the token, the lease and attempts + 1; state in the patch is ignored", async () => {
+  const { calls, store } = recorder()
+  const lease = new Date("2026-11-02T10:03:00Z")
+  await store.claim("dpdshp_1", ["pending", "failed"], { token: "tok_1", leaseUntil: lease, to: "creating", patch: { state: "labeled", plan_hash: "h1", boxes: { edited: false, items: [] }, ["claim_token" as never]: "x" } as never })
+  assert.match(
+    calls[0].sql,
+    /^update "dpd_shipment" set "boxes" = \?::jsonb, "plan_hash" = \?, "updated_at" = now\(\), "state" = \?, "claim_token" = \?, "lease_until" = \?, "attempts" = "attempts" \+ 1 where "id" = \? and "state" in \(\?, \?\) and "deleted_at" is null returning \*$/,
+  )
+  assert.deepEqual(calls[0].bindings, ['{"edited":false,"items":[]}', "h1", "creating", "tok_1", lease, "dpdshp_1", "pending", "failed"])
+  assert.equal(await store.claim("dpdshp_1", [], { token: "t", leaseUntil: lease, to: "creating" }), null, "no state, no statement")
+  assert.equal(calls.length, 1)
+})
+
+test("finish: only the owner of the claim (creating or labeling, the same token) writes; the token and the lease are cleared", async () => {
+  const { calls, store } = recorder()
+  await store.finish("dpdshp_1", "tok_1", { state: "created", waybills: ["0000899000001Q"], error: null })
+  assert.match(
+    calls[0].sql,
+    /^update "dpd_shipment" set "waybills" = \?::jsonb, "state" = \?, "error" = \?, "updated_at" = now\(\), "claim_token" = null, "lease_until" = null where "id" = \? and "state" in \('creating', 'labeling'\) and "claim_token" = \? and "deleted_at" is null returning \*$/,
+  )
+  assert.deepEqual(calls[0].bindings, ['["0000899000001Q"]', "created", null, "dpdshp_1", "tok_1"])
+  const { store: empty } = recorder([])
+  assert.equal(await empty.finish("dpdshp_1", "tok_2", { state: "created" }), null, "a lost claim writes nothing")
+})
+
+test("expireLeases: creating past its lease becomes unknown, labeling becomes created, per mode", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1", state: "unknown" }])
+  const now = new Date("2026-11-02T10:10:00Z")
+  const rows = await store.expireLeases("sandbox", now)
+  assert.equal(rows.length, 2, "the rows of both statements")
+  assert.match(calls[0].sql, /set "state" = 'unknown', "error_code" = 'lease_expired', "error" = \?, "claim_token" = null, "lease_until" = null, "updated_at" = now\(\) where "mode" = \? and "state" = 'creating' and "lease_until" < \? and "deleted_at" is null returning \*$/)
+  assert.deepEqual(calls[0].bindings, [LEASE_EXPIRED_ERROR, "sandbox", now])
+  assert.match(calls[1].sql, /set "state" = 'created', "error_code" = 'label_lease_expired', "error" = \?, .* where "mode" = \? and "state" = 'labeling' and "lease_until" < \?/)
+  assert.deepEqual(calls[1].bindings, [LABEL_LEASE_EXPIRED_ERROR, "sandbox", now])
+})
+
+test("the memory store claims and finishes like the SQL: one winner, the owner only, leases taken back per mode", async () => {
+  const shipments = new Table("dpdshp", SHIPMENT_DEFAULTS)
+  const store = memoryStore(shipments, new Table("dpdevt"), new Table("dpdset"))
+  const row = await store.insertIgnore(NEW)
+  const id = String(row?.id)
+  const lease = new Date(Date.now() + 60_000)
+  const won = await store.claim(id, ["pending", "failed"], { token: "a", leaseUntil: lease, to: "creating", patch: { state: "labeled", plan_hash: "h1", ["mode" as never]: "live" } as never })
+  assert.equal(won?.state, "creating", "state in the patch is ignored")
+  assert.equal(won?.plan_hash, "h1")
+  assert.equal(won?.mode, "sandbox")
+  assert.equal(won?.attempts, 1)
+  assert.equal(won?.claim_token, "a")
+  assert.equal(await store.claim(id, ["pending", "failed"], { token: "b", leaseUntil: lease, to: "creating" }), null, "the second claim loses")
+  assert.equal(await store.finish(id, "b", { state: "created" }), null, "not the owner")
+  const done = await store.finish(id, "a", { state: "created", waybills: ["w1"] })
+  assert.equal(done?.state, "created")
+  assert.equal(done?.claim_token, null)
+  assert.equal(done?.lease_until, null)
+  assert.equal(await store.finish(id, "a", { state: "labeled" }), null, "a finished claim is gone")
+
+  const label = await store.claim(id, ["created"], { token: "c", leaseUntil: new Date(Date.now() - 1), to: "labeling" })
+  assert.equal(label?.attempts, 2)
+  const other = await store.insertIgnore({ ...NEW, fulfillment_id: "ful_2" })
+  await store.claim(String(other?.id), ["pending"], { token: "d", leaseUntil: new Date(Date.now() - 1), to: "creating" })
+  const live = await store.insertIgnore({ ...NEW, fulfillment_id: "ful_3", mode: "live" })
+  await store.claim(String(live?.id), ["pending"], { token: "e", leaseUntil: new Date(Date.now() - 1), to: "creating" })
+  const expired = await store.expireLeases("sandbox", new Date())
+  assert.deepEqual(expired.map((r) => [r.state, r.error_code]).sort(), [["created", "label_lease_expired"], ["unknown", "lease_expired"]])
+  assert.equal(await store.finish(id, "c", { state: "labeled" }), null, "a claim whose lease was taken back writes nothing")
+  assert.equal(shipments.rows.find((r) => r.id === live?.id)?.state, "creating", "another mode keeps its lease")
+})
+
+test("finish with unsent: a claim the pacing refused gives its count back (attempts - 1, never below 0) and may keep the clock", async () => {
+  const { calls, store } = recorder()
+  await store.finish("dpdshp_1", "tok_1", { state: "pending", error_code: "rate_limited" }, { unsent: {} })
+  assert.match(
+    calls[0].sql,
+    /^update "dpd_shipment" set "state" = \?, "error_code" = \?, "updated_at" = now\(\), "claim_token" = null, "lease_until" = null, "attempts" = greatest\("attempts" - 1, 0\) where "id" = \? and "state" in \('creating', 'labeling'\) and "claim_token" = \? and "deleted_at" is null returning \*$/,
+  )
+  assert.deepEqual(calls[0].bindings, ["pending", "rate_limited", "dpdshp_1", "tok_1"])
+  const kept = new Date("2026-11-02T10:00:00Z")
+  await store.finish("dpdshp_1", "tok_2", { state: "unknown" }, { unsent: { updatedAt: kept } })
+  assert.match(calls[1].sql, /set "state" = \?, "updated_at" = \?, "claim_token" = null, "lease_until" = null, "attempts" = greatest\("attempts" - 1, 0\) where/)
+  assert.deepEqual(calls[1].bindings, ["unknown", kept, "dpdshp_1", "tok_2"])
+  await store.finish("dpdshp_1", "tok_3", { state: "created" })
+  assert.ok(!calls[2].sql.includes(`"attempts"`), "a claim that sent something keeps its count")
+
+  const shipments = new Table("dpdshp", SHIPMENT_DEFAULTS)
+  const memory = memoryStore(shipments, new Table("dpdevt"), new Table("dpdset"))
+  const id = String((await memory.insertIgnore(NEW))?.id)
+  const lease = new Date(Date.now() + 60_000)
+  await memory.claim(id, ["pending"], { token: "a", leaseUntil: lease, to: "creating" })
+  assert.equal((await memory.finish(id, "a", { state: "pending" }, { unsent: { updatedAt: kept } }))?.attempts, 0)
+  assert.equal(shipments.rows[0].updated_at, kept)
+  await memory.claim(id, ["pending"], { token: "b", leaseUntil: lease, to: "creating" })
+  assert.equal((await memory.finish(id, "b", { state: "created" }))?.attempts, 1)
+})
+
+test("the memory filters behave like the SQL of the list methods: a NULL column matches no comparison", () => {
+  const row: Row = { state: "pending", error_code: null, attempts: 3, created_at: new Date("2026-11-02T10:00:00Z") }
+  assert.equal(matches(row, { error_code: { $ne: "rate_limited_manual" } }), false, "null != 'x' is not true in SQL")
+  assert.equal(matches(row, { error_code: { $ne: null } }), false)
+  assert.equal(matches({ ...row, error_code: "x" }, { error_code: { $ne: null } }), true)
+  assert.equal(matches(row, { error_code: null, problems: null }), true)
+  assert.equal(matches(row, { error_code: ["a", "b"] }), false)
+  assert.equal(matches({ ...row, error_code: "b" }, { error_code: { $in: ["a", "b"] } }), true)
+  assert.equal(matches(row, { attempts: { $lte: 3 } }), true, "numbers compare as numbers")
+  assert.equal(matches(row, { attempts: { $lt: 3 } }), false)
+  assert.equal(matches(row, { attempts: { $gt: 2, $lte: 5 } }), true)
+  assert.equal(matches(row, { created_at: { $gte: new Date("2026-11-02T09:00:00Z") } }), true)
+  assert.equal(matches(row, { created_at: { $gte: new Date("2026-11-02T11:00:00Z") } }), false)
+  assert.equal(matches({ ...row, created_at: null }, { created_at: { $gte: new Date(0) } }), false)
 })
