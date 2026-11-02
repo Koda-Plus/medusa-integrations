@@ -3,7 +3,7 @@ import type { LogResponse } from "../../../../modules/vonhalsky/lib/contract"
 import { toLogDto, vonHalskySvc } from "../../../../modules/vonhalsky/lib/store"
 import { intParam } from "../../../vonhalsky/admin-helpers"
 
-const AREAS = ["offers", "orders", "tracking", "settings"]
+const AREAS = ["offers", "orders", "tracking", "settings", "cases", "categories", "sync"]
 
 /** GET /admin/vonhalsky/log?area=&outcome=&limit=: the sync log, newest first (30 days). Read only. */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {

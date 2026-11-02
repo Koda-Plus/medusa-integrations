@@ -5,9 +5,9 @@ export const VONHALSKY_MODULE = "vonhalsky"
 export const MARKETPLACE_NAME = "InPost Von Halsky"
 
 /**
- * Where InPost publishes what an integrator needs. Access to the seller API
- * is limited to known integrators (an agreement with InPost); the public
- * PHP SDK names the operations and models this plugin is shaped after.
+ * Where InPost publishes the seller API (OpenAPI, guidelines, FAQ) and its
+ * public PHP SDK. A seller creates the API application in the Merchant
+ * Portal (Integrations, API).
  */
 export const API_PORTAL_URL = "https://inpsa-api-portal.inpost-group.com/"
 export const PUBLIC_SDK_URL = "https://github.com/InPost-VonHalsky/InPost-vonHalsky-api-sdk-php"
@@ -47,8 +47,13 @@ export const PAYMENT_TYPES = ["CARD", "CARD_TOKEN", "GOOGLE_PAY", "APPLE_PAY", "
 export const ORDER_STATUSES = ["importing", "imported", "held"] as const
 export type ImportStatus = (typeof ORDER_STATUSES)[number]
 
-/** Tracking sent back to the marketplace: nothing yet, sent, failed (retried by a person), waiting for the live API. */
-export const TRACKING_STATUSES = ["none", "sent", "failed", "pending_api"] as const
+/**
+ * Medusa's tracking numbers against the marketplace's parcels (the seller
+ * API takes no number: a ShipX shipment made with the order's InPost e-mail
+ * is linked by InPost): no number yet, numbers the marketplace does not show
+ * yet, all of them shown.
+ */
+export const TRACKING_STATUSES = ["none", "waiting", "linked"] as const
 export type TrackingStatus = (typeof TRACKING_STATUSES)[number]
 
 /** Every setting key stored in the `vonhalsky_setting` table. */
@@ -56,7 +61,21 @@ export const SETTING_KEYS = {
   pricing: "pricing",
   orders: "orders",
   shipping: "shipping",
+  /** Medusa category id to marketplace leaf: { [medusaCategoryId]: remoteCategoryId }. */
+  categories: "categories",
+  /** What every offer needs and Medusa does not keep: days to ship, return and complaint policy texts. */
+  offerDefaults: "offer_defaults",
+  /** Where the sync stands: the last event ids seen, the last runs. */
+  sync: "sync",
 } as const
+
+/** After sale case kinds (one table). */
+export const CASE_KINDS = ["return", "refund", "claim"] as const
+export type CaseKind = (typeof CASE_KINDS)[number]
+
+/** Offer commands the plugin follows. */
+export const COMMAND_KINDS = ["create", "patch", "price", "stock", "close", "reopen", "promotion", "program"] as const
+export type CommandKind = (typeof COMMAND_KINDS)[number]
 
 /** The demo sales channel, created on the first simulated order. */
 export const DEMO_SALES_CHANNEL = "InPost Von Halsky (demo)"
