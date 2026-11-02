@@ -13,7 +13,7 @@
  * For each Medusa version: packs every package (from a clean worktree of
  * HEAD unless --from-tree, so uncommitted files never leak in), creates an
  * app with the packages installed from their tarballs and registered in
- * demo mode (the fulfillment provider of InPost and the notification
+ * demo mode (the fulfillment providers of InPost and DPD and the notification
  * provider of E-mails too), runs the migrations on a throwaway Postgres,
  * checks that every plugin's tables exist, builds the app with its admin,
  * starts it, signs in, reads every plugin's koda.integration/1 routes and
@@ -258,11 +258,12 @@ function writeApp(dir, version, packages, tarballs, dbUrl) {
     ...packages.map((p) => plugin(p.name)),
     "  ],",
     "  modules: [",
-    ...(has("inpost")
+    ...(has("inpost") || has("dpd")
       ? [
           '    { resolve: "@medusajs/medusa/fulfillment", options: { providers: [',
           '      { resolve: "@medusajs/medusa/fulfillment-manual", id: "manual" },',
-          '      { resolve: "@koda-plus/medusa-plugin-inpost/providers/inpost", id: "inpost", options: { demo: true } },',
+          ...(has("inpost") ? ['      { resolve: "@koda-plus/medusa-plugin-inpost/providers/inpost", id: "inpost", options: { demo: true } },'] : []),
+          ...(has("dpd") ? ['      { resolve: "@koda-plus/medusa-plugin-dpd/providers/dpd", id: "dpd", options: { demo: true } },'] : []),
           "    ] } },",
         ]
       : []),

@@ -1,0 +1,169 @@
+/**
+ * Demo mode: sample shipments built once from the store's own orders,
+ * deterministic, written in mode "demo" and never mixed with sandbox or live
+ * rows, invented points and waybills that look invented, every Panel list
+ * filled; the seed only in demo mode and only once; the reset removes demo
+ * rows and demo keys and nothing else. Nothing is sent anywhere.
+ */
+import { afterEach, beforeEach, test } from "node:test"
+import assert from "node:assert/strict"
+import { PUDO_ID_PATTERN, SHIPMENT_STAGES, SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
+import { SHIPMENT_GROUPS } from "../src/modules/dpd/lib/contract.ts"
+import { DEMO_POINTS, demoRows, demoWaybill, isDemoPoint } from "../src/modules/dpd/lib/demo.ts"
+import { countsOf, rowGroup } from "../src/modules/dpd/lib/dto.ts"
+import { validateMethodData } from "../src/modules/dpd/lib/option-data.ts"
+import { ensureDemoSeed, resetDemo } from "../src/workflows/dpd/demo.ts"
+import { arm, order, SANDBOX, setup, type Row } from "./helpers.ts"
+
+const realFetch = globalThis.fetch
+let requests = 0
+beforeEach(() => {
+  requests = 0
+  globalThis.fetch = (async () => {
+    requests += 1
+    throw new Error("no network in demo mode")
+  }) as typeof fetch
+})
+afterEach(() => {
+  globalThis.fetch = realFetch
+  assert.equal(requests, 0, "demo mode never calls anything")
+})
+
+const orders = (n: number, currency = "pln") =>
+  Array.from({ length: n }, (_, i) => order({ id: `order_DEMO${String(i).padStart(4, "0")}`, display_id: 2000 + i, currency_code: currency, total: 100 + i + 0.5, created_at: new Date(Date.UTC(2026, 9, 1, 8, i)) }))
+
+const newestFirst = (list: Row[]) => [...list].sort((a, b) => new Date(String(b.created_at)).getTime() - new Date(String(a.created_at)).getTime()) as Array<Row & { id: string }>
+
+test("the same orders give the same rows, and together they fill every list of the Panel", () => {
+  const now = new Date("2026-11-02T12:00:00Z")
+  const a = demoRows(newestFirst(orders(16)), now)
+  const b = demoRows(newestFirst(orders(16)), now)
+  assert.deepEqual(a, b)
+  assert.equal(a.length, 16)
+  assert.ok(a.every((r) => r.mode === "demo"))
+  const groups = new Set(a.map((r) => rowGroup(r)))
+  for (const g of SHIPMENT_GROUPS) assert.ok(groups.has(g), `the demo fills ${g}`)
+  assert.ok(a.every((r) => (SHIPMENT_STATES as readonly string[]).includes(r.state)))
+  assert.ok(a.every((r) => r.stage === null || (SHIPMENT_STAGES as readonly string[]).includes(r.stage)))
+  assert.ok(a.every((r) => r.status === null), "no InfoServices code is invented")
+  assert.ok(a.every((r) => r.fulfillment_id === null), "no row claims a real fulfillment")
+  assert.ok(a.some((r) => r.country_code !== "PL" && r.session_type === "INTERNATIONAL"), "one shipment goes abroad")
+  assert.ok(a.some((r) => (r.waybills?.length ?? 0) > 1), "one shipment has several boxes")
+})
+
+test("invented Pickup points and waybills look invented, and the checkout would still take the points", () => {
+  assert.ok(DEMO_POINTS.every((p) => PUDO_ID_PATTERN.test(p) && p.includes("DEMO")))
+  assert.ok(DEMO_POINTS.every((p) => validateMethodData({ id: "dpd-pickup" }, { pudo_id: p }, null).ok))
+  const rows = demoRows(newestFirst(orders(16)), new Date())
+  assert.ok(rows.every((r) => r.pudo_id === null || isDemoPoint(r.pudo_id)))
+  const waybills = rows.flatMap((r) => r.waybills ?? [])
+  assert.ok(waybills.length > 10)
+  assert.ok(waybills.every((w) => /^99\d{11}D$/.test(w)))
+  assert.equal(new Set(waybills).size, waybills.length, "every box has its own waybill")
+  assert.equal(demoWaybill("x"), demoWaybill("x"))
+})
+
+test("cash on delivery only in PLN, with the amount once DPD gave the numbers; fewer orders, fewer rows", () => {
+  const eur = demoRows(newestFirst(orders(16, "eur")), new Date())
+  assert.ok(eur.every((r) => !r.option_id.endsWith("-cod") && r.cod_minor === null))
+  const pln = demoRows(newestFirst(orders(16)), new Date())
+  assert.ok(pln.some((r) => r.option_id.endsWith("-cod") && r.cod_minor !== null))
+  assert.ok(pln.filter((r) => r.state === "pending").every((r) => r.cod_minor === null), "no amount before creation")
+  assert.ok(pln.filter((r) => r.option_id === "dpd-pickup-cod").every((r) => r.country_code === "PL"))
+  assert.equal(demoRows(orders(3), new Date()).length, 3)
+})
+
+test("the seed: demo mode only, once (the demo:seeded key), from the newest orders, with history", async () => {
+  const s = setup({ demo: true }, orders(20))
+  assert.equal(await ensureDemoSeed(s.container), 16)
+  assert.equal(await ensureDemoSeed(s.container), 0, "the key is claimed")
+  assert.equal(s.shipments.rows.length, 16)
+  assert.ok(s.shipments.rows.every((r) => r.mode === "demo"))
+  assert.equal(s.shipments.rows.at(-1)?.order_id, "order_DEMO0019", "the newest order is the newest row")
+  assert.equal(s.events.rows.length, 16)
+  assert.ok(s.events.rows.every((e) => e.mode === "demo" && e.source === "demo"))
+  assert.equal(s.settings.rows.filter((r) => r.key === "demo:seeded").length, 1)
+  const counts = countsOf(await s.store.counts("demo"))
+  assert.equal(counts.all, 16)
+  assert.ok(SHIPMENT_GROUPS.every((g) => counts[g] > 0))
+  const cod = s.shipments.rows.find((r) => r.option_id === "dpd-courier-cod" && r.state === "labeled")
+  const n = Number(String(cod?.order_id).slice(-4))
+  assert.equal(cod?.cod_minor, (100 + n) * 100 + 50, "the order total in grosze, read one order at a time")
+
+  const sandbox = setup(SANDBOX, orders(5))
+  assert.equal(await ensureDemoSeed(sandbox.container), 0, "never outside demo mode")
+  assert.equal(sandbox.shipments.rows.length + sandbox.settings.rows.length, 0)
+  const empty = setup({ demo: true }, [])
+  assert.equal(await ensureDemoSeed(empty.container), 0)
+  assert.equal(empty.settings.rows.length, 0, "no orders: nothing claimed, the next visit tries again")
+})
+
+test("a seed that fails half way gives the claim back: no half set, no seeded key, the next visit builds all of it", async () => {
+  const s = setup({ demo: true }, orders(6))
+  const svc = s.container.resolve<Record<string, (...args: unknown[]) => Promise<unknown>>>("dpd")
+  const create = svc.createDpdShipments
+  let calls = 0
+  svc.createDpdShipments = async (...args: unknown[]) => {
+    calls += 1
+    if (calls === 3) throw new Error("connection lost")
+    return create(...args)
+  }
+  await assert.rejects(ensureDemoSeed(s.container), /connection lost/)
+  assert.equal(s.shipments.rows.length, 0, "the rows of the failed build are removed")
+  assert.equal(s.events.rows.length, 0, "with their history")
+  assert.equal(s.settings.rows.filter((r) => r.key === "demo:seeded").length, 0, "the key is deleted for good, not soft deleted")
+  svc.createDpdShipments = create
+  assert.equal(await ensureDemoSeed(s.container), 6, "the next visit builds the whole set")
+  assert.equal(await ensureDemoSeed(s.container), 0)
+})
+
+test("a failed seed whose rows cannot all be removed keeps the claim: no second set beside them, the log asks for a Reset", async () => {
+  const s = setup({ demo: true }, orders(6))
+  const svc = s.container.resolve<Record<string, (...args: unknown[]) => Promise<unknown>>>("dpd")
+  const create = svc.createDpdShipments
+  let calls = 0
+  svc.createDpdShipments = async (...args: unknown[]) => {
+    calls += 1
+    if (calls === 3) throw new Error("connection lost")
+    return create(...args)
+  }
+  const remove = svc.deleteDpdShipments
+  svc.deleteDpdShipments = async () => {
+    throw new Error("database gone")
+  }
+  await assert.rejects(ensureDemoSeed(s.container), /connection lost/, "the error of the build, not the one of the cleanup")
+  assert.equal(s.shipments.rows.filter((r) => !r.deleted_at).length, 2, "the rows built before the failure are left")
+  assert.equal(s.settings.rows.filter((r) => r.key === "demo:seeded").length, 1, "the key stays claimed")
+  assert.ok(s.logs.some((l) => l.startsWith("error") && l.includes("reset the demo")))
+  svc.createDpdShipments = create
+  svc.deleteDpdShipments = remove
+  assert.equal(await ensureDemoSeed(s.container), 0, "no second set beside the leftovers")
+  assert.equal(s.shipments.rows.filter((r) => !r.deleted_at).length, 2)
+  await resetDemo(s.container)
+  assert.equal(await ensureDemoSeed(s.container), 6, "after a Reset the whole set is built")
+})
+
+test("reset: demo rows and demo keys go, everything else stays; the next seed builds them again", async () => {
+  const s = setup({ demo: true }, orders(4))
+  await ensureDemoSeed(s.container)
+  arm(s, "shipment")
+  s.settings.insert({ key: "live:writer:shipment", value: { on: true }, updated_by: "user_01LIVE" })
+  s.settings.insert({ key: "sandbox:settings", value: { labelPage: "LBL_PRINTER" }, updated_by: "user_01LIVE" })
+  s.shipments.insert({ mode: "live", option_id: "dpd-courier", order_id: "order_LIVE", fulfillment_id: "ful_LIVE", state: "labeled" })
+  s.events.insert({ mode: "live", kind: "action", shipment_id: null, order_id: "order_LIVE" })
+  s.documents.insert({ mode: "demo", type: "label", data: "JVBERi0=", shipment_id: s.shipments.rows[0].id })
+  s.documents.insert({ mode: "sandbox", type: "label", data: "JVBERi0=", shipment_id: "dpdshp_x" })
+  s.dispatches.insert({ mode: "demo" })
+  const removed = await resetDemo(s.container)
+  assert.deepEqual(removed, { shipments: 4, documents: 1, events: 4, dispatches: 1, settings: 2 })
+  assert.deepEqual(s.shipments.rows.map((r) => r.mode), ["live"])
+  assert.deepEqual(s.events.rows.map((r) => r.mode), ["live"])
+  assert.deepEqual(s.documents.rows.map((r) => r.mode), ["sandbox"])
+  assert.deepEqual(s.settings.rows.map((r) => r.key).sort(), ["live:writer:shipment", "sandbox:settings"])
+  assert.equal(await ensureDemoSeed(s.container), 4, "the next visit builds them again")
+
+  const live = setup(SANDBOX, orders(2))
+  live.shipments.insert({ mode: "demo", option_id: "dpd-courier", state: "pending" })
+  assert.deepEqual(await resetDemo(live.container), { shipments: 0, documents: 0, events: 0, dispatches: 0, settings: 0 }, "never outside demo mode")
+  assert.equal(live.shipments.rows.length, 1)
+})
