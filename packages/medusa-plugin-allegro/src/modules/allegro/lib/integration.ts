@@ -1,5 +1,6 @@
 import { offerUrl, type AllegroEnvironment } from "./constants"
 import type { ImportRow, OfferRow } from "./dto"
+import { handoffCodeNeedsAttention } from "./handoff"
 import type { CounterDraft, FactDraft, LinkDraft, SummaryDraft } from "./kit-routes"
 import { statusGroup } from "./matching"
 import { STOCK_ISSUES } from "./stock"
@@ -60,7 +61,10 @@ function moneyValue(v: unknown): { value: number; currency: string } | null {
 
 /** The line of one import row: state, title, rank (lower is worse) and the list filter that shows it. */
 export function importLine(row: ImportRow): Draft & { filter: string } {
-  if (row.attention) return { state: "failed", title: m("order.attention"), detail: m("order.attentionHint"), rank: RANK.failed, filter: "attention" }
+  if (row.attention) {
+    const detail = handoffCodeNeedsAttention(detailsOf(row).handoff) ? m("order.handoffHint") : m("order.attentionHint")
+    return { state: "failed", title: m("order.attention"), detail, rank: RANK.failed, filter: "attention" }
+  }
   if (row.total_mismatch) return { state: "failed", title: m("order.mismatch"), rank: RANK.failed, filter: "attention" }
   switch (row.status) {
     case "held":

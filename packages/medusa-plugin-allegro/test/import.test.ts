@@ -645,6 +645,68 @@ test("import: a cash on delivery order is placed but not marked paid", async () 
   assert.equal(w.paidMarks, 0)
 })
 
+test("import: the order is created with the method data the handoff returns, and a refused handoff asks a person", async () => {
+  const w = world()
+  const p = ports(w)
+  const sent: Array<Record<string, unknown>> = []
+  const create = p.createDraft
+  p.createDraft = async (decision, c) => {
+    sent.push(decision.order.shipping_methods[0].data)
+    return create(decision, c)
+  }
+  p.handoff = async (decision) => ({ kind: "handed", data: { inpost_option: "inpost-paczkomat", machine_id: "KRA01M", ...decision.order.shipping_methods[0].data } })
+  assert.equal((await processImport(w.row, p)).kind, "imported")
+  assert.equal(sent[0].machine_id, "KRA01M")
+  assert.equal(sent[0].allegro_pickup_point_id, "KRA01M")
+  const handed = w.row as { details?: Record<string, unknown>; attention?: string | null }
+  assert.equal(handed.details?.handoff, "handed")
+  assert.equal(handed.attention ?? null, null)
+
+  const w2 = world()
+  const p2 = ports(w2)
+  p2.handoff = async (decision) => ({ kind: "kept", code: "locker_dropped", reason: "No locker on the mapped option.", data: decision.order.shipping_methods[0].data })
+  assert.equal((await processImport(w2.row, p2)).kind, "imported", "a kept handoff never stops the import")
+  const kept = w2.row as { details?: Record<string, unknown>; attention?: string | null; reason_code?: string | null }
+  assert.equal(kept.details?.handoff, "locker_dropped")
+  assert.equal(kept.attention, "No locker on the mapped option.")
+  assert.equal(kept.reason_code, null)
+})
+
+test("import: a handoff that kept our keys still says so after a failed finish and the adoption that follows", async () => {
+  const w = world({ completeError: new Error("payment collection timed out") })
+  const p = ports(w)
+  p.handoff = async (decision) => ({ kind: "kept", code: "cod_mismatch", reason: "Cash on delivery on an option that collects nothing.", data: decision.order.shipping_methods[0].data })
+  assert.equal((await processImport(w.row, p)).kind, "retry")
+  const failedRow = w.row as { details?: Record<string, unknown>; attention?: string | null; order_id?: string }
+  assert.equal(failedRow.order_id, "order_1")
+  assert.equal(failedRow.details?.handoff, "cod_mismatch")
+  assert.equal(failedRow.attention, "Cash on delivery on an option that collects nothing.")
+
+  w.completeError = undefined
+  w.row = { ...w.row, next_attempt_at: null } as typeof w.row
+  let asked = 0
+  p.handoff = async (decision) => {
+    asked += 1
+    return { kind: "handed", data: decision.order.shipping_methods[0].data }
+  }
+  assert.equal((await processImport(w.row, p)).kind, "adopted")
+  assert.equal(asked, 0, "an adopted order is never handed over again")
+  const adopted = w.row as { details?: Record<string, unknown>; attention?: string | null }
+  assert.equal(adopted.details?.handoff, "cod_mismatch")
+  assert.equal(adopted.attention, "Cash on delivery on an option that collects nothing.")
+})
+
+test("import: a cash on delivery handoff whose Medusa total differs from Allegro asks a person before shipping", async () => {
+  const w = world({ total: { value: 170.5, currency: "PLN" } })
+  const p = ports(w)
+  p.handoff = async (decision) => ({ kind: "handed", data: { ...decision.order.shipping_methods[0].data, inpost_option: "inpost-paczkomat-cod", cod: true, machine_id: "KRA01M" } })
+  assert.equal((await processImport(w.row, p)).kind, "imported")
+  const row = w.row as { details?: Record<string, unknown>; attention?: string | null; reason_code?: string | null }
+  assert.equal(row.reason_code, "total_mismatch")
+  assert.equal(row.details?.handoff, "handed_cod_total_mismatch")
+  assert.match(row.attention ?? "", /cash on delivery.*170\.5.*164\.98/)
+})
+
 test("tax lines: only what came out without any gets the forced calculation", () => {
   assert.deepEqual(
     untaxedIds([{ id: "i1", tax_lines: [{ id: "t1" }] }, { id: "i2", tax_lines: [] }, { id: "i3" }, null, { id: "i4", tax_lines: [null] }]),

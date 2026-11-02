@@ -61,6 +61,7 @@ import {
   type ImportPorts,
   type LineVariant,
 } from "../../modules/allegro/lib/import"
+import { handoffNeedsAttention, handoffRequest, handoffResult, importTotalMinor, keptWithoutProvider, refused, type HandoffOutcome } from "../../modules/allegro/lib/handoff"
 import { normalizeKey } from "../../modules/allegro/lib/matching"
 import { emitAllegroEvent } from "../../modules/allegro/lib/notify"
 import { planReservations } from "../../modules/allegro/lib/reservations"
@@ -409,6 +410,56 @@ export async function withRefLock<T>(container: MedusaContainer, ref: string, fn
   }
 }
 
+/**
+ * The one method of Medusa's fulfillment module the import uses (checked
+ * before the call). Medusa types its context as a cart; an imported order
+ * has no cart, so the context is the order's currency and shipping address,
+ * which is what fulfillment providers read. A provider that needs more
+ * refuses, and the order keeps our own keys.
+ */
+interface FulfillmentValidator {
+  validateFulfillmentData?: (providerId: string, optionData: Record<string, unknown>, data: Record<string, unknown>, context: Record<string, unknown>) => Promise<Record<string, unknown>>
+}
+
+/**
+ * Asks the provider of the shipping option mapped to the Allegro delivery
+ * method to validate the method data, as a cart does (see `lib/handoff.ts`).
+ * Never throws: whatever goes wrong, the order keeps our own keys and the
+ * import goes on.
+ */
+async function handOff(
+  container: MedusaContainer,
+  svc: AllegroModuleService,
+  decision: Extract<ImportDecision, { kind: "create" }>,
+  form: CheckoutForm,
+  ctx: ImportContext,
+): Promise<HandoffOutcome> {
+  const medusa = decision.order
+  const method = medusa.shipping_methods[0]
+  const own = method?.data ?? {}
+  const outcome = await (async (): Promise<HandoffOutcome> => {
+    if (ctx.demo) return keptWithoutProvider(own, "demo")
+    if (!method?.shipping_option_id) return keptWithoutProvider(own, "no_option")
+    if (decision.shippingOptionSource !== "method") return keptWithoutProvider(own, "default_option")
+    try {
+      const { data } = await queryOf(container).graph({ entity: "shipping_option", fields: ["id", "provider_id", "data"], filters: { id: method.shipping_option_id } })
+      const option = (data as Array<{ id: string; provider_id?: string | null; data?: Record<string, unknown> | null }>)[0]
+      if (!option?.provider_id) return refused(own, `the shipping option ${method.shipping_option_id} no longer exists or has no provider.`)
+      const fulfillment = container.resolve<FulfillmentValidator>(Modules.FULFILLMENT)
+      if (typeof fulfillment.validateFulfillmentData !== "function") return refused(own, "this Medusa version cannot validate shipping method data.")
+      const request = handoffRequest(form, { currency_code: medusa.currency_code, shipping_address: medusa.shipping_address })
+      const validated = await fulfillment.validateFulfillmentData(option.provider_id, option.data ?? {}, request.data, request.context)
+      return handoffResult(form, own, validated && typeof validated === "object" ? validated : {}, importTotalMinor(medusa))
+    } catch (err) {
+      return refused(own, errorText(svc, err))
+    }
+  })()
+  if (handoffNeedsAttention(outcome) && outcome.kind === "kept") {
+    svc.getLogger().warn(`[allegro] ${marketplaceRef(form.id)}: not handed to the shipping provider (${outcome.code}): ${outcome.reason}`)
+  }
+  return outcome
+}
+
 function portsFor(
   container: MedusaContainer,
   svc: AllegroModuleService,
@@ -449,6 +500,7 @@ function portsFor(
     createDraft: (decision: Extract<ImportDecision, { kind: "create" }>) => createAllegroDraft(container, decision.order),
     complete: (orderId, args) => completeAllegroOrder(container, orderId, { ...args, demo: svc.isDemo() }),
     withRefLock: (ref, fn) => withRefLock(container, ref, fn),
+    handoff: (decision, form, c) => handOff(container, svc, decision, form, c),
   }
 }
 
