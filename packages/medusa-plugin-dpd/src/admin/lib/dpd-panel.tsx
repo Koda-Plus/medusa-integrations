@@ -1,0 +1,197 @@
+import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { CursorArrowRays, LockClosedSolid, MapPin, TruckFast } from "@medusajs/icons"
+import { Table, Text } from "@medusajs/ui"
+import { ATTENTION_GROUPS, type CountsDto, type ShipmentDto, type ShipmentFilter, type StatusResponse } from "../../modules/dpd/lib/contract"
+import { useDpdShipments } from "./dpd-api"
+import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, ToneBadge, useDebouncedValue } from "./dpd-blocks"
+import { nb } from "./dpd-guide"
+import { KitFetchingBar, KitSkeletonRows } from "./dpd-kit"
+import { Destination, GROUP_ICON, KindBadges, MedusaMark, OrderCell, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "./dpd-ui"
+
+const PAGE_SIZE = 15
+
+/** Every filter of the list: everything, then the groups of the contract. */
+export const FILTERS: readonly ShipmentFilter[] = ["all", "to_create", "labeled", "handed_over", "in_transit", "delivered", "problems", "canceled", "returns"]
+
+/** The groups of the filter bar: everything, the way of a parcel, what needs a person, returns, what left the list. */
+const FILTER_GROUPS: ShipmentFilter[][] = [["all"], ["to_create", "labeled", "handed_over", "in_transit", "delivered"], ["problems"], ["returns", "canceled"]]
+
+function filterCount(c: CountsDto, f: ShipmentFilter): number {
+  return f === "all" ? c.all : c[f]
+}
+
+/** The demo note, shown in the popover of the mode badge in the header. */
+export function DemoDetails({ status }: { status: StatusResponse }) {
+  const { t } = useTranslation("dpd")
+  if (status.mode !== "demo") return null
+  return (
+    <>
+      <span>{t("demo.text")}</span>
+      <span>{t("demo.writes")}</span>
+    </>
+  )
+}
+
+/** The status column: the badge, then what a person should know (the error, the problems). */
+function StatusCell({ shipment: s, lang }: { shipment: ShipmentDto; lang: string }) {
+  return (
+    <div className="flex max-w-[280px] flex-col items-start gap-y-1">
+      <ShipmentStatus shipment={s} />
+      {s.error && (s.state === "failed" || s.state === "unknown" || s.state === "ambiguous" || s.state === "abandoned_unknown") ? (
+        <Text size="xsmall" className="text-ui-tag-red-text">
+          {nb(s.error)}
+        </Text>
+      ) : null}
+      {s.problems.length > 0 ? <ProblemList items={s.problems} /> : null}
+      {s.handedOverAt ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {fmtDateTime(s.handedOverAt, lang)}
+        </Text>
+      ) : null}
+    </div>
+  )
+}
+
+export function ShipmentsSection({
+  status,
+  lang,
+  filter,
+  onFilter,
+  initialQuery = "",
+  seeding = false,
+  seedFailed = false,
+}: {
+  status: StatusResponse
+  lang: string
+  filter: ShipmentFilter
+  onFilter: (f: ShipmentFilter) => void
+  /** From the page URL (?q=), e.g. the order number a host links to. */
+  initialQuery?: string
+  /** Demo mode: the sample shipments are being built right now. */
+  seeding?: boolean
+  /** Demo mode: building the sample shipments failed; the page shows the error with Retry above. */
+  seedFailed?: boolean
+}) {
+  const { t } = useTranslation("dpd")
+  const [search, setSearch] = useState(initialQuery)
+  const q = useDebouncedValue(search.trim())
+  const [page, setPage] = useState(0)
+  useEffect(() => setPage(0), [filter, q])
+  const list = useDpdShipments(filter, q, page * PAGE_SIZE, PAGE_SIZE)
+  const rows = list.data?.shipments ?? []
+  const count = list.data?.count ?? 0
+  const counts = list.data?.counts ?? status.counts
+  const pageCount = Math.max(1, Math.ceil(count / PAGE_SIZE))
+  /* A second click on the active filter clears it. */
+  const pick = (f: ShipmentFilter) => onFilter(filter === f ? "all" : f)
+  const fresh = filter === "all" && !q
+  const demo = status.mode === "demo"
+  /* Demo with no rows: being built, or not yet (no orders, a failed seed, a reset); real data: none yet. */
+  const emptyTitle = demo ? (seeding ? "shipments.seeding" : "shipments.emptyDemo") : "shipments.emptyAll"
+  const emptyHint = demo ? (seeding ? "shipments.seedingHint" : "shipments.emptyDemoHint") : "shipments.emptyHint"
+  /* After a failed seed the error tip with Retry says it all; no hint that the rows come by themselves. */
+  const showHint = fresh && !(demo && seedFailed && !seeding)
+
+  return (
+    <Section
+      id="dpd-shipments"
+      icon={<TruckFast />}
+      title={t("shipments.title")}
+      pointsLabel={t("shipments.subtitle")}
+      points={[
+        { icon: <MapPin />, text: t("shipments.points.kinds") },
+        { icon: <LockClosedSolid />, text: t("shipments.points.noSend"), tone: "green" },
+        { icon: <CursorArrowRays />, text: t("shipments.points.row") },
+      ]}
+      actions={<SearchInput value={search} onChange={setSearch} placeholder={t("shipments.search")} className="sm:w-72" />}
+    >
+      <FilterBar>
+        {FILTER_GROUPS.map((group, i) => (
+          <span key={group.join()} className="contents">
+            {i > 0 ? <FilterDivider /> : null}
+            {group.map((f) => (
+              <FilterButton
+                key={f}
+                icon={GROUP_ICON[f]}
+                label={t(`shipments.filter.${f}`)}
+                count={filterCount(counts, f)}
+                attention={f !== "all" && ATTENTION_GROUPS.includes(f)}
+                active={filter === f}
+                onClick={() => pick(f)}
+              />
+            ))}
+          </span>
+        ))}
+      </FilterBar>
+      <KitFetchingBar active={list.isFetching && !list.isLoading} />
+      <div className="overflow-x-auto">
+        <Table>
+          <Table.Header>
+            <Table.Row>
+              <Table.HeaderCell>
+                <span className="inline-flex items-center gap-x-1.5">
+                  <MedusaMark className="h-3.5 w-3.5 text-ui-fg-muted" />
+                  {t("shipments.col.order")}
+                </span>
+              </Table.HeaderCell>
+              <Table.HeaderCell>{t("shipments.col.service")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("shipments.col.destination")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("shipments.col.status")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("shipments.col.waybills")}</Table.HeaderCell>
+              <Table.HeaderCell className="text-right">{t("shipments.col.cod")}</Table.HeaderCell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {list.isLoading ? <KitSkeletonRows cols={6} rows={5} /> : null}
+            {!list.isLoading && list.isError ? <EmptyTableRow cols={6} icon={GROUP_ICON.problems} title={t("shipments.failed")} /> : null}
+            {!list.isLoading && !list.isError && rows.length === 0 ? (
+              <EmptyTableRow
+                cols={6}
+                icon={GROUP_ICON[filter]}
+                title={fresh ? t(emptyTitle) : t("shipments.empty")}
+                points={showHint ? [{ icon: <TruckFast />, text: t(emptyHint) }] : undefined}
+              />
+            ) : null}
+            {rows.map((s) => (
+              <Table.Row key={s.id} className="align-top [&_td]:py-2.5">
+                <Table.Cell className="max-w-[200px]">
+                  <OrderCell orderId={s.orderId} displayId={s.displayId} />
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex flex-col items-start gap-y-1">
+                    <KindBadges shipment={s} />
+                    {s.demo ? <ToneBadge tone="purple">{t("shipments.sample")}</ToneBadge> : null}
+                  </div>
+                </Table.Cell>
+                <Table.Cell className="max-w-[240px]">
+                  <Destination shipment={s} />
+                </Table.Cell>
+                <Table.Cell>
+                  <StatusCell shipment={s} lang={lang} />
+                </Table.Cell>
+                <Table.Cell>
+                  <WaybillCell shipment={s} />
+                </Table.Cell>
+                <Table.Cell className="whitespace-nowrap text-right tabular-nums">
+                  {s.codAmount ? fmtMoney(s.codAmount, s.currency, lang) : s.cod ? <span className="text-ui-fg-muted">{t("shipments.codLater")}</span> : ""}
+                </Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table>
+      </div>
+      <Table.Pagination
+        count={count}
+        pageSize={PAGE_SIZE}
+        pageIndex={page}
+        pageCount={pageCount}
+        canPreviousPage={page > 0}
+        canNextPage={page + 1 < pageCount}
+        previousPage={() => setPage((x) => Math.max(0, x - 1))}
+        nextPage={() => setPage((x) => x + 1)}
+        translations={{ of: t("pagination.of"), results: t("pagination.results"), pages: t("pagination.pages"), prev: t("pagination.prev"), next: t("pagination.next") }}
+      />
+    </Section>
+  )
+}
