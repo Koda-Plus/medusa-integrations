@@ -1,23 +1,25 @@
 # InPost Von Halsky by Koda Plus
 
-The **InPost marketplace** (InPost Von Halsky, also called InPost Marketplace or InPost Buy) for Medusa v2 stores in Poland. Your variants become marketplace offers matched by EAN, brand and manufacturer part number, with the GPSR manufacturer the marketplace asks for, a channel price (a percent markup, or a fixed price per offer) and the stock from Medusa inventory. Marketplace orders come in as real Medusa orders paid by the marketplace, exactly once each, and the tracking numbers of your shipments go back.
-
-**The live seller API is pending in this version.** Access to the InPost Von Halsky seller API is limited to known integrators and its documentation comes with an agreement with InPost. This version ships the whole plugin around a clean client interface, with a demo mode that runs every step on your own catalog and orders; the live client refuses politely until it is wired to the official documentation (see [What is pending](#what-is-pending-the-official-seller-api)).
+The **InPost marketplace** (InPost Von Halsky, also called InPost Marketplace or InPost Buy) for Medusa v2 stores in Poland, on InPost's seller API. Your variants become marketplace offers with the category, parameters, photos, GPSR data, price and stock the marketplace asks for; price and stock follow Medusa; marketplace orders come in as real Medusa orders, exactly once each; returns, claims and refunds are handled from the Medusa admin; and a statistics tab shows what the channel earns against your other sales channels.
 
 ## What it does
 
-- **Offers**: one row per Medusa variant with the matching keys found on it (the EAN from the variant's `ean` or `barcode`, the brand and the manufacturer part number from metadata), the GPSR manufacturer (from the [EU Compliance plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-compliance) when it is installed, else from product metadata), the channel price and the quantity. What is missing is shown per variant as the reasons it cannot be listed (no EAN, a wrong EAN check digit, no brand, no GPSR manufacturer or one without an e-mail or an address, no PLN price, an unpublished product) and the warnings that do not block it (no manufacturer part number, no stock, no photo).
-- **Listing**: a person selects ready offers and lists them, takes listed ones off, or brings closed ones back to draft. Nothing is ever listed by itself.
+- **Offers**: one row per Medusa variant with what the marketplace needs: the EAN (variant `ean` or `barcode`, then metadata) or the brand with the manufacturer part number, the name, the description (HTML turned into text), up to 20 photos, the dimensions and weight (all four or none), the VAT rate, the GPSR manufacturer (from the [EU Compliance plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-compliance) when it is installed, else from product metadata) and a marketplace leaf category with its required parameters. What is missing is shown per variant as the reasons it cannot be listed and the warnings that do not block it.
+- **Categories**: the marketplace category tree is read weekly. A Medusa product category can be mapped to a marketplace leaf once for all its products; an offer can also take a category chosen by hand or the one the marketplace catalog suggests for its EAN (the catalog hint). The parameters of a leaf (dictionaries, numbers, texts) are edited per offer, the required ones block the listing until they are set.
+- **Listing**: a person selects ready offers and lists them (batches of 500). The marketplace checks each offer: the panel shows PENDING, PUBLISHED, REJECTED with the validation messages, SOLDOUT or CLOSED, and every write the marketplace has not finished yet. Offers can be taken off, reopened, put on a promotion price (with dates) or into the marketplace price program. Nothing is ever listed by itself.
+- **Price and stock sync** (on by default, a setting): every 5 minutes the listed offers whose Medusa price or stock moved get the new values in batches. At zero stock the offer is closed and it is reopened when stock comes back, as InPost's integration guidelines ask.
 - **Channel pricing**: marketplace prices are gross. The channel price is the Medusa PLN price, with VAT added when Medusa keeps prices without tax, plus the markup in percent; a fixed price on one offer wins over both.
-- **Orders**: a marketplace order becomes a Medusa order in the chosen sales channel and PLN region, created as a draft, then placed (reservations, `order.placed`) and paid with Medusa's system provider when the marketplace collected the money (left not paid for cash on delivery). The parcel locker or the courier lands on the shipping option you mapped, the locker id on the second address line. Before the order is created, the provider of that option validates the delivery as it would at checkout, so the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) gets its option and the parcel locker and ships the order like a store order; an unknown payment type, a locker delivery on a courier option, cash on delivery that does not match the payment or the buyer's total, or a refusal of the provider keeps the order out of it, with the reason in the sync log (demo orders are never handed over). One row per marketplace order id, written before anything else: a second import of the same order creates nothing, and a line that matches none of your offers holds the order with the reason (no product is ever invented).
-- **Tracking back**: when an imported order gets a fulfillment or a shipment with tracking numbers, the new numbers go back to the marketplace (a writer, off by default; demo records them locally). Numbers already sent are never sent twice; a person can resend.
-- **The admin page** (`/app/vonhalsky`): the counters (offers listed, cannot be listed, orders imported, to ship, errors), the offers with product photos, reasons, price and stock and the bulk actions, the marketplace orders with their products, delivery, payment and tracking, the sync log, a setup guide with live step states and the settings (markup, sales channel and region, shipping mapping, automatic import, the account). An order widget shows the marketplace origin of an order.
-- **Works with Koda Plus hosts** through the `koda.integration/1` contract: the manifest, an order and a product summary, and four board counters.
+- **Orders**: new and changed orders are read from the marketplace's order events every 5 minutes. An order the marketplace has accepted (InPost accepts paid orders itself; one still CREATED and paid is accepted by the plugin) becomes a Medusa order in the chosen sales channel and PLN region, created as a draft, then placed (reservations, `order.placed`) and paid with Medusa's system provider when the marketplace collected the money; an order not paid or not accepted yet waits, since the buyer's data come with the acceptance. An order cancelled or rejected on the marketplace after the import is flagged in the sync log so a person cancels the Medusa order. The order gets the buyer's InPost e-mail, the parcel locker or the courier on the shipping option you mapped, and the provider of that option validates the delivery as it would at checkout, so the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) ships it like a store order. One row per marketplace order id, written before anything else: a second import creates nothing, and a line that matches none of your offers holds the order with the reason (no product is ever invented).
+- **Shipping**: the seller API takes no tracking number. A shipment made in ShipX with the order's InPost e-mail is linked by InPost itself. The plugin compares the tracking numbers of Medusa's fulfillments with the parcels the marketplace shows: linked, or waiting (with the hint to ship with the order's InPost e-mail).
+- **After sale**: returns, claims and refunds are read every 5 minutes and kept per order. A person accepts a return (the marketplace refunds the buyer) or rejects it with one of the marketplace's reasons, answers a claim, refunds an order in part or in full, and retries a declined refund. The buyer's contact data are read live for the detail view and never stored.
+- **Statistics**: revenue, orders and average order value of the marketplace against every other Medusa sales channel, daily revenue, offers by status, sell-through and listed offers without a sale, the most common validation errors, top products with their returns and claims, hours from payment to the first parcel and to the delivery date, late orders, the delivery, payment and buyer mix, what promotions and the price program gave away, return and claim rates and reasons, and a daily history of the offers. Views, click-through, ratings and payouts are not in the seller API: the tab says so instead of estimating them.
+- **The admin page** (`/app/vonhalsky`): counters, offers, orders, after sale, statistics, the sync log, a setup guide with live step states and the settings (markup, sales channel and region, shipping mapping, category mapping, offer defaults, automatic import, the account with a connection check and "Sync now"). An order widget shows the marketplace origin of an order.
+- **Works with Koda Plus hosts** through the `koda.integration/1` contract: the manifest, an order and a product summary, and five board counters.
 
 ## Requirements
 
 - Medusa 2.12 or newer (peer range `^2.12.0`) and Node.js 20+.
-- For sandbox and live: an integrator agreement with InPost (it gives the API address, the organization id and the access token, separately for sandbox and production). Demo mode needs none of it.
+- For sandbox and live: a seller account on InPost Von Halsky and an API application created in the Merchant Portal (Integrations, API, "Create App", with the seller API scopes). It gives the client id and the client secret; the organization id is in the portal settings. Sandbox (stage) and production applications are separate. Demo mode needs none of it.
 - A region in PLN and shipping options for parcel lockers and the courier.
 
 ## Installation
@@ -27,7 +29,7 @@ npm install @koda-plus/medusa-plugin-inpost-marketplace
 npx medusa db:migrate
 ```
 
-One migration (`Migration20261018150000_vonhalsky`) adds four tables: `vonhalsky_offer`, `vonhalsky_order`, `vonhalsky_sync_log`, `vonhalsky_setting`.
+Two migrations: `Migration20261018150000_vonhalsky` adds `vonhalsky_offer`, `vonhalsky_order`, `vonhalsky_sync_log` and `vonhalsky_setting`; `Migration20261102120000_vonhalsky_live` adds the columns of the seller API to the first two and the tables `vonhalsky_case` (returns, claims, refunds), `vonhalsky_category` (the category tree) and `vonhalsky_snapshot` (the daily offer counts).
 
 ## Configuration
 
@@ -41,19 +43,20 @@ module.exports = defineConfig({
         demo: process.env.VONHALSKY_DEMO === "true",
         environment: process.env.VONHALSKY_ENV, // "sandbox" (default) or "live"
         sandbox: {
-          apiUrl: process.env.VONHALSKY_SANDBOX_API_URL,
+          clientId: process.env.VONHALSKY_SANDBOX_CLIENT_ID,
+          clientSecret: process.env.VONHALSKY_SANDBOX_CLIENT_SECRET,
           organizationId: process.env.VONHALSKY_SANDBOX_ORGANIZATION_ID,
-          accessToken: process.env.VONHALSKY_SANDBOX_TOKEN,
         },
         live: {
-          apiUrl: process.env.VONHALSKY_LIVE_API_URL,
+          clientId: process.env.VONHALSKY_LIVE_CLIENT_ID,
+          clientSecret: process.env.VONHALSKY_LIVE_CLIENT_SECRET,
           organizationId: process.env.VONHALSKY_LIVE_ORGANIZATION_ID,
-          accessToken: process.env.VONHALSKY_LIVE_TOKEN,
         },
         markupPercent: process.env.VONHALSKY_MARKUP_PERCENT,
-        // sendTracking: true,          // writer: tracking numbers back to the marketplace
-        // salesChannelId: "sc_...",   // the admin setting wins
-        // brandKey: "brand", mpnKey: "mpn", eanKey: "ean",
+        // daysToShip: 2,                 // the admin setting wins
+        // syncPriceStock: true,          // writer: price and stock of listed offers
+        // dimensionUnit: "cm", weightUnit: "kg",
+        // brandKey: "brand", mpnKey: "mpn", eanKey: "ean", vatKey: "vat_rate",
       },
     },
   ],
@@ -64,12 +67,12 @@ module.exports = defineConfig({
 # .env
 VONHALSKY_DEMO=true                 # a simulation, nothing leaves the server
 VONHALSKY_ENV=sandbox
-VONHALSKY_SANDBOX_API_URL=...       # from InPost, under the integrator agreement
+VONHALSKY_SANDBOX_CLIENT_ID=...     # Merchant Portal, Integrations, API (stage)
+VONHALSKY_SANDBOX_CLIENT_SECRET=...
 VONHALSKY_SANDBOX_ORGANIZATION_ID=...
-VONHALSKY_SANDBOX_TOKEN=...
-VONHALSKY_LIVE_API_URL=...
+VONHALSKY_LIVE_CLIENT_ID=...
+VONHALSKY_LIVE_CLIENT_SECRET=...
 VONHALSKY_LIVE_ORGANIZATION_ID=...
-VONHALSKY_LIVE_TOKEN=...
 VONHALSKY_MARKUP_PERCENT=10
 ```
 
@@ -79,89 +82,105 @@ Missing options never break the boot: without credentials and without `demo` the
 
 - `demo` (default false): demo mode, only on explicit request; it wins over the credentials.
 - `environment` (default `sandbox`): which credentials are used. Sandbox credentials never serve live.
-- `sandbox`, `live`: `{ apiUrl, organizationId, accessToken }`. The plugin ships no address of its own: `apiUrl` comes from InPost (https only).
+- `sandbox`, `live`: `{ clientId, clientSecret, organizationId, apiUrl?, tokenUrl? }`. The plugin signs in as the API application (OAuth2 client credentials) and takes a fresh access token whenever the last one runs out. `apiUrl` and `tokenUrl` default to InPost's stage gateway for sandbox and the production one for live (https only).
 - `markupPercent` (default 0, -50 to 300): the channel markup. The admin setting wins.
-- `vatRate` (default 23): the VAT added to net Medusa prices.
+- `vatRate` (default 23): the VAT added to net Medusa prices and sent with the offer; `vatKey` (default `vat_rate`): a metadata key for a product's own rate.
 - `pricesIncludeTax` (default: read from the PLN price preference): whether Medusa's PLN prices include tax.
 - `salesChannelId`, `regionId`: where imported orders land. Default: a sales channel named "InPost Von Halsky", else the store default; the first PLN region. The admin settings win.
-- `autoImport` (default false): import new orders every 15 minutes once the seller API is connected. The admin setting wins.
-- `sendTracking` (default false): the writer of tracking numbers.
+- `autoImport` (default false): import new orders on the 5 minute sync. The admin setting wins.
+- `syncPriceStock` (default true): the writer of price and stock of listed offers. The admin setting wins.
+- `daysToShip` (default 2, 0 to 60): the days to ship sent with offers. The admin setting wins.
+- `dimensionUnit` (`mm` or `cm`, default `mm`), `weightUnit` (`g` or `kg`, default `g`): the units of Medusa's dimensions and weight; the marketplace takes millimetres and grams.
 - `brandKey` (default `brand`), `mpnKey` (default `mpn`), `eanKey` (default `ean`): the metadata keys read on the variant, then the product.
 - `stockLocationIds` (default every location): the locations whose stock counts.
 - `untrackedStock` (default 0): the quantity offered for variants whose inventory Medusa does not manage.
-- `timeoutMs` (default 15000): the timeout of one request, for the live client.
+- `timeoutMs` (default 15000): the timeout of one request to the seller API.
 
 ## Setup in brief
 
-1. Get API access from InPost (an integrator agreement; sandbox and production credentials).
-2. Install, configure and migrate (above).
-3. Prepare the catalog: EAN, brand, PLN price, published products; the GPSR manufacturer in the EU Compliance plugin or in product metadata (`gpsr_manufacturer: { name, email, address, phone }`, or `manufacturer_name`, `manufacturer_email`, `manufacturer_address`).
-4. Settings: the markup, the sales channel and region of orders, the shipping options of parcel lockers and the courier.
-5. Refresh offers, list the first ones, import the first order, ship it with a tracking number.
+1. Create the API application in the Merchant Portal (stage first) and set the three values above.
+2. Install, configure and migrate, then press **Check connection** in Settings, Account.
+3. Prepare the catalog: EAN (or brand and part number), name, description, photos, PLN price, published products; the GPSR manufacturer (name and e-mail) in the EU Compliance plugin or in product metadata (`gpsr_manufacturer: { name, email, address, phone }`, or `manufacturer_name`, `manufacturer_email`, `manufacturer_address`), or `gpsr_exempt: true` for a product that needs none.
+4. Settings: the markup, the sales channel and region of orders, the shipping options of parcel lockers and the courier, the category mapping (Medusa category to marketplace leaf), the offer defaults (days to ship, return and complaint policy).
+5. Refresh offers, fill the parameters the categories require, list the first ones and watch them go from PENDING to PUBLISHED.
+6. Switch on automatic import, ship the first order in ShipX with the order's InPost e-mail.
 
 The setup guide in the admin shows each step with its live state.
 
 ## Demo mode
 
-Only on explicit request (`demo: true`). Nothing is ever sent outside, even with credentials set:
+Only on explicit request (`demo: true`). A simulated marketplace runs inside the server, and nothing is ever sent outside, even with credentials set:
 
-- the mode badge says **Demo (simulation)** and explains the flow;
-- **Refresh offers** reads your real catalog; **List selected** marks ready offers listed in the plugin's table (with a local `demo-...` offer id and the status PUBLISHED, or SOLDOUT without stock);
-- **Simulate an order** builds a sample marketplace order from the listed offers (one or two lines, a sample buyer `buyerN@example.com`, a sample street in Warsaw and a sample parcel locker `DEMO01M`, every fourth order cash on delivery) and imports it through the same path as a real one: a real Medusa order in the "InPost Von Halsky (demo)" sales channel (created on first use and linked to the stock locations of the default channel), with `metadata.koda_demo`, placed (it reserves stock) and paid with Medusa's system provider;
-- **Ship (simulation)** on an imported demo order fulfils and ships it in Medusa with a sample tracking number (24 digits starting with 99, never a real parcel), so the subscribers record the tracking exactly as for a real shipment; fulfilling it yourself in Orders works the same;
-- tracking numbers are recorded on the order row ("Recorded (demo)").
+- the mode badge says **Demo (simulation)**;
+- the category tree is a small sample (four top categories with leaves and parameters), the catalog hint answers for any EAN;
+- **List selected** sends ready offers to the simulated marketplace: they are PENDING until the next sync reads the command, then PUBLISHED (or still PENDING with the validation messages when photos, the description or a leaf category are missing); price, stock, promotions and the price program work the same way;
+- **Simulate an order** builds a sample marketplace order from the published offers (a sample buyer at example.com, a sample parcel locker `DEMO01M`, paid with BLIK, card or a payment link, every fifth one with a company invoice) and imports it through the same path as a real one: a real Medusa order in the "InPost Von Halsky (demo)" sales channel, with `metadata.koda_demo`, placed (it reserves stock) and paid; the simulated stock goes down and an offer sells out at zero;
+- **Ship (simulation)** fulfils and ships an imported demo order in Medusa with a sample tracking number (24 digits starting with 99, never a real parcel), and the simulated marketplace links the parcel as InPost would;
+- **Simulate a return** and **Simulate a claim** open a case on a simulated order, read in by the sync like a real one; accepting a return or refunding an order produces the refund events;
+- the statistics fill from these rows.
 
-Simulated orders are real orders of your store: cancel them in Orders when you are done.
+Simulated orders are real orders of your store: cancel them in Orders when you are done. The simulated marketplace forgets its offers and orders when the server restarts; the plugin's own rows stay.
 
-## What is pending: the official seller API
+## The sync
 
-The live and sandbox client (`createLiveClient` in `src/modules/vonhalsky/lib/client.ts`) is **pending**: every method throws `MarketplaceApiPendingError` (HTTP 501 from the admin routes) with a polite message, and nothing is sent. In sandbox and live the admin says "Seller API pending", listing and imports answer the same, tracking numbers are kept as "Waits for the seller API" and everything is in the sync log.
+A scheduled job (`vonhalsky-sync`, every 5 minutes) and the admin's **Sync now** run the same parts, each on its own so one failing never stops the others: the commands the marketplace has not finished, offer events (and offers not read for a day), price and stock, order events and changed orders, returns, claims and refunds, the category tree (weekly) and the daily snapshot. A run in progress is joined, never doubled. Each failure goes to the sync log with the secret masked.
 
-Why: InPost publishes the API documentation on its [API portal](https://inpsa-api-portal.inpost-group.com/) for integrators under an agreement. A public [PHP SDK generated from InPost's OpenAPI file](https://github.com/InPost-VonHalsky/InPost-vonHalsky-api-sdk-php) names the operations and models, and this plugin is shaped after them: offers with product info (EAN, brand, manufacturer part number), stock, a gross `PriceTag` and `GpsrInfo` with a `Manufacturer` (name, e-mail, address); orders with `orderLines`, `delivery` (`deliveryType` APM or COURIER, `deliveryPoint`, parcels with tracking numbers), `customer`, `invoice`, `finalPrice` and `paymentDetails`; the offer statuses PENDING, REJECTED, PUBLISHED, CLOSED and SOLDOUT and the order statuses CREATED, ACCEPTED, REFUSED, REJECTED and CANCELED. The SDK lists the operations the client interface maps to (offer batch, update and close, order list, events and details, order accept); it does not show how shipment information is passed in detail, nor the limits, errors and production address. The plugin calls nothing until those are checked against the portal and a sandbox account.
-
-What already works without the API: building and checking offers from the catalog, pricing, the settings, the import path from a marketplace order to a Medusa order (exercised in demo and in the tests with an order in the SDK's wire format), tracking from Medusa fulfillments, the admin, the contract.
+The client keeps to the seller API limits: pages of 30, batches of 500 offers, 100 price or stock changes and 200 campaign declarations, a wait for the server's `Retry-After` on 429, retries of reads on network errors and 5xx, one token refresh on 401. The last rate limit seen is shown in Settings, Account.
 
 ## Admin API
 
 Every route needs an admin session or token. Writes take a JSON body or the `x-koda-request` header.
 
-- `GET /admin/vonhalsky`: the page in one read: the mode, the missing and ignored options, the options in use (the token masked), the settings, where orders land, the store's sales channels, PLN regions and shipping options, whether EU Compliance is installed, the counters.
-- `GET /admin/vonhalsky/offers?filter=&q=&offset=&limit=`: the offers (`filter`: `draft`, `listed`, `blocked`, `closed`; `q`: a SKU, title, EAN, product, variant or offer id).
+- `GET /admin/vonhalsky`: the page in one read: the mode, the missing and ignored options, the options in use (client id and secret masked), the settings, where orders land, the store's sales channels, PLN regions and shipping options, whether EU Compliance is installed, the counters, the last rate limit, the category tree size.
+- `POST /admin/vonhalsky/check`: signs in and reads the organization and one offer.
+- `POST /admin/vonhalsky/sync { parts? }`: the sync now; answers what each part did.
+- `GET /admin/vonhalsky/stats?days=7|30|90`: the statistics.
+- `GET /admin/vonhalsky/offers?filter=&q=&offset=&limit=`: the offers (`filter`: `draft`, `listed`, `blocked`, `closed`, `pending`; `q`: a SKU, title, EAN, product, variant or offer id).
 - `POST /admin/vonhalsky/offers/refresh`: reads the catalog again (lists nothing).
-- `POST /admin/vonhalsky/offers/list`, `/unlist`, `/reopen` `{ ids }`: list, take off, back to draft.
+- `POST /admin/vonhalsky/offers/list`, `/unlist`, `/reopen` `{ ids }`: list (a closed offer listed again is reopened on the marketplace), close, back to draft.
 - `POST /admin/vonhalsky/offers/:id/price { price_override }`: a fixed gross price ("129.99"), or null for the markup.
-- `GET /admin/vonhalsky/orders?filter=&q=`: the marketplace orders (`filter`: `awaiting_shipment`, `tracking_sent`, `held`, `errors`).
-- `POST /admin/vonhalsky/orders/import`: import now (501 while the API is pending).
+- `POST /admin/vonhalsky/offers/:id/hint`: the catalog hint for the offer's EAN or part number.
+- `POST /admin/vonhalsky/offers/category { ids, categoryId }`: a leaf chosen by hand, or null.
+- `POST /admin/vonhalsky/offers/:id/attributes { attributes }`: the category parameters of one offer.
+- `POST /admin/vonhalsky/offers/promotion { ids, promotion }`: `{ mode, value, start, end }` (mode `PERCENTAGE`, `FIXED_PRICE` or `AMOUNT`, ISO dates), or null to end it.
+- `POST /admin/vonhalsky/offers/program { ids, mode }`: `IN` or `OUT` of the price program.
+- `GET /admin/vonhalsky/categories?q=&leaf=1`, `POST /admin/vonhalsky/categories/sync`, `GET /admin/vonhalsky/categories/map`, `GET /admin/vonhalsky/categories/:id/attributes?fresh=1`: the tree, a fresh read, the Medusa categories with their mapping, the parameters of a leaf.
+- `GET /admin/vonhalsky/orders?filter=&q=`: the marketplace orders (`filter`: `awaiting_shipment`, `tracking_waiting`, `held`, `errors`).
+- `POST /admin/vonhalsky/orders/import`: read and import now, also with automatic import off.
 - `POST /admin/vonhalsky/orders/:id/retry`: a held import again (never a second order).
-- `POST /admin/vonhalsky/orders/:id/tracking`: send the tracking numbers again.
-- `POST /admin/vonhalsky/orders/:id/ship`, `POST /admin/vonhalsky/demo/simulate-order`: demo mode only.
+- `POST /admin/vonhalsky/orders/:id/tracking`: read the order again and compare the parcels.
+- `POST /admin/vonhalsky/orders/:id/refund { amount? }`: a refund through the marketplace (the whole order without an amount).
+- `GET /admin/vonhalsky/cases?filter=&q=`: returns, claims and refunds (`filter`: `open`, `return`, `claim`, `refund`).
+- `GET /admin/vonhalsky/cases/:id`: one case read live, with the buyer contact and the reject reasons.
+- `POST /admin/vonhalsky/cases/:id/accept { amount? }`, `/reject { reasonId }`, `/resolve { how, description }`, `/retry`: the decisions.
+- `POST /admin/vonhalsky/orders/:id/ship`, `POST /admin/vonhalsky/demo/simulate-order`, `POST /admin/vonhalsky/demo/simulate-case { kind, orderId? }`: demo mode only.
 - `GET /admin/vonhalsky/medusa-orders/:id`: the marketplace origin of a Medusa order (the widget).
-- `GET`, `POST /admin/vonhalsky/settings`: `pricing { markupPercent }`, `orders { salesChannelId, regionId, autoImport }`, `shipping { APM, COURIER }`.
+- `GET`, `POST /admin/vonhalsky/settings`: `pricing { markupPercent }`, `orders { salesChannelId, regionId, autoImport }`, `shipping { APM, COURIER }`, `categories { pcat_...: leafId or null }`, `offer_defaults { daysToShip, returnPolicy, complaintPolicy, syncPriceStock }`.
 - `GET /admin/vonhalsky/log?area=&outcome=`: the sync log (30 days).
 
 The plugin has no store routes.
 
 ## One InPost menu
 
-With the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) of Koda Plus in the same app, InPost Von Halsky does not take a sidebar entry of its own: its page is the "Von Halsky" tab of the "InPost" entry (`/app/inpost?service=vonhalsky`), next to Shipping and, when installed, InPost Pay. The page in the tab is the same page, drawn by this plugin (header with the mode badge, Offers, Orders, Sync log, Setup guide, Settings).
+With the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) of Koda Plus in the same app, InPost Von Halsky does not take a sidebar entry of its own: its page is the "Von Halsky" tab of the "InPost" entry (`/app/inpost?service=vonhalsky`), next to Shipping and, when installed, InPost Pay. The page in the tab is the same page, drawn by this plugin.
 
 - `/app/vonhalsky` keeps working: it moves to the tab with every parameter (`/app/vonhalsky?section=orders&filter=held` opens the tab on that list), so links from hosts, counters and the order card need no change.
 - The own sidebar entry steps aside at runtime (Medusa has no conditional sidebar entries): its icon draws a hidden marker while the InPost plugin is there and one CSS rule of the shared kit hides that link. In a browser without CSS `:has()` the entry stays and leads to the tab.
-- Without the InPost plugin nothing changes: the own entry "InPost Von Halsky" and the page at `/app/vonhalsky`, as before. Nothing to configure, and no import between the packages: the two meet in the registry of the shared kit (page tabs, kit 1.1.0).
+- Without the InPost plugin nothing changes: the own entry "InPost Von Halsky" and the page at `/app/vonhalsky`. Nothing to configure, and no import between the packages: the two meet in the registry of the shared kit (page tabs, kit 1.1.0).
 
 ## Works with Koda Plus hosts
 
-- `GET /admin/vonhalsky/integration`: the manifest (mode `demo`, `sandbox`, `live` or `off`, entities `order` and `product`, the widget `vonhalsky.order` in `order.details`, the tracking writer; in sandbox and live the problem "seller API pending").
-- `GET /admin/vonhalsky/integration/summary?entity=order&id=order_...`: one line per imported order: to ship (blue), tracking sent or recorded (green), waiting for the seller API (orange), tracking failed (red); facts: the channel (code `vonhalsky`) with the marketplace order id, the payment (code `paid` or `cod`), the parcel locker or courier, the tracking numbers.
+- `GET /admin/vonhalsky/integration`: the manifest (mode `demo`, `sandbox`, `live` or `off`, entities `order` and `product`, the widget `vonhalsky.order` in `order.details`, the offer writer).
+- `GET /admin/vonhalsky/integration/summary?entity=order&id=order_...`: one line per imported order: to ship (blue), shipped and linked by InPost (green), shipped but not shown by the marketplace yet (orange); facts: the channel (code `vonhalsky`) with the marketplace order id, the payment (code `paid` or `cod`), the parcel locker or courier, the tracking numbers, returns and claims.
 - `GET /admin/vonhalsky/integration/summary?entity=product&id=prod_...`: listed (green), ready (blue) or blocked with the first reason (orange).
-- `GET /admin/vonhalsky/integration/attention?scope=orders,products`: `held_orders` and `tracking_failed` (red), `awaiting_shipment` (blue), `blocked_offers` (orange), linked to the filters of the page (`/vonhalsky?section=orders&filter=held`...).
+- `GET /admin/vonhalsky/integration/attention?scope=orders,products`: `held_orders` (red), `tracking_waiting` and `open_cases` (orange), `awaiting_shipment` (blue), `blocked_offers` (orange), linked to the filters of the page.
 
 ## Security and data
 
-- **The token** is never shown in full (the admin sees `***` and the last four characters) and is masked in logs and stored errors, as are bearer values.
+- **The client secret** is never shown in full (the admin sees `***` and the last four characters of the client id and the secret) and is masked in logs and stored errors, as are bearer values. Access tokens live in memory only.
 - **Writes need the admin**: writes under `/admin/vonhalsky` take a JSON body or the `x-koda-request` header. A shopper may not set `vonhalsky_` metadata, `marketplace_order_ref` or `koda_demo` on carts or the account: the plugin never trusts order metadata, its own tables are the record.
-- **What the plugin keeps**: per offer the variant and product ids, SKU, title, EAN, brand, MPN, the manufacturer name, the reasons, prices and stock; per marketplace order the ids, the delivery type and parcel locker, the payment type, the total, the lines (offer, variant, SKU, title, quantity, price), the tracking numbers and a short history. **No buyer name, address, e-mail or phone** is stored in the plugin's tables: they go only on the Medusa order. The sync log keeps ids, never personal data, and prunes itself after 30 days.
-- **Writers**: nothing is listed, imported or sent by itself. Listing is a person's action; automatic import and the tracking writer are off by default.
+- **What the plugin keeps**: per offer the variant and product ids, SKU, title, EAN, brand, MPN, the category and parameters, the manufacturer name, the reasons, prices, stock and what the marketplace says about the offer; per marketplace order the ids, the delivery type and parcel locker, the payment type, the money facts (total, delivery, discounts, refunded), the lines (offer, variant, SKU, title, quantity, price), the parcels, dates, whether the invoice is for a company, the tracking numbers and a short history; per case the ids, status, reason, amount, lines and dates. **No buyer name, address, e-mail or phone** is stored in the plugin's tables: they go only on the Medusa order, and the after sale detail reads them live. The sync log keeps ids, never personal data, and prunes itself after 30 days.
+- **Writers**: nothing is listed or decided by itself. Listing, promotions, return and claim decisions and refunds are a person's action; price and stock sync is on by default and can be switched off; automatic import is off by default.
 
 ## Branding
 
@@ -170,15 +189,15 @@ This plugin is an independent integration. It contains no imitation of InPost's 
 ## Uninstall
 
 1. Remove the plugin from `medusa-config.ts` and the package from `package.json`.
-2. The four `vonhalsky_*` tables stay with their data. Drop them by hand when you no longer need them, or run `npx medusa db:rollback vonhalsky` before removing the package. Imported orders stay in Medusa; the demo sales channel can be deleted in Settings.
+2. The seven `vonhalsky_*` tables stay with their data. Drop them by hand when you no longer need them, or run `npx medusa db:rollback vonhalsky` before removing the package. Imported orders stay in Medusa; the demo sales channel can be deleted in Settings. Delete the API application in the Merchant Portal.
 
 ## Compatibility
 
-Medusa 2.12 or newer (peer range `^2.12.0`) and Node.js 20+. The tests and the build run on Medusa 2.15.3. The admin libraries (`@medusajs/ui`, `@medusajs/icons`, `@tanstack/react-query`, `react`, `react-i18next`, `react-router-dom`) are optional peers: the plugin uses the copies of Medusa's dashboard. Developing the plugin needs Node.js 22.6+ (the tests run the TypeScript sources directly).
+Medusa 2.12 or newer (peer range `^2.12.0`) and Node.js 20+. The tests and the build run on Medusa 2.15.3. The seller API client follows InPost's OpenAPI 1.7.6. The admin libraries (`@medusajs/ui`, `@medusajs/icons`, `@tanstack/react-query`, `react`, `react-i18next`, `react-router-dom`) are optional peers: the plugin uses the copies of Medusa's dashboard. Developing the plugin needs Node.js 22.6+ (the tests run the TypeScript sources directly).
 
 ## Public API
 
-What other code may import: `@koda-plus/medusa-plugin-inpost-marketplace/workflows` (`refreshOffers`, `listOffers`, `unlistOffers`, `reopenOffers`, `setOverride`, `importMarketplaceOrder`, `importNewOrders`, `retryOrder`, `simulateOrder`, `resolveTarget`, `syncTracking`, `demoShip`, `parseMarketplaceOrder`, `planImport`, `vonHalskyIntegration`, the types), `@koda-plus/medusa-plugin-inpost-marketplace/modules/vonhalsky` (the module, its options, the client interface and the response types) and `/admin`. Every other path is internal and may change in any release.
+What other code may import: `@koda-plus/medusa-plugin-inpost-marketplace/workflows` (offers: `refreshOffers`, `listOffers`, `unlistOffers`, `reopenOffers`, `setOverride`, `hintOffer`, `setCategory`, `setAttributes`, `setPromotion`, `setProgram`, `syncCategories`; orders: `importMarketplaceOrder`, `importNewOrders`, `retryOrder`, `simulateOrder`, `resolveTarget`, `syncTracking`, `demoShip`, `parseMarketplaceOrder`, `planImport`; after sale: `syncCases`, `listCases`, `acceptReturn`, `rejectReturn`, `resolveClaim`, `refundOrder`, `retryRefund`; `runSync`, `readStats`, `vonHalskyIntegration`, the types), `@koda-plus/medusa-plugin-inpost-marketplace/modules/vonhalsky` (the module, its options, the client interface and the response types) and `/admin`. Every other path is internal and may change in any release.
 
 ## Development
 
@@ -191,11 +210,11 @@ npm run build
 
 ## Commercial support
 
-Built and maintained by [Koda Plus](https://koda.plus), a Medusa agency from Poland. Want your store on the InPost marketplace, or the seller API wired once you have the agreement? Write to kontakt@koda.plus.
+Built and maintained by [Koda Plus](https://koda.plus), a Medusa agency from Poland. Want your store on the InPost marketplace? Write to kontakt@koda.plus.
 
 ## Trademarks
 
-InPost, InPost Von Halsky, InPost Buy, Paczkomat and Medusa are trademarks of their owners, used here only to identify the marketplace this plugin connects to and the platform it runs on. This is an independent integration, not affiliated with or endorsed by InPost or Medusa.
+InPost, InPost Von Halsky, InPost Buy, Paczkomat, ShipX and Medusa are trademarks of their owners, used here only to identify the marketplace this plugin connects to and the platform it runs on. This is an independent integration, not affiliated with or endorsed by InPost or Medusa.
 
 ## License
 
@@ -205,4 +224,4 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 Every release is in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost-marketplace/CHANGELOG.md).
 
-- 0.1.0 (unreleased): the first version. Offers from the catalog with eligibility, GPSR and channel pricing, order import into Medusa, tracking back, the admin page and the order widget, demo mode, the koda.integration/1 contract, one InPost menu with the InPost plugin; the live seller API client is pending. It needs `npx medusa db:migrate`.
+- 0.1.0 (unreleased): the first version, on InPost's seller API. Offers with categories, parameters, photos and GPSR, price and stock sync, promotions and the price program, order import from order events, ShipX linking, returns, claims and refunds, statistics, the admin page and the order widget, demo mode with a simulated marketplace, the koda.integration/1 contract, one InPost menu with the InPost plugin. It needs `npx medusa db:migrate`.
