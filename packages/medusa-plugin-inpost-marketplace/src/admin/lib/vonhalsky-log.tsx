@@ -1,14 +1,23 @@
 import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { BarsArrowDown, Clock, CogSixTooth, ExclamationCircle, History as HistoryIcon, ListBullet, ShoppingCart, Tag, TruckFast } from "@medusajs/icons"
+import { ArrowPath, ArrowUturnLeft, BarsArrowDown, Clock, CogSixTooth, ExclamationCircle, FolderOpen, History as HistoryIcon, ListBullet, ShoppingCart, Tag, TruckFast } from "@medusajs/icons"
 import { Table, Text } from "@medusajs/ui"
 import { useVonHalskyLog } from "./vonhalsky-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, Section, ToneBadge } from "./vonhalsky-blocks"
 import { KitFetchingBar, KitSkeletonRows } from "./vonhalsky-kit"
 import { fmtDateTime } from "./vonhalsky-ui"
 
-const AREAS = ["", "offers", "orders", "tracking", "settings"] as const
-const AREA_ICON: Record<(typeof AREAS)[number], ReactNode> = { "": <ListBullet />, offers: <Tag />, orders: <ShoppingCart />, tracking: <TruckFast />, settings: <CogSixTooth /> }
+const AREAS = ["", "offers", "orders", "tracking", "cases", "categories", "sync", "settings"] as const
+const AREA_ICON: Record<(typeof AREAS)[number], ReactNode> = {
+  "": <ListBullet />,
+  offers: <Tag />,
+  orders: <ShoppingCart />,
+  tracking: <TruckFast />,
+  cases: <ArrowUturnLeft />,
+  categories: <FolderOpen />,
+  sync: <ArrowPath />,
+  settings: <CogSixTooth />,
+}
 const TONE = { ok: "green", warning: "orange", error: "red" } as const
 
 /** The sync log: what the plugin did, newest first. */
