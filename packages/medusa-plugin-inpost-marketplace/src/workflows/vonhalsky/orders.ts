@@ -16,12 +16,14 @@
  */
 
 import { randomUUID } from "node:crypto"
+import { Modules } from "@medusajs/framework/utils"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import * as coreFlows from "@medusajs/medusa/core-flows"
 import { isPending, type MarketplaceOrder } from "../../modules/vonhalsky/lib/client"
 import { DEMO_SALES_CHANNEL } from "../../modules/vonhalsky/lib/constants"
 import { demoOrder } from "../../modules/vonhalsky/lib/demo"
-import { importAction, planImport, type ImportContext, type OfferRef } from "../../modules/vonhalsky/lib/orders"
+import { handoffRequest, handoffResult, importTotalMinor, keptWithoutProvider, refused, type HandoffOutcome } from "../../modules/vonhalsky/lib/handoff"
+import { importAction, planImport, type ImportContext, type MedusaOrderInput, type OfferRef } from "../../modules/vonhalsky/lib/orders"
 import { shippingOptionFor } from "../../modules/vonhalsky/lib/shipping"
 import { logSync, readSettings, toOrderDto, vonHalskySvc, withEvent, type Scope } from "../../modules/vonhalsky/lib/store"
 import type { MarketplaceOrderDto } from "../../modules/vonhalsky/lib/contract"
@@ -124,6 +126,45 @@ async function firstShippingOption(query: QueryLike): Promise<string | null> {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* The shipping method data, validated by its provider                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The one method of Medusa's fulfillment module the import uses (checked
+ * before the call). Medusa types its context as a cart; an imported order
+ * has no cart, so the context is the order's currency and shipping address,
+ * which is what fulfillment providers read. A provider that needs more
+ * refuses, and the order keeps our own keys.
+ */
+interface FulfillmentValidator {
+  validateFulfillmentData?: (providerId: string, optionData: Record<string, unknown>, data: Record<string, unknown>, context: Record<string, unknown>) => Promise<Record<string, unknown>>
+}
+
+/**
+ * Asks the provider of the mapped shipping option to validate the method
+ * data, as a cart does (see `lib/handoff.ts`). Never throws: whatever goes
+ * wrong, the order keeps our own keys and the import goes on.
+ */
+async function handOff(container: MedusaContainer, order: MarketplaceOrder, medusa: MedusaOrderInput, demo: boolean): Promise<HandoffOutcome> {
+  const method = medusa.shipping_methods[0]
+  const own = method?.data ?? {}
+  if (demo) return keptWithoutProvider(own, "demo")
+  if (!method?.shipping_option_id) return keptWithoutProvider(own, "no_option")
+  try {
+    const { data } = await queryOf(container).graph({ entity: "shipping_option", fields: ["id", "provider_id", "data"], filters: { id: method.shipping_option_id } })
+    const option = (data as Array<{ id: string; provider_id?: string | null; data?: Record<string, unknown> | null }>)[0]
+    if (!option?.provider_id) return refused(own, `the shipping option ${method.shipping_option_id} no longer exists or has no provider.`)
+    const fulfillment = container.resolve<FulfillmentValidator>(Modules.FULFILLMENT)
+    if (typeof fulfillment.validateFulfillmentData !== "function") return refused(own, "this Medusa version cannot validate shipping method data.")
+    const request = handoffRequest(order, { currency_code: medusa.currency_code, shipping_address: medusa.shipping_address })
+    const validated = await fulfillment.validateFulfillmentData(option.provider_id, option.data ?? {}, request.data, request.context)
+    return handoffResult(order, own, validated && typeof validated === "object" ? validated : {}, importTotalMinor(medusa))
+  } catch (err) {
+    return refused(own, errorText(err, container))
+  }
+}
+
 async function offerRefs(scope: Scope): Promise<OfferRef[]> {
   const svc = vonHalskySvc(scope)
   const rows = ((await svc.listVonHalskyOffers({ status: ["listed", "closed", "draft"] }, { take: 5000, select: ["id", "remote_id", "variant_id", "sku", "title"] })) ?? []) as Row[]
@@ -198,6 +239,12 @@ export async function importMarketplaceOrder(container: MedusaContainer, order: 
         if (decision.kind === "hold") return hold(decision.reason, decision.code)
         email = decision.email
         lines = decision.lines
+        const handoff = await handOff(container, order, decision.order, o.demo)
+        decision.order.shipping_methods[0].data = handoff.data
+        if (handoff.kind === "kept" && handoff.code !== "demo" && handoff.code !== "no_option") {
+          row = await svc.updateVonHalskyOrders({ id, events: withEvent(row!.events, { kind: "note", message: handoff.reason.slice(0, 300) }) })
+          await logSync(container, { area: "orders", action: "handoff", outcome: "warning", message: `Order ${order.id}: ${handoff.reason}`, refs: { marketplace_order_id: order.id } })
+        }
         const draft = await createDraft(container, decision.order)
         orderId = draft.orderId
         /* The id is on the row the moment the order exists: a retry finds it, never makes a second one. */
