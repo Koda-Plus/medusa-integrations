@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- No second parcel from a BaseLinker status: a fulfillment made because BaseLinker reports the order shipped (`fulfillOnStatusIds`, store orders and imported orders) carries `shipped_outside_medusa: "baselinker"` in its metadata. The InPost plugin of Koda Plus records such a fulfillment as skipped. Before, an order checked out with an InPost option reached that plugin like any other fulfillment, and with its `autoCreate` on it made a ShipX parcel for an order BaseLinker had already sent.
 - Order export: the parcel locker of an order reaches BaseLinker. The InPost plugin of Koda Plus, InPost Pay and the InPost geowidget store the locker as `machine_id` (with `machine_name` and `machine_address`), a key the export did not read, so their orders went without `delivery_point_*`. `machine_id` is now read first, its address fills the point's address, post code and city, and `locker_code`, `locker` and `point` are read too. A nested point gives its code before its display name.
 
 ## 0.3.1 (2026-10-18)
