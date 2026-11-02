@@ -6,7 +6,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { isEmail, normalizePhone, normalizePostCode, splitStreet } from "../src/modules/inpost/lib/address.ts"
-import { externalShipmentId, shippedOutsideKey } from "../src/modules/inpost/lib/guards.ts"
+import { externalShipmentId, shippedOutsideFulfillment, shippedOutsideKey } from "../src/modules/inpost/lib/guards.ts"
 import { isLockerCode, lockerAddressLine, lockerFromData, lockerMapUrl, normalizeLockerCode } from "../src/modules/inpost/lib/lockers.ts"
 import { decimalString, firstMinor, formatMinor, minorToAmount, toMinor } from "../src/modules/inpost/lib/money.ts"
 import { hint, maskSecrets, tokenState } from "../src/modules/inpost/lib/security.ts"
@@ -87,6 +87,14 @@ test("the locker of the shipping method data: machine_* first, the shapes of oth
   assert.equal(lockerAddressLine(address), "ul. Narzędziowa 12, 00-950 Warszawa")
   assert.match(lockerMapUrl({ code: "KSP01M", address }) ?? "", /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=Paczkomat%20KSP01M/)
   assert.equal(lockerMapUrl(null), null)
+})
+
+test("guards: a fulfillment marked shipped outside Medusa names who shipped it; anything empty is no mark", () => {
+  assert.equal(shippedOutsideFulfillment({ shipped_outside_medusa: "baselinker", source: "baselinker" }), "shipped_outside_medusa:baselinker")
+  assert.equal(shippedOutsideFulfillment({ shipped_outside_medusa: true }), "shipped_outside_medusa")
+  for (const metadata of [null, undefined, {}, { source: "baselinker" }, { shipped_outside_medusa: "" }, { shipped_outside_medusa: false }, { shipped_outside_medusa: {} }]) {
+    assert.equal(shippedOutsideFulfillment(metadata), null, JSON.stringify(metadata))
+  }
 })
 
 test("guards: a configured metadata key stops the creation; only an object names a shipment to track", () => {

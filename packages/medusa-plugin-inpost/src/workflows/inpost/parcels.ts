@@ -25,7 +25,7 @@ import { demoNextStatus, demoShipmentId, demoTrackingNumber, searchDemoPoints } 
 import type { ParcelRow } from "../../modules/inpost/lib/dto"
 import { describeError, InpostApiError } from "../../modules/inpost/lib/errors"
 import { createdEvents, statusEvents, type EventSourceRow } from "../../modules/inpost/lib/events"
-import { externalShipmentId, shippedOutsideKey } from "../../modules/inpost/lib/guards"
+import { externalShipmentId, shippedOutsideKey, shippedOutsideFulfillment } from "../../modules/inpost/lib/guards"
 import { isLockerCode, normalizeLockerCode } from "../../modules/inpost/lib/lockers"
 import { formatMinor } from "../../modules/inpost/lib/money"
 import { canCallShipx } from "../../modules/inpost/lib/options"
@@ -157,8 +157,10 @@ export async function recordFulfillment(scope: Scope, orderId: string, fulfillme
   const existing = await listParcels(svc, { order_id: orderId, demo }, { take: 50 })
   const same = existing.find((r) => r.fulfillment_id === fulfillmentId)
   if (same) return same
-  const guardKey = shippedOutsideKey(order.metadata, o.skipMetadataKeys)
-  const external = guardKey && !demo ? externalShipmentId((order.metadata ?? {})[guardKey]) : null
+  /* An order key (`skipMetadataKeys`) can name the shipment to track; a fulfillment another system marked only stops the creation. */
+  const orderKey = shippedOutsideKey(order.metadata, o.skipMetadataKeys)
+  const guardKey = orderKey ?? shippedOutsideFulfillment(f.metadata)
+  const external = orderKey && !demo ? externalShipmentId((order.metadata ?? {})[orderKey]) : null
   const store = storeFor(scope)
   const inserted = await store.insertIgnore({
     order_id: order.id,
