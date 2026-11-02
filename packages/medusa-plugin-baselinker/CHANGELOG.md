@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Order export: the parcel locker of an order reaches BaseLinker. The InPost plugin of Koda Plus, InPost Pay and the InPost geowidget store the locker as `machine_id` (with `machine_name` and `machine_address`), a key the export did not read, so their orders went without `delivery_point_*`. `machine_id` is now read first, its address fills the point's address, post code and city, and `locker_code`, `locker` and `point` are read too. A nested point gives its code before its display name.
+
 ## 0.3.1 (2026-10-18)
 
 - The admin menu entry has a rank (2), so host apps can order their own extensions around it.
