@@ -8,7 +8,7 @@ import { fail } from "../helpers"
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   try {
     const o = couponsService(req.scope).getOptions()
-    const body: LookupsResponse = await lookups(req.scope, o.memberGroupIds, o.currencyCode)
+    const body: LookupsResponse = { ...(await lookups(req.scope, o.memberGroupIds, o.currencyCode)), timeZone: o.timeZone }
     res.json(body)
   } catch (err) {
     fail(req, res, err, "The lists for the creator could not be read.")

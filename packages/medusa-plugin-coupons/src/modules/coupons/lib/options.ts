@@ -9,7 +9,8 @@
  *     codePrefix: "SHOP",
  *   } }]
  */
-import type { PoolProductDto, StoreFeature, StoreTerms } from "./contract"
+import type { CodeMailDeliveryState, PoolProductDto, StoreFeature, StoreTerms } from "./contract"
+import { cleanZone } from "./when"
 
 export interface CouponsPluginOptions {
   /** The currency of amount coupons and order minimums. Default "pln". */
@@ -20,6 +21,14 @@ export interface CouponsPluginOptions {
    * too. Default: none named, so the warning speaks of "logged-in groups".
    */
   memberGroupIds?: string[]
+  /**
+   * What the coupon sentence calls the member groups when a coupon is for
+   * exactly those groups, instead of listing every group: the words after
+   * "for", by language ({ pl: "salonów B2B", en: "B2B salons" } reads "dla
+   * salonów B2B", "for B2B salons"), or one string for every language.
+   * Default: the plugin's own words ("customers with partner prices").
+   */
+  memberGroupsLabel?: string | Record<string, string>
   /** A prefix for the codes the creator suggests ("SHOP" gives SHOP-AUTUMN15). Default none. */
   codePrefix?: string
   /**
@@ -67,6 +76,34 @@ export interface CouponsPluginOptions {
   sendCode?: (scope: unknown, input: CodeMailSend) => Promise<{ sent: string[]; failed?: Array<{ customerId: string; reason: string }> }>
   /** The same e-mail rendered for one person, sent to nobody (the preview before sending). Optional. */
   previewCode?: (scope: unknown, input: CodeMailPreview) => Promise<{ subject: string; html: string }>
+  /**
+   * What happened to the e-mails of a code, for the results of each send
+   * (delivered, opened). Read only: answer per customer id the last state
+   * the store knows (its notification log, the e-mail service). Without it
+   * the results show no delivery. Never throws for the plugin: an error
+   * reads as no delivery.
+   */
+  codeMailDelivery?: (scope: unknown, input: { promotionId: string; recipients: Array<{ customerId: string; email: string; at: string }> }) => Promise<Record<string, CodeMailDeliveryState | null>>
+  /**
+   * The store's revenue of an order (e.g. net of VAT, without shipping), for
+   * the results of the code's sends. `basis` names it in the admin. Without
+   * it the plugin counts the order total (gross). An error reads as the
+   * order total.
+   */
+  orderRevenue?: { basis: "net" | "gross"; read: (scope: unknown, orderIds: string[]) => Promise<Record<string, number>> }
+  /**
+   * The store's e-mail of a code can carry a button that opens the shop
+   * with the code already applied (the store builds the link). true shows
+   * "Add a button with a link" in "Send the code" (on by default) and hands
+   * `link` to sendCode / previewCode. Default false.
+   */
+  codeLink?: boolean
+  /**
+   * The store's time zone (IANA, e.g. "Europe/Warsaw"): the days and times
+   * of coupons are typed and shown in it, so "until 4 Nov" ends at the end
+   * of 4 November there. Default: the admin's own zone (the browser).
+   */
+  timeZone?: string
 }
 
 /** The coupon an e-mail of its code is about. Dates are ISO strings, money in major units. */
@@ -88,21 +125,49 @@ export interface CodeMailRecipient {
   firstName: string | null
   /** Company or full name, as the panel names her. */
   name: string | null
+  /** The coupons of this send she gets (those she did not get before); missing: every one. */
+  promotionIds?: string[]
 }
 
 export interface CodeMailSend {
+  /** The coupon of the send (the first of `items`). */
   promotion: CodeMailCoupon
   recipients: CodeMailRecipient[]
-  /** The instruction the admin read in the preview: the coupon's rules in a sentence or two. */
+  /**
+   * One code: the instruction the admin read in the preview, the coupon's
+   * rules in a sentence or two. Several codes: the instruction shared by
+   * all of them (each code has its own sentence in `items`).
+   */
   message: string
   /** The admin who sends it (e-mail or user id). */
   sentBy: string | null
+  /**
+   * Every code of the e-mail with what it gives (one item: a single code,
+   * its sentence is `message`). A recipient gets only the codes of her
+   * `promotionIds`. Missing from older plugin versions.
+   */
+  items?: CodeMailItem[]
+  /** Add the button that opens the shop with the code applied (option codeLink). */
+  link?: boolean
+  /** One send of several codes: the id kept on each coupon of it, null for one code. */
+  campaignId?: string | null
+  /** The sender's own note under the instruction, null when there is none. Missing from older plugin versions. */
+  senderNote?: string | null
+}
+
+/** One code of an e-mail and what it gives, as the customer reads it. */
+export interface CodeMailItem {
+  promotion: CodeMailCoupon
+  sentence: string
 }
 
 export interface CodeMailPreview {
   promotion: CodeMailCoupon
   recipient: CodeMailRecipient
   message: string
+  items?: CodeMailItem[]
+  link?: boolean
+  senderNote?: string | null
 }
 
 export interface StorePool {
@@ -146,6 +211,8 @@ export interface StoreRule {
 export interface ResolvedCouponsOptions {
   currencyCode: string
   memberGroupIds: string[]
+  /** The words for the member groups by language ("*": every language), null: the plugin's own. */
+  memberGroupsLabel: Record<string, string> | null
   codePrefix: string | null
   storeRules: CouponsPluginOptions["storeRules"] | null
   codeInDescription: boolean
@@ -153,6 +220,11 @@ export interface ResolvedCouponsOptions {
   nobodyCustomerId: string | null
   sendCode: CouponsPluginOptions["sendCode"] | null
   previewCode: CouponsPluginOptions["previewCode"] | null
+  codeMailDelivery: CouponsPluginOptions["codeMailDelivery"] | null
+  orderRevenue: CouponsPluginOptions["orderRevenue"] | null
+  codeLink: boolean
+  /** The store's zone, null: the admin's own. */
+  timeZone: string | null
   problems: string[]
 }
 
@@ -174,6 +246,16 @@ export function resolveOptions(input: CouponsPluginOptions | undefined | null): 
   if (o.memberGroupIds !== undefined && (!Array.isArray(o.memberGroupIds) || memberGroupIds.length !== o.memberGroupIds.length)) {
     problems.push("memberGroupIds (a list of customer group ids)")
   }
+  let memberGroupsLabel: Record<string, string> | null = null
+  const ml = o.memberGroupsLabel
+  if (typeof ml === "string" && ml.trim()) memberGroupsLabel = { "*": ml.trim().slice(0, 80) }
+  else if (ml && typeof ml === "object" && !Array.isArray(ml)) {
+    const entries = Object.entries(ml)
+      .filter((e): e is [string, string] => typeof e[1] === "string" && e[1].trim().length > 0)
+      .map(([k, v]): [string, string] => [k, v.trim().slice(0, 80)])
+    memberGroupsLabel = entries.length ? Object.fromEntries(entries) : null
+  }
+  if (ml !== undefined && !memberGroupsLabel) problems.push('memberGroupsLabel (words, or words by language: { pl: "...", en: "..." })')
   const prefixRaw = typeof o.codePrefix === "string" ? o.codePrefix.trim().toUpperCase() : ""
   const codePrefix = /^[A-Z0-9]{1,12}$/.test(prefixRaw) ? prefixRaw : null
   if (o.codePrefix !== undefined && !codePrefix) problems.push("codePrefix (letters and digits, at most 12)")
@@ -198,5 +280,14 @@ export function resolveOptions(input: CouponsPluginOptions | undefined | null): 
   if (o.sendCode !== undefined && !sendCode) problems.push("sendCode (a function)")
   const previewCode = typeof o.previewCode === "function" ? o.previewCode : null
   if (o.previewCode !== undefined && !previewCode) problems.push("previewCode (a function)")
-  return { currencyCode, memberGroupIds, codePrefix, storeRules, codeInDescription, storeTerms, nobodyCustomerId, sendCode, previewCode, problems }
+  const codeMailDelivery = typeof o.codeMailDelivery === "function" ? o.codeMailDelivery : null
+  if (o.codeMailDelivery !== undefined && !codeMailDelivery) problems.push("codeMailDelivery (a function)")
+  const rev = o.orderRevenue
+  const orderRevenue = rev && typeof rev === "object" && typeof rev.read === "function" ? { basis: rev.basis === "net" ? ("net" as const) : ("gross" as const), read: rev.read } : null
+  if (rev !== undefined && !orderRevenue) problems.push('orderRevenue ({ basis: "net" | "gross", read })')
+  const codeLink = o.codeLink === true
+  if (o.codeLink !== undefined && typeof o.codeLink !== "boolean") problems.push("codeLink (true or false)")
+  const timeZone = cleanZone(o.timeZone) ?? null
+  if (o.timeZone !== undefined && !timeZone) problems.push('timeZone (an IANA zone, like "Europe/Warsaw")')
+  return { currencyCode, memberGroupIds, memberGroupsLabel, codePrefix, storeRules, codeInDescription, storeTerms, nobodyCustomerId, sendCode, previewCode, codeMailDelivery, orderRevenue, codeLink, timeZone, problems }
 }

@@ -141,9 +141,9 @@ const NAMES = { groups: {}, categories: {}, products: {}, customers: {}, pools: 
 
 test("the sentence names what is left out, in English and in Polish", () => {
   const draft = wizardCoupon(base({ excludedVariantIds: ["variant_200"] }), { startsAt: null, endsAt: null })
-  assert.equal(couponSentence(draft, NAMES, translator(en), fmt, "pln"), "15% off CORNEObiotics, without Krem Corneo 200 ml, from 6 pieces together, for everyone, with the code CORNEO15, with no end date, no limit of uses.")
+  assert.equal(couponSentence(draft, NAMES, translator(en), fmt, "pln"), "15% off CORNEObiotics, without Krem Corneo 200 ml, with the code CORNEO15, for everyone, from 6 pieces together.")
   const plText = couponSentence(draft, NAMES, translator(pl as unknown as Record<string, unknown>), fmt, "pln").replace(/ /g, " ")
-  assert.equal(plText, "15% rabatu na CORNEObiotics, bez: Krem Corneo 200 ml, od 6 szt. łącznie, dla wszystkich, z kodem CORNEO15, bez daty końca, bez limitu użyć.")
+  assert.equal(plText, "15% rabatu na: CORNEObiotics, bez: Krem Corneo 200 ml, z kodem CORNEO15, dla wszystkich, od 6 szt. łącznie.")
   const many = wizardCoupon(base({ excludedVariantIds: ["a_1", "a_2", "a_3", "a_4"] }), { startsAt: null, endsAt: null })
   assert.ok(couponSentence(many, NAMES, translator(en), fmt, "pln").includes(", without 4 chosen products,"))
   /* Nothing left out: the sentence as before. */

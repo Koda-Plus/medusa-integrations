@@ -6,7 +6,7 @@
 
 import { MINIMUM_ATTRIBUTES, RULE } from "./constants"
 import { codeSentOf } from "./code-mail"
-import type { CouponDto, CouponKind, CouponRuleDto, CouponShape, CouponStats, CouponStatus, StoreTerms } from "./contract"
+import type { CouponCodeKind, CouponDto, CouponKind, CouponRuleDto, CouponShape, CouponStats, CouponStatus, StoreTerms } from "./contract"
 
 /** The fields of a promotion the plugin reads (Query or the promotion module). */
 export interface PromotionLike {
@@ -229,4 +229,20 @@ export function isForCustomer(shape: CouponShape, customerId: string, groupIds: 
   if (shape.customerIds.length === 0 && shape.groupIds.length === 0) return false
   if (shape.customerIds.includes(customerId)) return true
   return shape.groupIds.some((g) => groupIds.includes(g))
+}
+
+/** A coupon gives off delivery: the sentence calls it "free delivery" instead of its code. */
+export function isShippingKind(kind: CouponKind): boolean {
+  return kind === "free_shipping" || kind === "percent_shipping" || kind === "fixed_shipping"
+}
+
+/** Every code of the store (upper case): off delivery or not, and still able to apply (names.couponCodes, for the sentence). */
+export function couponCodesOf(coupons: ReadonlyArray<{ code: string; status?: string; shape: { kind: CouponKind } }>): Record<string, CouponCodeKind> {
+  const out: Record<string, CouponCodeKind> = {}
+  for (const c of coupons) {
+    const code = (c.code ?? "").trim().toUpperCase()
+    if (!code) continue
+    out[code] = { shipping: isShippingKind(c.shape.kind), live: c.status !== "expired" && c.status !== "used_up" }
+  }
+  return out
 }

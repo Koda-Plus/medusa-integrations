@@ -13,6 +13,7 @@ The MIT license of this repository covers the code of Koda Plus. It does not cov
 - **InPost Pay**, of InPost S.A.: named as the checkout service `packages/medusa-plugin-inpost-pay` connects to. That plugin draws no InPost mark: its icon is a Koda Plus mark, and stores show InPost's official button through InPost's own widget.
 - **InPost Von Halsky** and **InPost Buy**, of InPost S.A. and its group: named as the marketplace `packages/medusa-plugin-inpost-marketplace` connects to. That plugin draws no InPost or Von Halsky mark and imitates no part of their seller panel: its icon is a Koda Plus mark.
 - **Stripe**, **Link** and the Stripe logo, of Stripe, Inc.: `packages/medusa-plugin-stripe/src/admin/lib/stripe-icon.tsx`, the glyph from Simple Icons (its path is CC0, the mark stays Stripe's). **Apple Pay** (Apple Inc.), **Google Pay** (Google LLC), **BLIK** (Polski Standard Płatności sp. z o.o.) and **Przelewy24** (PayPro S.A.) are named as payment methods only.
+- **Railway** and the Railway logo, of Railway Corporation: `packages/medusa-plugin-railway/src/admin/lib/railway-icon.tsx`, the glyph from Simple Icons (its path is CC0, the mark stays Railway's).
 - **Discord** and its symbol, of Discord Inc.: the "Help on Discord" button of every plugin page (`kit/admin/guide.tsx`), the symbol as published on discord.com/branding.
 - **Resend**, of Resend, Inc.: named as the e-mail service; the E-mails icon is a Koda Plus mark, not the Resend logo.
 - **Medusa**, of Medusa (medusajs.com): named as the commerce platform the plugins extend.

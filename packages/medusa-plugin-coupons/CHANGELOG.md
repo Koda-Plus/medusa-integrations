@@ -9,14 +9,29 @@ The coupon's whole build in one form, copies, a pause from the list, and the sto
 - The header and the list intro say it in short phrases with icons (creator in three steps, each coupon in one sentence, warnings before saving, uses, discount and revenue) instead of long sentences.
 - Kit 1.2.0: the page header takes `points`, short phrases with an icon shown as pills instead of the long description (which stays as their tooltip and accessible label); `KeyPoints` draws the same pills under a section heading.
 
+### A short sentence
+
+- Each coupon reads in a short sentence, essentials first: what it gives and on what, the code (or applied by itself), when, for whom, then the conditions and the stacking. "No end date" and "no limit of uses" are left out, a coupon of one day reads "only on 4 Nov 2026", the targets read as a list ("5% off: Salon only and the Salon care collection").
+- Stacking without code lists: delivery coupons (target shipping, read from the promotions) read "free delivery"; a coupon that never goes with every other coupon that can still apply reads "never together with other coupons"; up to three codes are named, more are counted ("never together with 40 other coupons").
+- The member groups by one name: option `memberGroupsLabel` (words by language, or one string), default "customers with partner prices", when a coupon is for exactly the groups of `memberGroupIds` (and "everyone except ..." for the rest).
+- The coupon's detail has a "Details" section with everything in full (`couponFacts`): every group, the dates or "no end date", the uses or "no limit", the cart value counted before discounts, and the codes it adds up with or never goes with behind "Show codes".
+- `names` of the list and the detail carry `couponCodes` (every code: delivery or not, still able to apply) and `members`; `GET /admin/coupons/lookups` carries `memberGroupsLabel`.
+
 ### Delete, send the code, the counter of uses
 
 - Delete a coupon nobody used (a copy made by mistake, a test): a red bin on the row and in the detail, with a confirmation. A coupon with uses or orders (canceled ones too) only turns off; the server checks it itself and answers 409 with the reason. `DELETE /admin/coupons/:id` deletes the promotion through `deletePromotionsWorkflow`, with the store's terms and the campaign the creator made for its dates.
 - Send the code by e-mail (options `sendCode` and `previewCode`, the plugin sends nothing itself): the people of "For whom" ticked, more from the creator's customer search, an instruction made from the coupon's sentence (without other customers' names, editable) and the store's own e-mail as a preview. Who got it is kept in the promotion's metadata (`code_sent`), shown when it opens again, and nobody gets it twice: "Add and send" goes only to the new people and adds them to the customer rule first, so the code works for them.
+- The results of the sends in the coupon's detail: per send the people, delivered and opened (option `codeMailDelivery`), who ordered with the code after it, the orders, the revenue (option `orderRevenue`, net or gross) and the conversion, plus every order with the code and the ones by people without the e-mail. `GET /admin/coupons/:id/code-mail/stats`, read only.
+- Several codes in one e-mail: "Add a coupon to this send" picks more coupons with a code (working or about to start, at most 5). Each code keeps its own sentence ("What it gives"), the instruction becomes the shared one, and per person only the codes she did not get before go out (a person with every code is skipped). Each coupon records its own rows in `code_sent` with a shared `campaign` id and the `codes` of her e-mail, so the results per coupon still count; a send there names the other codes of the same e-mail. `CodeMailInput.coupons`, `CodeMailSend.items` / `campaignId`, `CodeMailRecipient.promotionIds`.
+- A button with a link (option `codeLink`): the store's e-mail can carry a button that opens the shop with the code applied; "Add a button with a link" in the send dialog, on by default, hands `link` to `sendCode` / `previewCode`.
+- `sendCodeMail` takes a label instead of an admin user (`{ label }`), for a store panel that sends the code on its own route.
+- Plainer words for the limits: "Total uses of the code" (all customers together, e.g. 100), "Minimum cart value" (products incl. VAT, shipping not counted), "How many times one customer may use the code" (no limit, or at most N times).
 - The counter of uses says what limits it: "0 uses" and under it "limit 1 in total", "1 per customer", "3 customers", on the list and in the detail.
 - The creator warns before saving when a limit of 1 in total meets more than one customer: the code works once for one of them; for once per customer set Orders per customer: 1.
 
 ### The creator
+
+- Dates take an optional time (HH:MM) in the creator and the edit form, in the store's zone (option `timeZone`, e.g. `"Europe/Warsaw"`, default the admin's own). A day without a time still counts whole, now in that zone (the creator used to send the day without a zone, which the server kept as a UTC day; such older coupons read as that day). The sentence says a time only when one was typed: "only on 4 Nov 2026, 10:00–14:00", "from 4 Nov 2026 10:00 until 6 Nov 2026". `GET /admin/coupons` and `/lookups` carry `timeZone`.
 
 - Two more types: buy X get Y (Medusa's own buyget on chosen categories, or counted by the store when it keeps buy X get Y in `storeTerms`) and percent off the store's product groups (option `storeTerms`, feature `pools`), whose target rules the store names (for example a product tag per group).
 - Two more audiences: every B2B group (the groups in `memberGroupIds`) and retail, everyone outside those groups with guests included (a "customer group is not" rule). Chosen customers: one or more.
