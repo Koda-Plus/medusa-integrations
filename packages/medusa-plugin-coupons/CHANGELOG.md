@@ -31,7 +31,7 @@ The coupon's whole build in one form, copies, a pause from the list, and the sto
 
 ### The creator
 
-- Dates take an optional time (HH:MM) in the creator and the edit form, in the store's zone (option `timeZone`, e.g. `"Europe/Warsaw"`, default the admin's own). A day without a time still counts whole, now in that zone (the creator used to send the day without a zone, which the server kept as a UTC day; such older coupons read as that day). The sentence says a time only when one was typed: "only on 4 Nov 2026, 10:00–14:00", "from 4 Nov 2026 10:00 until 6 Nov 2026". `GET /admin/coupons` and `/lookups` carry `timeZone`.
+- Dates take an optional time (HH:MM) in the creator and the edit form, in the store's zone (option `timeZone`, e.g. `"Europe/Warsaw"`, default the admin's own). A day without a time still counts whole, now in that zone (the creator used to send the day without a zone, which the server kept as a UTC day; such older coupons read as that day). The sentence says a time only when one was typed: "only on 4 Nov 2026, 10:00-14:00", "from 4 Nov 2026 10:00 until 6 Nov 2026". `GET /admin/coupons` and `/lookups` carry `timeZone`.
 
 - Two more types: buy X get Y (Medusa's own buyget on chosen categories, or counted by the store when it keeps buy X get Y in `storeTerms`) and percent off the store's product groups (option `storeTerms`, feature `pools`), whose target rules the store names (for example a product tag per group).
 - Two more audiences: every B2B group (the groups in `memberGroupIds`) and retail, everyone outside those groups with guests included (a "customer group is not" rule). Chosen customers: one or more.

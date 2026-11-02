@@ -12,7 +12,7 @@ import { codeMailCampaigns } from "../src/modules/coupons/lib/code-mail-stats.ts
 import type { CodeSentEntry } from "../src/modules/coupons/lib/contract.ts"
 
 const AT = "2026-11-01T10:00:00.000Z"
-const sent = (customer_id: string, extra: Partial<CodeSentEntry> = {}): CodeSentEntry => ({ customer_id, email: `${customer_id}@x.pl`, at: AT, by: "biuro", ...extra })
+const sent = (customer_id: string, extra: Partial<CodeSentEntry> = {}): CodeSentEntry => ({ customer_id, email: `${customer_id}@example.com`, at: AT, by: "biuro", ...extra })
 
 test("one coupon: its sentence is the message, nothing else is asked for", () => {
   assert.deepEqual(cleanSendCoupons("promo_a", undefined, "10% na wszystko"), { ok: true, items: [{ id: "promo_a", sentence: "10% na wszystko" }], errors: [] })
@@ -69,13 +69,13 @@ test("the rows: one code as before, several with the campaign and the codes of h
     { id: "promo_a", code: "AKADEMIA19" },
     { id: "promo_b", code: "AKADEMIA20" },
   ]
-  assert.deepEqual(sentEntry({ customerId: "cus_1", email: "a@x.pl" }, [coupons[0]], { at: AT, by: "biuro", campaign: null }), { customer_id: "cus_1", email: "a@x.pl", at: AT, by: "biuro" })
+  assert.deepEqual(sentEntry({ customerId: "cus_1", email: "a@example.com" }, [coupons[0]], { at: AT, by: "biuro", campaign: null }), { customer_id: "cus_1", email: "a@example.com", at: AT, by: "biuro" })
   const campaign = campaignIdOf(new Date(AT), "1234-abcd-ef")
   assert.match(campaign, /^cm_[a-z0-9]+$/)
-  const both = sentEntry({ customerId: "cus_2", email: "b@x.pl", promotionIds: ["promo_a", "promo_b"] }, coupons, { at: AT, by: "biuro", campaign })
-  assert.deepEqual(both, { customer_id: "cus_2", email: "b@x.pl", at: AT, by: "biuro", campaign, codes: ["AKADEMIA19", "AKADEMIA20"] })
-  const onlyB = sentEntry({ customerId: "cus_1", email: "a@x.pl", promotionIds: ["promo_b"] }, coupons, { at: AT, by: "biuro", campaign })
-  assert.deepEqual(onlyB, { customer_id: "cus_1", email: "a@x.pl", at: AT, by: "biuro", campaign })
+  const both = sentEntry({ customerId: "cus_2", email: "b@example.com", promotionIds: ["promo_a", "promo_b"] }, coupons, { at: AT, by: "biuro", campaign })
+  assert.deepEqual(both, { customer_id: "cus_2", email: "b@example.com", at: AT, by: "biuro", campaign, codes: ["AKADEMIA19", "AKADEMIA20"] })
+  const onlyB = sentEntry({ customerId: "cus_1", email: "a@example.com", promotionIds: ["promo_b"] }, coupons, { at: AT, by: "biuro", campaign })
+  assert.deepEqual(onlyB, { customer_id: "cus_1", email: "a@example.com", at: AT, by: "biuro", campaign })
   /* Kept in the metadata and read back. */
   const meta = withSent({ other: 1 }, [both])
   assert.equal((meta as { other: number }).other, 1)

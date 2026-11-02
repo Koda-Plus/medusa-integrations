@@ -86,7 +86,7 @@ const sentenceOf = (starts: string | null, ends: string | null) =>
 test("the sentence: hours only when there are any", () => {
   const day = (time: string | null, edge: "start" | "end") => edgeIso("2026-11-04", time, edge, WAW)
   assert.match(sentenceOf(day(null, "start"), day(null, "end")), /tylko 4 lis 2026(?![,\d ]*\d:)/)
-  assert.match(sentenceOf(day("10:00", "start"), day("14:00", "end")), /tylko 4 lis 2026, 10:00–14:00/)
+  assert.match(sentenceOf(day("10:00", "start"), day("14:00", "end")), /tylko 4 lis 2026, 10:00-14:00/)
   assert.match(sentenceOf(day("10:00", "start"), day(null, "end")), /tylko 4 lis 2026 od 10:00/)
   assert.match(sentenceOf(day(null, "start"), day("14:00", "end")), /tylko 4 lis 2026 do 14:00/)
   assert.match(sentenceOf(day("10:00", "start"), edgeIso("2026-11-06", null, "end", WAW)), /od 4 lis 2026 10:00 do 6 lis 2026/)

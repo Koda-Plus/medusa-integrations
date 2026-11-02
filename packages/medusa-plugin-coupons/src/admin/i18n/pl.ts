@@ -118,7 +118,7 @@ const pl: typeof en = {
     until: "do {{date}}",
     between: "od {{from}} do {{to}}",
     onlyOn: "tylko {{date}}",
-    onlyOnHours: "tylko {{date}}, {{from}}–{{to}}",
+    onlyOnHours: "tylko {{date}}, {{from}}-{{to}}",
     onlyOnFrom: "tylko {{date}} od {{time}}",
     onlyOnUntil: "tylko {{date}} do {{time}}",
     dateTime: "{{date}} {{time}}",
