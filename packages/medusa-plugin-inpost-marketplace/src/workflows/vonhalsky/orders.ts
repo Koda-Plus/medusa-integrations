@@ -251,6 +251,14 @@ export async function importMarketplaceOrder(container: MedusaContainer, order: 
         row = await svc.updateVonHalskyOrders({ id, order_id: draft.orderId, display_id: draft.displayId, shipping_option_id: shippingOptionId, lines })
       }
       const placed = await completeOrder(container, orderId!, { email, paid: order.paid })
+      /* The handoff compared the totals before the order existed; a cash on delivery parcel collects Medusa's own total. */
+      const medusaMinor = placed.totalMinor
+      const buyerMinor = order.totalMinor
+      if (!order.paid && medusaMinor !== null && buyerMinor !== null && medusaMinor !== buyerMinor) {
+        const message = `Cash on delivery: the Medusa total (${(medusaMinor / 100).toFixed(2)}) differs from the buyer's marketplace total (${(buyerMinor / 100).toFixed(2)}), and a parcel collects the Medusa total. Correct the amount before shipping.`
+        row = await svc.updateVonHalskyOrders({ id, events: withEvent(row!.events, { kind: "note", message: message.slice(0, 300) }) })
+        await logSync(container, { area: "orders", action: "handoff", outcome: "warning", message: `Order ${order.id}: ${message}`, refs: { marketplace_order_id: order.id } })
+      }
       const updated = await svc.updateVonHalskyOrders({
         id,
         status: "imported",
