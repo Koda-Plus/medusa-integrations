@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { DEMO_ROWS, OPTION_SPECS, type DpdOptionId, type ShipmentKind, type ShipmentStage, type ShipmentState } from "./constants"
-import type { PointDto } from "./contract"
+import type { CourierRangeDto, PointDto } from "./contract"
 import { toMinor } from "./money"
 import { catalogPoint, weekdayHours } from "./mypudo"
 import type { ResolvedSender } from "./sender"
@@ -116,6 +116,11 @@ export function demoWaybill(seed: string): string {
   return `99${digits(`wb:${seed}`, 11)}D`
 }
 
+/** A stable documentId of a demo protocol ("DEMO" + 12 digits of a hash of the seed). */
+export function demoDocumentId(seed: string): string {
+  return `DEMO${digits(`doc:${seed}`, 12)}`
+}
+
 /** A demo row: the columns a new row takes, plus the ones a later step would set. */
 export type DemoRow = {
   order_id: string
@@ -224,3 +229,10 @@ export const DEMO_SENDER: ResolvedSender = {
   postalCode: "00950",
   countryCode: "PL",
 }
+
+/** courierOrderAvailability of demo mode: the ranges of fixture 11a. */
+export const DEMO_COURIER_RANGES: readonly CourierRangeDto[] = [
+  { from: "09:00", to: "17:00", offset: 360, raw: "09:00-17:00" },
+  { from: "11:00", to: "14:00", offset: 180, raw: "11:00-14:00" },
+  { from: "14:00", to: "17:00", offset: 180, raw: "14:00-17:00" },
+]

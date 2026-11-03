@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/public/courierorder/v1/courierOrderAvailability",
+    "query": {
+      "countryCode": "DE",
+      "zipCode": "10115"
+    },
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": null
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "ranges": [
+        {
+          "offset": 360,
+          "range": "09:00-17:00"
+        },
+        {
+          "offset": 180,
+          "range": "11:00-14:00"
+        },
+        {
+          "offset": 180,
+          "range": "14:00-17:00"
+        }
+      ],
+      "traceId": "411264d3-5f80-44fd-96b4-f7d6e417b68a"
+    }
+  }
+}

@@ -26,7 +26,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     const mode = dpdService(req.scope).mode()
     const store = storeFor(req.scope)
     const { rows, count } = await store.list({ mode, filter, q: strParam(req.query.q), offset, limit })
-    const body: ShipmentsResponse = { shipments: rows.map((r) => toShipmentDto(r)), count, offset, limit, counts: countsOf(await store.counts(mode)) }
+    const body: ShipmentsResponse = { shipments: rows.map((r) => toShipmentDto(r)), count, offset, limit, counts: countsOf(await store.counts(mode), await store.dispatchCounts(mode)) }
     res.json(body)
   } catch (err) {
     sendError(req.scope, res, err)

@@ -8,11 +8,27 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { SHIPMENT_STAGES, SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
-import { groupOf } from "../src/modules/dpd/lib/contract.ts"
+import { COURIER_LEASE_MS, PROTOCOL_LEASE_MS, SHIPMENT_STAGES, SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
+import { DISPATCH_ATTENTION_CODES, groupOf } from "../src/modules/dpd/lib/contract.ts"
 import { countsOf, rowGroup } from "../src/modules/dpd/lib/dto.ts"
-import { createSqlStore, GROUP_SQL, LABEL_LEASE_EXPIRED_ERROR, LEASE_EXPIRED_ERROR, like, PATCHABLE_COLUMNS, searchClause, setClause, type NewShipment, type SqlRunner } from "../src/modules/dpd/lib/store.ts"
-import { matches, memoryStore, Table, SHIPMENT_DEFAULTS, type Row } from "./helpers.ts"
+import {
+  attentionClause,
+  createSqlStore,
+  DISPATCH_PATCHABLE_COLUMNS,
+  dispatchExpectClause,
+  dispatchSetClause,
+  GROUP_SQL,
+  LABEL_LEASE_EXPIRED_ERROR,
+  LEASE_EXPIRED_ERROR,
+  like,
+  PATCHABLE_COLUMNS,
+  searchClause,
+  setClause,
+  type NewDispatch,
+  type NewShipment,
+  type SqlRunner,
+} from "../src/modules/dpd/lib/store.ts"
+import { DISPATCH_DEFAULTS, matches, memoryStore, Table, SHIPMENT_DEFAULTS, type Row } from "./helpers.ts"
 
 function recorder(rows: unknown[] = [{ id: "dpdshp_1" }]) {
   const calls: Array<{ sql: string; bindings: readonly unknown[] }> = []
@@ -361,4 +377,241 @@ test("the memory filters behave like the SQL of the list methods: a NULL column 
   assert.equal(matches(row, { created_at: { $gte: new Date("2026-11-02T09:00:00Z") } }), true)
   assert.equal(matches(row, { created_at: { $gte: new Date("2026-11-02T11:00:00Z") } }), false)
   assert.equal(matches({ ...row, created_at: null }, { created_at: { $gte: new Date(0) } }), false)
+})
+
+/* Stage 4 (spec 5.1.6, E1, E20, O17, O19): the dispatch statements as text. */
+
+const NEW_DISPATCH: NewDispatch = {
+  mode: "sandbox",
+  location_id: null,
+  sender: { address: { city: "Warszawa" } },
+  params: { doxCount: 0, parcel: { count: 1, weight: 1, maxWeight: 1, maxHeight: 10, maxWidth: 10, maxDepth: 10 } },
+  problems: null,
+  plan_hash: "0123456789abcdef01234567",
+  order_type: "DOMESTIC",
+  created_by: "user_1",
+}
+
+test("createDispatch pins the shipments or returns null when one is taken", async () => {
+  const { calls, store } = recorder([{ dispatch: { id: "dpddsp_1", state: "pending" }, shipments: [{ id: "dpdshp_1" }, { id: "dpdshp_2" }] }])
+  const out = await store.createDispatch(NEW_DISPATCH, ["dpdshp_1", "dpdshp_2", "dpdshp_1"])
+  assert.equal(calls.length, 1, "one statement")
+  const sql = calls[0].sql
+  assert.match(sql, /^with "picked" as \( select "id" from "dpd_shipment" where "id" in \(\?, \?\) and "mode" = \? and "kind" = 'outbound' and "state" = 'labeled' and \("session_type" is null or "session_type" = 'DOMESTIC'\) and "dispatch_id" is null and "handed_over_at" is null and "deleted_at" is null for update \)/)
+  assert.match(sql, /"created" as \( insert into "dpd_dispatch" .* select \?, \?, 'pending', .* where \(select count\(\*\) from "picked"\) = \? returning \* \)/)
+  assert.match(sql, /"pinned" as \( update "dpd_shipment" set "dispatch_id" = \(select "id" from "created"\), "updated_at" = now\(\) where "id" in \(select "id" from "picked"\) and exists \(select 1 from "created"\) returning \* \)/)
+  assert.deepEqual(calls[0].bindings, [
+    "dpdshp_1", "dpdshp_2", "sandbox",
+    "dpddsp_1", "sandbox", null, '{"address":{"city":"Warszawa"}}', JSON.stringify(NEW_DISPATCH.params), null, "0123456789abcdef01234567", '["dpdshp_1","dpdshp_2"]', "DOMESTIC", "user_1",
+    2,
+  ], "the ids deduped; the count to match is the number of ids")
+  assert.deepEqual(out?.dispatch.id, "dpddsp_1")
+  assert.deepEqual(out?.shipments.map((s) => s.id), ["dpdshp_1", "dpdshp_2"])
+  const { store: lost } = recorder([{ dispatch: null, shipments: [] }])
+  assert.equal(await lost.createDispatch(NEW_DISPATCH, ["dpdshp_1"]), null, "a shipment taken meanwhile: nothing written")
+  const { calls: none, store: empty } = recorder()
+  assert.equal(await empty.createDispatch(NEW_DISPATCH, []), null)
+  assert.equal(none.length, 0, "no ids, no statement")
+})
+
+test("transitionDispatch checks the expected states and the expected plan_hash", async () => {
+  const { calls, store } = recorder()
+  await store.transitionDispatch("dpddsp_1", ["pending", "printing", "printed"], { state: "canceled", problems: [{ code: "x" }] }, { plan_hash: "h1" })
+  assert.match(calls[0].sql, /^update "dpd_dispatch" set "state" = \?, "problems" = \?::jsonb, "updated_at" = now\(\) where "id" = \? and "state" in \(\?, \?\) and "deleted_at" is null and "plan_hash" is not distinct from \? returning \*$/)
+  assert.deepEqual(calls[0].bindings, ["canceled", '[{"code":"x"}]', "dpddsp_1", "pending", "printed", "h1"], "printing is a claimed state: dropped from from")
+  await store.transitionDispatch("dpddsp_1", ["pending"], { problems: null }, { plan_hash: null })
+  assert.deepEqual(calls[1].bindings.slice(-1), [null], "a null hash matches a null column")
+  assert.equal(await store.transitionDispatch("dpddsp_1", ["printing", "ordering", "updating"], { state: "pending" }), null)
+  assert.equal(calls.length, 2, "only claimed states: no statement")
+  assert.deepEqual(dispatchExpectClause({}), { sql: "", bindings: [] })
+  const set = dispatchSetClause({ check_sum: "12345678", ["claim_token" as never]: "stolen" } as never)
+  assert.equal(set.sql, `"check_sum" = ?, "updated_at" = now()`, "a column outside DISPATCH_PATCHABLE_COLUMNS never reaches the SQL")
+  for (const locked of ["id", "mode", "claim_token", "lease_until", "attempts", "created_by"]) assert.ok(!DISPATCH_PATCHABLE_COLUMNS.includes(locked), locked)
+})
+
+test("transitionDispatch checks expected error_code, order_number and check_sum presence", async () => {
+  const { calls, store } = recorder()
+  await store.transitionDispatch("dpddsp_1", ["ordered"], { error_code: null, error: null }, { error_code: "update_unclear", order_number: "2026000001", check_sum_set: true })
+  assert.match(calls[0].sql, /and "error_code" is not distinct from \? and "order_number" is not distinct from \? and "check_sum" is not null returning \*$/)
+  assert.deepEqual(calls[0].bindings.slice(-3), ["ordered", "update_unclear", "2026000001"], "the checkSum value is never bound")
+  await store.transitionDispatch("dpddsp_1", ["unknown"], { state: "pending" }, { error_code: null, order_number: null, check_sum_set: false })
+  assert.match(calls[1].sql, /and "error_code" is not distinct from \? and "order_number" is not distinct from \? and "check_sum" is null returning \*$/)
+  assert.deepEqual(calls[1].bindings.slice(-2), [null, null], "null matches a null column")
+})
+
+test("claim and finish of a dispatch with a 180 s lease", async () => {
+  const { calls, store } = recorder()
+  const lease = new Date(Date.parse("2026-11-03T09:00:00Z") + PROTOCOL_LEASE_MS)
+  assert.equal(PROTOCOL_LEASE_MS, 180_000)
+  assert.equal(COURIER_LEASE_MS, 180_000)
+  await store.claimDispatch("dpddsp_1", ["pending", "printing"], { token: "tok_1", leaseUntil: lease, to: "printing", patch: { state: "ordered", error_code: "protocol_unclear", error: null } })
+  assert.match(calls[0].sql, /^update "dpd_dispatch" set "error" = \?, "error_code" = \?, "updated_at" = now\(\), "state" = \?, "claim_token" = \?, "lease_until" = \?, "attempts" = "attempts" \+ 1 where "id" = \? and "state" in \(\?\) and "deleted_at" is null returning \*$/)
+  assert.deepEqual(calls[0].bindings, [null, "protocol_unclear", "printing", "tok_1", lease, "dpddsp_1", "pending"], "state in the patch ignored; a claimed state never in from")
+  assert.equal(await store.claimDispatch("dpddsp_1", ["ordering"], { token: "t", leaseUntil: lease, to: "ordering", patch: {} }), null)
+  assert.equal(calls.length, 1)
+  await store.claimDispatch("dpddsp_1", ["ordered"], { token: "tok_e", leaseUntil: lease, to: "updating", patch: { error_code: "update_unclear" }, expect: { error_code: null } })
+  assert.match(String(calls.at(-1)?.sql), /where "id" = \? and "state" in \(\?\) and "deleted_at" is null and "error_code" is not distinct from \? returning \*$/, "the claim holds the error_code the step read (P10)")
+  assert.deepEqual(calls.at(-1)?.bindings, ["update_unclear", "updating", "tok_e", lease, "dpddsp_1", "ordered", null])
+  calls.pop()
+  await store.finishDispatch("dpddsp_1", "tok_1", { state: "printed", protocol_at: lease, error: null })
+  assert.match(calls[1].sql, /^update "dpd_dispatch" set "state" = \?, "protocol_at" = \?, "error" = \?, "updated_at" = now\(\), "claim_token" = null, "lease_until" = null where "id" = \? and "state" in \('printing', 'ordering', 'updating'\) and "claim_token" = \? and "deleted_at" is null returning \*$/)
+  assert.deepEqual(calls[1].bindings, ["printed", lease, null, "dpddsp_1", "tok_1"])
+  const kept = new Date("2026-11-03T08:59:00Z")
+  await store.finishDispatch("dpddsp_1", "tok_2", { state: "pending" }, { unsent: { updatedAt: kept } })
+  assert.match(calls[2].sql, /set "state" = \?, "updated_at" = \?, "claim_token" = null, "lease_until" = null, "attempts" = greatest\("attempts" - 1, 0\) where/)
+  assert.deepEqual(calls[2].bindings, ["pending", kept, "dpddsp_1", "tok_2"])
+  const { store: empty } = recorder([])
+  assert.equal(await empty.finishDispatch("dpddsp_1", "tok_3", { state: "printed" }), null, "a lost claim writes nothing")
+})
+
+test("a failed dispatch write that binds the checkSum never carries it: no statement, no bindings, no cause; other writes keep their error", async () => {
+  const checkSum = "a1b2c3d4e5f6"
+  /* Like knex without compileSqlOnError false: the statement with its bindings goes into the message. */
+  const failing: SqlRunner = {
+    async raw(text, bindings = []) {
+      let i = 0
+      const err = new Error(`${text.replace(/\?/g, () => `'${String(bindings[i++])}'`)} - canceling statement due to statement timeout`)
+      Object.assign(err, { code: "57014" })
+      throw err
+    },
+  }
+  const store = createSqlStore({ sql: failing, newId: (p) => p })
+  const lease = new Date("2026-11-03T09:03:00Z")
+  const writes: Array<[string, () => Promise<unknown>]> = [
+    ["finishDispatch", () => store.finishDispatch("dpddsp_1", "tok", { state: "ordered", order_number: "ORD-1", check_sum: checkSum, error: null })],
+    ["transitionDispatch", () => store.transitionDispatch("dpddsp_1", ["ordered"], { check_sum: checkSum })],
+    ["claimDispatch", () => store.claimDispatch("dpddsp_1", ["ordered"], { token: "tok", leaseUntil: lease, to: "updating", patch: { check_sum: checkSum } })],
+  ]
+  for (const [name, write] of writes) {
+    await assert.rejects(write(), (err: unknown) => {
+      assert.ok(err instanceof Error, name)
+      assert.equal(err.message.includes(checkSum), false, name)
+      assert.equal(String(err.stack).includes(checkSum), false, name)
+      assert.equal(err.cause, undefined, name)
+      assert.match(err.message, /\(57014\)/, name)
+      return true
+    })
+  }
+  await assert.rejects(store.finishDispatch("dpddsp_1", "tok", { state: "printed", check_sum: null }), /canceling statement/, "nothing to hide: the error stays as it was")
+})
+
+test("expired printing goes back to ordered, printed or pending", async () => {
+  const { calls, store } = recorder([{ id: "dpddsp_1" }])
+  const now = new Date("2026-11-03T09:10:00Z")
+  const rows = await store.expireDispatchLeases("live", now)
+  assert.equal(calls.length, 3)
+  assert.equal(rows.length, 3, "the rows of the three statements")
+  assert.match(calls[0].sql, /^update "dpd_dispatch" set "state" = case when "ordered_at" is not null then 'ordered' when "protocol_at" is not null then 'printed' else 'pending' end, "claim_token" = null, "lease_until" = null, "updated_at" = now\(\) where "mode" = \? and "state" = 'printing' and "lease_until" < \? and "deleted_at" is null returning \*$/)
+  assert.match(calls[1].sql, /set "state" = 'unknown', "claim_token" = null, "lease_until" = null, "updated_at" = now\(\) where "mode" = \? and "state" = 'ordering' and "lease_until" < \?/)
+  assert.match(calls[2].sql, /set "state" = 'ordered', "claim_token" = null, "lease_until" = null, "updated_at" = now\(\) where "mode" = \? and "state" = 'updating' and "lease_until" < \?/)
+  for (const c of calls) {
+    assert.deepEqual(c.bindings, ["live", now])
+    assert.ok(!/"error(_code)?" =/.test(c.sql), "error and error_code stay as the claim set them")
+  }
+})
+
+test("claimExpiredFirstPrints takes only expired first prints, keeps printing and error_code, sets the pass token", async () => {
+  const { calls, store } = recorder([{ id: "dpddsp_1", state: "printing" }])
+  const now = new Date("2026-11-03T09:10:00Z")
+  const leaseUntil = new Date(now.getTime() + PROTOCOL_LEASE_MS)
+  const rows = await store.claimExpiredFirstPrints("sandbox", now, { token: "tok_x", leaseUntil })
+  assert.equal(rows.length, 1)
+  assert.match(calls[0].sql, /^update "dpd_dispatch" set "claim_token" = \?, "lease_until" = \?, "updated_at" = now\(\) where "mode" = \? and "state" = 'printing' and "lease_until" < \? and "protocol_at" is null and "ordered_at" is null and "deleted_at" is null returning \*$/)
+  assert.deepEqual(calls[0].bindings, ["tok_x", leaseUntil, "sandbox", now])
+  assert.ok(!/"state" =\s*\?|"attempts"/.test(calls[0].sql.split(" where ")[0]), "state and attempts unchanged")
+})
+
+test("transition with expect dispatch_id null refuses a pinned shipment", async () => {
+  const { calls, store } = recorder()
+  await store.transition("dpdshp_1", ["labeled"], { state: "excluded" }, { dispatch_id: null })
+  assert.match(calls[0].sql, /and "dispatch_id" is not distinct from \? returning \*$/)
+  assert.deepEqual(calls[0].bindings.slice(-1), [null])
+  await store.transition("dpdshp_1", ["labeled"], { state: "excluded" }, { dispatch_id: "dpddsp_1" })
+  assert.deepEqual(calls[1].bindings.slice(-1), ["dpddsp_1"])
+  await store.transition("dpdshp_1", ["labeled"], { state: "excluded" }, {})
+  assert.ok(!calls[2].sql.includes("dispatch_id"), "a key left out is not compared")
+})
+
+test("dispatchCounts: open and attention", async () => {
+  const { calls, store } = recorder([{ open: "4", attention: 2 }])
+  assert.deepEqual(await store.dispatchCounts("live"), { open: 4, attention: 2 })
+  assert.deepEqual([...DISPATCH_ATTENTION_CODES].sort(), ["cancel_unclear", "checksum", "order_not_found", "order_number", "order_status", "update_unclear"])
+  assert.match(calls[0].sql, /^select count\(\*\) filter \(where "state" <> 'canceled'\)::int as "open", count\(\*\) filter \(where \("state" = 'unknown' or \("state" = 'ordered' and "error_code" in \(\?, \?, \?, \?, \?, \?\)\)\)\)::int as "attention" from "dpd_dispatch" where "mode" = \? and "deleted_at" is null$/)
+  assert.deepEqual(calls[0].bindings, [...DISPATCH_ATTENTION_CODES, "live"])
+  assert.ok(!calls[0].sql.includes("check_sum"), "an ordered row without a check_sum is not attention (O16)")
+  assert.deepEqual(attentionClause().bindings, [...DISPATCH_ATTENTION_CODES])
+  const { store: empty } = recorder([])
+  assert.deepEqual(await empty.dispatchCounts("sandbox"), { open: 0, attention: 0 })
+})
+
+test("listDispatches filters and newest first", async () => {
+  const { calls, store } = recorder([{ id: "dpddsp_1", count: 7 }])
+  const out = await store.listDispatches({ mode: "sandbox", filter: "attention", offset: 20, limit: 10 })
+  assert.equal(out.count, 7)
+  assert.match(calls[0].sql, /^select \* from "dpd_dispatch" where "mode" = \? and "deleted_at" is null and \("state" = 'unknown' or .*\) order by "created_at" desc, "id" desc limit \? offset \?$/)
+  assert.deepEqual(calls[0].bindings, ["sandbox", ...DISPATCH_ATTENTION_CODES, 10, 20])
+  assert.match(calls[1].sql, /^select count\(\*\)::int as "count" from "dpd_dispatch" where "mode" = \? and "deleted_at" is null and \("state" = 'unknown'/)
+  assert.deepEqual(calls[1].bindings, ["sandbox", ...DISPATCH_ATTENTION_CODES])
+  await store.listDispatches({ mode: "live", filter: "open", offset: 0, limit: 5 })
+  assert.match(calls[2].sql, /where "mode" = \? and "deleted_at" is null and "state" <> 'canceled' order by/)
+  assert.deepEqual(calls[2].bindings, ["live", 5, 0])
+  await store.listDispatches({ mode: "live", filter: "all", offset: 0, limit: 5 })
+  assert.match(calls[4].sql, /where "mode" = \? and "deleted_at" is null order by/)
+})
+
+test("releaseShipments clears dispatch_id and handed_over_at", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  await store.releaseShipments("dpddsp_1", null)
+  assert.match(calls[0].sql, /^update "dpd_shipment" set "dispatch_id" = null, "handed_over_at" = null, "updated_at" = now\(\) where "dispatch_id" = \? and "deleted_at" is null returning \*$/)
+  assert.deepEqual(calls[0].bindings, ["dpddsp_1"])
+  await store.releaseShipments("dpddsp_1", ["dpdshp_1", "dpdshp_2"])
+  assert.match(calls[1].sql, /where "dispatch_id" = \? and "id" in \(\?, \?\) and "deleted_at" is null/)
+  assert.deepEqual(calls[1].bindings, ["dpddsp_1", "dpdshp_1", "dpdshp_2"])
+  assert.deepEqual(await store.releaseShipments("dpddsp_1", []), [])
+  assert.equal(calls.length, 2)
+  const at = new Date("2026-11-03T09:00:00Z")
+  await store.markHandedOver("dpddsp_1", at)
+  assert.match(calls[2].sql, /^update "dpd_shipment" set "handed_over_at" = \?, "updated_at" = now\(\) where "dispatch_id" = \? and "handed_over_at" is null and "deleted_at" is null returning \*$/)
+  assert.deepEqual(calls[2].bindings, [at, "dpddsp_1"])
+})
+
+test("GROUP_SQL puts excluded with canceled, like groupOf", () => {
+  assert.ok((SHIPMENT_STATES as readonly string[]).includes("excluded"))
+  assert.equal(sqlGroup({ kind: "outbound", state: "excluded", stage: null, handed_over_at: null }), "canceled")
+  assert.equal(groupOf({ kind: "outbound", state: "excluded", stage: null, handedOver: false }), "canceled")
+  assert.equal(sqlGroup({ kind: "outbound", state: "excluded", stage: "delivered", handed_over_at: new Date() }), "canceled", "before the stage and the handover")
+})
+
+test("the memory store keeps the dispatch rules of the SQL: expect dispatch_id, error_code, order_number and check_sum presence; attention without check_sum", async () => {
+  const shipments = new Table("dpdshp", SHIPMENT_DEFAULTS)
+  const dispatches = new Table("dpddsp", DISPATCH_DEFAULTS)
+  const store = memoryStore(shipments, new Table("dpdevt"), new Table("dpdset"), dispatches)
+  const row = await store.insertIgnore({ ...NEW, pudo_id: null })
+  const id = String(row?.id)
+  shipments.rows[0].state = "labeled"
+  shipments.rows[0].dispatch_id = "dpddsp_9"
+  assert.equal(await store.transition(id, ["labeled"], { state: "excluded" }, { dispatch_id: null }), null, "a pinned shipment refuses dispatch_id null (E20)")
+  assert.equal((await store.transition(id, ["labeled"], { state: "labeled" }, { dispatch_id: "dpddsp_9" }))?.dispatch_id, "dpddsp_9", "the same dispatch matches")
+  shipments.rows[0].dispatch_id = null
+  assert.equal((await store.transition(id, ["labeled"], { state: "excluded" }, { dispatch_id: null }))?.state, "excluded", "null matches null")
+
+  const ordered = dispatches.insert({ mode: "sandbox", state: "ordered", order_number: "SBX00000000001", check_sum: "12345678", error_code: "update_unclear" })
+  const did = String(ordered.id)
+  assert.equal(await store.transitionDispatch(did, ["ordered"], { error_code: null }, { error_code: "cancel_unclear", order_number: "SBX00000000001", check_sum_set: true }), null, "another error_code")
+  assert.equal(await store.transitionDispatch(did, ["ordered"], { error_code: null }, { error_code: "update_unclear", order_number: "SBX00000000002", check_sum_set: true }), null, "another order_number")
+  assert.equal(await store.transitionDispatch(did, ["ordered"], { error_code: null }, { error_code: "update_unclear", order_number: "SBX00000000001", check_sum_set: false }), null, "check_sum present, absence expected")
+  assert.deepEqual(await store.dispatchCounts("sandbox"), { open: 1, attention: 1 })
+  const resolved = await store.transitionDispatch(did, ["ordered"], { error_code: null }, { error_code: "update_unclear", order_number: "SBX00000000001", check_sum_set: true })
+  assert.equal(resolved?.error_code, null, "every expected value holds (O19)")
+  assert.deepEqual(await store.dispatchCounts("sandbox"), { open: 1, attention: 0 })
+
+  for (const code of DISPATCH_ATTENTION_CODES) {
+    dispatches.rows[0].error_code = code
+    assert.equal((await store.dispatchCounts("sandbox")).attention, 1, code)
+  }
+  Object.assign(dispatches.rows[0], { error_code: null, check_sum: null })
+  assert.deepEqual(await store.dispatchCounts("sandbox"), { open: 1, attention: 0 }, "ordered without a check_sum and without a code is not attention (O16)")
+  dispatches.rows[0].state = "unknown"
+  assert.equal((await store.dispatchCounts("sandbox")).attention, 1)
+  assert.equal((await store.listDispatches({ mode: "sandbox", filter: "attention", offset: 0, limit: 10 })).count, 1)
 })

@@ -15,9 +15,11 @@ import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import en from "../src/admin/i18n/en.ts"
-import { LABEL_PAGES, MODES, POINT_TYPES, SHIPMENT_STAGES, SHIPMENT_STATES, TRACKING_MODES } from "../src/modules/dpd/lib/constants.ts"
-import { ACTION_ERROR_CODES, SHIPMENT_ERROR_CODES, SHIPMENT_GROUPS } from "../src/modules/dpd/lib/contract.ts"
-import { DPD_PROBLEM_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
+import { DISPATCH_STATES, LABEL_PAGES, MODES, POINT_TYPES, SHIPMENT_STAGES, SHIPMENT_STATES, TRACKING_MODES } from "../src/modules/dpd/lib/constants.ts"
+import { ACTION_ERROR_CODES, DISPATCH_ERROR_CODES, SHIPMENT_ERROR_CODES, SHIPMENT_GROUPS } from "../src/modules/dpd/lib/contract.ts"
+import { COURIER_WINDOW_CODES } from "../src/modules/dpd/lib/courier.ts"
+import { DISPATCH_ACTIONS, DISPATCH_PROBLEM_CODES, DISPATCH_WARNING_CODES } from "../src/modules/dpd/lib/dispatch.ts"
+import { DISPATCH_PROBLEM_SOURCE_CODES, DPD_PROBLEM_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
 import { WRITERS } from "../src/modules/dpd/lib/writers.ts"
 import { formatMinor } from "../src/modules/dpd/lib/money.ts"
 import { BOX_FIELDS, fmtMinor, fmtMoney } from "../src/admin/lib/dpd-logic.ts"
@@ -97,14 +99,16 @@ function multilineUnion(file: string, name: string): string[] {
 
 /**
  * The problem codes the admin shows: every checkout check of option-data.ts,
- * every sample problem of demo.ts, every plan problem of plan.ts and every
- * problem built from a DPD answer (dpd-answers.ts).
+ * every sample problem of demo.ts, every plan problem of plan.ts, every
+ * problem built from a DPD answer (dpd-answers.ts) and, since stage 4, every
+ * problem of a handover plan, of a courier window and of a courier or
+ * protocol answer.
  */
 function problemCodes(): string[] {
   const checkout = multilineUnion("src/modules/dpd/lib/option-data.ts", "CheckoutErrorCode")
   const demo = [...readFileSync(join(root, "src/modules/dpd/lib/demo.ts"), "utf8").matchAll(/problems: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/code: "([a-z_]+)"/g)].map((x) => x[1]))
   const plan = multilineUnion("src/modules/dpd/lib/plan.ts", "PlanProblemCode")
-  return [...new Set([...checkout, ...demo, ...plan, ...DPD_PROBLEM_CODES])]
+  return [...new Set([...checkout, ...demo, ...plan, ...DPD_PROBLEM_CODES, ...DISPATCH_PROBLEM_CODES, ...COURIER_WINDOW_CODES, ...DISPATCH_PROBLEM_SOURCE_CODES])]
 }
 
 /** A file written by scripts/kit.mjs: its words come from the plugin through props, never through t(). */
@@ -189,11 +193,12 @@ test("every string the admin asks for exists in both dictionaries: every key lit
     "shipments.filter.*": ["all", ...SHIPMENT_GROUPS],
     "writers.names.*": WRITERS,
     "writers.descriptions.*": WRITERS,
+    "writers.notArmed.*": WRITERS,
     "mode.*": [...new Set([...MODES, ...modeKeys])],
     "kind.*": unionMembers("src/modules/dpd/lib/constants.ts", "OptionKind"),
     "problem.*": problems,
-    "warning.*": multilineUnion("src/modules/dpd/lib/plan.ts", "PlanWarningCode"),
-    "errorCode.*": SHIPMENT_ERROR_CODES,
+    "warning.*": [...new Set([...multilineUnion("src/modules/dpd/lib/plan.ts", "PlanWarningCode"), ...DISPATCH_WARNING_CODES])],
+    "errorCode.*": [...new Set([...SHIPMENT_ERROR_CODES, ...DISPATCH_ERROR_CODES])],
     "actionError.*": ACTION_ERROR_CODES,
     "plan.source.*": ["edited", "variants", "default_box", "none"],
     "plan.sessionTypes.*": ["DOMESTIC", "INTERNATIONAL"],
@@ -214,11 +219,18 @@ test("every string the admin asks for exists in both dictionaries: every key lit
     "pudo.days.*": ["1", "2", "3", "4", "5", "6", "7"],
     "pudo.limits.*": ["fits", "sum", "girth"],
     "pudo.source.*": ["demo", "sandbox"],
+    /* The handover to the courier (stage 4): its states, list filters, history, refused actions and the names of its actions. */
+    "dispatch.state.*": DISPATCH_STATES,
+    "dispatch.filter.*": ["open", "attention", "all"],
+    "dispatch.history.*": DISPATCH_ACTIONS,
+    "dispatch.actionError.*": ["busy", "not_armed", "writer_off", "not_found", "wrong_state", "plan_changed"],
+    /* Every name dispatchMainAction can give (resolve, print, order, protocol) and every action of the drawer (E25). */
+    "dispatch.actions.*": ["print", "reprint", "order", "reschedule", "cancelCourier", "resolve", "cancel", "protocol"],
   }
   assert.deepEqual([...shapes.keys()].filter((k) => !(k in DYNAMIC)).map((k) => `${shapes.get(k)}: ${k}`), [], "a dynamic key without its enumeration here")
   assert.ok(modeKeys.includes("notConfigured") && problems.length > 0 && faq.length > 0, "the enumerations read from the sources")
   assert.ok(Object.keys(DYNAMIC).includes("plan.boxFields.*") && BOX_FIELDS.includes("weightKg"), "the box fields of the boxes DTO have their words")
-  for (const code of ["country_unsupported", "cod_country_unsupported", "cod_currency_unsupported", "address_incomplete", "pudo_missing", "pudo_invalid", "contact_missing", "cod_pickup_abroad", "weight_missing", "option_later", "cod_zero", "dpd_validation", "pudo_not_found"]) assert.ok(problems.includes(code), `problem code read from the sources: ${code}`)
+  for (const code of ["country_unsupported", "cod_country_unsupported", "cod_currency_unsupported", "address_incomplete", "pudo_missing", "pudo_invalid", "contact_missing", "cod_pickup_abroad", "weight_missing", "option_later", "cod_zero", "dpd_validation", "pudo_not_found", "no_shipments", "window_outside", "dpd_courier"]) assert.ok(problems.includes(code), `problem code read from the sources: ${code}`)
   const absent: string[] = []
   for (const [shape, names] of Object.entries(DYNAMIC)) {
     for (const n of names) for (const [lang, d] of dicts) if (!has(d, shape.replace("*", n))) absent.push(`${lang}: ${shape.replace("*", n)}`)
@@ -291,7 +303,7 @@ test("a vendored copy is complete: every relative import of a copied file lands 
 
 test("own tables and a migration name unique across the packages", () => {
   const mine = readdirSync(join(root, "src/modules/dpd/migrations"))
-  assert.deepEqual(mine, ["Migration20261102120000_dpd.ts"])
+  assert.deepEqual(mine, ["Migration20261102120000_dpd.ts", "Migration20261103120000_dpd_dispatch.ts"])
   const migration = readFileSync(join(root, "src/modules/dpd/migrations", mine[0]), "utf8")
   const ours = ["dpd_dispatch", "dpd_document", "dpd_event", "dpd_setting", "dpd_shipment"]
   assert.deepEqual([...migration.matchAll(/create table if not exists "([a-z_]+)"/g)].map((m) => m[1]).sort(), ours)
@@ -299,6 +311,8 @@ test("own tables and a migration name unique across the packages", () => {
   assert.deepEqual(models.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/\.define\("([a-z_]+)"/g)].map((m) => m[1])).sort(), ours)
   /* The class name is the file name: Medusa records migrations by it in one table shared by every package. */
   assert.match(migration, /export class Migration20261102120000_dpd extends Migration/)
+  /* The second migration only alters dpd_dispatch (stage 4); its class name is its file name too. */
+  assert.match(readFileSync(join(root, "src/modules/dpd/migrations", mine[1]), "utf8"), /export class Migration20261103120000_dpd_dispatch extends Migration/)
   const siblings = join(root, "..")
   for (const dir of existsSync(siblings) ? readdirSync(siblings) : []) {
     if (dir === "medusa-plugin-dpd") continue

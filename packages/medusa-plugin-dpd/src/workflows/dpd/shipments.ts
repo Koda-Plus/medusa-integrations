@@ -113,14 +113,15 @@ export async function recordFulfillment(scope: Scope, orderId: string, fulfillme
   return planned
 }
 
-/** States in which nothing was sent to DPD yet: the row is canceled with its fulfillment. */
-const CANCELABLE: readonly string[] = ["pending", "failed", "skipped"]
+/** States in which nothing was sent to DPD yet, or the shipment is marked do not send: the row is canceled with its fulfillment. */
+const CANCELABLE: readonly string[] = ["pending", "failed", "skipped", "excluded"]
 
 /**
  * A fulfillment was canceled in Medusa (order.fulfillment_canceled). Its row
  * of the current mode is canceled when nothing was sent to DPD yet (pending,
- * failed, skipped). A row DPD already knows (creating, created, labeled,
- * unknown...) is left as it is: DPDServices cannot cancel a shipment, so the
+ * failed, skipped) or it is marked do not send (excluded). A row DPD
+ * already knows (creating, created, labeled, unknown...) is left as it is:
+ * DPDServices cannot cancel a shipment, so the
  * plugin never pretends it did; the history and the log say so once. An
  * unknown row becomes abandoned_unknown: the lookup then tells whether DPD
  * has it (to keep it out of the handover) or not (canceled).

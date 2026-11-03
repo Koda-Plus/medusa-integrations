@@ -80,6 +80,7 @@ const STATE_TONE: Record<ShipmentState, Tone> = {
   abandoned_unknown: "red",
   skipped: "grey",
   canceled: "grey",
+  excluded: "grey",
 }
 
 const STAGE_TONE: Record<ShipmentStage, Tone> = {

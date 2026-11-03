@@ -12,7 +12,9 @@ import { checkMethodData, checkoutError, fulfillmentOptions, pickDpdMethod, read
 import { resolveOptions } from "../src/modules/dpd/lib/options.ts"
 import { catalogSource, SANDBOX_POINTS, type PointsSource } from "../src/modules/dpd/lib/points.ts"
 import DpdFulfillmentProvider from "../src/providers/dpd/service.ts"
-import { countingPoints, SANDBOX } from "./helpers.ts"
+import { createDispatch, cancelDispatch, planDispatch, printProtocol } from "../src/workflows/dpd/dispatch.ts"
+import { FakeDpdServices } from "./fake-dpdservices.ts"
+import { arm, countingPoints, insertLabeled, labeledOrder, SANDBOX, setup } from "./helpers.ts"
 
 /* Stage 1 talks to nobody: any request fails the test. */
 const realFetch = globalThis.fetch
@@ -326,4 +328,43 @@ test("Pickup at checkout in demo: an id outside the sample catalog is accepted w
   await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL9DEMO07" }, CART), "pudo_no_delivery")
   /* Demo waives the existence of a point, never the rule of stage 3: an id abroad is refused by its prefix (E21). */
   for (const cart of [CART, DE_CART]) await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "DE1234567" }, cart), "pickup_abroad_later")
+})
+
+/* Stage 4: the marker of the handover, written by the flow (DS6). */
+
+async function handedOver() {
+  const fake = new FakeDpdServices()
+  const s = setup({ ...SANDBOX, mode: "live", shipmentWriter: true }, [], { fake })
+  arm(s, "shipment")
+  const row = insertLabeled(s, labeledOrder(1))
+  const { plan } = await planDispatch(s.container, [String(row.id)])
+  const view = await createDispatch(s.container, { shipmentIds: [String(row.id)], planHash: plan.hash }, { actor: "user_01ADMIN" })
+  const printed = await printProtocol(s.container, view.dispatch.id, { actor: "user_01ADMIN" })
+  assert.equal(printed.dispatch.state, "printed")
+  const fulfillment = s.fulfillments.get(String(row.fulfillment_id))
+  assert.ok(fulfillment)
+  return { s, id: view.dispatch.id, fulfillment }
+}
+
+test("cancelFulfillment refuses after a marker written by the flow", async () => {
+  const { fulfillment, id } = await handedOver()
+  assert.equal(fulfillment.data.dpd_dispatch_id, id)
+  await assert.rejects(
+    () => provider().cancelFulfillment(fulfillment.data),
+    (err: Error & { type?: string }) => err.type === "not_allowed",
+  )
+})
+
+test("cancelFulfillment passes after the marker is cleared", async () => {
+  const { s, id, fulfillment } = await handedOver()
+  await cancelDispatch(s.container, id, { actor: "user_01ADMIN" })
+  assert.equal(fulfillment.data.dpd_handed_over_at, null)
+  assert.equal(fulfillment.data.dpd_dispatch_id, null)
+  assert.deepEqual(await provider().cancelFulfillment(fulfillment.data), {})
+})
+
+test("validateFulfillmentData drops dpd_handed_over_at and dpd_dispatch_id sent by the store", async () => {
+  const data = await provider().validateFulfillmentData({ id: "dpd-courier" }, { dpd_handed_over_at: "2026-11-02T14:00:00.000Z", dpd_dispatch_id: "dpddsp_FORGED" }, { ...CART })
+  assert.equal("dpd_handed_over_at" in data, false)
+  assert.equal("dpd_dispatch_id" in data, false)
 })

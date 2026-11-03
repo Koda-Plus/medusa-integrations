@@ -1,0 +1,51 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generateProtocol",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "protocolSearchParams": {
+        "policy": "STOP_ON_FIRST_ERROR",
+        "session": {
+          "type": "INTERNATIONAL",
+          "packages": [
+            {
+              "reference": "probe-mw0lmyze-H2"
+            }
+          ]
+        }
+      },
+      "outputDocFormat": "PDF"
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "INCORRECT_DATA",
+      "documentData": "",
+      "session": {
+        "statusInfo": {
+          "status": "INCORRECT_SESSION_TYPE",
+          "description": "Chosen packages are not suitable for session type"
+        },
+        "packages": [
+          {
+            "reference": "probe-mw0lmyze-H2",
+            "statusInfo": {
+              "status": "NOT_PROCESSED"
+            },
+            "parcels": []
+          }
+        ]
+      },
+      "documentId": null,
+      "traceId": "de9fec6b-a687-48ee-9ad2-7f041d15f1bf"
+    }
+  }
+}

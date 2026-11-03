@@ -9,9 +9,16 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { DPDSERVICES_HOSTS, DPDSERVICES_PATHS, PACING_MAX_WAIT_MS } from "../src/modules/dpd/lib/constants.ts"
-import { createDpdServicesClient, labelsRequest, type DpdServicesClientOptions, type GeneratePackagesNumbersRequest } from "../src/modules/dpd/lib/dpdservices.ts"
+import {
+  createDpdServicesClient,
+  labelsRequest,
+  type DpdServicesClientOptions,
+  type GeneratePackagesNumbersRequest,
+  type PackagesPickupCallCreateRequest,
+  type PackagesPickupCallUpdateRequest,
+} from "../src/modules/dpd/lib/dpdservices.ts"
 import { KIT_META } from "../src/modules/dpd/lib/kit-meta.ts"
-import { FakeDpdServices, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
+import { FakeDpdServices, loadFixture, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
 
 const PASSWORD = "test-password-koda-0000"
 
@@ -208,4 +215,127 @@ test("pacing waits through sleep; a slot further than PACING_MAX_WAIT_MS away is
   assert.ok(last.kind === "refused" && last.code === "rate_limited" && last.httpStatus === 0)
   assert.equal(fresh.count("numbers"), 3, "the refused call sent nothing")
   assert.ok(PACING_MAX_WAIT_MS < 18_000)
+})
+
+/* Stage 4 (spec 5.1.2, 8.1): GET availability, POST/PATCH/DELETE packagesPickupCall, the checkSum as a secret of the call. */
+
+const NOW = () => new Date("2026-11-03T09:00:00Z")
+
+/** The request of a courier fixture with the masked payer, order number and checkSum set. */
+function courierBody<T>(name: string, values: { payer?: number; orderNumber?: string; checkSum?: string; pickupDate?: string } = {}): T {
+  let raw = JSON.stringify(loadFixture(name).request.body)
+  if (values.payer !== undefined) raw = raw.replace(/"number":"\*\*\*"/, `"number":${values.payer}`)
+  if (values.orderNumber !== undefined) raw = raw.replace(/"orderNumber":"\*\*\*"/, JSON.stringify({ orderNumber: values.orderNumber }).slice(1, -1))
+  if (values.checkSum !== undefined) raw = raw.replace(/"checkSum":"\*+"/, JSON.stringify({ checkSum: values.checkSum }).slice(1, -1))
+  if (values.pickupDate !== undefined) raw = raw.replace(/"pickupDate":"[^"]*"/, JSON.stringify({ pickupDate: values.pickupDate }).slice(1, -1))
+  const body: T = JSON.parse(raw)
+  return body
+}
+
+const createBody = () => courierBody<PackagesPickupCallCreateRequest>("12a-order", { payer: 1000, pickupDate: "2026-11-04" })
+
+test("GET availability sends zipCode as five digits in the query, no body, no content-type", async () => {
+  const fake = new FakeDpdServices({ now: NOW })
+  const { c, log } = client(fake)
+  const o = await c.courierOrderAvailability({ countryCode: "PL", zipCode: "02274" })
+  assert.equal(o.kind, "ok")
+  if (o.kind === "ok") assert.deepEqual(o.ranges.map((r) => r.raw), ["09:00-17:00", "11:00-14:00", "14:00-17:00"])
+  assert.equal(fake.calls.length, 1)
+  const call = fake.calls[0]
+  assert.deepEqual([call.op, call.method, call.path], ["availability", "GET", DPDSERVICES_PATHS.availability])
+  assert.deepEqual(call.query, { countryCode: "PL", zipCode: "02274" })
+  assert.equal(call.body, null)
+  assert.equal(call.headers["content-type"], undefined)
+  assert.equal(call.headers["x-dpd-fid"], "1000")
+  assert.ok(call.headers.authorization?.startsWith("Basic "))
+  assert.equal(log.lines.length, 1)
+  assert.ok(!log.lines[0].includes("zipCode") && !log.lines[0].includes("02274"), "the log line shows the path without the query")
+})
+
+test("PATCH sends the body, DELETE the query, both with the FID header", async () => {
+  const fake = new FakeDpdServices({ courier: "works", now: NOW })
+  const { c } = client(fake)
+  const created = await c.pickupCallCreate(createBody())
+  assert.equal(created.kind, "ok")
+  if (created.kind !== "ok") return
+  const post = fake.calls[0]
+  assert.deepEqual([post.method, post.path, post.query, post.headers["content-type"]], ["POST", DPDSERVICES_PATHS.pickupCall, null, "application/json"])
+  const update = courierBody<PackagesPickupCallUpdateRequest>("12u-patch-unknown-order", { orderNumber: created.orderNumber, checkSum: created.checkSum })
+  const changed = await c.pickupCallUpdate(update)
+  assert.equal(changed.kind, "ok")
+  const patch = fake.calls[1]
+  assert.deepEqual([patch.op, patch.method, patch.path, patch.query], ["pickupUpdate", "PATCH", DPDSERVICES_PATHS.pickupCall, null])
+  assert.deepEqual(patch.body, update)
+  assert.equal(patch.headers["content-type"], "application/json")
+  assert.equal(patch.headers["x-dpd-fid"], "1000")
+  /* A PATCH rotates the checkSum: the DELETE carries the new one. */
+  const rotated = changed.kind === "ok" ? changed.checkSum : null
+  assert.ok(rotated !== null && rotated !== created.checkSum)
+  const deleted = await c.pickupCallDelete({ orderNumber: created.orderNumber, checkSum: rotated ?? "" })
+  assert.equal(deleted.kind, "ok")
+  const del = fake.calls[2]
+  assert.deepEqual([del.op, del.method, del.path, del.body], ["pickupDelete", "DELETE", DPDSERVICES_PATHS.pickupCall, null])
+  assert.deepEqual(del.query, { orderNumber: created.orderNumber, checkSum: rotated })
+  assert.equal(del.headers["content-type"], undefined)
+  assert.equal(del.headers["x-dpd-fid"], "1000")
+  assert.equal(fake.orders.get(created.orderNumber)?.canceled, true)
+})
+
+test("checkSum is masked in every log line and message, also from the DELETE query", async () => {
+  const checkSum = "98765432"
+  const fake = new FakeDpdServices({ courier: "works", now: NOW })
+  /* A transport error that names the whole URL, query and all. */
+  const leaky: typeof fetch = async (input) => {
+    const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+    throw new Error(`connect ECONNREFUSED ${href}`)
+  }
+  const { c, log } = client(fake, { fetchImpl: leaky })
+  const network = await c.pickupCallDelete({ orderNumber: "2026000001", checkSum })
+  assert.ok(network.kind === "unclear" && network.code === "network")
+  assert.ok(!JSON.stringify(network).includes(checkSum), JSON.stringify(network))
+  /* DPD echoing the checkSum in a refusal: masked in the message and the problems. */
+  const { c: c2, log: log2 } = client(fake)
+  fake.failNext("pickupUpdate", { status: 400, body: { errors: [{ field: "checkSum", userMessage: `unknown checkSum ${checkSum}` }] } })
+  const refused = await c2.pickupCallUpdate(courierBody<PackagesPickupCallUpdateRequest>("12u-patch-unknown-order", { orderNumber: "2026000001", checkSum }))
+  assert.ok(refused.kind === "refused" && refused.code === "checksum")
+  assert.ok(!JSON.stringify(refused).includes(checkSum), JSON.stringify(refused))
+  fake.failNext("pickupDelete", { status: 500, body: { status: { status: `UNKNOWN_ERROR ${checkSum}` } } })
+  const unclear = await c2.pickupCallDelete({ orderNumber: "2026000001", checkSum })
+  assert.ok(unclear.kind === "unclear" && unclear.code === "server_error")
+  assert.ok(!JSON.stringify(unclear).includes(checkSum), JSON.stringify(unclear))
+  const lines = [...log.lines, ...log2.lines]
+  assert.equal(lines.length, 3)
+  for (const line of lines) assert.ok(!line.includes(checkSum) && !line.includes(PASSWORD), line)
+})
+
+test("the courier call log shows the path without the query", async () => {
+  const fake = new FakeDpdServices({ courier: "works", now: NOW })
+  const { c, log } = client(fake)
+  await c.courierOrderAvailability({ countryCode: "PL", zipCode: "02274" })
+  await c.pickupCallDelete({ orderNumber: "2026000001", checkSum: "12345678" })
+  assert.equal(log.lines.length, 2)
+  assert.ok(log.lines[0].includes(DPDSERVICES_PATHS.availability), log.lines[0])
+  assert.ok(log.lines[1].includes(DPDSERVICES_PATHS.pickupCall), log.lines[1])
+  for (const line of log.lines) {
+    assert.ok(!line.includes("?") && !line.includes("orderNumber=") && !line.includes("2026000001") && !line.includes("12345678"), line)
+  }
+  assert.match(log.lines[1], /^warn \[dpd\] DPDServices .* 400 order_not_found trace=fake-\S+ \d+ms$/)
+})
+
+test("pickupCallCreate never logs the whole answer", async () => {
+  const fake = new FakeDpdServices({ courier: "works", now: NOW })
+  const { c, log } = client(fake)
+  const o = await c.pickupCallCreate(createBody())
+  assert.equal(o.kind, "ok")
+  if (o.kind !== "ok") return
+  assert.equal(log.lines.length, 1)
+  const line = log.lines[0]
+  assert.match(line, /^info \[dpd\] DPDServices .* 200 OK trace=\S+ \d+ms$/)
+  assert.ok(!line.includes(o.checkSum) && !line.includes(o.orderNumber) && !line.includes("{"), line)
+  /* The demo host (12a): unclear, the sentence and no body either. */
+  const demo = new FakeDpdServices({ now: NOW })
+  const { c: d, log: dlog } = client(demo)
+  const unclear = await d.pickupCallCreate(createBody())
+  assert.ok(unclear.kind === "unclear" && unclear.code === "dpd_unknown_error")
+  assert.ok(dlog.lines.every((l) => !l.includes("{") && !l.includes("checkSum")), dlog.lines.join("\n"))
 })

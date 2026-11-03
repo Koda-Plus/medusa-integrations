@@ -8,7 +8,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { integrationEn, integrationPl } from "../src/modules/dpd/lib/integration-texts.ts"
-import { shipmentLine } from "../src/modules/dpd/lib/integration.ts"
+import { dpdCounters, shipmentLine } from "../src/modules/dpd/lib/integration.ts"
 import { makeContext } from "../src/modules/dpd/lib/kit-routes.ts"
 import { dpdIntegration } from "../src/workflows/dpd/integration.ts"
 import { conformance } from "./kit-conformance.ts"
@@ -47,7 +47,8 @@ function recordWrites(s: Setup): () => string[] {
   const store = s.store as unknown as Record<string, unknown>
   for (const k of Object.keys(store)) {
     const fn = store[k]
-    if (typeof fn !== "function" || k === "counts" || k === "list") continue
+    /* Reads only: the board counters read the shipment and dispatch counts. */
+    if (typeof fn !== "function" || k === "counts" || k === "dispatchCounts" || k === "list") continue
     store[k] = (...args: unknown[]) => {
       calls.push(`store.${k}`)
       return (fn as (...a: unknown[]) => unknown)(...args)
@@ -156,8 +157,30 @@ test("board counters are the Panel's counts of the current mode", async () => {
   const s = sample()
   const a = await dpdIntegration.build.attention(makeContext({ scope: s.container }), ["orders"])
   const by = Object.fromEntries(a.items.map((c) => [c.key, c.count]))
-  assert.deepEqual(by, { shipments_problems: 1, shipments_to_create: 1, shipments_labeled: 1 })
-  assert.ok(a.items.every((c) => c.link.kind === "admin" && c.link.href.startsWith("/dpd?filter=")))
+  assert.deepEqual(by, { shipments_problems: 1, shipments_to_create: 1, shipments_labeled: 1, dispatches_attention: 0 })
+  assert.ok(a.items.every((c) => c.link.kind === "admin" && (c.link.href.startsWith("/dpd?filter=") || c.link.href.startsWith("/dpd?view="))))
+})
+
+test("dispatches_attention counter links to the dispatches view", () => {
+  const items = dpdCounters({ problems: 0, to_create: 0, labeled: 0, dispatchesAttention: 3 })
+  const c = items.find((i) => i.key === "dispatches_attention")
+  assert.deepEqual(c, { key: "dispatches_attention", scope: "orders", count: 3, tone: "red", link: { kind: "admin", href: "/dpd?view=dispatches&filter=attention" }, entity: "order" })
+  assert.deepEqual(items.map((i) => i.key), ["shipments_problems", "shipments_to_create", "shipments_labeled", "dispatches_attention"])
+  assert.ok(typeof integrationEn.attention === "object" && "dispatches_attention" in integrationEn.attention, "the counter has its words")
+})
+
+test("shipmentLine for excluded and for a shipment in a dispatch", () => {
+  const row = (over: Row) =>
+    ({ id: "x", kind: "outbound", mode: "live", option_id: "dpd-courier", state: "labeled", stage: null, pudo_id: null, problems: null, handed_over_at: null, dispatch_id: null, ...over }) as never
+  const line = (over: Row) => {
+    const l = shipmentLine(row(over))
+    return `${l.state}:${l.title.key.replace("integration.order.", "")}`
+  }
+  assert.equal(line({ state: "excluded" }), "none:excluded")
+  assert.equal(line({ dispatch_id: "dpddsp_1" }), "active:inDispatch")
+  assert.equal(line({ dispatch_id: "dpddsp_1", handed_over_at: new Date() }), "active:handedOver", "handed over speaks before the dispatch")
+  assert.equal(line({ dispatch_id: null }), "active:labeled")
+  assert.equal(line({ dispatch_id: "dpddsp_1", stage: "in_transit" }), "active:inTransit", "the stage DPD reports speaks first")
 })
 
 test("the manifest: mode, configuration, writers, problems of the sender", async () => {

@@ -1,11 +1,26 @@
-import { POINT_TYPES } from "../../modules/dpd/lib/constants"
-import type { PlanDto, PointDto, PointHoursDto, PointLimitsDto, ProblemDto, ShipmentDto, WriterDto, WriterKey } from "../../modules/dpd/lib/contract"
+import { DISPATCH_CLAIMED_STATES, POINT_TYPES } from "../../modules/dpd/lib/constants"
+import type {
+  CourierOrderRequest,
+  CourierRangeDto,
+  DispatchDto,
+  DispatchFilter,
+  DispatchProtocolDto,
+  DispatchState,
+  PlanDto,
+  PointDto,
+  PointHoursDto,
+  PointLimitsDto,
+  ProblemDto,
+  ShipmentDto,
+  WriterDto,
+  WriterKey,
+} from "../../modules/dpd/lib/contract"
 
 /**
  * The plain logic of the admin: no React, no kit, no DOM, so `node --test`
  * loads it (the .tsx files around it it cannot). Errors of the admin API,
- * money, the refused fields of the boxes, the writers, the label file and
- * the DPD Pickup points.
+ * money, the refused fields of the boxes, the writers, the label file, the
+ * DPD Pickup points and the handovers to the courier.
  */
 
 export class DpdRequestError extends Error {
@@ -160,8 +175,8 @@ export function isBoxField(field: string): field is BoxField {
 /* Writers                                                             */
 /* ------------------------------------------------------------------ */
 
-/** The writers that write nothing yet in this version; the shipment writer already creates shipments. */
-export const LATER_WRITERS: readonly WriterKey[] = ["pickup", "fulfillmentStatus"]
+/** The writers that write nothing yet in this version; the shipment writer creates shipments, the pickup writer orders couriers. */
+export const LATER_WRITERS: readonly WriterKey[] = ["fulfillmentStatus"]
 
 export function isLaterWriter(key: WriterKey): boolean {
   return LATER_WRITERS.includes(key)
@@ -178,10 +193,10 @@ export function writingWriters<W extends Pick<WriterDto, "key" | "armed">>(write
 }
 
 /**
- * Why a call to DPD cannot run: "off" when the options turn the shipment
- * writer off (arming it in Settings would not help), "not_armed" when a
- * person has not armed it, null when it writes. Without the writer (not
- * loaded yet) only `armed` counts.
+ * Why a call to DPD cannot run: "off" when the options turn the writer off
+ * (arming it in Settings would not help), "not_armed" when a person has not
+ * armed it, null when it writes. Without the writer (not loaded yet) only
+ * `armed` counts.
  */
 export function writerBlock(writer: Pick<WriterDto, "allowed"> | undefined, armed: boolean): "off" | "not_armed" | null {
   if (writer && !writer.allowed) return "off"
@@ -341,4 +356,272 @@ export function sameSearch(a: { zip?: string; city?: string; cod?: boolean } | n
   const y = pointsQuery(b)
   if (x === null || y === null) return x === y
   return x.zip === y.zip && x.city === y.city && x.cod === y.cod
+}
+
+/* ------------------------------------------------------------------ */
+/* Handovers to the courier                                            */
+/* ------------------------------------------------------------------ */
+
+/** The filters of the handover list, as the page URL (?filter) and the route take them. */
+export const DISPATCH_FILTERS = ["open", "attention", "all"] as const
+
+/** ?filter of the page for the handover section; anything else: "open". */
+export function dispatchFilterOf(v: string | null): DispatchFilter {
+  return DISPATCH_FILTERS.find((f) => f === v) ?? "open"
+}
+
+const CLAIMED_DISPATCH: readonly DispatchState[] = DISPATCH_CLAIMED_STATES
+
+/** A request is working on the handover now (printing, ordering, changing the order): the view polls it. */
+export function isClaimedDispatch(state: DispatchState): boolean {
+  return CLAIMED_DISPATCH.includes(state)
+}
+
+/**
+ * The poll of a handover saw the work end: it was claimed and is not any
+ * more. Only the view polls a claimed handover, so then the list, the
+ * shipments and the tile read it again. null: nothing read yet.
+ */
+export function dispatchLeftClaim(before: DispatchState | null, now: DispatchState | null): boolean {
+  return before !== null && now !== null && isClaimedDispatch(before) && !isClaimedDispatch(now)
+}
+
+/** The tones of a handover badge (the Tone values of the blocks it uses). */
+export type DispatchTone = "red" | "orange" | "blue" | "green" | "grey"
+
+/* Orange waits for a person, blue works, green is done, red needs a person to check, grey left the work. */
+const DISPATCH_TONE: Record<DispatchState, DispatchTone> = {
+  pending: "orange",
+  printing: "blue",
+  printed: "orange",
+  ordering: "blue",
+  ordered: "green",
+  updating: "blue",
+  unknown: "red",
+  canceled: "grey",
+}
+
+/** The tone of the state badge of a handover: red whenever it needs a person (DS18). */
+export function dispatchTone(d: Pick<DispatchDto, "state" | "attention">): DispatchTone {
+  return d.attention ? "red" : DISPATCH_TONE[d.state]
+}
+
+/** One pickup window a person can choose: `value` is the key of the select, `raw` the range as DPD wrote it. */
+export type WindowChoice = { value: string; from: string; to: string; raw: string }
+
+/**
+ * The ranges as choices for one date: unique by from and to, sorted. On
+ * today a range whose `to` is not after nowTime is left out (date_past, O14).
+ * today and nowTime always come from the same AvailabilityResponse (the
+ * server, Europe/Warsaw), never from the browser clock (E7).
+ */
+export function courierWindowChoices(ranges: readonly CourierRangeDto[], date: string, today: string, nowTime: string): WindowChoice[] {
+  const out: WindowChoice[] = []
+  for (const r of ranges) {
+    if (date === today && r.to <= nowTime) continue
+    const value = `${r.from}-${r.to}`
+    if (out.some((c) => c.value === value)) continue
+    out.push({ value, from: r.from, to: r.to, raw: r.raw })
+  }
+  return out.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to))
+}
+
+/** The actions of a handover that need a writer. */
+export type DispatchWriterAction = "print" | "reprint" | "cancel" | "order" | "reschedule" | "cancelCourier" | "resolve" | "withdraw"
+
+/**
+ * The one writer an action of a handover needs, the same as the server's
+ * (10.1): the protocol and the handover itself the shipment writer, the
+ * courier order the pickup writer. Taking a shipment out changes the courier
+ * order only when one is ordered: pickup for "ordered", else shipment (6.9
+ * point 3, E21). Never both.
+ */
+export function dispatchActionWriter(action: DispatchWriterAction, state: DispatchState): WriterKey {
+  if (action === "withdraw") return state === "ordered" ? "pickup" : "shipment"
+  return action === "print" || action === "reprint" || action === "cancel" ? "shipment" : "pickup"
+}
+
+/**
+ * The tone of the last error of a handover (DispatchErrorText, E24): null
+ * without an error, and while a request works on it (the claim presets the
+ * code of a lease expiry); red when it needs a person; else orange.
+ */
+export function dispatchErrorTone(d: Pick<DispatchDto, "state" | "error" | "errorCode" | "attention">): "red" | "orange" | null {
+  if (!d.error && !d.errorCode) return null
+  if (isClaimedDispatch(d.state)) return null
+  return d.attention || d.state === "unknown" ? "red" : "orange"
+}
+
+/** The body of an order or a change of the pickup: the date and the chosen window. */
+export function courierRequestOf(date: string, choice: WindowChoice): CourierOrderRequest {
+  return { pickupDate: date, pickupTimeFrom: choice.from, pickupTimeTo: choice.to }
+}
+
+/** The date the form starts on: tomorrow (days[1]) when there is one, else today; null for no days. */
+export function defaultCourierDate(days: readonly string[]): string | null {
+  return days[1] ?? days[0] ?? null
+}
+
+/**
+ * A pickup date ("2026-11-04") in the admin's language, as a day in Warsaw.
+ * Noon UTC is the same day there in every season, so the browser clock and
+ * its zone never shift the day.
+ */
+export function fmtPickupDate(date: string, lang: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date
+  const d = new Date(`${date}T12:00:00Z`)
+  if (!Number.isFinite(d.getTime())) return date
+  try {
+    return new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeZone: "Europe/Warsaw" }).format(d)
+  } catch {
+    return date
+  }
+}
+
+/** The most shipments of one handover (DISPATCH_MAX_SHIPMENTS, DS17), repeated here for the selection of the list. */
+export const SELECTION_MAX = 100
+
+/**
+ * The selection after ticking (on) or clearing (off) some ids, in the order
+ * given. Ticking stops at SELECTION_MAX: the ids past it stay out.
+ */
+export function selectionToggle(selected: ReadonlySet<string>, ids: readonly string[], on: boolean): Set<string> {
+  const next = new Set(selected)
+  for (const id of ids) {
+    if (!on) next.delete(id)
+    else if (!next.has(id) && next.size < SELECTION_MAX) next.add(id)
+  }
+  return next
+}
+
+/**
+ * The selection without the shipments that stopped being candidates: a row of the page
+ * without actions.dispatch (do not send, handed over in another tab) has no box to untick,
+ * so it leaves the selection. Ids of other pages stay; the same set when nothing goes.
+ */
+export function selectionPrune(selected: ReadonlySet<string>, rows: ReadonlyArray<{ id: string; actions: { dispatch: boolean } }>): ReadonlySet<string> {
+  const gone = rows.filter((r) => !r.actions.dispatch && selected.has(r.id)).map((r) => r.id)
+  return gone.length === 0 ? selected : selectionToggle(selected, gone, false)
+}
+
+/**
+ * The page of a list once its count is known: the last page when the list
+ * shrank below the current one (the last row of the last page was resolved,
+ * withdrawn or sent), so the table never shows "empty" under a nonzero count.
+ */
+export function pageInRange(page: number, count: number, size: number): number {
+  const last = Math.max(0, Math.ceil(count / size) - 1)
+  return Math.min(Math.max(0, page), last)
+}
+
+/** The header checkbox of a page: none, some or all of its selectable rows are selected. */
+export function selectionPageState(selected: ReadonlySet<string>, pageIds: readonly string[]): "none" | "some" | "all" {
+  const n = pageIds.filter((id) => selected.has(id)).length
+  if (n === 0) return "none"
+  return n === pageIds.length ? "all" : "some"
+}
+
+/**
+ * The main button of a handover row: resolve, print, order, protocol, in
+ * this order of its actions. Resolve is the main button only when the row
+ * needs a person; an ordered row without a checkSum (O16) keeps it among
+ * the icons, so a calm row does not offer "Resolve" first. null: none.
+ */
+export function dispatchMainAction(d: DispatchDto): "resolve" | "print" | "order" | "protocol" | null {
+  if (d.actions.resolve && d.attention) return "resolve"
+  if (d.actions.print) return "print"
+  if (d.actions.order) return "order"
+  if (d.actions.protocol) return "protocol"
+  return null
+}
+
+/** Why the courier cannot be ordered with the handover: the pickup writer, then the problems of the plan. */
+export type CourierBlock = { kind: "writer"; writer: WriterDto } | { kind: "problems"; problems: ProblemDto[] } | null
+
+/** The courier checkbox and the order button: the pickup writer armed first, then orderProblems empty. Without the writers (not loaded) only the problems count. */
+export function courierBlock(writers: Record<WriterKey, WriterDto> | undefined, orderProblems: readonly ProblemDto[]): CourierBlock {
+  const writer = writers?.pickup
+  if (writer && !writer.armed) return { kind: "writer", writer }
+  return orderProblems.length > 0 ? { kind: "problems", problems: [...orderProblems] } : null
+}
+
+/** The newest stored protocol of a handover, or null. */
+export function latestProtocol(d: Pick<DispatchDto, "protocols">): DispatchProtocolDto | null {
+  let newest: DispatchProtocolDto | null = null
+  for (const p of d.protocols) {
+    if (!newest || (p.createdAt ?? "") > (newest.createdAt ?? "")) newest = p
+  }
+  return newest
+}
+
+/**
+ * The stage of the handover loader (dispatch, protocol, order) "Try again"
+ * starts at, read from the handover as it is now, never from the code the
+ * run stopped with: a refused protocol and a refused order share codes
+ * (pickup_fid, parcel_limit), and a print or an order made meanwhile (the
+ * view's own button, an answer lost on the way back) is never sent twice.
+ * 0 before the handover exists; 1 (the protocol) only while it is pending;
+ * 2 (the courier) only while it is printed and the run orders one. null:
+ * nothing to repeat (printed without a courier, ordered, an unknown order to
+ * resolve first, canceled, a step still running, or the state not read yet).
+ */
+export function handoverStepOf(state: DispatchState | null, created: boolean, withCourier: boolean): 0 | 1 | 2 | null {
+  if (!created) return 0
+  if (state === "pending") return 1
+  if (state === "printed" && withCourier) return 2
+  return null
+}
+
+/**
+ * Whether a stopped run of the drawer is history, so its loader goes: a read
+ * after the stop shows the handover moved on. With the state of the answer,
+ * any other state; after a failed request (no state) a state past the stage
+ * the run stopped at that "Try again" cannot continue from, e.g. a print the
+ * server finished behind a lost answer, or an order made from the view.
+ */
+export function stoppedRunMovedOn(
+  stopped: { state: DispatchState | null; stage: "protocol" | "order" } | null,
+  fresh: DispatchState | null,
+  retryFrom: number | null,
+): boolean {
+  if (!stopped || !fresh) return false
+  if (stopped.state) return fresh !== stopped.state
+  if (retryFrom !== null) return false
+  const at: readonly DispatchState[] = stopped.stage === "protocol" ? ["pending", "printing"] : ["printed", "ordering"]
+  return !at.includes(fresh)
+}
+
+/**
+ * The error code that explains a failed reschedule, courier cancel or withdraw, or null.
+ * An ordered handover with an attention code keeps that code on every result of a change
+ * (P10): the same code after the call tells nothing about this attempt, like a reprint
+ * (printToastKind), so the person gets the generic text instead of an old reason.
+ */
+export function changeReasonCode(before: Pick<DispatchDto, "attention" | "errorCode">, after: Pick<DispatchDto, "errorCode">): string | null {
+  if (!after.errorCode) return null
+  return before.attention && after.errorCode === before.errorCode ? null : after.errorCode
+}
+
+/**
+ * Whether the courier form may still send its order or change: the handover
+ * allows the mode now. The newer of the handover the host holds and the last
+ * answer of the form counts (updatedAt; a tie is the answer), so an order
+ * that went unknown is never offered again before the host has read it. null
+ * answer: the form has sent nothing yet.
+ */
+export function courierFormAllowed(mode: "order" | "reschedule", live: Pick<DispatchDto, "actions" | "updatedAt">, answer: Pick<DispatchDto, "actions" | "updatedAt"> | null): boolean {
+  const now = answer && !(Date.parse(live.updatedAt ?? "") > Date.parse(answer.updatedAt ?? "")) ? answer : live
+  return mode === "order" ? now.actions.order : now.actions.reschedule
+}
+
+/**
+ * The toast of a print: a new protocol (more stored than before the call)
+ * is the only sign of success, since an ordered handover with an attention
+ * code keeps that code on every result of a reprint (P10). "failed" is such
+ * a handover without a new protocol: its code tells nothing about the print.
+ */
+export function printToastKind(d: Pick<DispatchDto, "state" | "errorCode" | "attention" | "protocols">, protocolsBefore: number): "printed" | "unclear" | "refused" | "failed" {
+  if ((d.state === "printed" || d.state === "ordered") && d.protocols.length > protocolsBefore) return "printed"
+  if (d.attention) return "failed"
+  return d.errorCode === "protocol_unclear" ? "unclear" : "refused"
 }

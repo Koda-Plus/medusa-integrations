@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { useQueryClient } from "@tanstack/react-query"
-import { ArrowPath, DocumentText, ListBullet, MapPin, ShieldCheck, Trash, TruckFast } from "@medusajs/icons"
+import { ArrowPath, DocumentText, HandTruck, ListBullet, MapPin, ShieldCheck, Trash, TruckFast } from "@medusajs/icons"
 import { Container, InlineTip, toast, usePrompt } from "@medusajs/ui"
-import type { ShipmentFilter, ShipmentGroup, StatusResponse } from "../../../modules/dpd/lib/contract"
+import type { DispatchFilter, ShipmentFilter, ShipmentGroup, StatusResponse } from "../../../modules/dpd/lib/contract"
 import { dpdKeys, errorMessage, useDpdDemoReset, useDpdDemoSeed, useDpdStatus } from "../../lib/dpd-api"
 import { StatTile, StatTiles, type Tone } from "../../lib/dpd-blocks"
 import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/dpd-guide"
 import { GuideView, usePromptSpec } from "../../lib/dpd-guide-view"
 import { DpdIcon, DpdMark } from "../../lib/dpd-icon"
+import { DispatchDrawer, DispatchesSection } from "../../lib/dpd-dispatch"
 import { KitLoading } from "../../lib/dpd-kit"
-import { writingWriters } from "../../lib/dpd-logic"
+import { dispatchFilterOf, writingWriters } from "../../lib/dpd-logic"
 import { DemoDetails, FILTERS, ShipmentsSection } from "../../lib/dpd-panel"
 import { AccountSection, SETTINGS_TABS, SenderSection, WritersSection, type SettingsTabId } from "../../lib/dpd-settings"
 import { GROUP_ICON, fmtNumber, modeOf, useSenderProblemText } from "../../lib/dpd-ui"
@@ -28,7 +29,9 @@ import { GROUP_ICON, fmtNumber, modeOf, useSenderProblemText } from "../../lib/d
  * - Settings (`?view=settings&tab=`): the DPD account as the options set it,
  *   the sender, the writers.
  *
- * Deep links from hosts and boards: `/dpd?filter=problems`, `/dpd?q=1042`.
+ * Deep links from hosts and boards: `/dpd?filter=problems`, `/dpd?q=1042`;
+ * the handovers: `/dpd?view=dispatches&filter=attention` (the panel, at the
+ * handover list), `/dpd?dispatch=<id>` (one handover in its drawer).
  *
  * DPD has its own sidebar entry; it is not a tab of another carrier's page.
  */
@@ -62,12 +65,57 @@ const DpdPage = () => {
     }
   }
   const s = status.data
-  /* Deep links from hosts and boards: /dpd?filter=to_create, /dpd?q=1042. */
-  const [params] = useSearchParams()
+  /* Deep links from hosts and boards: /dpd?filter=to_create, /dpd?q=1042, /dpd?view=dispatches&filter=attention. */
+  const [params, setParams] = useSearchParams()
+  /* The kit knows panel, guide and settings; "dispatches" is the panel at the handover list, its filter is the list's. */
+  const atDispatches = params.get("view") === "dispatches"
   const [filter, setFilter] = useState<ShipmentFilter>(() => {
     const asked = params.get("filter")
-    return asked && (FILTERS as readonly string[]).includes(asked) ? (asked as ShipmentFilter) : "all"
+    return !atDispatches && asked && (FILTERS as readonly string[]).includes(asked) ? (asked as ShipmentFilter) : "all"
   })
+  const [dispatchFilter, setDispatchFilter] = useState<DispatchFilter>(() => (atDispatches ? dispatchFilterOf(params.get("filter")) : "open"))
+  /* Each request to show the handover list scrolls to it once it is on the page, and only once: a new status (after any action, the poll) is no request. */
+  const [scrollTo, setScrollTo] = useState(atDispatches ? 1 : 0)
+  const scrolled = useRef(0)
+  useEffect(() => {
+    if (scrollTo <= scrolled.current || !status.data) return
+    const section = document.getElementById("dpd-dispatches")
+    if (!section) return
+    scrolled.current = scrollTo
+    section.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [scrollTo, status.data])
+  const showDispatches = (f: DispatchFilter) => {
+    setDispatchFilter(f)
+    const p = new URLSearchParams(params)
+    p.set("view", "dispatches")
+    p.set("filter", f)
+    p.delete("tab")
+    setParams(p, { replace: true })
+    setScrollTo((n) => n + 1)
+  }
+  /*
+   * One handover in its drawer, from ?dispatch=<id> (the order card links here); closing drops the parameter.
+   * Opened from this page it is a history entry of its own, so closing goes back to the entry it came from
+   * (Back leaves the page at once, never lands on the same page); from a link, closing replaces the entry.
+   */
+  const navigate = useNavigate()
+  const openDispatch = params.get("dispatch")
+  const pushed = useRef(false)
+  useEffect(() => {
+    if (!openDispatch) pushed.current = false
+  }, [openDispatch])
+  const setOpenDispatch = (id: string | null) => {
+    if (!id && pushed.current) {
+      pushed.current = false
+      navigate(-1)
+      return
+    }
+    const p = new URLSearchParams(params)
+    if (id) p.set("dispatch", id)
+    else p.delete("dispatch")
+    pushed.current = Boolean(id)
+    setParams(p, { replace: !id })
+  }
   const [initialQuery] = useState(() => (params.get("q") ?? "").slice(0, 100))
 
   /* Demo mode: the sample shipments are built once, on the first visit (reads never write).
@@ -119,7 +167,7 @@ const DpdPage = () => {
         {/* Panel only: Settings shows the same notes in its own tabs. */}
         {s && nav.view === "panel" ? <Warnings status={s} onSettings={(tab) => nav.go("settings", tab)} /> : null}
         {s && nav.view === "panel" ? (
-          <StatTiles columns={6}>
+          <StatTiles columns={7}>
             {TILES.map((g) => (
               <StatTile
                 key={g.key}
@@ -131,6 +179,15 @@ const DpdPage = () => {
                 onClick={() => setFilter(filter === g.key ? "all" : g.key)}
               />
             ))}
+            {/* The handovers that need a person (DS18): a filter of the handover list, not of the shipments. */}
+            <StatTile
+              icon={<HandTruck />}
+              label={t("dispatch.tileAttention")}
+              value={fmtNumber(s.counts.dispatchesAttention, lang)}
+              tone={s.counts.dispatchesAttention > 0 ? "red" : "grey"}
+              active={atDispatches && dispatchFilter === "attention"}
+              onClick={() => showDispatches("attention")}
+            />
           </StatTiles>
         ) : null}
       </Container>
@@ -147,8 +204,13 @@ const DpdPage = () => {
           seeding={seeding}
           seedFailed={seed.isError}
           onSettings={() => nav.go("settings", "writers")}
+          onOpenDispatch={(id) => setOpenDispatch(id)}
         />
       ) : null}
+
+      {s && nav.view === "panel" ? <DispatchesSection filter={dispatchFilter} onFilter={(f) => (atDispatches ? showDispatches(f) : setDispatchFilter(f))} onOpen={(id) => setOpenDispatch(id)} /> : null}
+
+      {s && openDispatch ? <DispatchDrawer dispatchId={openDispatch} lang={lang} onClose={() => setOpenDispatch(null)} onSettings={() => nav.go("settings", "writers")} /> : null}
 
       {s && nav.view === "settings" ? (
         <SettingsView

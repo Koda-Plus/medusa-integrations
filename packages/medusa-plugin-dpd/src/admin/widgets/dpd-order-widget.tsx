@@ -5,14 +5,15 @@ import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
 import { ArchiveBox, History as HistoryIcon, TruckFast } from "@medusajs/icons"
 import { Button, Heading, Text } from "@medusajs/ui"
-import type { EventDto, ShipmentDto } from "../../modules/dpd/lib/contract"
+import type { DispatchDto, EventDto, ShipmentDto, WriterDto } from "../../modules/dpd/lib/contract"
 import { WRITER_OPTION } from "../../modules/dpd/lib/writers"
 import { useDpdOrder } from "../lib/dpd-api"
 import { EmptyState, ToneBadge } from "../lib/dpd-blocks"
 import { nb } from "../lib/dpd-guide"
 import { DpdIcon, DpdMark } from "../lib/dpd-icon"
 import { KitLoading, WidgetFrame, hostable } from "../lib/dpd-kit"
-import { customerChoseOther } from "../lib/dpd-logic"
+import { DispatchBadges, useCourierText } from "../lib/dpd-dispatch"
+import { customerChoseOther, latestProtocol } from "../lib/dpd-logic"
 import { PlanDrawer, ShipmentActionBar } from "../lib/dpd-plan"
 import { Destination, ErrorText, KindBadges, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "../lib/dpd-ui"
 
@@ -21,7 +22,9 @@ import { Destination, ErrorText, KindBadges, ProblemList, ShipmentStatus, Waybil
  * Pickup point, cash on delivery, the point id), then each DPD shipment or
  * return of the order with its state, waybills, cash on delivery, problems
  * and history, with the actions of each shipment and the same plan drawer as
- * the Panel. Hidden on orders that do not go with DPD.
+ * the Panel; a shipment in a handover shows the handover, its protocol and
+ * its courier, one click from the handover drawer of the Panel. Hidden on
+ * orders that do not go with DPD.
  *
  * A host (an app that shows every integration as tabs of one card) embeds it
  * with `embedded`: no frame and header of its own, a line while loading and
@@ -94,8 +97,11 @@ const DpdOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { embe
             lang={lang}
             writerArmed={info.writers.shipment.armed}
             writerAllowed={info.writers.shipment.allowed}
+            pickupWriter={info.writers.pickup}
+            dispatch={s.dispatchId ? info.dispatches.find((d) => d.id === s.dispatchId) : undefined}
             chosenPudoId={chosen?.pudoId ?? null}
             onPlan={() => setPlanFor(s.id)}
+            onOpenDispatch={(id) => navigate(`/dpd?dispatch=${encodeURIComponent(id)}`)}
             events={info.events.filter((e) => e.shipmentId === s.id)}
           />
         ))
@@ -121,8 +127,11 @@ function ShipmentBlock({
   lang,
   writerArmed,
   writerAllowed,
+  pickupWriter,
+  dispatch,
   chosenPudoId,
   onPlan,
+  onOpenDispatch,
   events,
 }: {
   shipment: ShipmentDto
@@ -130,15 +139,23 @@ function ShipmentBlock({
   writerArmed: boolean
   /** The options allow the shipment writer: when not, arming it would not help and the badge says so. */
   writerAllowed: boolean
+  /** The pickup writer: taking the shipment out of an ordered handover changes the courier order. */
+  pickupWriter: WriterDto
+  /** The handover the shipment is in, from the order card (undefined when free). */
+  dispatch: DispatchDto | undefined
+  /** Opens the handover in the drawer of the Panel. */
+  onOpenDispatch: (id: string) => void
   /** The Pickup point of the customer's order; the shipment may go to another one after a change in the admin. */
   chosenPudoId: string | null
   onPlan: () => void
   events: EventDto[]
 }) {
   const { t } = useTranslation("dpd")
+  const courierText = useCourierText()
   const [showHistory, setShowHistory] = useState(false)
   /* The order keeps the customer's point; a person may have changed the shipment's since. */
   const chose = customerChoseOther(chosenPudoId, s)
+  const protocol = dispatch ? latestProtocol(dispatch) : null
   return (
     <div className="flex flex-col gap-y-3 px-6 py-4">
       <div className="flex items-center justify-between gap-x-2">
@@ -174,6 +191,32 @@ function ShipmentBlock({
           <Text size="small">{fmtDateTime(s.handedOverAt, lang)}</Text>
         </Line>
       ) : null}
+      {dispatch ? (
+        <>
+          <Line label={t("widget.dispatch")}>
+            <DispatchBadges dispatch={dispatch} />
+          </Line>
+          <Line label={t("widget.protocol")}>
+            <Text size="small" className={protocol ? undefined : "text-ui-fg-muted"}>
+              {protocol ? fmtDateTime(protocol.createdAt, lang) : t("widget.protocolNone")}
+            </Text>
+          </Line>
+          <Line label={t("widget.courier")}>
+            <Text size="small" className={dispatch.pickupDate ? undefined : "text-ui-fg-muted"}>
+              {courierText(dispatch, lang, { window: "widget.courierWindow", none: "widget.courierNone" })}
+            </Text>
+          </Line>
+          <Button size="small" variant="secondary" className="w-fit" onClick={() => onOpenDispatch(dispatch.id)}>
+            <TruckFast />
+            {t("actions.openDispatch")}
+          </Button>
+        </>
+      ) : null}
+      {s.state === "excluded" ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("integration.order.excluded")}
+        </Text>
+      ) : null}
       <ErrorText shipment={s} />
       {s.problems.length > 0 ? <ProblemList items={s.problems} /> : null}
       {s.state === "pending" ? (
@@ -181,7 +224,7 @@ function ShipmentBlock({
           {!writerAllowed ? t("actionError.writer_off") : writerArmed ? t("widget.toCreate") : t("widget.waitingForArm")}
         </ToneBadge>
       ) : null}
-      <ShipmentActionBar shipment={s} writerArmed={writerArmed} writer={{ allowed: writerAllowed }} onPlan={onPlan} />
+      <ShipmentActionBar shipment={s} writerArmed={writerArmed} writer={{ allowed: writerAllowed }} onPlan={onPlan} pickupWriter={pickupWriter} dispatch={dispatch} onOpenDispatch={onOpenDispatch} />
       {events.length > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button size="small" variant="transparent" onClick={() => setShowHistory(!showHistory)}>

@@ -41,7 +41,7 @@ type Draft = SummaryDraft & { rank: number }
 
 const RANK = { failed: 0, attention: 1, active: 2, ok: 3, none: 4 } as const
 
-const live = (r: ShipmentRow) => r.state !== "canceled" && r.state !== "skipped"
+const live = (r: ShipmentRow) => r.state !== "canceled" && r.state !== "skipped" && r.state !== "excluded"
 
 const kindOf = (r: ShipmentRow): OptionKind | null => OPTION_SPECS.find((s) => s.id === r.option_id)?.kind ?? null
 
@@ -57,6 +57,8 @@ export function shipmentLine(row: ShipmentRow): Draft {
       return { state: "none", title: t("canceled"), rank: RANK.none }
     case "skipped":
       return { state: "none", title: t("skipped"), rank: RANK.none }
+    case "excluded":
+      return { state: "none", title: t("excluded"), rank: RANK.none }
     case "failed":
       return { state: "failed", title: t("failed"), rank: RANK.failed }
     case "unknown":
@@ -89,6 +91,7 @@ export function shipmentLine(row: ShipmentRow): Draft {
   }
   /* labeled: the handover decides */
   if (row.handed_over_at) return { state: "active", title: t("handedOver"), rank: RANK.active }
+  if (row.dispatch_id) return { state: "active", title: t("inDispatch"), rank: RANK.active }
   return { state: "active", title: t("labeled"), rank: RANK.active }
 }
 
@@ -183,10 +186,11 @@ export function orderSummary(rows: ShipmentRow[], chosen: ChosenDpd | null, ctx:
 }
 
 /** Board counters from the counts of the current mode (the same counts as the Panel's filter buttons). */
-export function dpdCounters(counts: Pick<CountsDto, "problems" | "to_create" | "labeled">): CounterDraft[] {
+export function dpdCounters(counts: Pick<CountsDto, "problems" | "to_create" | "labeled" | "dispatchesAttention">): CounterDraft[] {
   return [
     { key: "shipments_problems", scope: "orders", count: counts.problems, tone: "red", link: { kind: "admin", href: "/dpd?filter=problems" }, entity: "order" },
     { key: "shipments_to_create", scope: "orders", count: counts.to_create, tone: "orange", link: { kind: "admin", href: "/dpd?filter=to_create" }, entity: "order" },
     { key: "shipments_labeled", scope: "orders", count: counts.labeled, tone: "blue", link: { kind: "admin", href: "/dpd?filter=labeled" }, entity: "order" },
+    { key: "dispatches_attention", scope: "orders", count: counts.dispatchesAttention, tone: "red", link: { kind: "admin", href: "/dpd?view=dispatches&filter=attention" }, entity: "order" },
   ]
 }

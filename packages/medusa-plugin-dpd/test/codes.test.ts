@@ -1,8 +1,8 @@
 /**
  * Every code the server can hand the admin has its words in both
  * dictionaries: the problems of a plan and of a DPD answer, the warnings of a
- * plan, the error codes kept on a row and the codes of a refused action. A
- * missing key would show the bare code to a warehouse.
+ * plan, the error codes kept on a row or a handover and the codes of a
+ * refused action. A missing key would show the bare code to a warehouse.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -11,8 +11,10 @@ import { tmpdir } from "node:os"
 import { dirname, join, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import en from "../src/admin/i18n/en.ts"
-import { ACTION_ERROR_CODES, SHIPMENT_ERROR_CODES } from "../src/modules/dpd/lib/contract.ts"
-import { DPD_ERROR_CODES, DPD_PROBLEM_CODES, PICKUP_ANSWER_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
+import { ACTION_ERROR_CODES, DISPATCH_ERROR_CODES, SHIPMENT_ERROR_CODES } from "../src/modules/dpd/lib/contract.ts"
+import { COURIER_WINDOW_CODES } from "../src/modules/dpd/lib/courier.ts"
+import { DISPATCH_PROBLEM_CODES, DISPATCH_WARNING_CODES } from "../src/modules/dpd/lib/dispatch.ts"
+import { DISPATCH_PROBLEM_SOURCE_CODES, DPD_ERROR_CODES, DPD_PROBLEM_CODES, PICKUP_ANSWER_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
 import { PLAN_PROBLEM_CODES, PLAN_WARNING_CODES } from "../src/modules/dpd/lib/plan.ts"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -62,6 +64,12 @@ const CASES: ReadonlyArray<readonly [string, string, readonly string[]]> = [
   ["plan warnings", "warning", PLAN_WARNING_CODES],
   ["row error codes", "errorCode", SHIPMENT_ERROR_CODES],
   ["action error codes", "actionError", ACTION_ERROR_CODES],
+  /* Stage 4, the handover to the courier. */
+  ["handover problems", "problem", DISPATCH_PROBLEM_CODES],
+  ["courier window problems", "problem", COURIER_WINDOW_CODES],
+  ["courier and protocol answer problems", "problem", DISPATCH_PROBLEM_SOURCE_CODES],
+  ["handover warnings", "warning", DISPATCH_WARNING_CODES],
+  ["handover error codes", "errorCode", DISPATCH_ERROR_CODES],
 ]
 
 test("every plan problem, DPD problem, warning, row error code and action error code has an English text", () => {
@@ -75,15 +83,44 @@ test("every plan problem, DPD problem, warning, row error code and action error 
 })
 
 /* Codes the server adds next to the lists above; listed here so their words exist before any list carries them. */
-const ADDED_PROBLEMS = ["payer_fid_missing"] as const
+const ADDED_PROBLEMS = [
+  "payer_fid_missing",
+  /* Stage 4: the handover (23). */
+  "no_shipments", "too_many_shipments", "shipment_not_found", "shipment_not_labeled", "shipment_dispatched",
+  "shipment_excluded", "shipment_canceled", "shipment_not_domestic", "shipment_not_outbound",
+  "shipment_no_reference", "shipment_boxes_missing", "mixed_senders", "sender_not_pl", "orderer_invalid",
+  "date_invalid", "date_past", "date_too_far", "time_invalid", "time_order", "window_outside", "no_ranges",
+  "dpd_courier", "dpd_protocol_not_found",
+] as const
+
+/* Stage 4: the warnings of a handover (sample_sender is a plan warning already) and the codes of a refused handover action. */
+const ADDED_WARNINGS = ["dims_unknown", "protocol_stale"] as const
+const ADDED_ACTION_ERRORS = ["availability_unavailable", "availability_refused", "courier_window", "no_check_sum", "marker_failed", "not_candidate"] as const
 
 test("the added problem codes have their words in both dictionaries", async () => {
-  assert.deepEqual(missing(en as unknown as Tree, "problem", ADDED_PROBLEMS), [], "en")
-  assert.deepEqual(missing(await loadPl(), "problem", ADDED_PROBLEMS), [], "pl")
+  const pl = await loadPl()
+  for (const [lang, tree] of [["en", en as unknown as Tree], ["pl", pl]] as const) {
+    assert.deepEqual(missing(tree, "problem", ADDED_PROBLEMS), [], `${lang} problem`)
+    assert.deepEqual(missing(tree, "warning", ADDED_WARNINGS), [], `${lang} warning`)
+    assert.deepEqual(missing(tree, "errorCode", ADDED_ERROR_CODES), [], `${lang} errorCode`)
+    assert.deepEqual(missing(tree, "actionError", ADDED_ACTION_ERRORS), [], `${lang} actionError`)
+  }
+  /* The stage 4 codes are the ones of the server lists, so a code dropped there is dropped here too. */
+  assert.deepEqual(ADDED_PROBLEMS.slice(1), [...DISPATCH_PROBLEM_CODES, ...COURIER_WINDOW_CODES, ...DISPATCH_PROBLEM_SOURCE_CODES])
+  for (const c of ADDED_ACTION_ERRORS) assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(c), `ACTION_ERROR_CODES: ${c}`)
+  for (const c of ADDED_WARNINGS) assert.ok((DISPATCH_WARNING_CODES as readonly string[]).includes(c), `DISPATCH_WARNING_CODES: ${c}`)
 })
 
 /* Row error codes the server adds next to SHIPMENT_ERROR_CODES (the pacing of a click, which a person retries by hand); their words exist before the server writes them. */
-const ADDED_ERROR_CODES = ["rate_limited", "rate_limited_manual"] as const
+const ADDED_ERROR_CODES = [
+  "rate_limited", "rate_limited_manual",
+  /* Stage 4: the codes a handover keeps beyond the DPD codes of a shipment row (23). */
+  "protocol_not_found", "session_type", "pickup_fid", "pickup_address", "parcel_limit",
+  "postal_code_not_found", "range_not_found", "postal_pattern", "country_not_found",
+  "order_closed", "checksum", "pickup_time", "order_not_found", "order_number", "order_status",
+  "service_unavailable", "no_order_number",
+  "protocol_unclear", "order_unclear", "update_unclear", "cancel_unclear", "marker_failed", "plan_changed",
+] as const
 
 /** Every .ts file of the server: src without the admin. */
 function serverFiles(dir = join(root, "src"), out: string[] = []): string[] {
@@ -144,7 +181,8 @@ test("every error code the server writes on a row, read from the sources, has it
   for (const code of ["rate_limited", "adopted", "waybill_count_mismatch", "duplicate_not_found", "label_unclear", "label_not_found", "lease_expired", "label_lease_expired", "abandoned_found", "timeout"]) {
     assert.ok(written.has(code), `read from the sources: ${code}`)
   }
-  const all = [...new Set([...SHIPMENT_ERROR_CODES, ...DPD_ERROR_CODES, ...ADDED_ERROR_CODES, ...written.keys()])]
+  /* dpd_dispatch.error_code too: every code it can hold is in DISPATCH_ERROR_CODES. */
+  const all = [...new Set([...SHIPMENT_ERROR_CODES, ...DPD_ERROR_CODES, ...DISPATCH_ERROR_CODES, ...ADDED_ERROR_CODES, ...written.keys()])]
   const where = (c: string) => (written.has(c) ? `${c} (${written.get(c)})` : c)
   assert.deepEqual(missing(en as unknown as Tree, "errorCode", all).map(where), [], "en")
   assert.deepEqual(missing(await loadPl(), "errorCode", all).map(where), [], "pl")

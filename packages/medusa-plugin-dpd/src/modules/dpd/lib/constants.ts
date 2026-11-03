@@ -161,6 +161,9 @@ export type ShipmentKind = (typeof SHIPMENT_KINDS)[number]
  *   abandoned_unknown  canceled while unknown: the parcel may exist in DPD
  *   skipped            shipped outside Medusa
  *   canceled           the fulfillment or the shipment was canceled
+ *   excluded           a shipment with waybills a person marked not to be
+ *                      sent (D18): never handed to a courier, restored to
+ *                      labeled or created
  */
 export const SHIPMENT_STATES = [
   "pending",
@@ -174,6 +177,7 @@ export const SHIPMENT_STATES = [
   "abandoned_unknown",
   "skipped",
   "canceled",
+  "excluded",
 ] as const
 export type ShipmentState = (typeof SHIPMENT_STATES)[number]
 
@@ -185,9 +189,12 @@ export type ShipmentState = (typeof SHIPMENT_STATES)[number]
 export const SHIPMENT_STAGES = ["preparing", "ready", "in_transit", "in_point", "delivered", "problem", "returned", "canceled"] as const
 export type ShipmentStage = (typeof SHIPMENT_STAGES)[number]
 
-/** The states of a handover to the courier (`dpd_dispatch.state`). An unknown courier order is never retried by itself: a second courier costs money. */
-export const DISPATCH_STATES = ["pending", "ordering", "ordered", "unknown", "canceled"] as const
+/** The states of a handover to the courier (`dpd_dispatch.state`, DS3). An unknown courier order is never retried by itself: a second courier costs money. */
+export const DISPATCH_STATES = ["pending", "printing", "printed", "ordering", "ordered", "updating", "unknown", "canceled"] as const
 export type DispatchState = (typeof DISPATCH_STATES)[number]
+/** The states a dispatch claim moves a row to; finishDispatch only writes from these. */
+export const DISPATCH_CLAIMED_STATES = ["printing", "ordering", "updating"] as const
+export type DispatchClaimedState = (typeof DISPATCH_CLAIMED_STATES)[number]
 
 /** The documents kept in `dpd_document`. */
 export const DOCUMENT_TYPES = ["label", "return_label", "protocol"] as const
@@ -254,6 +261,9 @@ export const LABEL_OUTPUT = { outputDocFormat: "PDF", outputType: "BIC3", varian
 export const DPDSERVICES_PATHS = {
   numbers: "/public/shipment/v1/generatePackagesNumbers",
   labels: "/public/shipment/v1/generateSpedLabels",
+  protocol: "/public/shipment/v1/generateProtocol",
+  availability: "/public/courierorder/v1/courierOrderAvailability",
+  pickupCall: "/public/courierorder/v1/packagesPickupCall",
 } as const
 
 /* ------------------------------------------------------------------ */
@@ -315,3 +325,34 @@ export const POINTS_COUNTRY = "PL"
 
 /** The only point the DPDServices demo host takes (fixture 10a). */
 export const SANDBOX_PUDO_ID = "PL14509"
+
+/* ------------------------------------------------------------------ */
+/* Stage 4: the handover to the courier (DOMESTIC)                     */
+/* ------------------------------------------------------------------ */
+
+/** Shipments in one dispatch (DS17): below the protocol limit, so the marker writes fit the lease. */
+export const DISPATCH_MAX_SHIPMENTS = 100
+/** Packages DPD takes in one protocol (ProtocolSession.packages maxItems). */
+export const PROTOCOL_MAX_PACKAGES = 500
+/** A claim of generateProtocol: like CREATE_LEASE_MS, it must exceed 2 x (TIMEOUT_MAX_MS + PACING_MAX_WAIT_MS). */
+export const PROTOCOL_LEASE_MS = 180_000
+/** A claim of packagesPickupCall (POST, PATCH or DELETE), the same bound. */
+export const COURIER_LEASE_MS = 180_000
+/** The furthest pickup date: today + 14 days, Europe/Warsaw (DS11). */
+export const COURIER_DAYS_AHEAD = 14
+export const COURIER_TIME_ZONE = "Europe/Warsaw"
+export const COURIER_ORDER_TYPE = "DOMESTIC"
+export const COURIER_UPDATE_MODE = "DONT_CREATE_NEW_IF_CLOSED"
+/** checkSum length DPD takes in PATCH and DELETE (bean 400 outside, 12w). */
+export const COURIER_CHECKSUM_MIN = 8
+export const COURIER_CHECKSUM_MAX = 36
+/** pickupTimeFrom and pickupTimeTo: HH:mm, two digits each. */
+export const COURIER_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+/** RangesResponse.range: "HH:mm-HH:mm" (11a). */
+export const COURIER_RANGE_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/
+/** The protocol every stage 4 call asks for: PDF only (H8), all or nothing (H3). */
+export const PROTOCOL_OUTPUT = { outputDocFormat: "PDF", policy: "STOP_ON_FIRST_ERROR" } as const
+/** orderNumber of a simulated courier order: SBX plus 11 digits (DS4). */
+export const SANDBOX_ORDER_PREFIX = "SBX"
+/** A side sent when no box of the dispatch has a known side (DS10) [NZ]. */
+export const DIMS_UNKNOWN_CM = 1
