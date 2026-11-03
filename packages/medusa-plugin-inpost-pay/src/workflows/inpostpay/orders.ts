@@ -8,7 +8,7 @@ import { inpostPaySvc, withEvent } from "../../modules/inpostpay/lib/store"
 import { basketRow, updateRow } from "./baskets"
 import { placeOrder, type PlaceResult } from "./checkout"
 import { annotatePayments, capturePaid, eventIsNew } from "./payments"
-import { clientOf, loggerOf, optionsOf } from "./runtime"
+import { clientOf, loggerOf, optionsOf, withBasketLock } from "./runtime"
 
 export { parseInpostOrder }
 
@@ -77,8 +77,14 @@ export async function basketOfOrder(scope: MedusaContainer, orderId: string): Pr
  * status and InPost's payment reference also go into the Medusa payment's
  * data (a refund finds the transaction by them); AUTHORIZED captures the
  * payment (`autoCapture`). A failed capture is noted, the event still stands.
+ * One event of a basket at a time, on the row as it is then: a resent copy
+ * waits and is seen as repeated, so the payment is captured once.
  */
 export async function applyInpostOrderEvent(scope: MedusaContainer, row: Record<string, any>, body: Record<string, any>): Promise<Record<string, any>> {
+  return withBasketLock(String(row.id), async () => applyEvent(scope, (await basketRow(scope, String(row.id))) ?? row, body))
+}
+
+async function applyEvent(scope: MedusaContainer, row: Record<string, any>, body: Record<string, any>): Promise<Record<string, any>> {
   const data = body.event_data ?? {}
   const payment = (PAYMENT_STATUSES as readonly string[]).includes(data.payment_status) ? String(data.payment_status) : null
   const order = data.order_status === "ORDER_REJECTED" || data.order_status === "ORDER_COMPLETED" || data.order_status === "ORDER_PROCESSING" ? String(data.order_status) : null
