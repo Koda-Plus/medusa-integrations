@@ -17,6 +17,7 @@ import { documentFilters } from "../../modules/fakturownia/lib/filters"
 import { money } from "../../modules/fakturownia/lib/numbers"
 import type { DocumentRow, PlanRow } from "../../modules/fakturownia/lib/dto"
 import { fakturowniaService, lastRun, listDocuments, listPlans, queryOf, writerStates } from "./runtime"
+import { watchContext } from "./watch"
 
 /**
  * koda.integration/1 for Fakturownia: the manifest, one line per order and
@@ -130,7 +131,7 @@ export const fakturowniaIntegration = integrationRoutes({
     const rows = await listDocuments(svc, { order_id: orderIds, demo }, { take: orderIds.length * 20, order: { created_at: "ASC" } })
     const plans = await listPlans(svc, { order_id: orderIds, demo, status: PLAN_STATUSES }, { take: orderIds.length * 10, order: { created_at: "ASC" } })
     const armed = (await writerStates(svc)).corrections.armed
-    const sctx = contextOf(ctx, armed)
+    const sctx = { ...contextOf(ctx, armed), watch: await watchContext(ctx.scope) }
 
     const rowsOf = new Map<string, DocumentRow[]>()
     for (const r of rows) rowsOf.set(r.order_id, [...(rowsOf.get(r.order_id) ?? []), r])
@@ -159,8 +160,9 @@ export const fakturowniaIntegration = integrationRoutes({
     const svc = fakturowniaService(ctx.scope)
     const demo = svc.isDemo()
     const page = { take: 20, select: ["order_id"] }
+    const watch = await watchContext(ctx.scope)
     const documents = async (filter: "attention" | "ksef" | "pending") =>
-      (await svc.listAndCountFakturowniaDocuments(documentFilters(filter, demo) as never, page as never)) as unknown as [Array<{ order_id: string }>, number]
+      (await svc.listAndCountFakturowniaDocuments(documentFilters(filter, demo, watch) as never, page as never)) as unknown as [Array<{ order_id: string }>, number]
     const [attention, ksef, pending] = await Promise.all([documents("attention"), documents("ksef"), documents("pending")])
     const [plans, toApprove] = (await svc.listAndCountFakturowniaCorrections({ demo, status: ["draft", "manual"] } as never, page as never)) as unknown as [Array<{ order_id: string }>, number]
     const idsOf = (list: Array<{ order_id: string }>) => list.map((r) => r.order_id)

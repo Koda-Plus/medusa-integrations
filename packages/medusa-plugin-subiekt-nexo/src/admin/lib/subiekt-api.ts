@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   ActionResponse,
   DocumentsResponse,
+  LinkDocumentResponse,
+  OrderCheckResponse,
   OrderSubiektResponse,
   ProductsResponse,
   RunsResponse,
@@ -187,5 +189,21 @@ export function useSubiektSendOrder(orderId: string) {
   return useMutation<{ task: TaskDto }, Error, void>({
     mutationFn: () => subiektFetch(`/admin/subiekt/orders/${encodeURIComponent(orderId)}/send`, { method: "POST", body: {} }),
     onSuccess: () => client.invalidateQueries({ queryKey: subiektKeys.order(orderId) }),
+  })
+}
+
+/** Since 0.3.0: "Check in Subiekt" (asks the bridge, reads only). */
+export function useSubiektOrderCheck(orderId: string) {
+  return useMutation<OrderCheckResponse, Error, void>({
+    mutationFn: () => subiektFetch<OrderCheckResponse>(`/admin/subiekt/orders/${encodeURIComponent(orderId)}/check`, { method: "POST", body: {} }),
+  })
+}
+
+/** Since 0.3.0: "Link" a document Subiekt already has, or record its new status. */
+export function useSubiektLinkDocument(orderId: string) {
+  const client = useQueryClient()
+  return useMutation<LinkDocumentResponse, Error, { kind: string; number: string }>({
+    mutationFn: (body) => subiektFetch<LinkDocumentResponse>(`/admin/subiekt/orders/${encodeURIComponent(orderId)}/link`, { method: "POST", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: subiektKeys.all }),
   })
 }

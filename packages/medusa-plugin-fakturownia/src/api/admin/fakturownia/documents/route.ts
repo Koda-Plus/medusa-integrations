@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { DocumentFilter, DocumentsResponse, OrderTimesDto } from "../../../../modules/fakturownia/lib/contract"
 import type { DocumentRow } from "../../../../modules/fakturownia/lib/dto"
 import { queryOf } from "../../../../workflows/fakturownia/runtime"
-import { DOCUMENT_FILTERS, documentDto, documentFilters, fakturowniaService, intParam, like, strParam, withAlternatives } from "../helpers"
+import { DOCUMENT_FILTERS, documentDto, documentFilters, fakturowniaService, intParam, like, strParam, watchContext, withAlternatives } from "../helpers"
 
 const ORDER_ID = /^order_[A-Za-z0-9]{1,60}$/
 const CUSTOMER_ID = /^cus_[A-Za-z0-9]{1,60}$/
@@ -42,7 +42,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const number = strParam(req.query.number).slice(0, 100)
   const customerId = strParam(req.query.customer_id)
 
-  let where = documentFilters(filter, svc.isDemo())
+  const watch = await watchContext(req.scope)
+  let where = documentFilters(filter, svc.isDemo(), watch)
   if (CUSTOMER_ID.test(customerId)) {
     const ofCustomer = await ordersOfCustomer(req.scope, customerId)
     const asked = orderIds.length > 0 ? orderIds.filter((id) => ofCustomer.includes(id)) : ofCustomer
@@ -72,7 +73,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     order: { created_at: "DESC" },
   } as never)) as unknown as [DocumentRow[], number]
   const body: DocumentsResponse = {
-    documents: rows.map((r) => documentDto(svc, r)),
+    documents: rows.map((r) => documentDto(svc, r, watch)),
     count,
     limit,
     offset,

@@ -62,6 +62,10 @@ export interface RemoteDocument {
   govVerificationLink: string | null
   govLink: string | null
   govCorrectedNumber: string | null
+  /* 0.4.0 */
+  /** Fakturownia's own e-mail of the document: `email_status` ("sent" once e-mailed) and `sent_time`. */
+  emailStatus: string | null
+  sentTime: string | null
 }
 
 function text(v: unknown): string | null {
@@ -100,6 +104,11 @@ export function toRemoteDocument(raw: unknown): RemoteDocument | null {
     govVerificationLink: httpsLink(r.gov_verification_link),
     govLink: httpsLink(r.gov_link),
     govCorrectedNumber: text(r.gov_corrected_invoice_number),
+    emailStatus: text(r.email_status)?.toLowerCase() ?? null,
+    sentTime: (() => {
+      const t = text(r.sent_time)
+      return t && Number.isFinite(Date.parse(t)) ? new Date(t).toISOString() : null
+    })(),
   }
 }
 
