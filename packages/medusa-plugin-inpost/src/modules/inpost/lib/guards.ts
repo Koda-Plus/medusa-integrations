@@ -26,6 +26,24 @@ function present(v: unknown): boolean {
   return true
 }
 
+/**
+ * The fulfillment metadata key another system sets on a fulfillment it
+ * creates for a parcel it sent itself (the BaseLinker plugin of Koda Plus,
+ * when BaseLinker reports an order shipped): `{ shipped_outside_medusa:
+ * "baselinker" }`. Needs no option: such a fulfillment never becomes a
+ * second parcel.
+ */
+export const SHIPPED_OUTSIDE_FULFILLMENT_KEY = "shipped_outside_medusa"
+
+/** The guard of a fulfillment that names who shipped it outside Medusa ("shipped_outside_medusa:baselinker"), or null. */
+export function shippedOutsideFulfillment(metadata: Record<string, unknown> | null | undefined): string | null {
+  if (!metadata || typeof metadata !== "object") return null
+  const value = metadata[SHIPPED_OUTSIDE_FULFILLMENT_KEY]
+  if (!present(value)) return null
+  const by = typeof value === "string" ? value.trim().slice(0, 40) : ""
+  return by ? `${SHIPPED_OUTSIDE_FULFILLMENT_KEY}:${by}` : SHIPPED_OUTSIDE_FULFILLMENT_KEY
+}
+
 /** The first configured key the order metadata carries, or null. */
 export function shippedOutsideKey(metadata: Record<string, unknown> | null | undefined, keys: readonly string[]): string | null {
   if (!metadata || typeof metadata !== "object" || keys.length === 0) return null

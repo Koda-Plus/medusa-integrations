@@ -2,6 +2,7 @@
 
 ## 0.3.0 (unreleased)
 
+- A fulfillment another system marks as shipped outside Medusa (`metadata.shipped_outside_medusa`, for example `"baselinker"`) is recorded as skipped (`shipped_outside_medusa:baselinker`) and never becomes a parcel, with no option to set. The BaseLinker plugin of Koda Plus marks the fulfillments it makes when BaseLinker reports an order shipped; before, such a fulfillment of an order on an InPost option became a second ShipX parcel with `autoCreate` on.
 - One InPost menu: the page hosts the tabs of the other InPost plugins of Koda Plus. With InPost Pay or InPost Von Halsky in the same app, `/app/inpost` gets a tab bar: Shipping (this page, unchanged) first, then InPost Pay (`?service=pay`) and Von Halsky (`?service=vonhalsky`), each drawn by its own plugin; their own addresses redirect to the tabs and their sidebar entries step aside. Without them the page has no tab bar and nothing changes. No option, no new dependency.
 - Shared kit 1.1.0: page tabs (`hostPageTabs`, `addPageTab`, `hostedNavIcon`, `KitTabbedPage`, `KitTabRoute`), one sidebar entry for a family of plugins.
 

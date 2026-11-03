@@ -25,6 +25,7 @@ import {
   ordersOfDay,
 } from "../src/modules/baselinker/lib/demo-marketplace.ts"
 import { parseReturns, RETURN_FIELDS_DROPPED } from "../src/modules/baselinker/lib/returns.ts"
+import { SHIPPED_OUTSIDE_METADATA } from "../src/modules/baselinker/lib/constants.ts"
 
 const allegro: BlOrder = {
   order_id: 5001,
@@ -218,4 +219,9 @@ test("returns: the raw answer carries personal data; the parser keeps none of it
   assert.ok(RETURN_FIELDS_DROPPED.includes("order_return_iban"))
   assert.equal(parsed[0].products[0].name, "Opona")
   assert.equal(parsed[0].currency, "PLN")
+})
+
+test("a fulfillment from a BaseLinker status says BaseLinker shipped it, in the key the InPost plugin reads", () => {
+  /* The InPost plugin of Koda Plus skips a fulfillment whose metadata carries shipped_outside_medusa (its guards.ts): no second parcel. */
+  assert.deepEqual(SHIPPED_OUTSIDE_METADATA, { shipped_outside_medusa: "baselinker" })
 })

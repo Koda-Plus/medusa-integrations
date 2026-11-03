@@ -15,6 +15,10 @@ No migration and no change to the bridge contract: everything reads tables the p
 - The order widget shows each document's kind in words, its warehouse, the document it came from, and "Realized in Subiekt" for a completed ZK.
 - The `order.placed` subscriber queues through `queueOrderCreate` (exported from `src/workflows/subiekt/catch-up.ts`), shared with the safety net.
 
+### Fixed
+
+- The parcel locker of an order reaches the Subiekt document. The InPost plugin of Koda Plus, InPost Pay and the InPost geowidget store the locker as `machine_id` (with `machine_name` and `machine_address`), a key the order reader did not read, so `shipping.pickup_point` stayed empty for their orders. `machine_id` is now read first, with its name and its address in one line, and `locker_code`, `locker` and `point` are read too. A nested point gives its code before its display name.
+
 ### Not covered
 
 - The contract has no way to ask the bridge for orders it knows by date, so the safety net only finds orders Medusa has and the plugin lacks, not documents created in Subiekt by hand for an order the plugin never queued; **Check in Subiekt** on the order covers those one by one.

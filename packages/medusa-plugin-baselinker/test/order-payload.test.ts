@@ -161,6 +161,36 @@ test("an InPost locker from the shipping method data", () => {
   assert.equal(payload.delivery_point_id, "WAW01A")
 })
 
+test("the locker the InPost plugin, InPost Pay and the geowidget store (machine_id) reaches BaseLinker", () => {
+  /* The InPost plugin of Koda Plus after checkout (`methodDataFor`). */
+  const provider = {
+    type: "paczkomat",
+    cod: false,
+    machine_id: "WAW01M",
+    machine_name: "Paczkomat WAW01M",
+    machine_address: { line1: "ul. Marszałkowska 1", line2: "00-950 Warszawa", city: "", post_code: "" },
+    inpost_option: "inpost-paczkomat",
+  }
+  const { payload } = buildAddOrderPayload({ ...order, shipping_methods: [{ name: "Paczkomat InPost", amount: 12, data: provider }] }, links, options)
+  assert.deepEqual(
+    [payload.delivery_point_id, payload.delivery_point_name, payload.delivery_point_address, payload.delivery_point_postcode, payload.delivery_point_city],
+    ["WAW01M", "Paczkomat WAW01M", "ul. Marszałkowska 1", "00-950", "Warszawa"],
+  )
+  assert.equal(payload.delivery_postcode, order.shipping_address?.postal_code, "the buyer's address stays the buyer's")
+  /* InPost Pay: the code and no address. */
+  const pay = pickupPoint({ inpost_pay: true, inpost_pay_delivery_type: "APM", machine_id: "KRA01M", machine_name: "KRA01M" })
+  assert.equal(pay?.id, "KRA01M")
+  assert.equal(pay?.name, "KRA01M")
+  assert.equal(pay?.address, undefined)
+  /* machine_id wins over a stale key from another plugin: it is the locker the InPost plugin ships to. */
+  assert.equal(pickupPoint({ machine_id: "WAW01M", target_point: "POZ08M" })?.id, "WAW01M")
+  /* A courier has no point. */
+  assert.equal(pickupPoint({ type: "kurier", cod: false, machine_id: null, machine_name: null, machine_address: null, inpost_option: "inpost-kurier" }), null)
+  /* The other keys the InPost plugin accepts. */
+  assert.equal(pickupPoint({ locker_code: "GDA01M" })?.id, "GDA01M")
+  assert.equal(pickupPoint({ locker: { code: "LOD01M", name: "Paczkomat LOD01M" } })?.id, "LOD01M")
+})
+
 test("test orders: the skip key keeps an order out", () => {
   assert.equal(isSkipped({ baselinker_skip: true }, "baselinker_skip"), true)
   assert.equal(isSkipped({ baselinker_skip: "true" }, "baselinker_skip"), true)

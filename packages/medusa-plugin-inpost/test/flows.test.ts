@@ -80,6 +80,32 @@ test("an order shipped outside Medusa is skipped; with a shipment id in the key,
   assert.equal(fake.calls.filter((c) => c.method === "POST").length, 0)
 })
 
+test("a fulfillment another system marks as shipped outside Medusa is skipped without any option, never a second parcel", async () => {
+  const marked = (metadata: Row) => {
+    const o = lockerOrder()
+    return { ...o, fulfillments: [{ ...o.fulfillments[0], metadata }] }
+  }
+  /* The same order unmarked, with autoCreate and the writer armed: a parcel is created (the control). */
+  const control = setup({ ...LIVE, autoCreate: true }, [lockerOrder()])
+  await arm(control, "shipment")
+  await recorded(control)
+  await settle()
+  assert.ok(control.fake.calls.some((c) => c.method === "POST"), "the control creates a shipment")
+  const s = setup({ ...LIVE, autoCreate: true }, [marked({ source: "baselinker", shipped_outside_medusa: "baselinker" })])
+  await arm(s, "shipment")
+  const row = await recorded(s)
+  assert.equal(row.state, "skipped")
+  assert.equal(row.skip_reason, "shipped_outside_medusa:baselinker")
+  assert.equal(row.external, false)
+  await settle()
+  assert.equal(s.fake.calls.length, 0, "nothing is created, even with autoCreate and the writer armed")
+  await assert.rejects(createShipment(s.container, row.id, { actor: "user_1", trigger: "manual", planHash: "x" }), refusal("not_pending"))
+  /* Other fulfillment metadata, or an empty mark, changes nothing. */
+  for (const metadata of [{ source: "baselinker" }, { shipped_outside_medusa: "" }, { shipped_outside_medusa: false }]) {
+    assert.equal((await recorded(setup(LIVE, [marked(metadata)]))).state, "pending", JSON.stringify(metadata))
+  }
+})
+
 test("creating needs the writer: allowed in the options AND armed in Settings; the person sends the hash of the plan read", async () => {
   const off = setup({ ...LIVE, shipmentWriter: false }, [lockerOrder()])
   const r0 = await recorded(off)
