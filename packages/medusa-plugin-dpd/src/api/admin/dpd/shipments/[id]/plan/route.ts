@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { PlanResponse } from "../../../../../../modules/dpd/lib/contract"
 import { toPlanDto, toShipmentDto } from "../../../../../../modules/dpd/lib/dto"
 import { planForShipment } from "../../../../../../workflows/dpd/plan"
-import { isArmed, settingsOf } from "../../../../../../workflows/dpd/runtime"
+import { isArmed, pointsFor, settingsOf } from "../../../../../../workflows/dpd/runtime"
 import { dpdService, noStore, sendError, shipmentIdOf } from "../../../helpers"
 
 /**
@@ -22,7 +22,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     const { row, plan } = await planForShipment(req.scope, shipmentIdOf(req))
     const body: PlanResponse = {
       shipment: toShipmentDto(row),
-      plan: toPlanDto(plan),
+      plan: toPlanDto(plan, pointsFor(req.scope).kind),
       writerArmed: await isArmed(svc, "shipment"),
       mode: svc.mode(),
       labelPage: (await settingsOf(svc)).labelPage,

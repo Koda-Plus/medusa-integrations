@@ -1,0 +1,58 @@
+{
+  "source": "MP s.27",
+  "request": "https://mypudo.dpd.com.pl/api/v2/pudo/details?pudoId=PL11523",
+  "httpStatus": 200,
+  "body": {
+    "pudoItems": [
+      {
+        "active": true,
+        "overloaded": false,
+        "pudoId": "PL00001",
+        "order": 1,
+        "pudoType": "400",
+        "servicePudo": "100;10001;10002;101;112;200;201;202;300;P10;P20;P30;P40;P90",
+        "name": "Testowy punkt",
+        "language": "PL",
+        "address1": "Centralna 23",
+        "locationHint": "zzujemy",
+        "localizationInstructions": "Oboj ratusza",
+        "zipCode": "02271",
+        "city": "Warszawa",
+        "country": "POL",
+        "longitude": "20.93973",
+        "latitude": "52.17861",
+        "parking": false,
+        "handicape": false,
+        "partner": "ALDI",
+        "openingHoursItems": [
+          {
+            "dayId": 1,
+            "startTm": "07:00",
+            "endTm": "22:00"
+          },
+          {
+            "dayId": 2,
+            "startTm": "07:00",
+            "endTm": "22:00"
+          },
+          {
+            "dayId": 3,
+            "startTm": "07:00",
+            "endTm": "22:00"
+          },
+          {
+            "dayId": 4,
+            "startTm": "07:00",
+            "endTm": "22:00"
+          },
+          {
+            "dayId": 5,
+            "startTm": "07:00",
+            "endTm": "22:00"
+          }
+        ],
+        "holidayItems": []
+      }
+    ]
+  }
+}

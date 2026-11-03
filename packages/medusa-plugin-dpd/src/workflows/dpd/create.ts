@@ -29,6 +29,17 @@
  * again; claimed by a person it is rate_limited_manual, which the pass
  * leaves alone: a click DPD never got does not turn into a send later
  * without the person.
+ *
+ * DPD Pickup: the point is read fresh for the plan of every create. The pass
+ * never sends a Pickup row whose point could not be checked (nobody reads
+ * that plan): the row keeps its state (pending, or failed after a paced
+ * claim of the pass) with point_unchecked, and the pass tries again in its
+ * window, in a batch of its own; a person who read the warning may create
+ * it by hand. The read can take seconds, so the claim only wins while the
+ * row still has the point and the boxes the plan read (planInputsOf): a
+ * point or boxes saved meanwhile are neither overwritten by the claim nor
+ * sent to DPD, and the row keeps what that change wrote (its problems,
+ * without the answers of DPD about an old point).
  */
 
 import { randomUUID } from "node:crypto"
@@ -40,7 +51,7 @@ import { labelsRequest, nothingSent, type LabelSearch } from "../../modules/dpd/
 import { waybillsOf, type ShipmentRow } from "../../modules/dpd/lib/dto"
 import type { ShipmentPatch } from "../../modules/dpd/lib/store"
 import { saveLabel } from "./documents"
-import { mergeProblems, planOf } from "./plan"
+import { mergeProblems, planInputsOf, planOf, samePlanInputs } from "./plan"
 import {
   ActionError,
   annotateFulfillment,
@@ -144,8 +155,41 @@ export async function createAttempt(
   const { plan } = await planOf(scope, row)
   if (!plan.ok || !plan.request) {
     const problems = mergeProblems(plan.problems, row.problems, row.state)
-    await storeFor(scope).transition(row.id, [row.state], { problems })
+    const stored = await storeFor(scope).transition(row.id, [row.state], { problems }, planInputsOf(row))
+    if (!stored) {
+      /* Not written: a point or boxes changed meanwhile make these problems the old row's. */
+      if (!samePlanInputs(await current(scope, row.id, row), row)) {
+        throw new ActionError(409, "plan_changed", "The shipment changed a moment ago (its point or boxes). Read the plan again.")
+      }
+    }
     throw new ActionError(422, "plan_problems", `The plan has problems: ${plan.problems.map((p) => p.code).join(", ")}.`)
+  }
+  if (input.trigger === "auto" && plan.kind === "pickup" && plan.point?.status !== "ok") {
+    /*
+     * DS13: no automatic send to a point nobody could check; one history line
+     * when the code is first set. A retry that still finds it unchecked only
+     * moves updated_at (the same code written again): the pass takes these
+     * rows oldest try first, so points that never answer do not hold the
+     * others back. Both writes only over the point the plan read.
+     */
+    if (row.error_code === "point_unchecked") {
+      const tried = await storeFor(scope).transition(row.id, [row.state], { error_code: "point_unchecked" }, { pudo_id: row.pudo_id ?? null })
+      return { row: tried ?? (await current(scope, row.id, row)), sent: false }
+    }
+    const deferred = await storeFor(scope).transition(row.id, [row.state], { error_code: "point_unchecked" }, { pudo_id: row.pudo_id ?? null })
+    if (!deferred) return { row: await current(scope, row.id, row), sent: false }
+    const reason = plan.point?.status === "unchecked" ? plan.point.reason : "not_checked"
+    await recordEvent(scope, {
+      shipment_id: row.id,
+      order_id: row.order_id,
+      kind: "action",
+      source: sourceOf(input.actor),
+      actor: input.actor,
+      message: `Not sent automatically: the Pickup point ${row.pudo_id ?? ""} could not be checked (${reason}). Create it by hand after reading the plan, or it is tried again later.`,
+      data: { action: "create_deferred", trigger: input.trigger, reference: plan.reference, code: "point_unchecked" },
+      mode,
+    })
+    return { row: deferred, sent: false }
   }
   if (input.trigger === "manual") {
     if (!input.planHash) throw new ActionError(400, "plan_hash_missing", "Read the plan first: send the planHash it shows.")
@@ -173,15 +217,29 @@ export async function createAttempt(
       cod_minor: plan.codDue ? plan.codDue.minor : null,
       currency: plan.codDue ? plan.codDue.currency : row.currency,
       session_type: plan.sessionType ?? "DOMESTIC",
-      service: "courier",
+      service: plan.kind === "pickup" ? "pickup" : "courier",
       reference: plan.reference,
       boxes: sentBoxes,
       problems: null,
       error: null,
       error_code: null,
     },
+    expect: planInputsOf(row),
   })
-  if (!claimed) throw new ActionError(409, "busy", "Another process is creating this shipment, or it changed a moment ago.")
+  if (!claimed) {
+    /*
+     * E18: not claimed. A row still waiting whose point or boxes changed
+     * after the plan was built keeps that change; nothing was sent or
+     * counted. Anything else is another process.
+     */
+    const now = await current(scope, row.id, row)
+    if ((now.state === "pending" || now.state === "failed") && !samePlanInputs(now, row)) {
+      if (input.trigger === "auto") return { row: now, sent: false }
+      const what = (now.pudo_id ?? null) !== (row.pudo_id ?? null) ? "The Pickup point" : "The boxes"
+      throw new ActionError(409, "plan_changed", `${what} changed a moment ago. Read the plan again.`)
+    }
+    throw new ActionError(409, "busy", "Another process is creating this shipment, or it changed a moment ago.")
+  }
 
   const source = sourceOf(input.actor)
   const codAmount = plan.codDue ? plan.codDue.amount : null

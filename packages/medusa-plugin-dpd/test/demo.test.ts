@@ -3,7 +3,9 @@
  * deterministic, written in mode "demo" and never mixed with sandbox or live
  * rows, invented points and waybills that look invented, every Panel list
  * filled; the seed only in demo mode and only once; the reset removes demo
- * rows and demo keys and nothing else. Nothing is sent anywhere.
+ * rows and demo keys and nothing else. Pickup checks its points in the
+ * sample catalog and is created by the simulated DPD. Nothing is sent
+ * anywhere.
  */
 import { afterEach, beforeEach, test } from "node:test"
 import assert from "node:assert/strict"
@@ -13,6 +15,10 @@ import { DEMO_POINTS, demoRows, demoWaybill, isDemoPoint } from "../src/modules/
 import { countsOf, rowGroup } from "../src/modules/dpd/lib/dto.ts"
 import { validateMethodData } from "../src/modules/dpd/lib/option-data.ts"
 import { ensureDemoSeed, resetDemo } from "../src/workflows/dpd/demo.ts"
+import { createShipment } from "../src/workflows/dpd/create.ts"
+import { createDemoDpdServicesClient } from "../src/workflows/dpd/demo-client.ts"
+import { planForShipment } from "../src/workflows/dpd/plan.ts"
+import { recordFulfillment } from "../src/workflows/dpd/shipments.ts"
 import { arm, order, SANDBOX, setup, type Row } from "./helpers.ts"
 
 const realFetch = globalThis.fetch
@@ -166,4 +172,60 @@ test("reset: demo rows and demo keys go, everything else stays; the next seed bu
   live.shipments.insert({ mode: "demo", option_id: "dpd-courier", state: "pending" })
   assert.deepEqual(await resetDemo(live.container), { shipments: 0, documents: 0, events: 0, dispatches: 0, settings: 0 }, "never outside demo mode")
   assert.equal(live.shipments.rows.length, 1)
+})
+
+/* Stage 3: Pickup in demo mode (spec 12.3). */
+
+const weighed = (n: number) => orders(n).map((o) => ({ ...o, items: [{ id: "li_1", quantity: 1, variant: { weight: 1500 } }] }))
+
+test("the pending Pickup row of the seed has a clean plan on a point of the sample catalog; an id outside it is pudo_not_found", async () => {
+  const s = setup({ demo: true }, weighed(20))
+  await ensureDemoSeed(s.container)
+  const row = s.shipments.rows.find((r) => r.option_id === "dpd-pickup-cod" && r.state === "pending")
+  assert.ok(row)
+  const { plan } = await planForShipment(s.container, String(row.id))
+  assert.deepEqual(plan.problems, [])
+  assert.equal(plan.ok, true)
+  assert.equal(plan.point?.status, "ok")
+  assert.ok(isDemoPoint(plan.point?.pudoId ?? ""))
+  row.pudo_id = "PL14509"
+  const outside = await planForShipment(s.container, String(row.id))
+  assert.deepEqual(outside.plan.problems.map((p) => p.code), ["pudo_not_found"], "the catalog of demo mode is the whole world of demo mode")
+})
+
+test("a Pickup shipment in demo mode is created and labeled by the simulated DPD, without one fetch; the simulated DPD refuses what the demo host refuses", async () => {
+  const data = { dpd_option: "dpd-pickup", dpd_kind: "pickup", dpd_cod: false, dpd_pudo_id: "PL9DEMO02", dpd_country: "PL" }
+  const pickup = order({
+    id: "order_DEMOPICKUP",
+    items: [{ id: "li_1", quantity: 1, variant: { weight: 1500 } }],
+    shipping_methods: [{ id: "sm_01", name: "DPD Pickup", shipping_option_id: "so_01", data }],
+    fulfillments: [{ id: "ful_DEMOPICKUP", provider_id: "dpd_dpd", data, canceled_at: null }],
+  })
+  const s = setup({ demo: true, shipmentWriter: true }, [pickup])
+  arm(s, "shipment")
+  const recorded = await recordFulfillment(s.container, "order_DEMOPICKUP", "ful_DEMOPICKUP")
+  assert.ok(recorded)
+  const { plan } = await planForShipment(s.container, String(recorded.id))
+  assert.equal(plan.ok, true)
+  const done = await createShipment(s.container, String(recorded.id), { planHash: plan.hash, actor: "user_01ADMIN", trigger: "manual" })
+  assert.equal(done.state, "labeled")
+  assert.equal(done.service, "pickup")
+  assert.match(String(done.waybills?.[0]), /^99\d{11}D$/)
+
+  assert.ok(plan.request)
+  const base = plan.request
+  const client = createDemoDpdServicesClient()
+  const refused = async (change: (pkg: (typeof base)["packages"][0]) => void): Promise<string[]> => {
+    const body = structuredClone(base)
+    const pkg = body.packages[0]
+    pkg.reference = `${pkg.reference}-${Math.random()}`
+    change(pkg)
+    const out = await client.generatePackagesNumbers(body)
+    return out.kind === "refused" ? out.problems.map((x) => `${x.code}/${x.source ?? ""}`) : [out.kind]
+  }
+  assert.deepEqual(await refused((pkg) => void pkg.parcels.push({ ...pkg.parcels[0] })), ["multi_box_not_allowed/dpd"])
+  assert.deepEqual(await refused((pkg) => void (pkg.parcels[0].weight = 25)), ["pickup_over_limit/dpd"])
+  assert.deepEqual(await refused((pkg) => { if (pkg.pudoReceiver) Object.assign(pkg.pudoReceiver, { phone: undefined, email: undefined }) }), ["contact_missing/dpd"])
+  assert.deepEqual(await refused((pkg) => { for (const a of pkg.services?.[0]?.attributes ?? []) a.value = "PL14509" }), ["pudo_not_found/dpd"])
+  assert.deepEqual(await refused(() => {}), ["ok"])
 })

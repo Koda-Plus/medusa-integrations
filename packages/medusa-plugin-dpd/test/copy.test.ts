@@ -15,7 +15,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import en from "../src/admin/i18n/en.ts"
-import { LABEL_PAGES, MODES, SHIPMENT_STAGES, SHIPMENT_STATES, TRACKING_MODES } from "../src/modules/dpd/lib/constants.ts"
+import { LABEL_PAGES, MODES, POINT_TYPES, SHIPMENT_STAGES, SHIPMENT_STATES, TRACKING_MODES } from "../src/modules/dpd/lib/constants.ts"
 import { ACTION_ERROR_CODES, SHIPMENT_ERROR_CODES, SHIPMENT_GROUPS } from "../src/modules/dpd/lib/contract.ts"
 import { DPD_PROBLEM_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
 import { WRITERS } from "../src/modules/dpd/lib/writers.ts"
@@ -209,11 +209,16 @@ test("every string the admin asks for exists in both dictionaries: every key lit
     "guide.intro.needs.*": constList("src/admin/lib/dpd-guide-view.tsx", "NEEDS"),
     "guide.faq.*.q": faq,
     "guide.faq.*.a": faq,
+    /* DPD Pickup points (stage 3): the type of a point, the days of its hours, its limits, the catalog it came from (never live). */
+    "pudo.types.*": [...POINT_TYPES, "other"],
+    "pudo.days.*": ["1", "2", "3", "4", "5", "6", "7"],
+    "pudo.limits.*": ["fits", "sum", "girth"],
+    "pudo.source.*": ["demo", "sandbox"],
   }
   assert.deepEqual([...shapes.keys()].filter((k) => !(k in DYNAMIC)).map((k) => `${shapes.get(k)}: ${k}`), [], "a dynamic key without its enumeration here")
   assert.ok(modeKeys.includes("notConfigured") && problems.length > 0 && faq.length > 0, "the enumerations read from the sources")
   assert.ok(Object.keys(DYNAMIC).includes("plan.boxFields.*") && BOX_FIELDS.includes("weightKg"), "the box fields of the boxes DTO have their words")
-  for (const code of ["country_unsupported", "cod_country_unsupported", "cod_currency_unsupported", "address_incomplete", "pudo_missing", "pudo_invalid", "contact_missing", "cod_pickup_abroad", "weight_missing", "option_later", "cod_zero", "dpd_validation"]) assert.ok(problems.includes(code), `problem code read from the sources: ${code}`)
+  for (const code of ["country_unsupported", "cod_country_unsupported", "cod_currency_unsupported", "address_incomplete", "pudo_missing", "pudo_invalid", "contact_missing", "cod_pickup_abroad", "weight_missing", "option_later", "cod_zero", "dpd_validation", "pudo_not_found"]) assert.ok(problems.includes(code), `problem code read from the sources: ${code}`)
   const absent: string[] = []
   for (const [shape, names] of Object.entries(DYNAMIC)) {
     for (const n of names) for (const [lang, d] of dicts) if (!has(d, shape.replace("*", n))) absent.push(`${lang}: ${shape.replace("*", n)}`)

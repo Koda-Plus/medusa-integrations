@@ -1,0 +1,14 @@
+{
+  "source": "MP s.9",
+  "note": "The HTTP status is not documented.",
+  "httpStatus": 400,
+  "body": {
+    "errors": [
+      {
+        "code": "REQUEST",
+        "subcode": "BAD_REQUEST",
+        "userMessage": "Pole maxPudoNumber przyjmuje wartości całkowitoliczbowe z przedziału od 1 do 25."
+      }
+    ]
+  }
+}

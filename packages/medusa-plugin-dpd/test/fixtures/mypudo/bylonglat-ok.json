@@ -1,0 +1,57 @@
+{
+  "source": "MP s.22",
+  "note": "The example answer of bylonglat with servicePudo and distance added (MP s.20 lists distance; the example lacks both).",
+  "request": "https://mypudo.dpd.com.pl/api/v2/pudo/list/bylonglat?requestID=zap001&latitude=52.22771&longitude=20.98938&max_distance_search=500",
+  "httpStatus": 200,
+  "body": {
+    "requestID": "1",
+    "pudoItems": [
+      {
+        "active": true,
+        "overloaded": false,
+        "pudoId": "PL14951",
+        "order": 1,
+        "pudoType": "100",
+        "pudoTypeInfo": "Główny rodzaj działalności: Other personal supplies.",
+        "name": "KF SYSTEM Małgorzata Piechowska Pod",
+        "language": "PL",
+        "address1": "Nadbystrzycka 6/3",
+        "locationHint": "Sklep Z Chemią Gospodarczą : 785736134",
+        "localizationInstructions": "Obok ratusza",
+        "zipCode": "20618",
+        "city": "Lublin",
+        "country": "POL",
+        "longitude": "22.55204",
+        "latitude": "51.23855",
+        "parking": true,
+        "handicape": false,
+        "partner": "Żabka",
+        "openingHoursItems": [
+          {
+            "dayId": 1,
+            "startTm": "09:00",
+            "endTm": "18:00"
+          },
+          {
+            "dayId": 2,
+            "startTm": "09:00",
+            "endTm": "18:00"
+          },
+          {
+            "dayId": 3,
+            "startTm": "09:00",
+            "endTm": "18:00"
+          },
+          {
+            "dayId": 4,
+            "startTm": "10:00",
+            "endTm": "14:00"
+          }
+        ],
+        "holidayItems": [],
+        "servicePudo": "100;101",
+        "distance": "312"
+      }
+    ]
+  }
+}

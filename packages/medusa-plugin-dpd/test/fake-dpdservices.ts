@@ -6,6 +6,10 @@
  * and for a COD outside PLN, INCORRECT_DATA for a postal code that is not
  * all digits, duplicates of a package or parcel reference, labels found by
  * the package reference, a parcel reference, a waybill or the session.
+ * DPD Pickup as fixtures 10a to 10m show it: one box (Bean 10b), at most
+ * 20 kg (Bean 10g), a phone or an e-mail (Bean 10f, both errors), a point it
+ * knows (`pudoIds`, PL14509 like the demo host; else INCORRECT_DATA 10c with
+ * the three receiver codes before INCORRECT_PUDO).
  *
  *   failNext(op, failure)  the next call of the operation times out, loses
  *                          the network, loses the answer AFTER DPD stored
@@ -74,6 +78,7 @@ export class FakeDpdServices {
   readonly login: string
   readonly password: string
   readonly payerFids: number[]
+  readonly pudoIds: string[]
   calls: Array<{ op: Op; headers: Record<string, string>; body: unknown }> = []
   packages: Map<string, StoredPackage> = new Map()
   private failures: Record<Op, FakeFailure[]> = { numbers: [], labels: [] }
@@ -81,11 +86,12 @@ export class FakeDpdServices {
   private waybillCounter = 0
   private traceCounter = 0
 
-  constructor(opts: { login?: string; password?: string; payerFids?: number[] } = {}) {
+  constructor(opts: { login?: string; password?: string; payerFids?: number[]; pudoIds?: string[] } = {}) {
     this.host = DPDSERVICES_HOSTS.sandbox
     this.login = opts.login ?? "koda-test"
     this.password = opts.password ?? "test-password-koda-0000"
     this.payerFids = opts.payerFids ?? [1000]
+    this.pudoIds = opts.pudoIds ?? ["PL14509"]
   }
 
   failNext(op: Op, failure: FakeFailure): void {
@@ -176,6 +182,12 @@ export class FakeDpdServices {
     })
     if (errors.length > 0) return this.json(400, { errors, traceId: this.trace() })
     for (const pkg of packages) {
+      const pickup = this.pickupRefusal(pkg)
+      if (pickup) return pickup
+    }
+    for (const pkg of packages) {
+      /* The receiver postal code rule only for a courier package: a Pickup package has no receiver. */
+      if (!obj(pkg.receiver)) continue
       const postal = str(obj(pkg.receiver)?.postalCode)
       if (!/^\d+$/.test(postal)) {
         return this.json(400, {
@@ -222,6 +234,53 @@ export class FakeDpdServices {
       }
     })
     return this.json(200, { status: "OK", sessionId, beginTime: null, endTime: null, packages: out, traceId: this.trace() })
+  }
+
+  /** The Pickup rules in the order the demo host applied them (10b, 10g, 10f, 10c); null when the package passes or is no Pickup. */
+  private pickupRefusal(pkg: Obj): Response | null {
+    const service = list(pkg.services).map((s) => obj(s)).find((s) => s?.code === "DPD_PICKUP")
+    if (!obj(pkg.pudoReceiver) || !service) return null
+    const parcels = list(pkg.parcels)
+    if (parcels.length > 1) {
+      return this.json(400, { errors: [{ userMessage: "Domestic DPD_PICKUP service is available only for single parcel shipments", field: "packages[0].services[0]" }], traceId: this.trace() })
+    }
+    if (parcels.some((p) => Number(obj(p)?.weight) > 20)) {
+      return this.json(400, { errors: [{ userMessage: "The DPD_PICKUP service is unavailable for parcels from 20 kg", field: "packages[0].services[0]" }], traceId: this.trace() })
+    }
+    const receiver = obj(pkg.pudoReceiver) ?? {}
+    if (!str(receiver.phone) && !str(receiver.email)) {
+      return this.json(400, {
+        errors: [
+          { userMessage: "Name or company is required", field: "packages[0].pudoReceiver" },
+          { userMessage: "Pudo receiver phone or email is needed with DPD_PICKUP service", field: "packages[0].services[0]" },
+        ],
+        traceId: this.trace(),
+      })
+    }
+    const pudo = str(list(service.attributes).map((a) => obj(a)).find((a) => a?.code === "PUDO")?.value)
+    if (!this.pudoIds.includes(pudo)) {
+      return this.json(400, {
+        status: "INCORRECT_DATA",
+        sessionId: null,
+        beginTime: null,
+        endTime: null,
+        packages: [
+          {
+            status: "INCORRECT_DATA",
+            reference: str(pkg.reference),
+            validationInfo: [
+              { errorCode: "INCORRECT_RECEIVER_ADDRESS", info: "Adres odbiorcy jest wymagany" },
+              { errorCode: "INCORRECT_RECEIVER_CITY", info: "Miasto odbiorcy jest wymagane" },
+              { errorCode: "INCORRECT_RECEIVER_POSTAL_CODE", info: "Kod pocztowy odbiorcy jest wymagany" },
+              { errorCode: "INCORRECT_PUDO", info: "Incorrect pudo identifier" },
+            ],
+            parcels: parcels.map((p) => ({ status: "OK", reference: str(obj(p)?.reference), waybill: null, validationInfo: [] })),
+          },
+        ],
+        traceId: this.trace(),
+      })
+    }
+    return null
   }
 
   private labels(body: unknown): Response {

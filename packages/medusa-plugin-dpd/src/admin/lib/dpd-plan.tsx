@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowDownTray, ArrowRightOnRectangle, CheckCircle, DocumentText, MagnifyingGlass, PaperPlane, Plus, Trash } from "@medusajs/icons"
+import { ArrowDownTray, ArrowRightOnRectangle, CheckCircle, DocumentText, MagnifyingGlass, MapPin, PaperPlane, Plus, Trash } from "@medusajs/icons"
 import { Button, Drawer, IconButton, InlineTip, Input, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import type { BoxDto, LabelPage, PlanAddressDto, PlanDto, ShipmentDto, WriterDto } from "../../modules/dpd/lib/contract"
+import type { BoxDto, LabelPage, PlanAddressDto, PlanDto, PlanPudoReceiverDto, PointDto, ShipmentDto, WriterDto } from "../../modules/dpd/lib/contract"
 import { WRITER_OPTION } from "../../modules/dpd/lib/writers"
 import {
   DpdRequestError,
@@ -19,7 +19,8 @@ import {
 import { RowActions, ToneBadge, type RowAction } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
 import { KitLoading } from "./dpd-kit"
-import { boxFieldErrors, isBoxField, writerBlock, type BoxFieldError } from "./dpd-logic"
+import { answerProblems, boxFieldErrors, canChangePoint, isBoxField, writerBlock, type BoxFieldError } from "./dpd-logic"
+import { PointCard, PointChangeDialog, PointPicker } from "./dpd-point"
 import { ErrorText, Fact, KindBadges, ProblemList, fmtMoney, fmtNumber } from "./dpd-ui"
 
 /** The label pages a person can pick for the create action. */
@@ -135,6 +136,23 @@ function AddressLines({ address: a }: { address: PlanAddressDto }) {
       <div className="flex min-w-0 flex-col">
         <span className={clx("txt-small", a.phone ? "font-mono text-ui-fg-base" : "text-ui-fg-muted")}>{a.phone ?? t("plan.noPhone")}</span>
         <span className={clx("txt-small break-all", a.email ? "font-mono text-ui-fg-base" : "text-ui-fg-muted")}>{a.email ?? t("plan.noEmail")}</span>
+      </div>
+    </div>
+  )
+}
+
+/** Who collects at a Pickup point, as DPD gets it: the name (the company when there is no name), the phone or the e-mail for the notice. */
+function PudoReceiverLines({ receiver: r }: { receiver: PlanPudoReceiverDto }) {
+  const { t } = useTranslation("dpd")
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex min-w-0 flex-col">
+        {r.company ? <span className="txt-small-plus text-ui-fg-base">{nb(r.company)}</span> : null}
+        <span className="txt-small text-ui-fg-base">{nb(r.name)}</span>
+      </div>
+      <div className="flex min-w-0 flex-col">
+        <span className={clx("txt-small", r.phone ? "font-mono text-ui-fg-base" : "text-ui-fg-muted")}>{r.phone ?? t("plan.noPhone")}</span>
+        <span className={clx("txt-small break-all", r.email ? "font-mono text-ui-fg-base" : "text-ui-fg-muted")}>{r.email ?? t("plan.noEmail")}</span>
       </div>
     </div>
   )
@@ -294,12 +312,24 @@ export function BoxesEditor({ shipmentId, boxes, edited, onDone }: { shipmentId:
   )
 }
 
-/** The plan as DPD will get it: problems first, then who, what, how much, and the raw request on demand. */
-export function PlanBody({ plan, shipment, lang }: { plan: PlanDto; shipment: ShipmentDto; lang: string }) {
+/**
+ * The plan as DPD will get it: problems first, then who, what, how much, and
+ * the raw request on demand. A Pickup plan shows the point read now and who
+ * collects there instead of the courier receiver; with `pointChange` the
+ * point part has the change button, which opens the search in place and the
+ * confirmation over it.
+ */
+export function PlanBody({ plan, shipment, lang, pointChange = false }: { plan: PlanDto; shipment: ShipmentDto; lang: string; pointChange?: boolean }) {
   const { t } = useTranslation("dpd")
+  const errorText = useActionErrorText()
   const [showRequest, setShowRequest] = useState(false)
   const [editing, setEditing] = useState(false)
-  const dpdProblems = shipment.problems.filter((p) => p.code.startsWith("dpd_"))
+  /* The point search is open; the point chosen in it waits for the confirmation. */
+  const [picking, setPicking] = useState(false)
+  const [next, setNext] = useState<PointDto | null>(null)
+  /* What DPD said at the last attempt: dpd_* and the Pickup problems DPD gave with the plan codes (source "dpd"). */
+  const dpdProblems = answerProblems(shipment.problems)
+  const pickup = plan.point !== null || plan.kind === "pickup"
   return (
     <div className="flex flex-col gap-y-3">
       {plan.problems.length > 0 ? (
@@ -315,7 +345,37 @@ export function PlanBody({ plan, shipment, lang }: { plan: PlanDto; shipment: Sh
           </span>
         </InlineTip>
       ) : null}
-      <PlanPart title={t("plan.receiver")}>{plan.receiver ? <AddressLines address={plan.receiver} /> : <Text size="small" className="text-ui-fg-muted">-</Text>}</PlanPart>
+      {pickup ? (
+        <>
+          <PlanPart
+            title={t("plan.point")}
+            badge={
+              pointChange && !picking ? (
+                <Button size="small" variant="secondary" type="button" onClick={() => setPicking(true)}>
+                  <MapPin />
+                  {t("pudo.change")}
+                </Button>
+              ) : undefined
+            }
+          >
+            {plan.point ? (
+              <PointCard point={plan.point.point} pudoId={plan.point.pudoId} check={plan.point.check} reason={plan.point.reason} source={plan.point.source} lang={lang} />
+            ) : (
+              <Text size="small" className="text-ui-fg-muted">
+                -
+              </Text>
+            )}
+            {picking ? (
+              <div className="border-t border-ui-border-base pt-3">
+                <PointPicker cod={plan.cod} currentId={plan.point?.pudoId ?? null} lang={lang} errorText={errorText} onPick={setNext} onCancel={() => setPicking(false)} />
+              </div>
+            ) : null}
+          </PlanPart>
+          <PlanPart title={t("plan.pudoReceiver")}>{plan.pudoReceiver ? <PudoReceiverLines receiver={plan.pudoReceiver} /> : <Text size="small" className="text-ui-fg-muted">-</Text>}</PlanPart>
+        </>
+      ) : (
+        <PlanPart title={t("plan.receiver")}>{plan.receiver ? <AddressLines address={plan.receiver} /> : <Text size="small" className="text-ui-fg-muted">-</Text>}</PlanPart>
+      )}
       <PlanPart title={t("plan.sender")} badge={plan.senderLocationId ? <ToneBadge>{t("plan.senderLocation", { id: plan.senderLocationId })}</ToneBadge> : undefined}>
         {plan.sender ? <AddressLines address={plan.sender} /> : <Text size="small" className="text-ui-fg-muted">-</Text>}
       </PlanPart>
@@ -365,6 +425,20 @@ export function PlanBody({ plan, shipment, lang }: { plan: PlanDto; shipment: Sh
             <pre className="max-h-[40vh] overflow-auto rounded-lg border border-ui-border-base bg-ui-bg-subtle px-3 py-2 font-mono text-[11px] leading-[18px] text-ui-fg-subtle">{JSON.stringify(plan.request, null, 2)}</pre>
           ) : null}
         </div>
+      ) : null}
+      {next ? (
+        <PointChangeDialog
+          shipmentId={shipment.id}
+          current={plan.point}
+          next={next}
+          errorText={errorText}
+          onClose={() => setNext(null)}
+          onDone={() => {
+            /* The drawer already has the new plan from the answer. */
+            setNext(null)
+            setPicking(false)
+          }}
+        />
       ) : null}
     </div>
   )
@@ -457,7 +531,8 @@ export function PlanDrawer({
               {errorText(q.error)}
             </InlineTip>
           ) : null}
-          {plan && shipment ? <PlanBody plan={plan} shipment={shipment} lang={lang} /> : null}
+          {/* The point change needs no writer: it writes only the plugin row (DS4). */}
+          {plan && shipment ? <PlanBody plan={plan} shipment={shipment} lang={lang} pointChange={canChangePoint(shipment, plan)} /> : null}
           {block === "off" ? (
             <InlineTip variant="warning" label={blockText("off").title}>
               {blockText("off").hint}

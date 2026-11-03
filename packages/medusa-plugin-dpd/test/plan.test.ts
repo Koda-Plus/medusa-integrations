@@ -5,13 +5,17 @@
  * location or of demo mode, the boxes from the variant weights or by hand,
  * cash on delivery to the cent, every problem collected, the request only
  * without problems, and a hash that follows every byte of the request.
+ * Stage 3: the DPD Pickup plan (pudoReceiver, DPD_PICKUP before COD, one box
+ * of at most 20 kg that fits the point, every point problem) with the point
+ * as planOf read it.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { boxesForPlan, boxProblems, parseBoxesInput, readStoredBoxes, roundKg, variantWeightKg, type StoredBoxes } from "../src/modules/dpd/lib/boxes.ts"
 import { capturedMinor, codFor, onlinePaymentProviders, orderTotalMinor } from "../src/modules/dpd/lib/cod.ts"
-import { MAX_BOXES } from "../src/modules/dpd/lib/constants.ts"
-import { DEMO_SENDER } from "../src/modules/dpd/lib/demo.ts"
+import { MAX_BOXES, SANDBOX_PUDO_ID } from "../src/modules/dpd/lib/constants.ts"
+import type { PointDto } from "../src/modules/dpd/lib/contract.ts"
+import { DEMO_POINT_CATALOG, DEMO_SENDER } from "../src/modules/dpd/lib/demo.ts"
 import { resolveOptions, type DpdPluginOptions } from "../src/modules/dpd/lib/options.ts"
 import { labelFileName, pdfText, simpleLabelPdf } from "../src/modules/dpd/lib/pdf.ts"
 import {
@@ -27,6 +31,7 @@ import {
   type PlanOrder,
   type PlanRow,
 } from "../src/modules/dpd/lib/plan.ts"
+import { SANDBOX_POINTS, type PointCheck } from "../src/modules/dpd/lib/points.ts"
 import { validateSender } from "../src/modules/dpd/lib/sender.ts"
 
 const SENDER = {
@@ -302,19 +307,196 @@ test("parseBoxesInput and readStoredBoxes", () => {
   assert.equal(readStoredBoxes("{broken"), null)
 })
 
-test("Pickup options and returns come later; an address abroad too; an unknown option is a problem", () => {
-  for (const optionId of ["dpd-pickup", "dpd-pickup-cod", "dpd-return"]) {
-    const p = plan(row({ optionId }))
-    assert.deepEqual(codes(p.problems), ["option_later"], optionId)
-    assert.equal(p.request, null)
-    assert.equal(p.receiver, null, "nothing more is read")
-  }
+test("returns come later; an address abroad too; an unknown option is a problem", () => {
+  const p = plan(row({ optionId: "dpd-return" }))
+  assert.deepEqual(codes(p.problems), ["option_later"])
+  assert.equal(p.request, null)
+  assert.equal(p.receiver, null, "nothing more is read")
+  assert.equal(p.point, null)
   assert.deepEqual(codes(plan(row({ kind: "return", optionId: "dpd-courier" })).problems), ["option_later"])
+  assert.deepEqual(codes(plan(row({ kind: "return", optionId: "dpd-pickup", pudoId: SANDBOX_PUDO_ID })).problems), ["option_later"])
   const abroad = plan(row({ optionId: "dpd-courier" }), order({ shipping_address: address({ country_code: "de", postal_code: "10115", phone: "+49 30 1234567" }) }))
   assert.deepEqual(abroad.problems, [{ code: "abroad_later", detail: "DE" }])
   assert.equal(abroad.sessionType, "INTERNATIONAL")
   assert.deepEqual(codes(plan(row({ optionId: "dpd-courier" }), order(), opts({ countries: "DE" })).problems), ["country_unsupported"])
   assert.deepEqual(plan(row({ optionId: "dpd-anything" })).problems, [{ code: "option_unknown", detail: "dpd-anything" }])
+})
+
+/* Stage 3, DPD Pickup (spec 7.1, 7.2). */
+
+const checked = (p: PointDto): PointCheck => ({ status: "ok", pudoId: p.id, point: p })
+const PL14509 = checked(SANDBOX_POINTS[0])
+const pickupRow = (extra: Partial<PlanRow> = {}) => row({ optionId: "dpd-pickup", pudoId: SANDBOX_PUDO_ID, ...extra })
+/** `null` for no ctx.point (an `undefined` argument would take the default). */
+const pickup = (r: PlanRow = pickupRow(), o: PlanOrder | null = order(), point: PointCheck | null = PL14509, options = opts()) => buildPlan(r, o, { options, demo: false, ...(point ? { point } : {}) })
+const handBox = (weightKg: number, sides: [number, number, number] | null = null) => ({
+  edited: true,
+  items: [{ weightKg, lengthCm: sides?.[0] ?? null, widthCm: sides?.[1] ?? null, heightCm: sides?.[2] ?? null, reference: null, waybill: null }],
+})
+
+test("Pickup PL14509 field by field: pudoReceiver and no receiver, DPD_PICKUP with the point (fixture 10a)", () => {
+  const p = pickup()
+  assert.deepEqual(p.problems, [])
+  assert.deepEqual(p.warnings, [])
+  assert.equal(p.ok, true)
+  assert.deepEqual(p.request, {
+    generationPolicy: "STOP_ON_FIRST_ERROR",
+    packages: [
+      {
+        reference: "ful_01ABC",
+        ref1: "1042",
+        ref2: "order_01ABC",
+        sender: { company: "Koda Supply", name: "Anna Nowak", address: "ul. Przykładowa 5", city: "Warszawa", countryCode: "PL", postalCode: "00950", phone: "000000001", email: "shop@example.com" },
+        pudoReceiver: { name: "Anna Przykładowa", countryCode: "PL", phone: "600100200", email: "anna@example.com" },
+        payerFID: 1000,
+        parcels: [{ reference: "ful_01ABC-1", weight: 1.25 }],
+        services: [{ code: "DPD_PICKUP", attributes: [{ code: "PUDO", value: "PL14509" }] }],
+      },
+    ],
+  })
+  assert.ok(!("receiver" in (p.request?.packages[0] ?? {})))
+  assert.equal(p.kind, "pickup")
+  assert.equal(p.cod, false)
+  assert.equal(p.sessionType, "DOMESTIC")
+  assert.equal(p.country, "PL")
+  assert.equal(p.receiver, null)
+  assert.deepEqual(p.point, PL14509)
+  assert.deepEqual(p.pudoReceiver, { name: "Anna Przykładowa", countryCode: "PL", phone: "600100200", email: "anna@example.com" })
+  assert.equal(p.codDue, null)
+})
+
+test("Pickup with cash on delivery: DPD_PICKUP before COD (fixture 10e)", () => {
+  const p = pickup(pickupRow({ optionId: "dpd-pickup-cod" }))
+  assert.deepEqual(p.problems, [])
+  assert.deepEqual(p.request?.packages[0].services, [
+    { code: "DPD_PICKUP", attributes: [{ code: "PUDO", value: "PL14509" }] },
+    { code: "COD", attributes: [{ code: "AMOUNT", value: "249.90" }, { code: "CURRENCY", value: "PLN" }] },
+  ])
+  assert.deepEqual(p.codDue, { minor: 24990, amount: "249.90", currency: "PLN" })
+})
+
+test("Pickup point problems: missing, invalid, not found, inactive, no delivery, no cod; each stops the request", () => {
+  const missing = pickup(pickupRow({ pudoId: null }), order(), null)
+  assert.deepEqual(missing.problems, [{ code: "pudo_missing", field: "pudoId" }])
+  assert.deepEqual(missing.point, { status: "missing", pudoId: null })
+  assert.equal(missing.request, null)
+  assert.deepEqual(pickup(pickupRow({ pudoId: "" }), order(), null).point, { status: "missing", pudoId: null })
+  const invalid = pickup(pickupRow({ pudoId: "1111" }), order(), null)
+  assert.deepEqual(invalid.problems, [{ code: "pudo_invalid", field: "pudoId", detail: "1111" }])
+  assert.deepEqual(invalid.point, { status: "invalid", pudoId: "1111" })
+  assert.deepEqual(pickup(pickupRow({ pudoId: "PL99999" }), order(), { status: "not_found", pudoId: "PL99999" }).problems, [{ code: "pudo_not_found", field: "pudoId", detail: "PL99999" }])
+  const [, inactive, sendOnly] = SANDBOX_POINTS
+  assert.deepEqual(pickup(pickupRow({ pudoId: inactive.id }), order(), checked(inactive)).problems, [{ code: "pudo_inactive", field: "pudoId", detail: inactive.id }])
+  assert.deepEqual(codes(pickup(pickupRow({ pudoId: sendOnly.id }), order(), checked(sendOnly)).problems), ["pudo_no_delivery"])
+  const noCod = DEMO_POINT_CATALOG[1]
+  assert.deepEqual(noCod.services, ["100"])
+  assert.deepEqual(pickup(pickupRow({ optionId: "dpd-pickup-cod", pudoId: noCod.id }), order(), checked(noCod)).problems, [{ code: "pudo_no_cod", field: "pudoId", detail: noCod.id }])
+  assert.equal(pickup(pickupRow({ pudoId: noCod.id }), order(), checked(noCod)).ok, true, "without COD a point without 101 is fine")
+  for (const p of [missing, invalid]) assert.equal(p.request, null)
+})
+
+test("Pickup abroad: a DE point is abroad_later, with COD also cod_pickup_abroad; a country outside the options country_unsupported", () => {
+  const de = pickup(pickupRow({ pudoId: "DE12345" }), order(), { status: "unchecked", pudoId: "DE12345", reason: "timeout" })
+  assert.deepEqual(de.problems, [{ code: "abroad_later", detail: "DE" }])
+  assert.equal(de.country, "DE", "DS9: the prefix of an unchecked id")
+  const deCod = pickup(pickupRow({ optionId: "dpd-pickup-cod", pudoId: "DE12345" }), order(), { status: "unchecked", pudoId: "DE12345", reason: "timeout" })
+  assert.deepEqual(codes(deCod.problems).slice(0, 2), ["abroad_later", "cod_pickup_abroad"])
+  assert.equal(deCod.request, null)
+  /* A checked point: its own country, not the prefix. */
+  const cz = { ...SANDBOX_POINTS[0], id: "PL77777", address: { ...SANDBOX_POINTS[0].address, country: "CZ" } }
+  assert.deepEqual(pickup(pickupRow({ pudoId: "PL77777" }), order(), checked(cz)).problems, [{ code: "abroad_later", detail: "CZ" }])
+  assert.deepEqual(pickup(pickupRow(), order(), PL14509, opts({ countries: "DE" })).problems, [{ code: "country_unsupported", detail: "PL" }])
+})
+
+test("Pickup boxes: one box only, 20 kg passes and 20.01 kg does not; a 60 x 40 x 40 box does not fit a locker", () => {
+  const two = pickup(pickupRow({ boxes: { edited: true, items: [handBox(1).items[0], handBox(2).items[0]] } }))
+  assert.deepEqual(two.problems, [{ code: "multi_box_not_allowed", detail: "2" }])
+  assert.equal(two.request, null)
+  const twenty = pickup(pickupRow({ boxes: handBox(20) }))
+  assert.deepEqual(twenty.problems, [])
+  assert.equal(twenty.request?.packages[0].parcels[0].weight, 20)
+  assert.deepEqual(pickup(pickupRow({ boxes: handBox(20.01) })).problems, [{ code: "pickup_over_limit", field: "parcels[0].weight", detail: "20 kg" }])
+  /* From the variants too: 21 kg in total. */
+  const heavy = pickup(pickupRow(), order({ items: [{ id: "item_1", quantity: 3, variant: { weight: 7000 } }] }))
+  assert.deepEqual(codes(heavy.problems), ["pickup_over_limit"])
+  const locker = DEMO_POINT_CATALOG[1]
+  assert.equal(locker.isLocker, true)
+  const over = pickup(pickupRow({ pudoId: locker.id, boxes: handBox(2, [60, 40, 40]) }), order(), checked(locker))
+  assert.deepEqual(over.problems, [{ code: "pickup_over_limit", field: "parcels[0].size", detail: "59 x 50 x 44 cm" }])
+  assert.deepEqual(pickup(pickupRow({ pudoId: locker.id, boxes: handBox(2, [40, 59, 44]) }), order(), checked(locker)).problems, [], "sides in any order")
+  /* DS10: no size check without all three sides, or against a point that was not checked. */
+  assert.deepEqual(pickup(pickupRow({ pudoId: locker.id, boxes: { edited: true, items: [{ weightKg: 2, lengthCm: 80, widthCm: null, heightCm: null, reference: null, waybill: null }] } }), order(), checked(locker)).problems, [])
+  assert.deepEqual(codes(pickup(pickupRow({ pudoId: locker.id, boxes: handBox(2, [60, 40, 40]) }), order(), { status: "unchecked", pudoId: locker.id, reason: "timeout" }).problems), [])
+  /* A regular point: the longest side and the sum. */
+  assert.deepEqual(pickup(pickupRow({ boxes: handBox(2, [120, 100, 90]) })).problems, [{ code: "pickup_over_limit", field: "parcels[0].size", detail: "150 cm, sides together 300 cm" }])
+})
+
+test("Pickup receiver: contact_missing without a phone and an e-mail and with a wrong phone and no e-mail; the name from the company; no name", () => {
+  const none = pickup(pickupRow(), order({ email: "", shipping_address: address({ phone: "" }) }))
+  assert.deepEqual(none.problems, [{ code: "contact_missing", field: "pudoReceiver" }])
+  assert.deepEqual(codes(none.warnings), ["receiver_phone_missing"])
+  assert.equal(none.request, null)
+  const wrong = pickup(pickupRow(), order({ email: "not-an-email", shipping_address: address({ phone: "12" }) }))
+  assert.deepEqual(codes(wrong.problems), ["contact_missing"])
+  assert.deepEqual(codes(wrong.warnings), ["receiver_phone_invalid"])
+  /* A phone alone, or an e-mail alone, is enough (fixtures 10l, 10m). */
+  assert.deepEqual(pickup(pickupRow(), order({ email: "" })).pudoReceiver, { name: "Anna Przykładowa", countryCode: "PL", phone: "600100200" })
+  assert.deepEqual(pickup(pickupRow(), order({ shipping_address: address({ phone: "" }) })).problems, [])
+  const firm = pickup(pickupRow(), order({ shipping_address: address({ first_name: "", last_name: "", company: "Przykładowa Sp. z o.o." }) }))
+  assert.deepEqual(firm.problems, [])
+  assert.equal(firm.pudoReceiver?.name, "Przykładowa Sp. z o.o.")
+  assert.ok(!("company" in (firm.pudoReceiver ?? {})))
+  const both = pickup(pickupRow(), order({ shipping_address: address({ company: "Przykładowa Sp. z o.o." }) }))
+  assert.deepEqual(both.pudoReceiver, { company: "Przykładowa Sp. z o.o.", name: "Anna Przykładowa", countryCode: "PL", phone: "600100200", email: "anna@example.com" })
+  const nobody = pickup(pickupRow(), order({ shipping_address: address({ first_name: "", last_name: "", company: "" }) }))
+  assert.deepEqual(nobody.problems, [{ code: "receiver_name_missing", field: "pudoReceiver.name" }])
+  assert.equal(nobody.pudoReceiver, null)
+  assert.deepEqual(codes(pickup(pickupRow(), order({ shipping_address: address({ first_name: "A".repeat(100) }) })).problems), ["receiver_too_long"])
+  /* The address of the order is not the address of the parcel: a German shipping address changes nothing. */
+  assert.equal(pickup(pickupRow(), order({ shipping_address: address({ country_code: "de", postal_code: "10115" }) })).ok, true)
+})
+
+test("Pickup unchecked: a pudo_unchecked warning with a request; no ctx.point is unchecked not_configured", () => {
+  const timeout = pickup(pickupRow(), order(), { status: "unchecked", pudoId: SANDBOX_PUDO_ID, reason: "timeout" })
+  assert.deepEqual(timeout.problems, [])
+  assert.deepEqual(timeout.warnings, [{ code: "pudo_unchecked", detail: "timeout" }])
+  assert.equal(timeout.ok, true)
+  assert.equal(timeout.request?.packages[0].services?.[0].attributes?.[0].value, "PL14509")
+  const none = pickup(pickupRow(), order(), null)
+  assert.deepEqual(none.point, { status: "unchecked", pudoId: "PL14509", reason: "not_configured" })
+  assert.deepEqual(none.warnings, [{ code: "pudo_unchecked", detail: "not_configured" }])
+  assert.equal(none.hash, pickup().hash, "the check is not in the hash: the same request")
+  /* No order: the plan stops before the point. */
+  const noOrder = pickup(pickupRow(), null)
+  assert.deepEqual(codes(noOrder.problems), ["order_missing"])
+  assert.equal(noOrder.point, null)
+})
+
+test("Pickup hash: changes with the point, not with the name or the hours of the point; the courier plan has no point", () => {
+  const base = pickup()
+  const renamed = checked({ ...SANDBOX_POINTS[0], name: "Inna nazwa", hours: [] })
+  assert.equal(pickup(pickupRow(), order(), renamed).hash, base.hash)
+  const other = checked({ ...SANDBOX_POINTS[0], id: "PL11726" })
+  assert.notEqual(pickup(pickupRow({ pudoId: "PL11726" }), order(), other).hash, base.hash)
+  assert.notEqual(pickup(pickupRow({ optionId: "dpd-pickup-cod" })).hash, base.hash)
+  assert.notEqual(plan(row({ optionId: "dpd-courier" })).hash, base.hash)
+  const courier = plan()
+  assert.equal(courier.point, null)
+  assert.equal(courier.pudoReceiver, null)
+  assert.ok(courier.receiver !== null)
+  /* A courier row with a pudoId by mistake: still a courier request. */
+  const stray = plan(row({ pudoId: "PL14509" }))
+  assert.equal(stray.ok, true)
+  assert.equal(stray.point, null)
+  assert.ok(!("pudoReceiver" in (stray.request?.packages[0] ?? {})))
+})
+
+test("Pickup in demo mode: the sample sender and payer 1, a demo point clean", () => {
+  const demoPoint = DEMO_POINT_CATALOG[0]
+  const p = buildPlan(pickupRow({ pudoId: demoPoint.id }), order(), { options: resolveOptions({ demo: true }), demo: true, point: checked(demoPoint) })
+  assert.deepEqual(p.problems, [])
+  assert.deepEqual(codes(p.warnings), ["sample_sender"])
+  assert.equal(p.request?.packages[0].payerFID, 1)
 })
 
 test("order and fulfillment states are problems, all of them collected", () => {

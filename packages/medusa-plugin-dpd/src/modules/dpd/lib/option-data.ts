@@ -8,6 +8,7 @@ import {
   type OptionKind,
   type OptionSpec,
 } from "./constants"
+import type { PointDto } from "./contract"
 import { isPolishPostalCode, normalizePostalCode } from "./sender"
 
 /**
@@ -31,8 +32,10 @@ import { isPolishPostalCode, normalizePostalCode } from "./sender"
  *   order edit or a draft order never runs the checks), and the DPD method
  *   of an order with several.
  *
- * Whether the point exists and is active is a MyPudoAPI call (stage 3), not
- * done here.
+ * This file checks the format only. Whether the point exists, is active and
+ * hands out parcels (or takes cash on delivery) the provider checks with the
+ * points source (lib/points.ts), and then adds the public snapshot of the
+ * point (dpd_pudo) to the method data.
  */
 
 export type FulfillmentOptionData = {
@@ -68,7 +71,21 @@ export type MethodData = {
   dpd_pudo_id: string | null
   /** The destination country (ISO alpha-2) when known at checkout. */
   dpd_country: string | null
+  /** Set by the provider when the point was checked; absent when the check failed open. */
+  dpd_pudo?: PudoSnapshot
   [k: string]: unknown
+}
+
+/** The public snapshot of the point at checkout (a point address is public). */
+export type PudoSnapshot = {
+  name: string
+  line1: string
+  zip: string
+  city: string
+  /** alpha-2 */
+  country: string
+  type: string
+  isLocker: boolean
 }
 
 export type CheckoutErrorCode =
@@ -82,6 +99,11 @@ export type CheckoutErrorCode =
   | "cod_country_unsupported"
   | "cod_currency_unsupported"
   | "cod_pickup_abroad"
+  | "pudo_not_found"
+  | "pudo_inactive"
+  | "pudo_no_delivery"
+  | "pudo_no_cod"
+  | "pickup_abroad_later"
 
 export type CheckoutError = {
   code: CheckoutErrorCode
@@ -99,6 +121,11 @@ const MESSAGES: Record<CheckoutErrorCode, string> = {
   cod_country_unsupported: "Cash on delivery with DPD is not available for this country.",
   cod_currency_unsupported: "Cash on delivery with DPD is not available in this currency for this country.",
   cod_pickup_abroad: "Cash on delivery at a DPD Pickup point is possible in Poland only.",
+  pudo_not_found: "This DPD Pickup point does not exist. Choose the point on the map again.",
+  pudo_inactive: "This DPD Pickup point is not active now. Choose another point.",
+  pudo_no_delivery: "This DPD Pickup point does not hand out parcels. Choose another point.",
+  pudo_no_cod: "This DPD Pickup point does not take cash on delivery. Choose another point or another payment.",
+  pickup_abroad_later: "DPD Pickup points outside Poland are not available yet: choose a point in Poland.",
 }
 
 export function checkoutError(code: CheckoutErrorCode): CheckoutError {
@@ -236,6 +263,19 @@ export function checkMethodData(
     if (!contact) errors.push(checkoutError("contact_missing"))
   }
   return { errors, pudoId, country }
+}
+
+/** The public snapshot of a checked point, kept in the method data (dpd_pudo): no hours, no services. */
+export function pudoSnapshotOf(p: PointDto): PudoSnapshot {
+  return {
+    name: p.name,
+    line1: p.address.line1,
+    zip: p.address.zip,
+    city: p.address.city,
+    country: p.address.country,
+    type: p.type,
+    isLocker: p.isLocker,
+  }
 }
 
 export function methodDataFor(spec: OptionSpec, v: { pudoId?: string | null; country?: string | null } = {}): MethodData {

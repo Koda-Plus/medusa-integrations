@@ -14,6 +14,12 @@ import {
   DPDSERVICES_HOSTS,
   EU_COUNTRIES,
   LABEL_PAGES,
+  POINTS_PER_MINUTE_DEFAULT,
+  POINTS_PER_MINUTE_MAX,
+  POINTS_PER_MINUTE_MIN,
+  POINTS_TIMEOUT_DEFAULT_MS,
+  POINTS_TIMEOUT_MAX_MS,
+  POINTS_TIMEOUT_MIN_MS,
   REQUESTS_PER_MINUTE_MAX,
   REQUESTS_PER_MINUTE_MIN,
   SHIPMENT_STAGES,
@@ -81,6 +87,10 @@ export type DpdPluginOptions = {
   pickupLogin?: string
   pickupPassword?: string
   pickupApiKey?: string
+  /** How long a MyPudoAPI call may take, in milliseconds. Default 3000, 1000 to 10000. Checkout waits for it, then accepts the point unchecked. */
+  pointsTimeoutMs?: number | string
+  /** Point searches per minute from one address on the store routes. Default 30, 5 to 600. */
+  pointsPerMinute?: number | string
   /** The sender of every shipment and the receiver of return labels. Object or JSON. */
   sender?: DpdSenderOption | string
   /** The orderer of a courier order; each field defaults to the sender. Object or JSON. */
@@ -142,6 +152,8 @@ export type ResolvedDpdOptions = {
   pickupLogin: string
   pickupPassword: string
   pickupApiKey: string
+  pointsTimeoutMs: number
+  pointsPerMinute: number
   sender: ResolvedSender
   orderer: ResolvedOrderer
   senders: Record<string, ResolvedSender>
@@ -437,6 +449,8 @@ export function resolveOptions(o: DpdPluginOptions | undefined | null): Resolved
     pickupLogin: str(opts.pickupLogin),
     pickupPassword: str(opts.pickupPassword),
     pickupApiKey: str(opts.pickupApiKey),
+    pointsTimeoutMs: bounded(opts.pointsTimeoutMs, POINTS_TIMEOUT_DEFAULT_MS, POINTS_TIMEOUT_MIN_MS, POINTS_TIMEOUT_MAX_MS, "pointsTimeoutMs", problems),
+    pointsPerMinute: bounded(opts.pointsPerMinute, POINTS_PER_MINUTE_DEFAULT, POINTS_PER_MINUTE_MIN, POINTS_PER_MINUTE_MAX, "pointsPerMinute", problems),
     sender,
     orderer: resolveOrderer(ordererObj ?? {}, sender),
     senders: resolveSenders(opts.senders, problems),
@@ -476,6 +490,19 @@ export function canCallDpd(o: ResolvedDpdOptions): boolean {
 /** The DPDServices host of the mode; null in demo mode (nothing is called). */
 export function dpdServicesHost(o: Pick<ResolvedDpdOptions, "mode">): string | null {
   return o.mode === "demo" ? null : DPDSERVICES_HOSTS[o.mode]
+}
+
+/** How MyPudoAPI is called: HTTP Basic with pickupLogin and pickupPassword, the pickupApiKey in the URL, or not at all. */
+export type PickupAuth =
+  | { kind: "basic"; header: string }      // "Basic " + base64(login:password)
+  | { kind: "key"; key: string }
+  | { kind: "none" }
+
+/** Basic when pickupLogin and pickupPassword are set, else the key, else none. */
+export function pickupAuthOf(o: ResolvedDpdOptions): PickupAuth {
+  if (o.pickupLogin && o.pickupPassword) return { kind: "basic", header: `Basic ${Buffer.from(`${o.pickupLogin}:${o.pickupPassword}`).toString("base64")}` }
+  if (o.pickupApiKey) return { kind: "key", key: o.pickupApiKey }
+  return { kind: "none" }
 }
 
 /** Every secret of the options, for masking. Logins and FIDs are identifiers, not secrets. */

@@ -4,7 +4,9 @@
  * that is no JSON, UNKNOWN_ERROR, NOT_PROCESSED, OK without a waybill, a
  * label that is no PDF, 404 without a body, 403, 415, 429). The body is read
  * before the HTTP status; a value DPD echoes back never reaches a message or
- * a problem.
+ * a problem. Stage 3: the DPD Pickup answers 10a to 10m (spec 8.1) get the
+ * codes of the plan with source "dpd", the point id that was sent (E5) and
+ * none of the receiver codes DPD adds after a point code.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -15,6 +17,7 @@ import {
   DPD_ERROR_CODES,
   DPD_PROBLEM_CODES,
   isPdfBase64,
+  PICKUP_ANSWER_CODES,
   problemsOfBean,
   problemsOfGpn,
   transportFailure,
@@ -22,7 +25,7 @@ import {
   type NumbersOutcome,
 } from "../src/modules/dpd/lib/dpd-answers.ts"
 import type { DpdHttpAnswer, GeneratePackagesNumbersRequest } from "../src/modules/dpd/lib/dpdservices.ts"
-import { loadFixture, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
+import { FakeDpdServices, loadFixture, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
 
 /** The fixture's answer as the client hands it over: the "<pdf>" token becomes a real PDF in base64. */
 function answerOf(name: string): DpdHttpAnswer {
@@ -276,4 +279,124 @@ test("transport failures and helpers", () => {
   assert.equal(cleanDpdText(null), "")
   for (const c of ["dpd_validation", "dpd_cod_currency", "dpd_auth", "dpd_payer_fid", "dpd_disabled_api"]) assert.ok((DPD_PROBLEM_CODES as readonly string[]).includes(c))
   assert.equal(new Set(DPD_ERROR_CODES).size, DPD_ERROR_CODES.length)
+})
+
+/** A GPN refusal of one package with these validationInfo codes, as the demo host shapes it (10c). */
+function gpnRefusal(codes: Array<[string, string]>): DpdHttpAnswer {
+  return synthetic(400, {
+    status: "INCORRECT_DATA",
+    sessionId: null,
+    packages: [{ status: "INCORRECT_DATA", reference: "ful_1", validationInfo: codes.map(([errorCode, info]) => ({ errorCode, info })), parcels: [{ status: "OK", reference: "ful_1-1", waybill: null, validationInfo: [] }] }],
+    traceId: "t",
+  })
+}
+
+const PICKUP_SENT = sentOf("10a-pickup-pl14509")
+
+test("Pickup OK (10a, 10e, 10l, 10m): the waybill and the session id; 20 kg and 19.99 kg pass, COD after DPD_PICKUP passes", () => {
+  const expected: Record<string, string> = { "10a-pickup-pl14509": "0000899060290Q", "10e-pickup-cod": "0000899060315Q", "10l-pickup-20kg": "0000899060450Q", "10m-pickup-19_99kg": "0000899060531Q" }
+  for (const [name, waybill] of Object.entries(expected)) {
+    const o = numbers(name)
+    assert.equal(o.kind, "ok", name)
+    if (o.kind !== "ok") continue
+    assert.deepEqual(o.parcels.map((p) => p.waybill), [waybill], name)
+    assert.ok(o.sessionId !== null && /^\d+$/.test(o.sessionId), name)
+  }
+  const cod = sentOf("10e-pickup-cod").packages[0]
+  assert.deepEqual(cod.services?.map((x) => x.code), ["DPD_PICKUP", "COD"])
+  assert.equal(cod.receiver, undefined, "a Pickup package has no receiver")
+})
+
+test("Pickup Bean refusals (10b, 10g): multi_box_not_allowed and pickup_over_limit on services[0] with source dpd, DPD's text in the message (E10)", () => {
+  const two = numbers("10b-pickup-two-parcels")
+  assert.ok(two.kind === "refused" && two.code === "validation")
+  if (two.kind !== "refused") return
+  assert.deepEqual(two.problems, [{ code: "multi_box_not_allowed", field: "services[0]", detail: "Domestic DPD_PICKUP service is available only for single parcel shipments", source: "dpd" }])
+  assert.match(two.message, /^DPD refused the shipment \(HTTP 400\): services\[0\]: Domestic DPD_PICKUP service is available only for single parcel shipments\.$/)
+  const heavy = numbers("10g-pickup-locker-25kg")
+  assert.ok(heavy.kind === "refused" && heavy.code === "validation")
+  if (heavy.kind !== "refused") return
+  assert.deepEqual(heavy.problems, [{ code: "pickup_over_limit", field: "services[0]", detail: "20 kg", source: "dpd" }])
+  assert.ok(!heavy.message.includes("25"), heavy.message)
+})
+
+test("Pickup without contact (10f): exactly one problem, contact_missing; the name error next to it is dropped (P5), alone it stays dpd_validation", () => {
+  const o = numbers("10f-pickup-no-contact")
+  assert.ok(o.kind === "refused" && o.code === "validation")
+  if (o.kind !== "refused") return
+  assert.deepEqual(o.problems, [{ code: "contact_missing", field: "services[0]", detail: "Pudo receiver phone or email is needed with DPD_PICKUP service", source: "dpd" }])
+  assert.ok(o.message.includes("phone or email is needed"), o.message)
+  assert.ok(!o.message.includes("Name or company"), o.message)
+  assert.deepEqual(problemsOfBean({ errors: [{ userMessage: "Name or company is required", field: "packages[0].pudoReceiver" }] }), [{ code: "dpd_validation", field: "pudoReceiver", detail: "Name or company is required" }])
+  /* By the text, whatever its case. */
+  assert.equal(problemsOfBean({ errors: [{ userMessage: "DOMESTIC DPD_PICKUP SERVICE IS AVAILABLE ONLY FOR SINGLE PARCEL SHIPMENTS", field: "packages[0].services[0]" }] })[0].code, "multi_box_not_allowed")
+  assert.deepEqual(problemsOfBean({ errors: [{ userMessage: "the dpd_pickup service is unavailable for parcels from 31 kg", field: "packages[0].services[0]" }] })[0], { code: "pickup_over_limit", field: "services[0]", detail: "31 kg", source: "dpd" })
+})
+
+test("Pickup point refusals (10c, 10d, 10h, 10i): pudo_not_found with the id that was sent (E5), none of the three receiver codes", () => {
+  const sent: Record<string, string> = { "10c-pickup-unknown-id": "PL99999", "10d-pickup-numeric-id": "1111", "10h-pickup-pl11726": "PL11726", "10i-pickup-de-id": "DE12345" }
+  for (const [name, id] of Object.entries(sent)) {
+    const o = numbers(name)
+    assert.ok(o.kind === "refused" && o.code === "incorrect_data", name)
+    if (o.kind !== "refused") continue
+    assert.deepEqual(o.problems, [{ code: "pudo_not_found", field: "INCORRECT_PUDO", detail: id, source: "dpd" }], name)
+    assert.ok(!o.problems.some((p) => String(p.field).startsWith("INCORRECT_RECEIVER_")), name)
+    assert.equal(o.message, `DPD refused the shipment (INCORRECT_DATA): INCORRECT_PUDO: ${id}.`, name)
+    assert.ok(!o.message.includes("Incorrect pudo identifier") && !o.message.includes("odbiorcy"), name)
+  }
+  /* problemsOfGpn alone keeps DPD's text (cleaned); only the classifier knows what was sent. */
+  assert.deepEqual(problemsOfGpn(answerOf("10c-pickup-unknown-id").body), [{ code: "pudo_not_found", field: "INCORRECT_PUDO", detail: "Incorrect pudo identifier", source: "dpd" }])
+})
+
+test("the point codes of the DPDServices enum with no fixture: INACTIVE_PUDO, DPD_PICKUP_IS_NOT_AVAILABLE_FOR_PUDO, SERVICES_NOT_SUPPORTED_BY_PUDO", () => {
+  const cases: Array<[string, string]> = [
+    ["INACTIVE_PUDO", "pudo_inactive"],
+    ["DPD_PICKUP_IS_NOT_AVAILABLE_FOR_PUDO", "pudo_no_delivery"],
+    ["SERVICES_NOT_SUPPORTED_BY_PUDO", "pudo_no_cod"],
+  ]
+  for (const [errorCode, code] of cases) {
+    const o = classifyNumbersAnswer(gpnRefusal([["INCORRECT_RECEIVER_CITY", "Miasto odbiorcy jest wymagane"], [errorCode, "Some text"]]), PICKUP_SENT)
+    assert.ok(o.kind === "refused" && o.code === "incorrect_data", errorCode)
+    if (o.kind === "refused") assert.deepEqual(o.problems, [{ code, field: errorCode, detail: "PL14509", source: "dpd" }], errorCode)
+  }
+  /* DPD_FOOD_AND_DPD_PICKUP_IS_NOT_AVAILABLE_FOR_POSTAL_CODE is no point code: dpd_validation as before. */
+  const food = classifyNumbersAnswer(gpnRefusal([["DPD_FOOD_AND_DPD_PICKUP_IS_NOT_AVAILABLE_FOR_POSTAL_CODE", "Not available"]]), PICKUP_SENT)
+  assert.ok(food.kind === "refused")
+  if (food.kind === "refused") assert.deepEqual(food.problems, [{ code: "dpd_validation", field: "DPD_FOOD_AND_DPD_PICKUP_IS_NOT_AVAILABLE_FOR_POSTAL_CODE", detail: "Not available" }])
+  assert.deepEqual([...PICKUP_ANSWER_CODES].sort(), ["contact_missing", "multi_box_not_allowed", "pickup_over_limit", "pudo_inactive", "pudo_no_cod", "pudo_no_delivery", "pudo_not_found"])
+})
+
+test("courier regression (stage 2): INCORRECT_RECEIVER_CITY without a point code stays dpd_validation, no source, DPD's detail kept", () => {
+  const o = classifyNumbersAnswer(gpnRefusal([["INCORRECT_RECEIVER_CITY", "Miasto odbiorcy jest wymagane"]]), ONE_BOX)
+  assert.ok(o.kind === "refused" && o.code === "incorrect_data")
+  if (o.kind !== "refused") return
+  assert.deepEqual(o.problems, [{ code: "dpd_validation", field: "INCORRECT_RECEIVER_CITY", detail: "Miasto odbiorcy jest wymagane" }])
+  /* A point code on a courier request (nothing sent with PUDO): DPD's text, not an id. */
+  const odd = classifyNumbersAnswer(gpnRefusal([["INCORRECT_PUDO", "Incorrect pudo identifier"]]), ONE_BOX)
+  assert.ok(odd.kind === "refused" && odd.problems[0].detail === "Incorrect pudo identifier")
+})
+
+test("Pickup labels (10j, 10k): the PDF and the waybill of the Pickup shipment", () => {
+  for (const [name, waybill] of [["10j-labels-pickup-a4", "0000899060290Q"], ["10k-labels-pickup-cod-a4", "0000899060315Q"]] as const) {
+    const o = labels(name)
+    assert.equal(o.kind, "ok", name)
+    if (o.kind === "ok") assert.deepEqual(o.waybills, [waybill], name)
+  }
+})
+
+test("the fake DPDServices refuses Pickup like the demo host did (14.3): each request of 10a to 10m gives the problems of its fixture", async () => {
+  const fake = new FakeDpdServices()
+  const auth = `Basic ${Buffer.from(`${fake.login}:${fake.password}`).toString("base64")}`
+  const names = ["10a-pickup-pl14509", "10b-pickup-two-parcels", "10c-pickup-unknown-id", "10d-pickup-numeric-id", "10e-pickup-cod", "10f-pickup-no-contact", "10g-pickup-locker-25kg", "10h-pickup-pl11726", "10i-pickup-de-id", "10l-pickup-20kg", "10m-pickup-19_99kg"]
+  for (const name of names) {
+    const f = loadFixture(name)
+    const body = JSON.parse(JSON.stringify(f.request.body).replace(/"payerFID":"\*\*\*"/g, '"payerFID":1000')) as GeneratePackagesNumbersRequest
+    const res = await fake.fetch(`${fake.host}${f.request.path}`, { method: "POST", headers: { authorization: auth, "x-dpd-fid": "1000", "content-type": "application/json" }, body: JSON.stringify(body) })
+    const got = classifyNumbersAnswer(synthetic(res.status, await res.json()), body)
+    const want = numbers(name)
+    assert.equal(res.status, f.response.httpStatus, name)
+    assert.equal(got.kind, want.kind, name)
+    if (got.kind === "refused" && want.kind === "refused") assert.deepEqual(got.problems, want.problems, name)
+  }
+  assert.equal(fake.count("numbers"), names.length)
 })

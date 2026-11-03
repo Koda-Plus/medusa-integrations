@@ -4,7 +4,10 @@
  * Cloudflare cookie or ray, no PDF of DPD (it prints the FID), e-mails only
  * at example.com. The probe values of the FID tests stay, they are what the
  * test is about: the header "1234" (06b), "abc" (06e) and "99999999" (06f)
- * and the payer FID 1234 that DPD refused (06c).
+ * and the payer FID 1234 that DPD refused (06c). The same rules hold for the
+ * Pickup answers of stage 3 (10a to 10m). The MyPudo fixtures are no
+ * recordings (MyPudo has no test host): each names its page of the PDF, and
+ * a URL in them carries key=*** only.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -36,10 +39,11 @@ function walk(v: unknown, visit: (key: string, value: unknown) => void): void {
   }
 }
 
-test("every stage 2 fixture is there: no protocol (05, stage 4), no routing (09, stage 7)", () => {
-  assert.equal(names.length, 33)
+test("every stage 2 and stage 3 fixture is there: no protocol (05, stage 4), no routing (09, stage 7)", () => {
+  assert.equal(names.length, 46)
+  assert.equal(names.filter((n) => n.startsWith("10")).length, 13, "10a to 10m, DPD Pickup")
   assert.ok(names.every((n) => !/^0[59]/.test(n)), names.join(", "))
-  for (const n of ["01-numbers-ok", "02a-numbers-same-ref-identical", "03c-labels-by-package-ref-a4", "04a-labels-unknown-package-ref", "06c-payerfid-wrong", "07b-cod-eur-domestic", "08e-postal-code-with-dash", "08i-multi-field-bean-errors"]) {
+  for (const n of ["01-numbers-ok", "02a-numbers-same-ref-identical", "03c-labels-by-package-ref-a4", "04a-labels-unknown-package-ref", "06c-payerfid-wrong", "07b-cod-eur-domestic", "08e-postal-code-with-dash", "08i-multi-field-bean-errors", "10a-pickup-pl14509", "10j-labels-pickup-a4", "10m-pickup-19_99kg"]) {
     assert.ok(names.includes(n), n)
   }
 })
@@ -90,5 +94,22 @@ test("e-mails only at example.com; the login only masked in the references DPD p
     for (const m of text.matchAll(/[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+)/g)) assert.equal(m[1], "example.com", `${name}: ${m[0]}`)
     for (const m of text.matchAll(/"([^"#]*)#probe-/g)) assert.equal(m[1], "***", `${name}: a login before #`)
     assert.ok(!text.includes("koda-test"), name)
+  }
+})
+
+const MYPUDO_DIR = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "mypudo")
+
+test("MyPudo fixtures: each names its source in the PDF, no key other than ***, no e-mail", () => {
+  const files = readdirSync(MYPUDO_DIR).filter((n) => n.endsWith(".json"))
+  assert.equal(files.length, 10)
+  for (const file of files) {
+    const text = readFileSync(join(MYPUDO_DIR, file), "utf8")
+    const f = JSON.parse(text) as { source?: unknown; httpStatus?: unknown; body?: unknown }
+    assert.ok(typeof f.source === "string" && /^MP s\.\d+/.test(f.source), `${file}: source`)
+    assert.ok(Number.isInteger(f.httpStatus), `${file}: httpStatus`)
+    assert.ok(f.body !== undefined, `${file}: body`)
+    for (const m of text.matchAll(/[?&]key=([^&"\s]*)/g)) assert.equal(m[1], "***", `${file}: key=`)
+    assert.ok(!/authorization/i.test(text), `${file}: no header`)
+    assert.ok(!/@[A-Za-z0-9-]+\.[A-Za-z]/.test(text), `${file}: an e-mail`)
   }
 })

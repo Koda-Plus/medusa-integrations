@@ -25,6 +25,13 @@ import type { DpdHttpAnswer, GeneratePackagesNumbersRequest } from "./dpdservice
  * (validationInfo[].info puts the rejected value in brackets, like
  * "Incorrect receiver postal code: (30-001)"): they are stripped, because the
  * receiver's data is never kept at rest.
+ *
+ * A DPD Pickup refusal gets the codes of the plan (pudo_not_found,
+ * multi_box_not_allowed and the rest of PICKUP_ANSWER_CODES) with source
+ * "dpd", so a failed row keeps it next to the plan problems (spec 8.1). The
+ * receiver codes DPD adds after a point code (it reads the receiver address
+ * from the point) and its "Name or company is required" next to a missing
+ * contact are dropped: they say nothing the point code does not.
  */
 
 export const DPD_ERROR_CODES = [
@@ -40,6 +47,28 @@ export type DpdErrorCode = (typeof DPD_ERROR_CODES)[number]
 /** Problem codes built from a DPD answer (prefix dpd_, kept on a failed row next to the plan problems). */
 export const DPD_PROBLEM_CODES = ["dpd_validation", "dpd_cod_currency", "dpd_auth", "dpd_payer_fid", "dpd_disabled_api"] as const
 export type DpdProblemCode = (typeof DPD_PROBLEM_CODES)[number]
+
+/** The problems an answer gives for a Pickup package, with the plan's codes. */
+export const PICKUP_ANSWER_CODES = [
+  "pudo_not_found", "pudo_inactive", "pudo_no_delivery", "pudo_no_cod",
+  "multi_box_not_allowed", "pickup_over_limit", "contact_missing",
+] as const
+export type PickupAnswerCode = (typeof PICKUP_ANSWER_CODES)[number]
+
+/** DPD codes that only follow a point code (fixtures 10c, 10d, 10h, 10i). */
+export const SECONDARY_RECEIVER_CODES: readonly string[] = ["INCORRECT_RECEIVER_ADDRESS", "INCORRECT_RECEIVER_CITY", "INCORRECT_RECEIVER_POSTAL_CODE"]
+
+/**
+ * The validationInfo codes of a Pickup point (the DPDServices enum; only
+ * INCORRECT_PUDO was seen, 10c). SERVICES_NOT_SUPPORTED_BY_PUDO: the only
+ * other service sent with DPD_PICKUP is COD.
+ */
+const POINT_CODES: Readonly<Record<string, PickupAnswerCode>> = {
+  INCORRECT_PUDO: "pudo_not_found",
+  INACTIVE_PUDO: "pudo_inactive",
+  DPD_PICKUP_IS_NOT_AVAILABLE_FOR_PUDO: "pudo_no_delivery",
+  SERVICES_NOT_SUPPORTED_BY_PUDO: "pudo_no_cod",
+}
 
 export type DpdRefused = {
   kind: "refused"
@@ -156,13 +185,25 @@ function validationInfos(holder: Obj | null): Array<{ errorCode: string; info: s
     .filter((v) => v.errorCode !== "" || v.info !== "")
 }
 
-/** validationInfo[] of every package and of each parcel, as dpd_validation problems (field = errorCode, detail = info). */
+/**
+ * validationInfo[] of every package and of each parcel, as dpd_validation
+ * problems (field = errorCode, detail = info). A point code gives its Pickup
+ * problem with source "dpd", and the receiver codes of the same package are
+ * dropped (SECONDARY_RECEIVER_CODES, spec 8.1).
+ */
 export function problemsOfGpn(body: unknown): ProblemDto[] {
   const out: ProblemDto[] = []
   for (const p of list(obj(body)?.packages)) {
     const pkg = obj(p)
     const infos = [...validationInfos(pkg), ...list(pkg?.parcels).flatMap((x) => validationInfos(obj(x)))]
+    const pointAnswer = infos.some((i) => POINT_CODES[i.errorCode] !== undefined)
     for (const { errorCode, info } of infos) {
+      if (pointAnswer && SECONDARY_RECEIVER_CODES.includes(errorCode)) continue
+      const pickup = POINT_CODES[errorCode]
+      if (pickup !== undefined) {
+        out.push({ code: pickup, field: errorCode, ...(info ? { detail: info } : {}), source: "dpd" })
+        continue
+      }
       const problem: ProblemDto = { code: errorCode.startsWith("COD_CURRENCY") ? "dpd_cod_currency" : "dpd_validation" }
       if (errorCode) problem.field = errorCode
       if (info) problem.detail = info
@@ -173,17 +214,38 @@ export function problemsOfGpn(body: unknown): ProblemDto[] {
   return dedupe(out)
 }
 
-/** errors[] of a Bean Validation answer: field without the "packages[0]." prefix, detail = userMessage; a COD currency message becomes dpd_cod_currency. */
+const SINGLE_PARCEL_MESSAGE = /single parcel/i
+const PICKUP_WEIGHT_MESSAGE = /DPD_PICKUP.*\bfrom \d+\s*kg|parcels from \d+\s*kg/i
+const CONTACT_MESSAGE = /phone or email is needed/i
+const NAME_OR_COMPANY_MESSAGE = /name or company is required/i
+
+/**
+ * errors[] of a Bean Validation answer: field without the "packages[0]."
+ * prefix, detail = userMessage; a COD currency message becomes
+ * dpd_cod_currency. The three Pickup refusals DPD gives on services[0] are
+ * known by their text (10b, 10g, 10f) and get the plan's codes with source
+ * "dpd"; "Name or company is required" on pudoReceiver next to the contact
+ * message is dropped (10f: the name was sent).
+ */
 export function problemsOfBean(body: unknown): ProblemDto[] {
   const out: ProblemDto[] = []
-  for (const e of list(obj(body)?.errors)) {
-    const err = obj(e)
-    if (!err) continue
+  const errors = list(obj(body)?.errors).map((e) => obj(e)).filter((e): e is Obj => e !== null)
+  const contactAnswer = errors.some((e) => CONTACT_MESSAGE.test(text(e.userMessage)))
+  for (const err of errors) {
+    const raw = text(err.userMessage)
     const message = cleanDpdText(err.userMessage)
     const field = beanField(err.field)
-    const problem: ProblemDto = { code: COD_CURRENCY_MESSAGE.test(text(err.userMessage)) ? "dpd_cod_currency" : "dpd_validation" }
+    if (contactAnswer && field === "pudoReceiver" && NAME_OR_COMPANY_MESSAGE.test(raw)) continue
+    let problem: ProblemDto
+    if (COD_CURRENCY_MESSAGE.test(raw)) problem = { code: "dpd_cod_currency" }
+    else if (SINGLE_PARCEL_MESSAGE.test(raw)) problem = { code: "multi_box_not_allowed", source: "dpd" }
+    else if (PICKUP_WEIGHT_MESSAGE.test(raw)) problem = { code: "pickup_over_limit", source: "dpd" }
+    else if (CONTACT_MESSAGE.test(raw)) problem = { code: "contact_missing", source: "dpd" }
+    else problem = { code: "dpd_validation" }
     if (field) problem.field = field
-    if (message) problem.detail = message
+    const kg = problem.code === "pickup_over_limit" ? /from (\d+(?:[.,]\d+)?)\s*kg/i.exec(raw) : null
+    if (kg) problem.detail = `${kg[1]} kg`
+    else if (message) problem.detail = message
     out.push(problem)
   }
   return dedupe(out)
@@ -251,6 +313,25 @@ function beanRefused(answer: DpdHttpAnswer, body: Obj, what: string): DpdRefused
   return refused("validation", refusedSentence(what, `HTTP ${answer.httpStatus}`, problems), answer, problems)
 }
 
+/** The point id of the DPD_PICKUP service that was sent (attribute PUDO), or null for a courier package. */
+function sentPudoId(sent: GeneratePackagesNumbersRequest): string | null {
+  for (const pkg of Array.isArray(sent?.packages) ? sent.packages : []) {
+    for (const service of Array.isArray(pkg?.services) ? pkg.services : []) {
+      if (service?.code !== "DPD_PICKUP" || !Array.isArray(service.attributes)) continue
+      const value = text(service.attributes.find((a) => a?.code === "PUDO")?.value)
+      if (value) return value
+    }
+  }
+  return null
+}
+
+/** E5: a point problem DPD gave names the point that was sent, not DPD's sentence ("Incorrect pudo identifier"). */
+function withSentPoint(problems: ProblemDto[], sent: GeneratePackagesNumbersRequest): ProblemDto[] {
+  const id = sentPudoId(sent)
+  if (id === null) return problems
+  return problems.map((p) => (p.source === "dpd" && p.code.startsWith("pudo_") ? { ...p, detail: id } : p))
+}
+
 /** The references of the parcels that were sent, in box order. */
 function sentParcelReferences(sent: GeneratePackagesNumbersRequest): string[] {
   const packages = list((sent as unknown as Obj | null)?.packages)
@@ -286,7 +367,7 @@ export function classifyNumbersAnswer(answer: DpdHttpAnswer, sent: GeneratePacka
     if (waybills.length > 0) {
       return unclear("partial", `DPD refused the request (${status}) but gave ${waybills.length} waybills; the shipment is looked up before anything is sent again.`, answer)
     }
-    const problems = problemsOfGpn(body)
+    const problems = withSentPoint(problemsOfGpn(body), sent)
     switch (status) {
       case "INCORRECT_DATA":
         return refused("incorrect_data", refusedSentence("shipment", status, problems), answer, problems)

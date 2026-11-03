@@ -18,8 +18,9 @@ import { lookupShipment, runShipmentPass } from "../src/workflows/dpd/resolve.ts
 import { onFulfillmentCanceled, recordFulfillment } from "../src/workflows/dpd/shipments.ts"
 import dpdSyncShipments, { config as jobConfig } from "../src/jobs/dpd-sync-shipments.ts"
 import type { DpdPluginOptions } from "../src/modules/dpd/lib/options.ts"
+import { catalogSource, SANDBOX_POINTS, type PointsSource } from "../src/modules/dpd/lib/points.ts"
 import { FakeDpdServices, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
-import { arm, order, SANDBOX, setup, type Container, type Row, type Setup } from "./helpers.ts"
+import { arm, countingPoints, order, SANDBOX, setup, type Container, type Row, type Setup } from "./helpers.ts"
 
 const realFetch = globalThis.fetch
 let requests = 0
@@ -550,4 +551,111 @@ test("rows the pass cannot act on never fill its page: 250 newer ones each with 
   assert.equal(rowOf(s, toCreate).state, "labeled")
   assert.equal(rowOf(s, toLabel).state, "labeled")
   assert.equal(fake.count("numbers"), numbers + 1, "no noise row was sent")
+})
+
+const PICKUP = { dpd_option: "dpd-pickup", dpd_kind: "pickup", dpd_cod: false, dpd_pudo_id: "PL14509", dpd_country: "PL" }
+
+function pickupOrder(id: string, ful: string): Row {
+  return order({
+    id,
+    items: [{ id: `li_${id}`, quantity: 1, variant: { weight: 1500 } }],
+    shipping_methods: [{ id: `sm_${id}`, name: "DPD Pickup", shipping_option_id: "so_01", data: PICKUP }],
+    fulfillments: [{ id: ful, provider_id: "dpd_dpd", data: PICKUP, canceled_at: null }],
+  })
+}
+
+/** autoCreate armed an hour ago over the sandbox catalog with a points source that can fail; rows recorded before, then placed in the window by `minutesAgo`. */
+async function pickupPass(orders: Array<{ order: Row; minutesAgo: number }>, source: PointsSource = catalogSource("sandbox", SANDBOX_POINTS)) {
+  const fake = new FakeDpdServices()
+  const points = countingPoints(source)
+  const s = setup({ ...WRITING, autoCreate: true }, orders.map((o) => o.order), { fake, points })
+  const ids: string[] = []
+  for (const { order: o } of orders) ids.push(String(((await recordFulfillment(s.container, String(o.id), String((o.fulfillments as Row[])[0].id))) as Row).id))
+  arm(s, "shipment")
+  const armed = s.settings.rows.find((r) => String(r.key).endsWith("writer:shipment"))
+  assert.ok(armed)
+  armed.updated_at = new Date(Date.now() - 3_600_000)
+  orders.forEach(({ minutesAgo }, n) => void (rowOf(s, ids[n]).created_at = new Date(Date.now() - minutesAgo * 60_000)))
+  return { s, fake, points, ids }
+}
+
+test("Pickup rows whose point nobody could check never take the slots of the pass: an older courier row behind 10 of them is created (DS13)", async () => {
+  const pickups = Array.from({ length: 10 }, (_, n) => ({ order: pickupOrder(`order_p${n}`, `ful_p${n}`), minutesAgo: 1 + n }))
+  const { s, fake, points, ids } = await pickupPass([{ order: courierOrder(), minutesAgo: 50 }, ...pickups])
+  const [courier, ...rest] = ids
+  points.fail.details = "not_configured"
+  /* Live without MyPudo credentials (or MyPudo down for hours): every Pickup row waits with point_unchecked. */
+  for (const id of rest) rowOf(s, id).error_code = "point_unchecked"
+  const reads = points.reads
+  const pass = await runShipmentPass(s.container)
+  assert.equal(pass.created, 1, "the courier row is created in the same pass")
+  assert.equal(rowOf(s, courier).state, "labeled")
+  assert.equal(fake.count("numbers"), 1, "no Pickup row was sent")
+  for (const id of rest) {
+    assert.equal(rowOf(s, id).state, "pending")
+    assert.equal(rowOf(s, id).error_code, "point_unchecked")
+  }
+  assert.equal(points.reads - reads, 10, "the waiting rows are still tried, in their own batch")
+
+  /* Rows not marked yet take a slot once: the first pass marks them, the next one creates the courier row behind them. */
+  const fresh = await pickupPass([{ order: courierOrder(), minutesAgo: 50 }, ...pickups])
+  fresh.points.fail.details = "not_configured"
+  assert.equal((await runShipmentPass(fresh.s.container)).created, 0)
+  assert.ok(fresh.ids.slice(1).every((id) => rowOf(fresh.s, id).error_code === "point_unchecked"))
+  assert.equal((await runShipmentPass(fresh.s.container)).created, 1)
+  assert.equal(rowOf(fresh.s, fresh.ids[0]).state, "labeled")
+
+  /* Once the point can be checked, the waiting rows are sent by the pass. */
+  points.fail.details = undefined
+  assert.equal((await runShipmentPass(s.container)).created, 10)
+  assert.ok(rest.every((id) => rowOf(s, id).state === "labeled" && rowOf(s, id).error_code === null))
+})
+
+test("a failed rate_limited Pickup row the point check held back stays the pass's to send: sent once the point is checked (DS13)", async () => {
+  const { s, fake, points, ids } = await pickupPass([{ order: pickupOrder("order_p0", "ful_p0"), minutesAgo: 5 }])
+  const [id] = ids
+  Object.assign(rowOf(s, id), { state: "failed", error_code: "rate_limited", error: "Too many DPD calls from this server.", attempts: 1 })
+  points.fail.details = "network"
+  assert.equal((await runShipmentPass(s.container)).created, 0)
+  assert.equal(fake.calls.length, 0, "nothing to DPD while the point is not checked")
+  assert.equal(rowOf(s, id).state, "failed")
+  assert.equal(rowOf(s, id).error_code, "point_unchecked")
+  assert.equal((await runShipmentPass(s.container)).created, 0, "still not checked: still not sent")
+  assert.equal(actionsOf(s, id).filter((a) => a === "create_deferred").length, 1, "one history line")
+  points.fail.details = undefined
+  assert.equal((await runShipmentPass(s.container)).created, 1)
+  assert.equal(rowOf(s, id).state, "labeled")
+  assert.equal(rowOf(s, id).error_code, null)
+  assert.equal(fake.count("numbers"), 1)
+})
+
+test("points that never answer do not hold an older row back: the point_unchecked batch goes oldest try first, each retry moves on (DS13)", async () => {
+  /* MyPudo answers PL11111 with something the parser refuses, every time (E17, E27): unchecked for good. */
+  const base = catalogSource("sandbox", SANDBOX_POINTS)
+  const odd: PointsSource = {
+    kind: base.kind,
+    search: (q) => base.search(q),
+    details: async (pudoId) => (pudoId === "PL11111" ? { status: "unchecked", pudoId, reason: "invalid_answer" } : base.details(pudoId)),
+  }
+  const stuck = Array.from({ length: 10 }, (_, n) => ({ order: pickupOrder(`order_p${n}`, `ful_p${n}`), minutesAgo: 1 + n }))
+  const { s, fake, points, ids } = await pickupPass([{ order: pickupOrder("order_y", "ful_y"), minutesAgo: 50 }, ...stuck], odd)
+  const [older, ...rest] = ids
+  /* The older row waited while MyPudo was down a moment and was tried last; the ten newer ones were tried before it. */
+  Object.assign(rowOf(s, older), { error_code: "point_unchecked", updated_at: new Date(Date.now() - 60_000) })
+  rest.forEach((id, n) => Object.assign(rowOf(s, id), { pudo_id: "PL11111", error_code: "point_unchecked", updated_at: new Date(Date.now() - (20 - n) * 60_000) }))
+  const lines = s.events.rows.length
+
+  const first = points.reads
+  assert.equal((await runShipmentPass(s.container)).created, 0, "the ten tried longest ago go first")
+  assert.equal(points.reads - first, 10)
+  const second = points.reads
+  assert.equal((await runShipmentPass(s.container)).created, 1, "then the older row gets its turn")
+  assert.ok(points.reads - second <= 10, "never more than a batch of reads")
+  assert.equal(rowOf(s, older).state, "labeled")
+  assert.equal(fake.count("numbers"), 1, "nothing went to PL11111")
+  for (const id of rest) {
+    assert.equal(rowOf(s, id).state, "pending")
+    assert.equal(rowOf(s, id).error_code, "point_unchecked")
+  }
+  assert.equal(s.events.rows.slice(lines).filter((e) => (e.data as Row | null)?.action === "create_deferred").length, 0, "a retry adds no history line")
 })

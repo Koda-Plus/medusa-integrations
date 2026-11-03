@@ -1,0 +1,53 @@
+{
+  "source": "MP s.7, s.9, s.25, s.27",
+  "note": "One entry with every shape the PDF allows: pudoType as a number (the table says Integer), latitude as a string and longitude as a number, codes outside the dictionary, country alpha-2 (MP s.9), HH:MM:SS (MP s.25) and two ranges of one day (MP s.7), address2 and address3.",
+  "httpStatus": 200,
+  "body": {
+    "requestID": "1",
+    "pudoItems": [
+      {
+        "active": "true",
+        "pudoId": "pl85854",
+        "pudoType": 400402,
+        "servicePudo": "100; 202;P10;101;P90;100",
+        "name": "Automat DPD Pickup Przykładowa",
+        "address1": "Przykładowa 1",
+        "address2": "Pawilon B",
+        "address3": "przy wejściu",
+        "zipCode": "00950",
+        "city": "Warszawa",
+        "country": "PL",
+        "latitude": "52.2297",
+        "longitude": 21.0122,
+        "openingHoursItems": [
+          {
+            "dayId": 1,
+            "startTm": "14:00:00",
+            "endTm": "19:00:00"
+          },
+          {
+            "dayId": 1,
+            "startTm": "08:30:00",
+            "endTm": "12:00:00"
+          },
+          {
+            "dayId": "2",
+            "startTm": "11:30:00",
+            "endTm": "19:00:00"
+          },
+          {
+            "dayId": 8,
+            "startTm": "08:00",
+            "endTm": "16:00"
+          },
+          {
+            "dayId": 3,
+            "startTm": "rano",
+            "endTm": "16:00"
+          }
+        ],
+        "holidayItems": []
+      }
+    ]
+  }
+}

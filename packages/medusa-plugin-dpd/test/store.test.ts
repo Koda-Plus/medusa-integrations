@@ -67,6 +67,28 @@ test("transition: only from the given states, only known columns, JSON as jsonb,
   for (const locked of ["id", "order_id", "fulfillment_id", "kind", "mode", "option_id", "claim_token", "lease_until", "attempts"]) assert.ok(!PATCHABLE_COLUMNS.includes(locked), locked)
 })
 
+test("transition with expect: only while the row still has the point and the boxes a plan read; the memory store keeps the same rule", async () => {
+  const { calls, store } = recorder()
+  await store.transition("dpdshp_1", ["pending"], { problems: null }, { pudo_id: "PL14509", boxes: { edited: true, items: [] } })
+  assert.match(calls[0].sql, /where "id" = \? and "state" in \(\?\) and "deleted_at" is null and "pudo_id" is not distinct from \? and "boxes" is not distinct from \?::jsonb returning \*$/)
+  assert.deepEqual(calls[0].bindings.slice(-4), ["dpdshp_1", "pending", "PL14509", '{"edited":true,"items":[]}'])
+  await store.transition("dpdshp_1", ["pending"], { problems: null }, { pudo_id: null, boxes: null })
+  assert.deepEqual(calls[1].bindings.slice(-2), [null, null], "null matches a null column (is not distinct from)")
+  await store.transition("dpdshp_1", ["pending"], { problems: null }, {})
+  assert.match(calls[2].sql, /"deleted_at" is null returning \*$/, "a key left out is not compared")
+
+  const shipments = new Table("dpdshp", SHIPMENT_DEFAULTS)
+  const mem = memoryStore(shipments, new Table("dpdevt"), new Table("dpdset"))
+  const row = await mem.insertIgnore(NEW)
+  assert.ok(row)
+  const id = String(row.id)
+  assert.equal(await mem.transition(id, ["pending"], { problems: [{ code: "pudo_inactive" }] }, { pudo_id: "PL0SBX03" }), null, "the point moved: nothing written")
+  assert.deepEqual(shipments.rows[0].problems, [{ code: "weight_missing" }])
+  assert.equal(await mem.transition(id, ["pending"], { problems: null }, { pudo_id: "PL14509", boxes: { edited: true } }), null, "other boxes: nothing written")
+  const moved = await mem.transition(id, ["pending"], { problems: null }, { pudo_id: "PL14509", boxes: null })
+  assert.equal(moved?.problems, null)
+})
+
 test("events are ignored on a repeated dedupe key; settings are one row per key; the seed key goes to the first caller", async () => {
   const { calls, store } = recorder()
   await store.insertEvent({ shipment_id: "dpdshp_1", order_id: "order_1", kind: "action", message: "x".repeat(3000), dedupe_key: "demo:seed:dpdshp_1", mode: "demo" })
@@ -215,6 +237,33 @@ test("claim: one statement from the given states, the token, the lease and attem
   assert.deepEqual(calls[0].bindings, ['{"edited":false,"items":[]}', "h1", "creating", "tok_1", lease, "dpdshp_1", "pending", "failed"])
   assert.equal(await store.claim("dpdshp_1", [], { token: "t", leaseUntil: lease, to: "creating" }), null, "no state, no statement")
   assert.equal(calls.length, 1)
+})
+
+test("claim with expect: only while the row still has the point and the boxes the plan read, checked before the patch writes; the memory store keeps the same rule", async () => {
+  const { calls, store } = recorder()
+  const lease = new Date("2026-11-02T10:03:00Z")
+  const boxes = { edited: false, items: [] }
+  await store.claim("dpdshp_1", ["pending", "failed"], { token: "tok_1", leaseUntil: lease, to: "creating", patch: { boxes: { edited: false, items: [{ weightKg: 1 }] } }, expect: { pudo_id: "PL14509", boxes } })
+  assert.match(calls[0].sql, /where "id" = \? and "state" in \(\?, \?\) and "deleted_at" is null and "pudo_id" is not distinct from \? and "boxes" is not distinct from \?::jsonb returning \*$/)
+  assert.deepEqual(calls[0].bindings.slice(-5), ["dpdshp_1", "pending", "failed", "PL14509", '{"edited":false,"items":[]}'])
+  await store.claim("dpdshp_1", ["pending"], { token: "tok_2", leaseUntil: lease, to: "creating", expect: { pudo_id: null, boxes: null } })
+  assert.deepEqual(calls[1].bindings.slice(-2), [null, null], "null matches a null column")
+
+  const shipments = new Table("dpdshp", SHIPMENT_DEFAULTS)
+  const mem = memoryStore(shipments, new Table("dpdevt"), new Table("dpdset"))
+  const id = String((await mem.insertIgnore(NEW))?.id)
+  const later = new Date(Date.now() + 60_000)
+  const edited = { edited: true, items: [{ weightKg: 19, lengthCm: 40, widthCm: 30, heightCm: 20, reference: null, waybill: null }] }
+  shipments.rows[0].boxes = edited
+  const sent = { edited: false, items: [{ weightKg: 1.5, lengthCm: null, widthCm: null, heightCm: null, reference: null, waybill: null }] }
+  assert.equal(await mem.claim(id, ["pending"], { token: "a", leaseUntil: later, to: "creating", patch: { boxes: sent }, expect: { pudo_id: "PL14509", boxes: null } }), null, "other boxes: not claimed")
+  assert.equal(await mem.claim(id, ["pending"], { token: "a", leaseUntil: later, to: "creating", patch: { boxes: sent }, expect: { pudo_id: "PL0SBX03", boxes: edited } }), null, "another point: not claimed")
+  assert.deepEqual(shipments.rows[0].boxes, edited, "the boxes set by hand stay")
+  assert.equal(shipments.rows[0].state, "pending")
+  assert.equal(shipments.rows[0].attempts, 0)
+  const won = await mem.claim(id, ["pending"], { token: "a", leaseUntil: later, to: "creating", patch: { boxes: sent }, expect: { pudo_id: "PL14509", boxes: edited } })
+  assert.equal(won?.state, "creating")
+  assert.deepEqual(won?.boxes, sent, "the expect is checked before the patch writes")
 })
 
 test("finish: only the owner of the claim (creating or labeling, the same token) writes; the token and the lease are cleared", async () => {

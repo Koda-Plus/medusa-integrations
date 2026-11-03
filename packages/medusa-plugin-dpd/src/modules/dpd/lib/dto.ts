@@ -9,6 +9,9 @@ import {
   type EventDto,
   type PlanAddressDto,
   type PlanDto,
+  type PlanPointDto,
+  type PlanPudoReceiverDto,
+  type PointsSourceKind,
   type ProblemDto,
   type ShipmentActions,
   type ShipmentDto,
@@ -16,9 +19,9 @@ import {
   type WriterDto,
 } from "./contract"
 import { readStoredBoxes } from "./boxes"
-import type { DpdAddress } from "./dpdservices"
+import type { DpdAddress, DpdPudoReceiver } from "./dpdservices"
 import { formatMinor } from "./money"
-import type { Plan } from "./plan"
+import type { Plan, PlanPoint } from "./plan"
 import type { WriterState } from "./writers"
 
 /**
@@ -144,7 +147,11 @@ export function waybillsOf(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((w): w is string => typeof w === "string" && w.length > 0) : []
 }
 
-/** The problems of a row (a JSON list of { code, field?, detail? }); anything else is dropped. */
+/**
+ * The problems of a row (a JSON list of { code, field?, detail?, source? });
+ * anything else is dropped. `source` survives only as "dpd" (what DPD said at
+ * the last attempt, kept on a failed row next to the plan problems).
+ */
 export function problemsOf(v: unknown): ProblemDto[] {
   if (!Array.isArray(v)) return []
   const out: ProblemDto[] = []
@@ -152,7 +159,12 @@ export function problemsOf(v: unknown): ProblemDto[] {
     if (!p || typeof p !== "object") continue
     const r = p as Record<string, unknown>
     if (typeof r.code !== "string" || !r.code) continue
-    out.push({ code: r.code, ...(typeof r.field === "string" ? { field: r.field } : {}), ...(typeof r.detail === "string" ? { detail: r.detail } : {}) })
+    out.push({
+      code: r.code,
+      ...(typeof r.field === "string" ? { field: r.field } : {}),
+      ...(typeof r.detail === "string" ? { detail: r.detail } : {}),
+      ...(r.source === "dpd" ? { source: "dpd" as const } : {}),
+    })
   }
   return out
 }
@@ -269,8 +281,29 @@ function addressDto(a: DpdAddress | null): PlanAddressDto | null {
   }
 }
 
-/** The plan for the admin. It carries the receiver read live from the order: answer it with no-store, never store it. */
-export function toPlanDto(plan: Plan): PlanDto {
+/** The point of a Pickup plan for the admin: how it was checked now, the point only when it was found. */
+function pointDto(p: PlanPoint | null, source: PointsSourceKind): PlanPointDto | null {
+  if (p === null) return null
+  return {
+    pudoId: p.pudoId,
+    check: p.status,
+    point: p.status === "ok" ? p.point : null,
+    reason: p.status === "unchecked" ? p.reason : null,
+    source,
+  }
+}
+
+function pudoReceiverDto(r: DpdPudoReceiver | null): PlanPudoReceiverDto | null {
+  if (!r) return null
+  return { company: r.company ?? null, name: r.name, countryCode: r.countryCode, phone: r.phone ?? null, email: r.email ?? null }
+}
+
+/**
+ * The plan for the admin. It carries the receiver read live from the order:
+ * answer it with no-store, never store it. `source` is the kind of the points
+ * source the Pickup point was read from (pointsFor(scope).kind).
+ */
+export function toPlanDto(plan: Plan, source: PointsSourceKind): PlanDto {
   const boxes: BoxDto[] = plan.boxes.map((b, i) => ({
     weightKg: b.weightKg,
     lengthCm: b.lengthCm,
@@ -299,6 +332,8 @@ export function toPlanDto(plan: Plan): PlanDto {
     warnings: plan.warnings,
     request: plan.request,
     hash: plan.hash,
+    point: pointDto(plan.point, source),
+    pudoReceiver: pudoReceiverDto(plan.pudoReceiver),
   }
 }
 

@@ -13,7 +13,7 @@ import {
   type WriterKey,
 } from "../../../modules/dpd/lib/contract"
 import { countsOf, toEventDto, toShipmentDto, toWriterDto, type EventRow, type ShipmentRow } from "../../../modules/dpd/lib/dto"
-import type { ResolvedDpdOptions } from "../../../modules/dpd/lib/options"
+import { pickupAuthOf, type ResolvedDpdOptions } from "../../../modules/dpd/lib/options"
 import { secretState } from "../../../modules/dpd/lib/security"
 import { DEMO_SEEDED_KEY } from "../../../modules/dpd/lib/settings"
 import { WRITERS } from "../../../modules/dpd/lib/writers"
@@ -89,16 +89,22 @@ export function isFilter(v: unknown): v is ShipmentFilter {
   return v === "all" || (typeof v === "string" && (SHIPMENT_GROUPS as readonly string[]).includes(v))
 }
 
-/** An ErrorResponse with its status. */
-export function refuse(res: MedusaResponse, status: number, code: ErrorResponse["code"], message: string, fields?: ErrorResponse["fields"]): void {
-  const body: ErrorResponse = fields && fields.length > 0 ? { code, message, fields } : { code, message }
+/** An ErrorResponse with its status; `problems` only for point_refused (the problems of the chosen point). */
+export function refuse(res: MedusaResponse, status: number, code: ErrorResponse["code"], message: string, fields?: ErrorResponse["fields"], problems?: ErrorResponse["problems"]): void {
+  const body: ErrorResponse = { code, message, ...(fields && fields.length > 0 ? { fields } : {}), ...(problems && problems.length > 0 ? { problems } : {}) }
   res.status(status).json(body)
 }
 
-/** An error as an answer: refusals with their status, anything else 500 with a plain sentence (the details stay in the log, masked). */
+/**
+ * An error as an answer: refusals with their status (and their problems, and
+ * Retry-After when the refusal has one), anything else 500 with a plain
+ * sentence (the details stay in the log, masked).
+ */
 export function sendError(scope: Scope, res: MedusaResponse, err: unknown): void {
   if (err instanceof ActionError) {
-    refuse(res, err.status, err.code, err.message, err.fields)
+    const r = res as MedusaResponse & { setHeader?: (name: string, value: string) => unknown }
+    if (err.retryAfter !== undefined && typeof r.setHeader === "function") r.setHeader("Retry-After", String(err.retryAfter))
+    refuse(res, err.status, err.code, err.message, err.fields, err.problems)
     return
   }
   let svc: DpdModuleService | null = null
@@ -152,6 +158,7 @@ export function optionsSummary(o: ResolvedDpdOptions): OptionsSummaryDto {
     documentRetentionDays: o.documentRetentionDays,
     autoCreate: o.autoCreate,
     senderLocations: Object.keys(o.senders),
+    pickupCheck: o.mode !== "live" ? "catalog" : pickupAuthOf(o).kind !== "none" ? "mypudo" : "not_configured",
   }
 }
 

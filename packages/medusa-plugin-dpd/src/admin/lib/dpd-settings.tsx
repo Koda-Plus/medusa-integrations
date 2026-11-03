@@ -69,6 +69,14 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
             </Text>
           </div>
         ) : null}
+        {/* Live without MyPudo credentials: every Pickup point passes the checkout unchecked. Not an option problem (a store without Pickup needs none). */}
+        {o.pickupCheck === "not_configured" ? (
+          <div className="px-6 py-4">
+            <InlineTip variant="warning" label={t("account.services")}>
+              {t("account.pickupNotConfigured")}
+            </InlineTip>
+          </div>
+        ) : null}
         <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
           <Fact label={t("account.mode")}>
             <ToneBadge tone={mode.tone}>{t(`mode.${mode.key}`)}</ToneBadge>

@@ -13,8 +13,11 @@
  *           CRUD of the five tables over Tables, the options, masking),
  *           the memory store, Query over a list of orders, the event bus,
  *           a logger, the fulfillment module (retrieve and update of the
- *           fulfillments of the orders) and, given a FakeDpdServices, the
- *           DPDServices client over its fetch under "dpdServicesClient"
+ *           fulfillments of the orders), given a FakeDpdServices, the
+ *           DPDServices client over its fetch under "dpdServicesClient", and
+ *           the points source under "dpdPointsSource" (the one given, else
+ *           the source of the mode: the catalogs of sandbox and demo never
+ *           fetch, live without MyPudo credentials is not_configured)
  *   settle  waits until the work started in the background is done
  *
  * Nothing here reaches a network: without a fake the client is the demo
@@ -25,6 +28,7 @@ import { maskSecrets } from "../src/modules/dpd/lib/security.ts"
 import { senderProblems } from "../src/modules/dpd/lib/sender.ts"
 import { groupOf } from "../src/modules/dpd/lib/contract.ts"
 import { createDpdServicesClient } from "../src/modules/dpd/lib/dpdservices.ts"
+import { createPointsSource, type PointsSource } from "../src/modules/dpd/lib/points.ts"
 import {
   CLAIMED_STATES,
   LABEL_LEASE_EXPIRED_ERROR,
@@ -34,6 +38,7 @@ import {
   type DpdStore,
   type NewEvent,
   type NewShipment,
+  type TransitionExpect,
 } from "../src/modules/dpd/lib/store.ts"
 import type { FakeDpdServices } from "./fake-dpdservices.ts"
 
@@ -240,10 +245,14 @@ export function memoryStore(shipments: Table, events: Table, settings: Table): D
       if (column in values && values[column] !== undefined) r[column] = values[column]
     }
   }
+  /* The expect of the SQL store: the point and the boxes as given (null matches null), the boxes by their JSON. */
+  const holds = (r: Row, expect: TransitionExpect | undefined) =>
+    (expect?.pudo_id === undefined || (r.pudo_id ?? null) === expect.pudo_id) && (expect?.boxes === undefined || JSON.stringify(r.boxes ?? null) === JSON.stringify(expect.boxes))
   return {
     async claim(id, from, args) {
       const r = live(id)
       if (from.length === 0 || !r || !from.includes(String(r.state))) return null
+      if (!holds(r, args.expect)) return null
       apply(r, args.patch ?? {}, false)
       Object.assign(r, { state: args.to, claim_token: args.token, lease_until: args.leaseUntil, attempts: Number(r.attempts ?? 0) + 1, updated_at: new Date() })
       return { ...r } as never
@@ -272,9 +281,9 @@ export function memoryStore(shipments: Table, events: Table, settings: Table): D
       if (row.fulfillment_id && shipments.rows.some((r) => !r.deleted_at && r.fulfillment_id === row.fulfillment_id && r.kind === row.kind && r.mode === row.mode)) return null
       return shipments.insert({ ...NEW_SHIPMENT_COLUMNS, ...row, problems: row.problems ?? null }) as never
     },
-    async transition(id, from, patch) {
+    async transition(id, from, patch, expect) {
       const r = live(id)
-      if (!r || !from.includes(String(r.state))) return null
+      if (!r || !from.includes(String(r.state)) || !holds(r, expect)) return null
       const values = patch as Row
       for (const column of PATCHABLE_COLUMNS) if (column in values && values[column] !== undefined) r[column] = values[column]
       r.updated_at = new Date()
@@ -340,6 +349,33 @@ export function memoryStore(shipments: Table, events: Table, settings: Table): D
 /** A row of the fake fulfillment module: its id and the provider data the plugin merges into. */
 export type FakeFulfillment = { id: string; data: Row }
 
+/** A points source that counts its calls and can be told to fail: the catalog of a mode underneath. */
+export type CountingPoints = PointsSource & { searches: number; reads: number; fail: { search?: PointsFailureLike; details?: PointsFailureLike; throws?: boolean } }
+type PointsFailureLike = "not_configured" | "timeout" | "network" | "http" | "invalid_answer" | "api_error"
+
+/** Wraps a source: counts search and details, answers `fail` instead while it is set. */
+export function countingPoints(inner: PointsSource): CountingPoints {
+  const out: CountingPoints = {
+    kind: inner.kind,
+    searches: 0,
+    reads: 0,
+    fail: {},
+    async search(q) {
+      out.searches += 1
+      if (out.fail.throws) throw new Error("source down")
+      if (out.fail.search) return { ok: false, reason: out.fail.search }
+      return inner.search(q)
+    },
+    async details(pudoId) {
+      out.reads += 1
+      if (out.fail.throws) throw new Error("source down")
+      if (out.fail.details) return { status: "unchecked", pudoId, reason: out.fail.details }
+      return inner.details(pudoId)
+    },
+  }
+  return out
+}
+
 export type Container = { resolve: <T = unknown>(key: string, opts?: { allowUnregistered?: boolean }) => T }
 
 export type Setup = {
@@ -366,6 +402,8 @@ export type SetupExtra = {
   noFulfillmentModule?: boolean
   /** The pace of the client over the fake (default: so fast it never waits); a slow one makes the pacing refuse calls without sending them. */
   requestsPerMinute?: number
+  /** The points source (POINTS_KEY); without one, createPointsSource of the options. */
+  points?: PointsSource
 }
 
 /** Waits until the work started with setImmediate (inBackground) and its promises are done. */
@@ -432,6 +470,7 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
       },
     },
     event_bus: { emit: async (e: { name: string; data: Row } | Array<{ name: string; data: Row }>) => void emitted.push(...(Array.isArray(e) ? e : [e])) },
+    dpdPointsSource: extra.points ?? createPointsSource(o, { logger: svc.getLogger() }),
   }
   const fulfillments = new Map<string, FakeFulfillment>()
   for (const o of orders) {

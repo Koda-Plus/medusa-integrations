@@ -9,17 +9,22 @@
  * (tests, custom code), else the simulated client of demo mode, else the
  * REST client of the sandbox or live host. Without credentials there is no
  * client and nothing is sent.
+ *
+ * The points source is the one door to DPD Pickup points: a source
+ * registered under POINTS_KEY (tests, custom code), else the source of the
+ * mode (lib/points.ts: MyPudo live, the catalogs of sandbox and demo).
  */
 
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, Modules, generateEntityId } from "@medusajs/framework/utils"
 import type DpdModuleService from "../../modules/dpd/service"
 import { DPD_MODULE } from "../../modules/dpd/lib/constants"
-import type { FieldErrorDto } from "../../modules/dpd/lib/contract"
+import type { FieldErrorDto, ProblemDto } from "../../modules/dpd/lib/contract"
 import { createDpdServicesClient, type DpdServicesClient } from "../../modules/dpd/lib/dpdservices"
 import { waybillsOf, type EventRow, type SettingRow, type ShipmentRow } from "../../modules/dpd/lib/dto"
 import { canCallDpd, dpdServicesHost } from "../../modules/dpd/lib/options"
 import { PLAN_ORDER_FIELDS, type PlanOrder } from "../../modules/dpd/lib/plan"
+import { createPointsSource, type PointsSource } from "../../modules/dpd/lib/points"
 import { effectiveSettings, readStoredSettings, settingsKey, type EffectiveSettings } from "../../modules/dpd/lib/settings"
 import { createSqlStore, type DpdStore, type NewEvent, type SqlRunner } from "../../modules/dpd/lib/store"
 import { readWriterSetting, WRITER_OPTION, WRITERS, writerSettingKey, writerState, type WriterKey, type WriterState } from "../../modules/dpd/lib/writers"
@@ -92,6 +97,30 @@ export function clientFor(scope: Scope): DpdServicesClient | null {
   }
   clients.set(svc, client)
   return client
+}
+
+/* ------------------------------------------------------------------ */
+/* The points source: one per service instance                         */
+/* ------------------------------------------------------------------ */
+
+/** Tests register a PointsSource under this key (like CLIENT_KEY). */
+export const POINTS_KEY = "dpdPointsSource"
+
+const sources = new WeakMap<object, PointsSource>()
+
+/** The registered source, else createPointsSource of the options (one per service instance, WeakMap, like clientFor). */
+export function pointsFor(scope: Scope): PointsSource {
+  const registered = resolveOptional<PointsSource>(scope, POINTS_KEY)
+  if (registered) return registered
+  const svc = dpdService(scope)
+  const known = sources.get(svc)
+  if (known) return known
+  const logger = svc.getLogger()
+  const source = createPointsSource(svc.getOptions(), {
+    logger: { info: (m) => logger.info(svc.mask(m)), warn: (m) => logger.warn(svc.mask(m)), error: (m) => logger.error(svc.mask(m)) },
+  })
+  sources.set(svc, source)
+  return source
 }
 
 /* ------------------------------------------------------------------ */
@@ -314,12 +343,18 @@ export class ActionError extends Error {
   readonly code: string
   /** The wrong fields of an invalid request (ErrorResponse.fields), when it has them. */
   readonly fields: FieldErrorDto[] | undefined
-  constructor(status: number, code: string, message: string, fields?: FieldErrorDto[]) {
+  /** point_refused: the problems of the chosen point (ErrorResponse.problems). */
+  readonly problems: ProblemDto[] | undefined
+  /** Seconds for the Retry-After header (a busy point search). */
+  readonly retryAfter: number | undefined
+  constructor(status: number, code: string, message: string, fields?: FieldErrorDto[], problems?: ProblemDto[], retryAfter?: number) {
     super(message)
     this.name = "ActionError"
     this.status = status
     this.code = code
     this.fields = fields
+    this.problems = problems
+    this.retryAfter = retryAfter
   }
 }
 

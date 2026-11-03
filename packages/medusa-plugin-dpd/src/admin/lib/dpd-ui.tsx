@@ -19,7 +19,7 @@ import { Copy, Text, clx } from "@medusajs/ui"
 import type { ProblemDto, SenderProblemDto, ShipmentDto, ShipmentFilter, ShipmentStage, ShipmentState, StatusResponse } from "../../modules/dpd/lib/contract"
 import { ToneBadge, type Tone } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
-import { fmtMoney, problemDetail } from "./dpd-logic"
+import { errorTone, fmtMoney, problemDetail } from "./dpd-logic"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -240,24 +240,22 @@ export function ProblemList({ items, tone = "red" }: { items: ProblemDto[]; tone
   )
 }
 
-/** The states whose error a person should read. */
-const ERROR_STATES: readonly ShipmentState[] = ["failed", "unknown", "ambiguous", "abandoned_unknown"]
-
 /**
  * What went wrong with a row, in the admin's language: the text of its error
  * code when the dictionary has one, else the stored (masked) message. Shown
- * for refused, unclear and mismatched rows, and for a row with waybills whose
- * label did not come. The stored message stays in the tooltip.
+ * for refused, unclear and mismatched rows, for a row with waybills whose
+ * label did not come, and for a pending row the pass left to a person
+ * (errorTone). The stored message stays in the tooltip.
  */
 export function ErrorText({ shipment: s }: { shipment: Pick<ShipmentDto, "state" | "error" | "errorCode"> }) {
   const { t, i18n } = useTranslation("dpd")
-  const shown = ERROR_STATES.includes(s.state) || (s.state === "created" && Boolean(s.errorCode))
-  if (!shown) return null
+  const tone = errorTone(s)
+  if (!tone) return null
   const key = s.errorCode ? `errorCode.${s.errorCode}` : ""
   const text = key && i18n.exists(key, { ns: "dpd" }) ? t(key) : s.error ? nb(s.error) : ""
   if (!text) return null
   return (
-    <Text size="xsmall" className={s.state === "created" ? "text-ui-tag-orange-text" : "text-ui-tag-red-text"} title={s.error ? nb(s.error) : undefined}>
+    <Text size="xsmall" className={tone === "orange" ? "text-ui-tag-orange-text" : "text-ui-tag-red-text"} title={s.error ? nb(s.error) : undefined}>
       {text}
     </Text>
   )

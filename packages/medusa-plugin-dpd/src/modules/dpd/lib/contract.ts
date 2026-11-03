@@ -33,6 +33,14 @@
  *   POST /admin/dpd/shipments/:id/accept   {}             -> ActionResponse
  *   POST /admin/dpd/shipments/:id/boxes    BoxesRequest   -> PlanResponse
  *
+ * Routes of stage 3, DPD Pickup points (the store routes are public, need the
+ * publishable key Medusa asks for and answer `public, max-age=300`):
+ *
+ *   GET  /store/dpd/points                 zip [city, address] | lat, lng; cod, limit -> PointsResponse
+ *   GET  /store/dpd/points/:id             PointResponse
+ *   GET  /admin/dpd/points                 the same query -> PointsResponse (no-store)
+ *   POST /admin/dpd/shipments/:id/point    SetPointRequest -> PlanResponse
+ *
  * An error of any route is an ErrorResponse with an HTTP status.
  */
 
@@ -110,6 +118,8 @@ export type ProblemDto = {
   /** The field or value it is about, like "receiver.postalCode" or "PL14509". */
   field?: string
   detail?: string
+  /** "dpd": DPD said it at the last attempt (kept on a failed row next to the plan problems). */
+  source?: "dpd"
 }
 
 /** A warning of a plan: a problem that does not stop the plan; order_paid carries the amount already captured, for the admin to format. */
@@ -174,6 +184,8 @@ export type OptionsSummaryDto = {
   autoCreate: boolean
   /** Stock locations with their own sender. */
   senderLocations: string[]
+  /** How Pickup points are checked: catalog (demo, sandbox), mypudo (live with MyPudo credentials), not_configured (live without: every point is accepted unchecked). */
+  pickupCheck: "catalog" | "mypudo" | "not_configured"
 }
 
 /** GET /admin/dpd: the state of the plugin for the page header, Settings and the guide. */
@@ -393,6 +405,10 @@ export type PlanDto = {
   /** The exact JSON for DPD (shown raw on request), null with problems. */
   request: unknown
   hash: string
+  /** Pickup: the point read now (also missing and invalid); null for a courier plan or a Pickup plan without an order. */
+  point: PlanPointDto | null
+  /** Pickup: who collects (read live, never stored); null for a courier plan. */
+  pudoReceiver: PlanPudoReceiverDto | null
 }
 
 /** GET /admin/dpd/shipments/:id/plan */
@@ -413,15 +429,18 @@ export type LabelRequest = { page?: LabelPage }
 export type BoxesRequest = {
   boxes: Array<{ weightKg: number | string; lengthCm?: number | string | null; widthCm?: number | string | null; heightCm?: number | string | null }> | null
 }
+/** POST /admin/dpd/shipments/:id/point; the answer is PlanResponse (the row with the new pudoId and the fresh plan). */
+export type SetPointRequest = { pudoId: string }
 /** The answer of every action route (create, label POST, lookup, skip, accept). */
 export type ActionResponse = { shipment: ShipmentDto }
 /** GET /admin/dpd/shipments/:id */
 export type ShipmentResponse = { shipment: ShipmentDto; documents: DocumentDto[]; events: EventDto[]; writerArmed: boolean; labelPage: LabelPage }
 
-/** ErrorResponse.code values of stage 2 actions. */
+/** ErrorResponse.code values of the actions (stage 2) and of the Pickup point routes (stage 3). */
 export const ACTION_ERROR_CODES = [
   "writer_off", "writer_unknown", "not_armed", "not_configured", "not_demo", "not_found", "invalid",
   "plan_problems", "plan_hash_missing", "plan_changed", "busy", "wrong_state", "too_early", "no_label",
+  "not_pickup", "point_refused", "points_unavailable", "rate_limited", "point_not_found",
 ] as const
 export type ActionErrorCode = (typeof ACTION_ERROR_CODES)[number]
 
@@ -435,6 +454,7 @@ export const SHIPMENT_ERROR_CODES = [
   "lease_expired", "label_lease_expired", "label_unclear", "label_not_found",
   "adopted", "adopt_failed", "waybill_count_mismatch", "waybill_mismatch", "duplicate_not_found",
   "not_created", "abandoned_found", "lookup_failed", "no_client",
+  "point_unchecked",
 ] as const
 export type ShipmentErrorCode = (typeof SHIPMENT_ERROR_CODES)[number]
 
@@ -455,13 +475,78 @@ export type ShipmentErrorCode = (typeof SHIPMENT_ERROR_CODES)[number]
  *   wrong_state        not possible in the state of the row (409)
  *   too_early          a lookup before the row settled (409)
  *   no_label           no stored label (404)
+ *   not_pickup          the row does not go to a Pickup point (409)
+ *   point_refused       the point cannot take this shipment (422, with problems)
+ *   points_unavailable  the point search cannot answer now (502) or is not configured or busy (503)
+ *   rate_limited        too many point searches from this address (429, Retry-After)
+ *   point_not_found     no Pickup point a parcel can go to under this id (404)
  */
 export type ErrorResponse = {
   code: ActionErrorCode | string
   message: string
   /** invalid boxes (POST .../boxes): each wrong field, by the 0-based box index and the BoxDto field name (weightKg, lengthCm, widthCm, heightCm). */
   fields?: FieldErrorDto[]
+  /** point_refused: the problems of the chosen point. */
+  problems?: ProblemDto[]
 }
 
 /** One wrong field of a request: the 0-based index of the item and its field name. */
 export type FieldErrorDto = { index: number; field: string }
+
+/* ------------------------------------------------------------------ */
+/* Stage 3: DPD Pickup points                                          */
+/* ------------------------------------------------------------------ */
+
+/** Where the points come from: MyPudo (live), the test catalog (sandbox), the sample catalog (demo). */
+export type PointsSourceKind = "live" | "sandbox" | "demo"
+
+/** One opening range of a point: day 1 (Monday) to 7 (Sunday), "08:00" to "18:00". */
+export type PointHoursDto = { day: 1 | 2 | 3 | 4 | 5 | 6 | 7; from: string; to: string }
+
+/** What a point takes: the weight and the box by kind of point. */
+export type PointLimitsDto = {
+  maxKg: number
+  box:
+    | { kind: "fits"; sidesCm: [number, number, number] }        // sorted, longest first
+    | { kind: "sum"; maxSideCm: number; maxSumCm: number }
+    | { kind: "girth"; maxLengthCm: number; maxGirthCm: number }
+}
+
+/** A DPD Pickup point as the store and the admin get it. Public data only. */
+export type PointDto = {
+  id: string                  // "PL14509"
+  name: string
+  type: string                // pudoType as MyPudo gives it ("300")
+  isLocker: boolean
+  partner: string | null
+  address: { line1: string; line2: string | null; zip: string; city: string; country: string }   // country alpha-2
+  lat: number | null
+  lng: number | null
+  active: boolean
+  services: string[]          // known codes only (POINT_SERVICES), sorted
+  delivery: boolean           // service 100
+  cod: boolean                // service 101
+  hours: PointHoursDto[]
+  distance: number | null     // metres, coordinate search only
+  limits: PointLimitsDto
+}
+
+/** GET /store/dpd/points, GET /admin/dpd/points */
+export type PointsResponse = { points: PointDto[]; source: PointsSourceKind }
+/** GET /store/dpd/points/:id */
+export type PointResponse = { point: PointDto; source: PointsSourceKind }
+
+/** The point of a Pickup plan, read now. */
+export type PlanPointDto = {
+  /** null only with check "missing". */
+  pudoId: string | null
+  /** missing: no point chosen; invalid: the id is not a DPD Pickup id (E3). */
+  check: "ok" | "not_found" | "unchecked" | "missing" | "invalid"
+  point: PointDto | null
+  /** unchecked only: not_configured | timeout | network | http | invalid_answer | api_error. */
+  reason: string | null
+  source: PointsSourceKind
+}
+
+/** Who collects at the point, as the plan sends it (read live from the order, never stored). */
+export type PlanPudoReceiverDto = { company: string | null; name: string; countryCode: string; phone: string | null; email: string | null }
