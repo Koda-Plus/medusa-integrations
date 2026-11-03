@@ -1,10 +1,19 @@
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import type { AdminOrder, DetailWidgetProps } from "@medusajs/framework/types"
-import { ArrowPath, ArrowUpRightOnBox, DocumentText, PaperPlane, QueueList, Receipt, ServerStack } from "@medusajs/icons"
+import { ArrowPath, ArrowUpRightOnBox, DocumentText, Link, MagnifyingGlass, PaperPlane, QueueList, Receipt, ServerStack } from "@medusajs/icons"
 import { Button, Heading, Text, toast } from "@medusajs/ui"
-import type { TaskDto } from "../../modules/subiekt/lib/contract"
-import { errorMessage, useSubiektIssueDocument, useSubiektOrder, useSubiektRetry, useSubiektSendOrder } from "../lib/subiekt-api"
+import type { DocumentDto, OrderCheckResponse, ReconcileEntryDto, TaskDto } from "../../modules/subiekt/lib/contract"
+import {
+  errorMessage,
+  useSubiektIssueDocument,
+  useSubiektLinkDocument,
+  useSubiektOrder,
+  useSubiektOrderCheck,
+  useSubiektRetry,
+  useSubiektSendOrder,
+} from "../lib/subiekt-api"
 import { EmptyState, StagedLoader, ToneBadge, runFromSteps, type StageState, type Tone } from "../lib/subiekt-blocks"
 import { SubiektIcon } from "../lib/subiekt-icon"
 import { KitLoading, WidgetFrame } from "../lib/subiekt-kit"
@@ -32,6 +41,130 @@ function taskRun(task: TaskDto, hasDocument: boolean) {
   return runFromSteps({ queue, bridge, document }, task.updatedAt ?? task.createdAt ?? Date.now())
 }
 
+/** One document of the order: kind, number, when and where, what it came from, KSeF for an FS. */
+function DocumentLine({ d, lang }: { d: DocumentDto; lang: string }) {
+  const { t } = useTranslation("subiekt")
+  const meta = [
+    fmtDateTime(d.issuedAt, lang),
+    t(`documents.sources.${d.source}`, { defaultValue: d.source }),
+    d.warehouse ? t("widget.warehouse", { warehouse: d.warehouse }) : null,
+  ].filter(Boolean)
+  return (
+    <div className="flex items-start justify-between gap-x-2">
+      <div className="flex min-w-0 flex-col">
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t(`widget.kinds.${d.kind}`, { defaultValue: d.kind })}
+        </Text>
+        <Text size="small" weight="plus" className="break-all font-mono">
+          {d.number}
+        </Text>
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {meta.join(", ")}
+        </Text>
+        {d.related.length > 0 ? (
+          <Text size="xsmall" className="text-ui-fg-subtle">
+            {t("widget.related", { numbers: d.related.map((r) => r.number).join(", ") })}
+          </Text>
+        ) : null}
+        {d.kind === "ZK" && d.status === "completed" ? (
+          <Text size="xsmall" className="text-ui-fg-subtle">
+            {t("widget.zkCompleted")}
+          </Text>
+        ) : null}
+        {d.kind === "FS" && d.status !== "canceled" ? (
+          <Text size="xsmall" className={d.ksefNumber ? "break-all font-mono text-ui-fg-subtle" : "text-ui-fg-muted"}>
+            {d.ksefNumber ? t("widget.ksef", { number: d.ksefNumber }) : t("widget.ksefWaiting")}
+          </Text>
+        ) : null}
+      </div>
+      <DocumentStatusBadge status={d.status} />
+    </div>
+  )
+}
+
+const ENTRY_TONE: Record<ReconcileEntryDto["state"], Tone> = { missing: "orange", status_differs: "orange", same: "green", only_local: "grey" }
+
+/** What Subiekt says about the order right now, against the plugin, with Link and Update. */
+function CheckResult({
+  result,
+  lang,
+  linking,
+  onLink,
+}: {
+  result: OrderCheckResponse
+  lang: string
+  linking: string | null
+  onLink: (e: ReconcileEntryDto) => void
+}) {
+  const { t } = useTranslation("subiekt")
+  const status = (v: string | null) => t(`documents.statuses.${v ?? "open"}`, { defaultValue: v ?? "" })
+  return (
+    <div className="flex flex-col gap-y-3 px-6 py-4">
+      <div className="flex items-center justify-between gap-x-2">
+        <Text size="small" weight="plus">
+          {t("widget.check.title")}
+        </Text>
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("widget.check.at", { time: fmtDateTime(result.checkedAt, lang) })}
+        </Text>
+      </div>
+      {result.entries.length === 0 ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("widget.check.nothing")}
+        </Text>
+      ) : (
+        result.entries.map((e) => {
+          const key = `${e.kind}|${e.number}`
+          const where =
+            e.state === "only_local"
+              ? t("widget.check.notReported")
+              : [t("widget.check.inSubiekt", { status: status(e.remoteStatus) }), e.issuedAt ? fmtDateTime(e.issuedAt, lang) : null].filter(Boolean).join(", ")
+          return (
+            <div key={key} className="flex flex-col gap-y-1">
+              <div className="flex items-start justify-between gap-x-2">
+                <div className="flex min-w-0 flex-col">
+                  <Text size="small" className="break-all font-mono">
+                    {e.number}
+                  </Text>
+                  <Text size="xsmall" className="text-ui-fg-muted">
+                    {where}
+                  </Text>
+                </div>
+                <ToneBadge tone={ENTRY_TONE[e.state]}>
+                  {e.state === "status_differs" ? t("widget.check.states.status_differs", { status: status(e.localStatus) }) : t(`widget.check.states.${e.state}`)}
+                </ToneBadge>
+              </div>
+              {e.kind === "ZK" && e.remoteStatus === "completed" ? (
+                <Text size="xsmall" className="text-ui-fg-subtle">
+                  {t("widget.zkCompleted")}
+                </Text>
+              ) : null}
+              {e.remoteStatus === "canceled" ? (
+                <Text size="xsmall" className="text-ui-fg-subtle">
+                  {t("widget.check.canceledThere")}
+                </Text>
+              ) : null}
+              {e.state === "missing" || e.state === "status_differs" ? (
+                <div className="flex flex-col gap-y-1">
+                  <div>
+                    <Button size="small" variant="secondary" isLoading={linking === key} onClick={() => onLink(e)}>
+                      <Link />
+                      {e.state === "missing" ? t("widget.check.link") : t("widget.check.update")}
+                    </Button>
+                  </div>
+                  <Text size="xsmall" className="text-ui-fg-muted">
+                    {e.state === "missing" ? t("widget.check.linkHint") : t("widget.check.updateHint")}
+                  </Text>
+                </div>
+              ) : null}
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
 /**
  * Order page, side column: the Subiekt documents of this order (ZK, WZ, FS,
  * PA with its KSeF number), the state of its calls to the bridge with the
@@ -46,6 +179,9 @@ const SubiektOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
   const send = useSubiektSendOrder(data.id)
   const issue = useSubiektIssueDocument(data.id)
   const retry = useSubiektRetry()
+  const check = useSubiektOrderCheck(data.id)
+  const link = useSubiektLinkDocument(data.id)
+  const [checked, setChecked] = useState<OrderCheckResponse | null>(null)
   const documents = q.data?.documents ?? []
   const tasks = q.data?.tasks ?? []
   const sales = q.data?.salesDocument
@@ -83,6 +219,24 @@ const SubiektOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
     try {
       await issue.mutateAsync(kind)
       toast.success(t("widget.issued"))
+    } catch (err) {
+      toast.error(t("toast.error", { error: errorMessage(err) }))
+    }
+  }
+
+  const onCheck = async () => {
+    try {
+      setChecked(await check.mutateAsync())
+    } catch (err) {
+      toast.error(t("toast.error", { error: errorMessage(err) }))
+    }
+  }
+
+  const onLink = async (e: ReconcileEntryDto) => {
+    try {
+      const r = await link.mutateAsync({ kind: e.kind, number: e.number })
+      setChecked(r.check)
+      toast.success(e.state === "missing" ? t("widget.check.linked", { number: e.number }) : t("widget.check.updated", { number: e.number }))
     } catch (err) {
       toast.error(t("toast.error", { error: errorMessage(err) }))
     }
@@ -147,22 +301,7 @@ const SubiektOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
           {documents.length > 0 ? (
             <div className="flex flex-col gap-y-2 px-6 py-4">
               {documents.map((d) => (
-                <div key={d.id} className="flex items-start justify-between gap-x-2">
-                  <div className="flex min-w-0 flex-col">
-                    <Text size="small" weight="plus" className="font-mono">
-                      {d.number}
-                    </Text>
-                    <Text size="xsmall" className="text-ui-fg-muted">
-                      {fmtDateTime(d.issuedAt, lang)}, {t(`documents.sources.${d.source}`, { defaultValue: d.source })}
-                    </Text>
-                    {d.kind === "FS" && d.status !== "canceled" ? (
-                      <Text size="xsmall" className={d.ksefNumber ? "break-all font-mono text-ui-fg-subtle" : "text-ui-fg-muted"}>
-                        {d.ksefNumber ? t("widget.ksef", { number: d.ksefNumber }) : t("widget.ksefWaiting")}
-                      </Text>
-                    ) : null}
-                  </div>
-                  <DocumentStatusBadge status={d.status} />
-                </div>
+                <DocumentLine key={d.id} d={d} lang={lang} />
               ))}
             </div>
           ) : inFlight ? null : (
@@ -221,7 +360,16 @@ const SubiektOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
             </div>
           ) : null}
 
-          {(!hasZk && !busy && !canceled && create?.status !== "failed") || (offerIssue && sales) ? (
+          {checked ? (
+            <CheckResult
+              result={checked}
+              lang={lang}
+              linking={link.isPending && link.variables ? `${link.variables.kind}|${link.variables.number}` : null}
+              onLink={(e) => void onLink(e)}
+            />
+          ) : null}
+
+          {!inFlight || (!hasZk && !busy && !canceled && create?.status !== "failed") || (offerIssue && sales) ? (
             <div className="flex flex-col gap-y-2 px-6 py-4">
               {offerIssue && sales ? (
                 <Text size="xsmall" className="text-ui-fg-muted">
@@ -247,7 +395,18 @@ const SubiektOrderWidget = ({ data }: DetailWidgetProps<AdminOrder>) => {
                     {t("widget.issuePa")}
                   </Button>
                 ) : null}
+                {!inFlight ? (
+                  <Button size="small" variant="secondary" isLoading={check.isPending} onClick={() => void onCheck()}>
+                    <MagnifyingGlass />
+                    {checked ? t("widget.check.again") : t("widget.check.button")}
+                  </Button>
+                ) : null}
               </div>
+              {!checked && !inFlight && (failed || (!hasZk && !canceled)) ? (
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  {t("widget.check.hint")}
+                </Text>
+              ) : null}
             </div>
           ) : null}
         </>

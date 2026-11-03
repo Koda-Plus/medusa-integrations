@@ -124,37 +124,37 @@ test("every coupon in one sentence, in English and in Polish", () => {
   const c = toCouponDto(percentForGroups, undefined, NOW)
   assert.equal(
     couponSentence(c, NAMES, translator(en), fmt, "pln"),
-    "15% off the whole order, for B2B, with the code JESIEN15, from 300 PLN, from 2026-10-01 until 2026-10-31, up to 100 uses, rule region.id is one of: reg_1.",
+    "15% off the whole order, with the code JESIEN15, from 2026-10-01 until 2026-10-31, for B2B, cart from 300 PLN gross, up to 100 uses in total, rule region.id is one of: reg_1.",
   )
   /* Polish copy is typeset: short words keep a no-break space to the next one. */
   const plText = couponSentence(c, NAMES, translator(pl as unknown as Record<string, unknown>), fmt, "pln").replace(/ /g, " ")
-  assert.ok(plText.startsWith("15% rabatu na całe zamówienie, dla grup: B2B, z kodem JESIEN15"))
+  assert.ok(plText.startsWith("15% rabatu na całe zamówienie, z kodem JESIEN15, od 2026-10-01 do 2026-10-31, dla grup: B2B"))
   const live = couponSentence(wizardCoupon({ ...BASE, kind: "percent_category", categoryIds: ["pcat_1"], mode: "automatic", limit: 1 }, { startsAt: null, endsAt: null }), NAMES, translator(en), fmt, "pln")
-  assert.equal(live, "15% off Kremy, for everyone, applied by itself, no code, with no end date, single use.")
+  assert.equal(live, "15% off Kremy, applied by itself, no code, for everyone, single use.")
 })
 
 test("the rules of real promotions read by name: a collection, delivery types, a sales channel, an amount off delivery", () => {
   const names = { ...NAMES, collections: { pcol_1: "Detal" }, shippingTypes: { sotype_k: "Kurier", sotype_p: "Paczkomat" }, salesChannels: { sc_1: "Sklep" } }
   const detal = toCouponDto({ id: "p1", code: "DETAL12", application_method: { type: "percentage", target_type: "items", allocation: "each", value: 12, target_rules: [{ attribute: "items.product.collection_id", operator: "in", values: ["pcol_1"] }] } }, undefined, NOW)
   assert.equal(detal.shape.otherRules, 0)
-  assert.equal(couponSentence(detal, names, translator(en), fmt, "pln"), "12% off products of the Detal collection, for everyone, with the code DETAL12, with no end date, no limit of uses.")
+  assert.equal(couponSentence(detal, names, translator(en), fmt, "pln"), "12% off the Detal collection, with the code DETAL12, for everyone.")
   assert.equal(reachesProduct(detal.shape, "prod_x", [], "pcol_1"), true)
   assert.equal(reachesProduct(detal.shape, "prod_x", [], "pcol_2"), false)
   const cod = toCouponDto({ id: "p2", code: "COD", is_automatic: true, application_method: { type: "fixed", target_type: "shipping_methods", value: 12.59, target_rules: [{ attribute: "shipping_methods.shipping_option.shipping_option_type_id", operator: "in", values: ["sotype_k", "sotype_p"] }] }, rules: [{ attribute: "sales_channel_id", operator: "in", values: ["sc_1"] }] }, undefined, NOW)
   assert.equal(cod.shape.kind, "fixed_shipping")
-  assert.equal(couponSentence(cod, names, translator(en), fmt, "pln"), "12.59 PLN off delivery: Kurier and Paczkomat, in the Sklep sales channel, for everyone, applied by itself, no code, with no end date, no limit of uses.")
+  assert.equal(couponSentence(cod, names, translator(en), fmt, "pln"), "12.59 PLN off delivery: Kurier and Paczkomat, applied by itself, no code, for everyone, in the Sklep sales channel.")
 })
 
 test("a store rule takes the place of a marker value, or follows the sentence", () => {
   const marker = toCouponDto({ id: "p7", code: "7DETAL6", application_method: { type: "percentage", target_type: "items", allocation: "each", value: 0.001, target_rules: [{ attribute: "items.product.collection_id", operator: "in", values: ["pcol_1"] }] } }, undefined, NOW)
   const names = { ...NAMES, collections: { pcol_1: "Detal" }, storeRules: { p7: { text: "Za każde 7 sztuk 1 gratis.", replacesDiscount: true }, p8: { text: "Nie łączy się z DETAL15", replacesDiscount: false } } }
-  assert.equal(couponSentence(marker, names, translator(en), fmt, "pln"), "Za każde 7 sztuk 1 gratis. For everyone, with the code 7DETAL6, with no end date, no limit of uses.")
+  assert.equal(couponSentence(marker, names, translator(en), fmt, "pln"), "Za każde 7 sztuk 1 gratis. With the code 7DETAL6, for everyone.")
   const plain = toCouponDto({ id: "p8", code: "DETAL12", application_method: { type: "percentage", target_type: "items", allocation: "each", value: 12, target_rules: [{ attribute: "items.product.collection_id", operator: "in", values: ["pcol_1"] }] } }, undefined, NOW)
-  assert.equal(couponSentence(plain, names, translator(en), fmt, "pln"), "12% off products of the Detal collection, for everyone, with the code DETAL12, with no end date, no limit of uses. The store's rule: Nie łączy się z DETAL15.")
+  assert.equal(couponSentence(plain, names, translator(en), fmt, "pln"), "12% off the Detal collection, with the code DETAL12, for everyone. The store's rule: Nie łączy się z DETAL15.")
 })
 
 test("options: defaults, and bad values fall back with a problem named", () => {
-  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], codePrefix: null, storeRules: null, codeInDescription: false, storeTerms: null, nobodyCustomerId: null, sendCode: null, previewCode: null, problems: [] })
+  assert.deepEqual(resolveOptions(undefined), { currencyCode: "pln", memberGroupIds: [], memberGroupsLabel: null, codePrefix: null, storeRules: null, codeInDescription: false, storeTerms: null, nobodyCustomerId: null, sendCode: null, previewCode: null, codeMailDelivery: null, orderRevenue: null, codeLink: false, timeZone: null, problems: [] })
   const o = resolveOptions({ currencyCode: "euro", codePrefix: "to long prefix!", memberGroupIds: ["ok_1", 5 as unknown as string] })
   assert.equal(o.currencyCode, "pln")
   assert.equal(o.codePrefix, null)
@@ -173,7 +173,7 @@ test("the sentence for the customer herself leaves out who else it is for and th
   const names = { ...NAMES, customers: { cus_1: "Salon Anna", cus_2: "Salon Beata" } }
   const admin = couponSentence(c, names, translator(en), fmt, "pln")
   assert.ok(admin.includes("Salon Anna") && admin.includes("CB-SALON"))
-  assert.equal(couponSentence(c, names, translator(en), fmt, "pln", { forCustomer: true }), "10% off the whole order, with no end date, single use.")
+  assert.equal(couponSentence(c, names, translator(en), fmt, "pln", { forCustomer: true }), "10% off the whole order, single use.")
 })
 
 test("uses: orders found by the reads count when Medusa's own counter is lower", () => {

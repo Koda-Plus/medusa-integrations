@@ -68,6 +68,8 @@ test("documents of the API answer: ids as text, amounts as numbers, KSeF errors 
     govVerificationLink: null,
     govLink: null,
     govCorrectedNumber: null,
+    emailStatus: null,
+    sentTime: null,
   })
   assert.equal(toRemoteDocument({ number: "x" }), null)
   assert.equal(toRemoteDocument(null), null)

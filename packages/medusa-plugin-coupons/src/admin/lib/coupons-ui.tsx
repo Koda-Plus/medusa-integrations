@@ -1,16 +1,30 @@
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Text, clx } from "@medusajs/ui"
 import type { CouponDto, CouponStatus } from "../../modules/coupons/lib/contract"
 import { usageOf } from "../../modules/coupons/lib/code-mail"
-import type { SentenceFormat } from "./coupons-sentence"
+import { edgeParts } from "../../modules/coupons/lib/when"
+import { storeTimeZone } from "./coupons-zone"
+import type { CouponFact, SentenceFormat } from "./coupons-sentence"
 import { ToneBadge, type Tone } from "./coupons-blocks"
 
-/** Money and dates in the admin's language. */
-export function useFormat(): SentenceFormat & { lang: string; number: (n: number) => string } {
+/** A form day (YYYY-MM-DD) as a short date in the admin's language. */
+export function dayLabel(day: string, lang: string): string {
+  const [y, m, d] = day.split("-").map(Number)
+  return new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d, 12)))
+}
+
+/** Money and dates in the admin's language, days and times in the store's zone. */
+export function useFormat(): SentenceFormat & { lang: string; number: (n: number) => string; zone: string | undefined } {
   const { i18n } = useTranslation("coupons")
   const lang = (i18n.language || "en").startsWith("pl") ? "pl-PL" : "en-GB"
+  const zone = storeTimeZone()
   return {
+    zone,
+    edge: (iso: string, edge: "start" | "end") => {
+      const parts = edgeParts(iso, edge, zone)
+      return parts ? { date: dayLabel(parts.day, lang), time: parts.time } : { date: iso, time: null }
+    },
     lang,
     money: (n: number, currency: string) => {
       try {
@@ -19,7 +33,7 @@ export function useFormat(): SentenceFormat & { lang: string; number: (n: number
         return `${(n || 0).toFixed(2)} ${(currency || "").toUpperCase()}`
       }
     },
-    date: (iso: string) => new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso)),
+    date: (iso: string) => new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", year: "numeric", timeZone: zone }).format(new Date(iso)),
     number: (n: number) => new Intl.NumberFormat(lang).format(n || 0),
   }
 }
@@ -97,6 +111,51 @@ export function UsageCell({ c, nobody }: { c: CouponDto; nobody: string | null |
       <Text size="xsmall" className="text-ui-fg-muted">
         {w.details}
       </Text>
+    </div>
+  )
+}
+
+/** One field of the side panel: its codes (what it adds up with or never goes with) open on demand, as chips. */
+function FactRow({ fact }: { fact: CouponFact }) {
+  const { t } = useTranslation("coupons")
+  const [open, setOpen] = useState(false)
+  const codes = fact.codes ?? []
+  return (
+    <div className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-x-3 px-3 py-2">
+      <Text size="small" className="text-ui-fg-subtle">
+        {fact.label}
+      </Text>
+      <div className="flex min-w-0 flex-col gap-y-1.5">
+        <Text size="small">{fact.value}</Text>
+        {codes.length ? (
+          <>
+            <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="self-start text-ui-fg-interactive txt-compact-small hover:text-ui-fg-interactive-hover">
+              {open ? t("facts.hideCodes") : t("facts.showCodes", { count: codes.length })}
+            </button>
+            {open ? (
+              <div className="flex flex-wrap gap-1">
+                {codes.map((code) => (
+                  <span key={code} className="rounded-md border border-ui-border-base bg-ui-bg-subtle px-1.5 py-0.5 font-mono txt-compact-xsmall text-ui-fg-subtle">
+                    {code}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** The coupon in full, field by field (couponFacts): the short sentence above it leaves details out. */
+export function CouponFactsList({ facts }: { facts: CouponFact[] }) {
+  if (!facts.length) return null
+  return (
+    <div className="flex flex-col divide-y rounded-md border border-ui-border-base">
+      {facts.map((f) => (
+        <FactRow key={f.key} fact={f} />
+      ))}
     </div>
   )
 }

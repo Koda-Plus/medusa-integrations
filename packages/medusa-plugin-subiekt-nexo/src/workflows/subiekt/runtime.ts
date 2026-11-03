@@ -216,6 +216,44 @@ export function isRunning(kind: RunKind): boolean {
   return runningSet().has(kind)
 }
 
+interface LockTransaction {
+  raw(sql: string, bindings: unknown[]): Promise<unknown>
+  commit(): Promise<unknown>
+  rollback(): Promise<unknown>
+  isCompleted(): boolean
+}
+
+/**
+ * Runs `fn` unless another process (the server and the worker, two
+ * instances) holds the same lock; then returns `null`. A transaction-scoped
+ * advisory lock (`pg_try_advisory_xact_lock`) on ONE connection held for the
+ * whole run, so lock and unlock never land on different pooled connections.
+ * The work itself uses the usual services. Without a raw connection (some test
+ * containers) the in-process guard and the unique indexes still hold.
+ */
+export async function withDatabaseLock<T>(scope: Scope, key: string, fn: () => Promise<T>): Promise<T | null> {
+  let knex: { transaction?: () => Promise<LockTransaction> } | null = null
+  try {
+    knex = (scope as { resolve<K>(k: string): K }).resolve<{ transaction?: () => Promise<LockTransaction> }>(ContainerRegistrationKeys.PG_CONNECTION)
+  } catch {
+    knex = null
+  }
+  if (!knex || typeof knex.transaction !== "function") return fn()
+  let trx: LockTransaction
+  try {
+    trx = await knex.transaction()
+  } catch {
+    return fn()
+  }
+  try {
+    const res = (await trx.raw("select pg_try_advisory_xact_lock(hashtext(?)) as got", [key])) as { rows?: Array<{ got?: unknown }> }
+    if (res?.rows?.[0]?.got !== true) return null
+    return await fn()
+  } finally {
+    if (!trx.isCompleted()) await trx.commit().catch(() => undefined)
+  }
+}
+
 /** Runs `fn` unless the same kind already runs in this process; then returns `null`. */
 export async function exclusive<T>(kind: RunKind, fn: () => Promise<T>): Promise<T | null> {
   const set = runningSet()

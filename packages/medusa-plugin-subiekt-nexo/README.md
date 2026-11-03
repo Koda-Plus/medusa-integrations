@@ -41,11 +41,12 @@ The bridge usually sits behind a Cloudflare Tunnel, so the Subiekt machine opens
 - **Write safety.** Every write added in 0.2.0 (prices, new products, sales documents, new contractors) has two switches: its option in `medusa-config.ts` (false wins, the admin cannot override it) and a writer a person arms in the admin, recorded with who and when. All of them ship off.
 - **Plan first.** Prices and new products are computed as a plan (what changes, from what to what) and shown in the admin before anything is written. An incomplete read from the bridge plans nothing. Each run applies at most `maxPriceChangesPerRun` prices and `maxProductsPerRun` products, reads every item again right before it writes, skips what changed meanwhile, and quarantines an item that failed three runs in a row until a person releases it.
 - **Exactly once.** One task row per order and operation before anything goes to the network, claimed atomically. The bridge writes the order tag `[medusa:order_...]` into every document and looks for it before it creates one, under the order lock and again under the Sfera lock. An unclear answer (a timeout) becomes "Answer unclear" and the next attempt asks the bridge first.
+- **Safety net for lost events.** Every 10 minutes the `subiekt-catch-up` job looks at recent orders (10 minutes to 7 days old by default) and queues the ZK task of every order that has neither a task nor a ZK, with the same payment rule as `order.placed`; a task waiting for a payment whose capture event was lost is released. Never older than the first ZK task the store ever had, so configuring the plugin late does not send old orders.
 - **Outbox with retries.** Every call to the bridge is a row first and a request second, retried with backoff for about two and a half days, so a bridge machine switched off over a weekend loses nothing. A task fails for good only on a non-retryable error, and then it waits in the admin with a **Send again** button.
 - **Setup guide in the admin** ("Panel" | "Setup guide", `?view=guide`), in English and Polish: what you need, how the parts talk, twelve steps from an empty Windows machine to production with live states, a go-live checklist ticked from the live status, and troubleshooting from real failure modes. The same guide as Markdown: [docs/guide-en.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-en.md), [docs/guide-pl.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-pl.md).
 - **Bridge diagnostics**: bridge, contract, nexo SDK and database versions, the Subiekt licence state, round trip, clock skew (signatures fail beyond five minutes, the admin warns from one), the result of the last signed request, the last event, what the bridge can do and what it cannot yet, with the reason and the setting to change.
-- **Admin page** with the connection, the writers, the stock plan, the products and prices plan with filters and quarantine, the queue, documents (ZK, WZ, FS, PA with KSeF numbers) and the history of background runs. "Running in production" cards from the `references` option.
-- **Order widget**: the ZK, WZ and FS or PA of the order with the KSeF number, the contractor Subiekt got, warnings, **Send to Subiekt now** and **Issue invoice** or **Issue receipt**.
+- **Admin page** with the connection, the writers, the stock plan, the products and prices plan with filters and quarantine, the queue, documents (ZK, WZ, FS, PA with KSeF numbers), each with the products of its order (thumbnails, a dialog with every line and the amount breakdown), and the history of background runs. "Running in production" cards from the `references` option.
+- **Order widget**: the ZK, WZ and FS or PA of the order (kind, number, date, warehouse, the document it came from, realized or canceled, the KSeF number), the contractor Subiekt got, warnings, **Send to Subiekt now**, **Issue invoice** or **Issue receipt**, and **Check in Subiekt**: what Subiekt has for the order right now against what Medusa recorded, with **Link** for a document only Subiekt has (recorded instead of creating a second one, its queue task settled) and **Update status** when Subiekt realized or canceled it.
 - **Safe stock sync.** Ambiguous matches (one EAN on two products, one inventory item pulled two ways) are reported and never written. Products missing from a reading are never zeroed. Kit components are matched by their own SKU. `stockDryRun` records the plan without writing.
 - **Signed both ways.** HMAC-SHA256 over timestamp, method, path and raw body, with secret rotation and a 5 minute window. Optional Cloudflare Access service token.
 - **Demo mode.** A simulated bridge inside Medusa: ZK numbers in seconds, a WZ about three minutes later, FS or PA after it with a KSeF number two minutes later, contractors by NIP, stock and prices computed from your catalog (with price levels and a few EAN conflicts), health with every capability and a small clock skew. Writers armed in the demo only simulate.
@@ -133,6 +134,12 @@ Products and prices (0.2.0):
 - `createMissingProducts` (default `false`, `true` in demo mode): hard switch of the product creator. Subiekt products meant for the online shop ("Sklep internetowy"), with a price in the level and missing in Medusa become draft products with one variant.
 - `maxProductsPerRun` (default `20`).
 
+Safety net (0.3.0):
+
+- `catchUpEnabled` (default `true`): run the `subiekt-catch-up` job every 10 minutes.
+- `catchUpMinAgeMinutes` (default `10`, at most 1440): orders younger than this are left to the `order.placed` subscriber.
+- `catchUpMaxAgeDays` (default `7`, at most 60): orders older than this are never caught up.
+
 Admin:
 
 - `references`: stores that run the integration in production, shown as cards under the counters and at the end of the guide: `[{ name, url, description?, metrics?: [{ label, value }], links?: [{ label, url }], soon? }]`, every text either a string or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped.
@@ -159,7 +166,7 @@ The full guide with live states is in the admin (`/app/subiekt?view=guide`) and 
 ## The order lifecycle
 
 1. `order.placed`: the order gets an `order.create` task. Due at once for cash on delivery, bank transfer, trade credit and manual payments; **waiting** for prepaid providers until `payment.captured`.
-2. The queue sends it right away (the scheduled job every minute is the safety net and the retry clock). The bridge matches the lines, finds or creates the contractor for a company buyer, and creates the ZK; the plugin stores it, writes `subiekt_zk_number` into the order metadata and emits `subiekt.document_issued`.
+2. The queue sends it right away (the scheduled job every minute is the retry clock). If the event never reached the plugin, the `subiekt-catch-up` job queues the task within about 10 minutes, with the same payment rule. The bridge matches the lines, finds or creates the contractor for a company buyer, and creates the ZK; the plugin stores it, writes `subiekt_zk_number` into the order metadata and emits `subiekt.document_issued`.
 3. The warehouse issues the WZ from the ZK in Subiekt. The bridge watcher announces it in the event feed (and nudges Medusa through `POST /hooks/subiekt`); the plugin writes `subiekt_wz_number` and, with `fulfillOnWz`, fulfills the order.
 4. With `salesDocument` set and the documents writer armed, the WZ (or the ZK, with `salesDocumentAfter: "zk"`) queues the `order.document` task: the bridge issues the FS or PA realizing the WZ (or the ZK), the plugin writes `subiekt_sales_document_number` and `subiekt_sales_document_kind`. When Subiekt has sent the e-invoice, the bridge publishes `document.updated` with the KSeF number; the plugin writes `subiekt_ksef_number` and emits `subiekt.document_updated`.
 5. `order.canceled`: if the ZK was never attempted, the queued create is simply canceled; otherwise the bridge cancels the ZK, or refuses with `document_locked` once a WZ or a sales document exists.
@@ -196,12 +203,14 @@ Koda Plus provides a production bridge for Subiekt nexo PRO: a Windows service o
 
 - `GET /admin/subiekt`: connection, bridge diagnostics, writers, counters, the last run of each kind, references. Reads the database only.
 - `POST /admin/subiekt/check`: `GET /v1/health` now.
-- `POST /admin/subiekt/sync` with `{ "what": "stock" | "events" | "tasks" | "products" }`: run a job now (202, background).
+- `POST /admin/subiekt/sync` with `{ "what": "stock" | "events" | "tasks" | "products" | "catchup" }`: run a job now (202, background).
 - `POST /admin/subiekt/writers` with `{ "writer": "prices" | "products" | "documents" | "contractors", "armed": true | false }`: arm or disarm a writer (recorded with the admin user).
 - `GET /admin/subiekt/products?kind=price|create&status=&q=`: the product and price plan; `POST /admin/subiekt/products/release` with `{ "id" }`: release a quarantined item.
 - `GET /admin/subiekt/tasks?filter=attention|open|done|all&q=`, `POST /admin/subiekt/tasks/:id/retry`.
 - `GET /admin/subiekt/documents?kind=ZK|WZ|FS|PA&q=`, `GET /admin/subiekt/runs?kind=`.
 - `GET /admin/subiekt/orders/:id`, `POST /admin/subiekt/orders/:id/send`, `POST /admin/subiekt/orders/:id/documents` with `{ "kind"?: "fs" | "pa" }` (needs `salesDocument` other than `none`).
+- `POST /admin/subiekt/orders/:id/check`: `GET /v1/orders/{id}` now, compared with the plugin tables (`missing`, `status_differs`, `same`, `only_local` per document). Reads only.
+- `POST /admin/subiekt/orders/:id/link` with `{ "kind", "number" }`: asks the bridge again and records that document as Subiekt reports it (new, or its new status), settling the `order.create` or `order.document` task waiting for it. Writes nothing in Subiekt.
 - `POST /hooks/subiekt`: the bridge webhook. Public, signed.
 
 There is no DELETE route: nothing in the admin removes data.
@@ -263,7 +272,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the backoff, the bridge client, the contract and its examples, the HMAC signatures and their cross-language test vectors, the order payload, the payment routing, the NIP sources and checksum, the stock match and plan, the products and prices plan, the writers and the sales documents, the setup guide, the references option, the demo bridge and the `koda.integration/1` contract, without a network, a bridge or a build. Running the tests needs Node.js 22.6+ (they load the TypeScript sources directly). The contract in [`contract/`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract) is the source of truth for the bridge: change it there first, and keep it additive within a major version.
+`npm test` covers the backoff, the bridge client, the contract and its examples, the HMAC signatures and their cross-language test vectors, the order payload, the payment routing, the NIP sources and checksum, the stock match and plan, the products and prices plan, the writers and the sales documents, the safety net and the order check against Subiekt, the setup guide, the references option, the demo bridge and the `koda.integration/1` contract, without a network, a bridge or a build. Running the tests needs Node.js 22.6+ (they load the TypeScript sources directly). The contract in [`contract/`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract) is the source of truth for the bridge: change it there first, and keep it additive within a major version.
 
 ## Uninstall
 
@@ -293,7 +302,11 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 ## Changelog
 
-### 0.2.2 (unreleased)
+### 0.3.0 (unreleased)
+
+A safety net job for orders the `order.placed` subscriber missed (`catchUpEnabled`, `catchUpMinAgeMinutes`, `catchUpMaxAgeDays`), **Check in Subiekt** with **Link** and **Update status** on the order page, and the products of each order in the queue and documents lists. No migration, no change to the bridge contract. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/CHANGELOG.md).
+
+### 0.2.2 (2026-10-18)
 
 The shared admin kit 1.0.9, with no change to the sync, the bridge contract or the tables: white label for host apps (`window.__KODA_KIT__ = { whiteLabel: true }`), and the order products cell, loaders and page slots available to the admin. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/CHANGELOG.md).
 

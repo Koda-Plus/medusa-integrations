@@ -13,7 +13,11 @@
  *             with the PDF attached or not. Needs the e-mails writer armed.
  *   reminder  an unpaid proforma or VAT invoice e-mailed again (the API has no
  *             reminder call and no field for a custom text), at most once a
- *             day per document. Needs the e-mails writer armed.
+ *             day per document. Needs the e-mails writer armed. Since 0.4.0
+ *             only when Medusa AND Fakturownia (read live) say unpaid
+ *             (`lib/reminder-gate.ts`); a refusal is kept in the history with
+ *             its reason, a reminder that went out with the amount left to
+ *             pay according to Fakturownia.
  *
  * A request that got no answer may have sent the e-mail, so it is never
  * repeated by the plugin: the history says so and a person decides.
@@ -26,11 +30,27 @@ import { EMAIL_CLAIM_STALE_MS, REMINDER_MIN_INTERVAL_HOURS } from "../../modules
 import { canRemind, demoSubject, maskEmail, maskEmailsIn, parseRecipients } from "../../modules/fakturownia/lib/email"
 import { toDate, type DocumentRow, type EmailRow } from "../../modules/fakturownia/lib/dto"
 import { describeError, FakturowniaApiError } from "../../modules/fakturownia/lib/errors"
+import { paymentFacts } from "../../modules/fakturownia/lib/document"
+import { toRemoteDocument } from "../../modules/fakturownia/lib/exactly-once"
+import { money } from "../../modules/fakturownia/lib/numbers"
+import { reminderGate, reminderRefusalText, type ReminderGateDecision } from "../../modules/fakturownia/lib/reminder-gate"
+import { isUnpaid } from "../../modules/fakturownia/lib/unpaid"
+import type { ReminderRefusal } from "../../modules/fakturownia/lib/contract"
 import { isWaitingForKsef } from "../../modules/fakturownia/lib/status"
 import type { DocumentPatch } from "../../modules/fakturownia/lib/store"
 import { ActionError, clientFor, fakturowniaService, getDocument, isArmed, listDocuments, loadOrder, patchDocument, storeFor, type Scope } from "./runtime"
 
 export type EmailKind = "auto" | "manual" | "reminder"
+
+/** A reminder the gate refused (0.4.0): 409 with the reason for the admin. */
+export class ReminderGateError extends ActionError {
+  readonly reason: ReminderRefusal
+  constructor(reason: ReminderRefusal, message: string) {
+    super(409, message)
+    this.name = "ReminderGateError"
+    this.reason = reason
+  }
+}
 
 /** The buyer's address of a document, masked, for the history. Null when it cannot be read. */
 async function buyerAddress(scope: Scope, row: DocumentRow): Promise<string | null> {
@@ -48,7 +68,19 @@ async function buyerAddress(scope: Scope, row: DocumentRow): Promise<string | nu
 export async function recordEmail(
   scope: Scope,
   row: DocumentRow,
-  entry: { kind: EmailKind; status: "sent" | "failed" | "refused"; recipient: string | null; cc?: string | null; withPdf: boolean; error?: string | null; requestedBy: string | null },
+  entry: {
+    kind: EmailKind
+    status: "sent" | "failed" | "refused"
+    recipient: string | null
+    cc?: string | null
+    withPdf: boolean
+    error?: string | null
+    requestedBy: string | null
+    /** A reminder: what is left to pay according to Fakturownia. */
+    amount?: number | null
+    /** A refused reminder: why (`ReminderRefusal`). */
+    reason?: string | null
+  },
 ): Promise<EmailRow> {
   const svc = fakturowniaService(scope)
   const o = svc.getOptions()
@@ -64,7 +96,38 @@ export async function recordEmail(
     subject: row.demo ? demoSubject(row.kind, row.number, entry.kind, o.lang) : null,
     error: entry.error ? svc.mask(maskEmailsIn(entry.error)).slice(0, 1000) : null,
     requested_by: entry.requestedBy,
+    amount: entry.amount ?? null,
+    reason: entry.reason ?? null,
   } as never)) as unknown as EmailRow
+}
+
+/**
+ * The gate of a reminder (0.4.0): Medusa (the plugin's record and the
+ * order's captured payments) and Fakturownia, read live, must both say
+ * unpaid. Demo mode reads the simulated document: its recorded amount, nothing
+ * paid.
+ */
+export async function reminderDecision(scope: Scope, row: DocumentRow): Promise<ReminderGateDecision> {
+  const svc = fakturowniaService(scope)
+  const o = svc.getOptions()
+  let medusaUnpaid = isUnpaid(row)
+  if (medusaUnpaid) {
+    const order = await loadOrder(scope, row.order_id).catch(() => null)
+    if (order && paymentFacts(order.payment_collections ?? [], money(order.total), o.codProviders).captured) medusaUnpaid = false
+  }
+  const recordedGross = row.total_gross === null || row.total_gross === undefined ? null : Number(row.total_gross)
+  if (!medusaUnpaid) return reminderGate({ medusaUnpaid, remote: null, recordedGross })
+  let remote: { gross: number | null; paid: number | null } | null = null
+  if (row.demo) remote = { gross: recordedGross, paid: 0 }
+  else {
+    try {
+      const doc = toRemoteDocument(await clientFor(svc).getInvoice(String(row.fakturownia_id), ["id", "price_gross", "paid"]))
+      remote = doc ? { gross: doc.gross, paid: doc.paid } : null
+    } catch {
+      remote = null
+    }
+  }
+  return reminderGate({ medusaUnpaid, remote, recordedGross })
 }
 
 /** The newest reminder that went out for a document. */
@@ -91,13 +154,17 @@ export interface SendEmailResult {
   message: string | null
   email: EmailRow
   row: DocumentRow
+  /** A reminder: what is left to pay according to Fakturownia (0.4.0). */
+  outstanding?: number | null
 }
 
 /**
  * "Send by e-mail" and "Send a reminder" from the admin. Throws
  * `ActionError` for what a person must fix first (the writer is off, a wrong
- * address, a reminder sent less than a day ago); Fakturownia's own refusals
- * (no KSeF number yet, no buyer e-mail) come back as `refused`, recorded.
+ * address, a reminder sent less than a day ago, a reminder the gate refuses:
+ * `ReminderGateError`, recorded in the history with its reason);
+ * Fakturownia's own refusals (no KSeF number yet, no buyer e-mail) come back
+ * as `refused`, recorded.
  */
 export async function sendDocumentEmail(scope: Scope, documentId: string, input: SendEmailInput): Promise<SendEmailResult> {
   const svc = fakturowniaService(scope)
@@ -118,10 +185,18 @@ export async function sendDocumentEmail(scope: Scope, documentId: string, input:
   const now = new Date()
   const store = storeFor(scope)
   let reminderTaken: Date | null = null
+  let decision: ReminderGateDecision | null = null
   if (input.kind === "reminder") {
     if (row.paid || (row.kind !== "proforma" && row.kind !== "vat")) throw new ActionError(409, "A reminder is for an unpaid proforma or VAT invoice.")
     const last = await lastReminder(scope, row.id)
     if (!canRemind(toDate(last?.created_at), now, REMINDER_MIN_INTERVAL_HOURS)) throw new ActionError(409, "A reminder of this document went out less than a day ago.")
+    /* Medusa and Fakturownia must both say unpaid; the refusal is kept with its reason. */
+    decision = await reminderDecision(scope, row)
+    if (!decision.send) {
+      const text = reminderRefusalText(decision, row.currency)
+      await recordEmail(scope, row, { kind: "reminder", status: "refused", recipient: null, withPdf: input.attachPdf ?? o.emailPdf, requestedBy: input.actorId, error: text, reason: decision.reason })
+      throw new ReminderGateError(decision.reason, text)
+    }
     /* Taken atomically: two clicks (two tabs, two admins) send one reminder. */
     if (!(await store.claimStamp(row.id, "reminder_at", now, REMINDER_MIN_INTERVAL_HOURS * 3600 * 1000))) {
       throw new ActionError(409, "A reminder of this document is being sent or went out less than a day ago.")
@@ -134,19 +209,20 @@ export async function sendDocumentEmail(scope: Scope, documentId: string, input:
   }
   const withPdf = input.attachPdf ?? o.emailPdf
   const recipient = recipients.valid.length > 0 ? recipients.valid.map(maskEmail).join(", ") : await buyerAddress(scope, row)
-  const base = { kind: input.kind as EmailKind, recipient, withPdf, requestedBy: input.actorId }
+  const outstanding = decision?.send ? decision.outstanding : null
+  const base = { kind: input.kind as EmailKind, recipient, withPdf, requestedBy: input.actorId, amount: outstanding }
 
   if (row.demo) {
     const email = await recordEmail(scope, row, { ...base, status: "sent" })
     const updated = await patchDocument(svc, row.id, { emailed_at: now })
-    return { outcome: "sent", message: null, email, row: updated }
+    return { outcome: "sent", message: null, email, row: updated, outstanding }
   }
   try {
     await clientFor(svc).sendByEmail(row.fakturownia_id, { to: recipients.valid, pdf: withPdf })
     const email = await recordEmail(scope, row, { ...base, status: "sent" })
     const updated = await patchDocument(svc, row.id, { emailed_at: now })
     svc.getLogger().info(`[fakturownia] ${row.number ?? row.id} e-mailed (${input.kind}) to ${recipient ?? "the buyer"}`)
-    return { outcome: "sent", message: null, email, row: updated }
+    return { outcome: "sent", message: null, email, row: updated, outstanding }
   } catch (err) {
     const d = describeError(err)
     const message = svc.mask(maskEmailsIn(d.message)).slice(0, 1000)

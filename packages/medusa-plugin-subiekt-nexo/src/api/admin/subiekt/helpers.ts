@@ -1,7 +1,7 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
 import type SubiektModuleService from "../../../modules/subiekt/service"
-import { CONTRACT_VERSION, EVENTS_SCHEDULE, PLUGIN_VERSION, PRODUCTS_SCHEDULE, STOCK_SCHEDULE, TASKS_SCHEDULE } from "../../../modules/subiekt/lib/constants"
+import { CATCH_UP_SCHEDULE, CONTRACT_VERSION, EVENTS_SCHEDULE, PLUGIN_VERSION, PRODUCTS_SCHEDULE, STOCK_SCHEDULE, TASKS_SCHEDULE } from "../../../modules/subiekt/lib/constants"
 import type { BridgeHealth, DiagnosticsDto, RunDto, RunKind, SignatureState, SubiektStatusResponse } from "../../../modules/subiekt/lib/contract"
 import { capabilitiesOf, isLegacy, missingCapabilities } from "../../../modules/subiekt/lib/capabilities"
 import { iso, toRunDto, type ConnectionRow, type RunRow } from "../../../modules/subiekt/lib/dto"
@@ -67,7 +67,7 @@ export async function buildStatus(svc: SubiektModuleService): Promise<SubiektSta
   ])
 
   const lastRuns: Partial<Record<RunKind, RunDto>> = {}
-  for (const kind of ["stock", "events", "tasks", "health", "products"] as RunKind[]) {
+  for (const kind of ["stock", "events", "tasks", "health", "products", "catchup"] as RunKind[]) {
     const rows = (await svc.listSubiektSyncRuns({ kind, demo } as never, { take: 1, order: { started_at: "DESC" } } as never)) as unknown as RunRow[]
     if (rows[0]) lastRuns[kind] = toRunDto(rows[0])
   }
@@ -101,6 +101,7 @@ export async function buildStatus(svc: SubiektModuleService): Promise<SubiektSta
       nipSources: o.nipSources,
       salesDocument: o.salesDocument,
       salesDocumentAfter: o.salesDocumentAfter,
+      catchUp: { enabled: o.catchUpEnabled, minAgeMinutes: o.catchUpMinAgeMinutes, maxAgeDays: o.catchUpMaxAgeDays },
       cfAccess: Boolean(o.cfAccessClientId && o.cfAccessClientSecret),
     },
     connection: {
@@ -118,7 +119,7 @@ export async function buildStatus(svc: SubiektModuleService): Promise<SubiektSta
     counts: { waiting, pending, running, unknown, failed, succeeded24h, documents, zk, wz, fs, pa },
     lastRuns,
     running: runningKinds(),
-    schedules: { tasks: TASKS_SCHEDULE, events: EVENTS_SCHEDULE, stock: STOCK_SCHEDULE, products: PRODUCTS_SCHEDULE },
+    schedules: { tasks: TASKS_SCHEDULE, events: EVENTS_SCHEDULE, stock: STOCK_SCHEDULE, products: PRODUCTS_SCHEDULE, catchup: o.catchUpEnabled ? CATCH_UP_SCHEDULE : null },
     references: o.references,
   }
 }

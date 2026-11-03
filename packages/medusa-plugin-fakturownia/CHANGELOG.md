@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+### Added
+
+- **Stuck without a KSeF number.** A VAT invoice or correction still without a KSeF number `ksefStuckAfterDays` days after issue (new option, default 3, `0` turns it off) goes to "Needs attention" with its exact state: never sent to KSeF, on its way, offline, or a KSeF error with its messages. Only on an account where KSeF numbered a document of the mode before; a document never sent to KSeF counts only for a company buyer (a "companies only" sending mode leaves consumer invoices outside KSeF on purpose); up to 60 days after issue.
+- **Late reads.** Past the 14 day status window, such documents are read again until 60 days after issue (up to 20 per pass, each at most once an hour, the least recently read first), so a number that comes late clears the item by itself. Documents that are fine are read as before.
+- **Numbered, but the buyer never got it.** The status read takes Fakturownia's own `email_status` and `sent_time` (an account may e-mail the document itself once KSeF numbers it). A numbered document that neither Fakturownia nor the plugin e-mailed `notEmailedAfterHours` after the number appeared (new option, default 24, `0` turns it off) goes to "Needs attention", with **Send to the buyer** on the row (`POST /admin/fakturownia/documents/:id/email`, the e-mails writer armed). Only when `sendByEmail` is on or Fakturownia was seen e-mailing a document of the mode; such documents are read at most once an hour until Fakturownia sends them (for two days after the number while it was never seen e-mailing, to find out whether it does).
+- The order line of the koda.integration/1 contract says both (orange): "No KSeF number since ..." and "Has a KSeF number, the buyer did not get it"; `documents_attention` counts them.
+- `DocumentDto`: `watch` (why the document is under "Needs attention" without a failure), `ksefNumberAt`, `remoteEmailStatus`, `remoteSentAt`. `StatusResponse.options`: `ksefStuckAfterDays`, `notEmailedAfterHours`. `EmailDto.amount`.
+- Migration `Migration20261102120000_fakturownia` (columns only, idempotent): `ksef_number_at` (filled for documents numbered before), `remote_email_status`, `remote_sent_at`, `remote_email_checked_at` on the document table; `amount` and `reason` on the e-mail history.
+
+### Changed
+
+- **The reminder gate.** "Send a reminder" goes out only when Medusa (the plugin's record and the order's captured payments) and Fakturownia, read live, both say the document is unpaid (`reminderGate` in `lib/reminder-gate.ts`, a pure function). Fakturownia paid while Medusa is not, Medusa paid, or Fakturownia not answering: nothing is sent, 409 with `reason` (`paid_in_fakturownia`, `paid_in_medusa`, `fakturownia_unreachable`), the refusal kept in the history (`reason`) and shown in "Unpaid documents" (`lastRefusal` of `GET /admin/fakturownia/reminders`); the daily claim is not taken, so it may be tried again at once. A reminder that went out records what is left to pay according to Fakturownia (`price_gross` minus `paid`) in the history (`amount`) and the answer (`outstanding`). Fakturownia's e-mail itself carries the account's template: its API takes no text.
+
 ## 0.3.2 (2026-10-24)
 
 ### Added
