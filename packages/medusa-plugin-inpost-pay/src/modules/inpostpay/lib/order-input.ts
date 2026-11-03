@@ -21,7 +21,7 @@ export interface ParsedBuyer {
 export interface ParsedOrder {
   basketId: string
   buyer: ParsedBuyer
-  delivery: { type: DeliveryType; point: string | null }
+  delivery: { type: DeliveryType; point: string | null; cod: boolean }
   payment: { status: string | null; type: string | null }
   expectedTotalMinor: number | null
 }
@@ -51,6 +51,12 @@ export function parseInpostOrder(body: Record<string, any>): ParsedOrder {
   if (type === "APM" && !point) throw new InpostPayFlowError(400, "DELIVERY_POINT_INVALID", "delivery.delivery_point is required for APM")
   const [first, ...rest] = text(da?.name).split(/\s+/).filter(Boolean)
   const paymentType = text(details.payment_type, 40)
+  const codes = (Array.isArray(delivery.delivery_options) ? delivery.delivery_options : []).map((d: { delivery_code_value?: unknown } | null) => text(d?.delivery_code_value, 10).toUpperCase())
+  const cod = paymentType === "CASH_ON_DELIVERY" || codes.includes("COD")
+  const city = text(da?.city ?? ca.city, 100)
+  const postal = text(da?.postal_code ?? ca.postal_code, 20)
+  /* A courier needs a whole address: an order the courier cannot deliver is refused now, not at the label. */
+  if (type === "COURIER" && (!addressLine || !city || !postal)) throw new InpostPayFlowError(400, "DELIVERY_ADDRESS_INVALID", "A courier delivery needs delivery.delivery_address with address, city and postal_code")
   return {
     basketId,
     buyer: {
@@ -60,15 +66,15 @@ export function parseInpostOrder(body: Record<string, any>): ParsedOrder {
       phone: phone ? `${phone.country_prefix}${phone.phone}` : null,
       address: {
         address_1: addressLine || "-",
-        city: text(da?.city ?? ca.city, 100) || "-",
-        postal_code: text(da?.postal_code ?? ca.postal_code, 20) || "-",
+        city: city || "-",
+        postal_code: postal || "-",
         country_code: (text(da?.country_code ?? ca.country_code, 2) || "PL").toLowerCase(),
       },
     },
-    delivery: { type, point },
+    delivery: { type, point, cod },
     payment: {
-      status: paymentType === "CASH_ON_DELIVERY" ? "COD" : "UNPAID",
-      type: (PAYMENT_TYPES as readonly string[]).includes(paymentType) ? paymentType : null,
+      status: cod ? "COD" : "UNPAID",
+      type: cod ? "CASH_ON_DELIVERY" : (PAYMENT_TYPES as readonly string[]).includes(paymentType) ? paymentType : null,
     },
     expectedTotalMinor: toMinor(details.basket_price?.gross),
   }

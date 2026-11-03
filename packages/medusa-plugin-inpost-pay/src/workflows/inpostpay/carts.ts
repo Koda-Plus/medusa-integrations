@@ -52,7 +52,8 @@ export async function loadCart(scope: MedusaContainer, cartId: string): Promise<
   return cart as LoadedCart
 }
 
-export type PricedOption = ShippingOptionLite & { amount: number }
+/** `amount` as Medusa prices the option for the cart: net unless `tax_inclusive`. */
+export type PricedOption = ShippingOptionLite & { amount: number; tax_inclusive: boolean }
 
 /** The shipping options this cart can use, with their price for the cart. */
 export async function shippingOptionsFor(scope: MedusaContainer, cartId: string): Promise<PricedOption[]> {
@@ -61,7 +62,14 @@ export async function shippingOptionsFor(scope: MedusaContainer, cartId: string)
     return ((result ?? []) as any[]).map((o) => {
       const raw = o.calculated_price?.calculated_amount ?? o.amount ?? 0
       const amount = typeof raw === "number" ? raw : Number(raw?.numeric ?? raw)
-      return { id: String(o.id), name: String(o.name ?? o.id), provider_id: o.provider_id ?? null, amount: Number.isFinite(amount) ? amount : 0 }
+      return {
+        id: String(o.id),
+        name: String(o.name ?? o.id),
+        provider_id: o.provider_id ?? null,
+        data_id: typeof o.data?.id === "string" ? o.data.id : null,
+        amount: Number.isFinite(amount) ? amount : 0,
+        tax_inclusive: o.is_tax_inclusive ?? o.calculated_price?.is_calculated_price_tax_inclusive ?? true,
+      }
     })
   } catch {
     return []

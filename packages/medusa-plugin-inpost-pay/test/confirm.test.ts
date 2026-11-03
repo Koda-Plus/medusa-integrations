@@ -70,7 +70,7 @@ test("order body: the buyer, the locker and the price InPost charged", () => {
   assert.equal(p.buyer.phone, "+48600000000")
   assert.equal(p.buyer.address.city, "Poznań")
   assert.equal(p.buyer.address.country_code, "pl")
-  assert.deepEqual(p.delivery, { type: "APM", point: "POP-WAW1" })
+  assert.deepEqual(p.delivery, { type: "APM", point: "POP-WAW1", cod: false })
   assert.deepEqual(p.payment, { status: "UNPAID", type: "BLIK_CODE" })
   assert.equal(p.expectedTotalMinor, 10000)
 })
@@ -85,6 +85,10 @@ test("order body: the courier address, cash on delivery, refusals", () => {
   assert.equal(courier.buyer.last_name, "Przykładowy")
   assert.equal(courier.buyer.address.address_1, "Kwiatowa 5")
   assert.deepEqual(courier.payment, { status: "COD", type: "CASH_ON_DELIVERY" })
+  assert.equal(courier.delivery.cod, true)
+  const byOption = parseInpostOrder({ ...ORDER, delivery: { ...ORDER.delivery, delivery_options: [{ delivery_code_value: "cod" }] } })
+  assert.equal(byOption.delivery.cod, true, "the COD delivery option alone means cash on delivery")
+  assert.deepEqual(byOption.payment, { status: "COD", type: "CASH_ON_DELIVERY" })
   const code = (body: Record<string, any>) => {
     try {
       parseInpostOrder(body)
@@ -98,6 +102,9 @@ test("order body: the courier address, cash on delivery, refusals", () => {
   assert.equal(code({ ...ORDER, delivery: { delivery_type: "DRONE" } }), "DELIVERY_TYPE_INVALID")
   assert.equal(code({ ...ORDER, delivery: { delivery_type: "APM" } }), "DELIVERY_POINT_INVALID")
   assert.equal(code({ ...ORDER, account_info: { ...ORDER.account_info, mail: "nope" } }), "EMAIL_INVALID")
+  const noAddress = { ...ORDER, account_info: { ...ORDER.account_info, client_address: {} } }
+  assert.equal(code({ ...noAddress, delivery: { delivery_type: "COURIER", delivery_address: { name: "Jan", address: "Kwiatowa 5", city: "" } } }), "DELIVERY_ADDRESS_INVALID", "a courier never gets a placeholder address")
+  assert.equal(code({ ...noAddress, delivery: ORDER.delivery }), null, "a parcel locker order needs no street")
 })
 
 test("proof: only the plugin's own sessions are trusted", () => {

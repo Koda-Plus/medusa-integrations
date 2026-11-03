@@ -7,7 +7,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { normalizeMapping, offeredDeliveries, pickShippingOption, safeLockerCode, shippingMethodData } from "../src/modules/inpostpay/lib/delivery.ts"
-import { basketPayload, cartTotalMinor, currencySupported, lineItemFor, price, priceFromRate } from "../src/modules/inpostpay/lib/basket.ts"
+import { basketPayload, cartTotalMinor, currencySupported, lineItemFor, optionGross, price, priceFromRate } from "../src/modules/inpostpay/lib/basket.ts"
 
 const OPTIONS = [
   { id: "so_locker", name: "Paczkomat", provider_id: "inpost_inpost" },
@@ -44,9 +44,44 @@ test("pick: demo takes the first option of the cart", () => {
 })
 
 test("offered: the mapped deliveries the cart can use; demo offers a locker", () => {
-  assert.deepEqual(offeredDeliveries({ APM: "so_locker", COURIER: "so_gone", DIGITAL: null }, OPTIONS, false), [{ type: "APM", optionId: "so_locker" }])
+  assert.deepEqual(offeredDeliveries({ APM: "so_locker", COURIER: "so_gone", DIGITAL: null }, OPTIONS, false), [{ type: "APM", optionId: "so_locker", codOptionId: null }])
   assert.deepEqual(offeredDeliveries({ APM: null, COURIER: null, DIGITAL: null }, OPTIONS, false), [])
-  assert.deepEqual(offeredDeliveries({ APM: null, COURIER: null, DIGITAL: null }, OPTIONS, true), [{ type: "APM", optionId: "so_locker" }])
+  assert.deepEqual(offeredDeliveries({ APM: null, COURIER: null, DIGITAL: null }, OPTIONS, true), [{ type: "APM", optionId: "so_locker", codOptionId: null }])
+})
+
+/* The InPost plugin of Koda Plus: prepaid options and their cash on delivery twins (data.id). */
+const SHIPX = [
+  { id: "so_pm", name: "Paczkomat", provider_id: "inpost_inpost", data_id: "inpost-paczkomat" },
+  { id: "so_pm_cod", name: "Paczkomat pobranie", provider_id: "inpost_inpost", data_id: "inpost-paczkomat-cod" },
+  { id: "so_k", name: "Kurier", provider_id: "inpost_inpost", data_id: "inpost-kurier" },
+  { id: "so_own", name: "Own courier", provider_id: "manual_manual", data_id: "manual-fulfillment" },
+]
+
+test("cash on delivery: the COD twin of the mapped option, never a prepaid order on a COD option", () => {
+  const mapping = { APM: "so_pm", COURIER: "so_k", DIGITAL: null }
+  assert.deepEqual(pickShippingOption({ type: "APM", mapping, available: SHIPX, demo: false, cod: true }), { ok: true, id: "so_pm_cod", fallback: false })
+  assert.deepEqual(pickShippingOption({ type: "APM", mapping, available: SHIPX, demo: false }), { ok: true, id: "so_pm", fallback: false })
+  assert.deepEqual(pickShippingOption({ type: "APM", mapping: { ...mapping, APM: "so_pm_cod" }, available: SHIPX, demo: false }), { ok: true, id: "so_pm", fallback: false }, "a paid order leaves the COD option")
+  const noTwin = pickShippingOption({ type: "COURIER", mapping, available: SHIPX, demo: false, cod: true })
+  assert.equal(noTwin.ok === false && noTwin.code, "COD_NOT_AVAILABLE")
+  const own = pickShippingOption({ type: "COURIER", mapping: { ...mapping, COURIER: "so_own" }, available: SHIPX, demo: false, cod: true })
+  assert.equal(own.ok === false && own.code, "COD_NOT_AVAILABLE", "another carrier gets no COD")
+  const onlyCod = pickShippingOption({ type: "APM", mapping: { ...mapping, APM: "so_pm_cod" }, available: SHIPX.filter((o) => o.id !== "so_pm"), demo: false })
+  assert.equal(onlyCod.ok === false && onlyCod.code, "PREPAID_ON_COD_OPTION")
+})
+
+test("cash on delivery: offered when the cart can use the twin", () => {
+  assert.deepEqual(offeredDeliveries({ APM: "so_pm", COURIER: "so_k", DIGITAL: null }, SHIPX, false), [
+    { type: "APM", optionId: "so_pm", codOptionId: "so_pm_cod" },
+    { type: "COURIER", optionId: "so_k", codOptionId: null },
+  ])
+  assert.deepEqual(offeredDeliveries({ APM: "so_pm_cod", COURIER: null, DIGITAL: null }, SHIPX, false), [{ type: "APM", optionId: "so_pm", codOptionId: "so_pm_cod" }], "a mapped COD option is offered as its prepaid twin")
+})
+
+test("shipping price: a net option price gets the shipping VAT, a gross one stays", () => {
+  assert.equal(optionGross({ amount: 10, tax_inclusive: false }, 23), 12.3)
+  assert.equal(optionGross({ amount: 12.99, tax_inclusive: true }, 23), 12.99)
+  assert.equal(optionGross({ amount: 12.99 }, 23), 12.99)
 })
 
 test("shipping method data: the locker as machine_id, nothing for a courier", () => {
@@ -86,6 +121,13 @@ test("basket: summary, delivery and products as InPost reads them", () => {
   assert.deepEqual(p.products[0].final_price, { net: 50, gross: 61.5, vat: 11.5 })
   assert.deepEqual(p.products[0].quantity, { quantity: 2, quantity_type: "INTEGER", quantity_unit: "pcs" })
   assert.deepEqual(p.promo_codes, [{ name: "WELCOME", promo_code_value: "WELCOME" }])
+  assert.equal(p.delivery[0].delivery_options, undefined, "no COD option without a COD twin")
+})
+
+test("basket: the COD delivery option costs the difference to the COD twin", () => {
+  const p = basketPayload(CART, { deliveries: [{ type: "APM", gross: 12.99, codGross: 17.99 }], shippingVatRate: 23, storefrontUrl: null, expiresAt: new Date(), deliveryDate: new Date() }) as any
+  assert.deepEqual(p.delivery[0].delivery_options, [{ delivery_name: "Płatność przy odbiorze", delivery_code_value: "COD", delivery_option_price: { net: 4.07, gross: 5, vat: 0.93 } }])
+  assert.deepEqual(p.summary.payment_type, [], "the app adds CASH_ON_DELIVERY itself")
 })
 
 test("basket: helpers", () => {

@@ -24,39 +24,84 @@ export function normalizeMapping(v: unknown): DeliveryMapping {
   return out
 }
 
-export type PickResult = { ok: true; id: string; fallback: boolean } | { ok: false; code: "DELIVERY_NOT_MAPPED" | "DELIVERY_NOT_AVAILABLE" | "NO_SHIPPING_OPTION"; message: string }
+export type PickResult =
+  | { ok: true; id: string; fallback: boolean }
+  | { ok: false; code: "DELIVERY_NOT_MAPPED" | "DELIVERY_NOT_AVAILABLE" | "NO_SHIPPING_OPTION" | "COD_NOT_AVAILABLE" | "PREPAID_ON_COD_OPTION"; message: string }
+
+/**
+ * Cash on delivery. The InPost plugin of Koda Plus ships COD from its own
+ * fulfillment options (`data.id` "inpost-paczkomat-cod", "inpost-kurier-cod"),
+ * each the twin of a prepaid one. A COD order goes on the twin of the mapped
+ * option, a paid order never on a COD option (the customer would pay twice).
+ * Other carriers get no COD: the plugin cannot know that they collect it.
+ */
+const COD_TWINS: Record<string, string> = { "inpost-paczkomat": "inpost-paczkomat-cod", "inpost-kurier": "inpost-kurier-cod" }
+
+export function codVariant(option: ShippingOptionLite, available: ShippingOptionLite[], cod: boolean): ShippingOptionLite | null {
+  const id = option.data_id ?? ""
+  const prepaidOf = Object.keys(COD_TWINS).find((k) => COD_TWINS[k] === id)
+  const isCod = prepaidOf !== undefined
+  if (cod === isCod) return option
+  if (!COD_TWINS[id] && !isCod) return cod ? null : option
+  const wanted = cod ? COD_TWINS[id] : prepaidOf
+  return available.find((o) => o.data_id === wanted && o.provider_id === option.provider_id) ?? null
+}
 
 /**
  * The shipping option for one order. The mapped option wins when the cart
  * can use it. Without a mapping, demo mode takes the first option the cart
  * can use; sandbox and live refuse, so a courier price never lands on a
- * parcel locker order by accident.
+ * parcel locker order by accident. Then the COD twin, as above.
  */
-export function pickShippingOption(input: { type: DeliveryType; mapping: DeliveryMapping; available: ShippingOptionLite[]; demo: boolean }): PickResult {
+export function pickShippingOption(input: { type: DeliveryType; mapping: DeliveryMapping; available: ShippingOptionLite[]; demo: boolean; cod?: boolean }): PickResult {
   const mapped = input.mapping[input.type]
+  let base: { option: ShippingOptionLite; fallback: boolean } | null = null
   if (mapped) {
-    if (input.available.some((o) => o.id === mapped)) return { ok: true, id: mapped, fallback: false }
-    if (!input.demo) return { ok: false, code: "DELIVERY_NOT_AVAILABLE", message: `The shipping option mapped to ${input.type} (${mapped}) is not available for this cart` }
+    const option = input.available.find((o) => o.id === mapped)
+    if (option) base = { option, fallback: false }
+    else if (!input.demo) return { ok: false, code: "DELIVERY_NOT_AVAILABLE", message: `The shipping option mapped to ${input.type} (${mapped}) is not available for this cart` }
   }
-  if (input.demo) {
+  if (!base && input.demo) {
     const first = input.available[0]
-    if (first) return { ok: true, id: first.id, fallback: true }
-    return { ok: false, code: "NO_SHIPPING_OPTION", message: "The cart has no shipping option" }
+    if (!first) return { ok: false, code: "NO_SHIPPING_OPTION", message: "The cart has no shipping option" }
+    base = { option: first, fallback: true }
   }
-  return { ok: false, code: "DELIVERY_NOT_MAPPED", message: `No shipping option is mapped to the InPost Pay delivery ${input.type} (Settings, Delivery)` }
+  if (!base) return { ok: false, code: "DELIVERY_NOT_MAPPED", message: `No shipping option is mapped to the InPost Pay delivery ${input.type} (Settings, Delivery)` }
+  const cod = input.cod === true
+  const variant = codVariant(base.option, input.available, cod)
+  if (!variant) {
+    return cod
+      ? { ok: false, code: "COD_NOT_AVAILABLE", message: `Cash on delivery needs the COD twin of the InPost option mapped to ${input.type}, and the cart cannot use one` }
+      : { ok: false, code: "PREPAID_ON_COD_OPTION", message: `The option mapped to ${input.type} is a cash on delivery option and has no prepaid twin for this cart` }
+  }
+  return { ok: true, id: variant.id, fallback: base.fallback }
+}
+
+export interface OfferedDelivery {
+  type: DeliveryType
+  optionId: string
+  /** The COD twin the app may offer as the "COD" delivery option, or null. */
+  codOptionId: string | null
 }
 
 /**
  * The delivery types the basket offers in the app: the mapped ones the cart
- * can use (demo: APM on the first option when nothing is mapped).
+ * can use (demo: APM on the first option when nothing is mapped), with the
+ * COD twin when the cart can use one.
  */
-export function offeredDeliveries(mapping: DeliveryMapping, available: ShippingOptionLite[], demo: boolean): Array<{ type: DeliveryType; optionId: string }> {
-  const out: Array<{ type: DeliveryType; optionId: string }> = []
-  for (const type of DELIVERY_TYPES) {
-    const id = mapping[type]
-    if (id && available.some((o) => o.id === id)) out.push({ type, optionId: id })
+export function offeredDeliveries(mapping: DeliveryMapping, available: ShippingOptionLite[], demo: boolean): OfferedDelivery[] {
+  const out: OfferedDelivery[] = []
+  const add = (type: DeliveryType, option: ShippingOptionLite) => {
+    const prepaid = codVariant(option, available, false)
+    if (!prepaid) return
+    const cod = codVariant(prepaid, available, true)
+    out.push({ type, optionId: prepaid.id, codOptionId: cod && cod.id !== prepaid.id ? cod.id : null })
   }
-  if (out.length === 0 && demo && available[0]) out.push({ type: "APM", optionId: available[0].id })
+  for (const type of DELIVERY_TYPES) {
+    const option = available.find((o) => o.id === mapping[type])
+    if (option) add(type, option)
+  }
+  if (out.length === 0 && demo && available[0]) out.push({ type: "APM", optionId: available[0].id, codOptionId: null })
   return out
 }
 
