@@ -6,20 +6,38 @@
  * route answers politely and nothing leaves the server. Switches and numbers
  * may come as strings (environment variables).
  */
+/**
+ * One set of credentials: the API application a seller creates in the
+ * InPost Merchant Portal (Integrations, API, "Create App") with the five
+ * scopes of the seller API. The plugin signs in as that application
+ * (OAuth2 Client Credentials, the merchant flow) and gets a fresh access
+ * token whenever the last one (five minutes) runs out.
+ */
 export interface VonHalskyCredentials {
-  /** The seller API base address InPost gives the integrator. No default: this version ships no address of its own. */
-  apiUrl?: string
-  /** The organization (seller account) id the API paths are scoped to. */
+  /** The application's client id. */
+  clientId?: string
+  /** The application's client secret, shown once in the Merchant Portal. Server only, never shown in full. */
+  clientSecret?: string
+  /** The organization (the seller's brand) the API paths are scoped to. */
   organizationId?: string
-  /** The access token (a JWT) InPost issues under the integrator agreement. Server only, never shown in full. */
-  accessToken?: string
+  /** The API gateway. Default: InPost's stage gateway for sandbox, the production one for live. */
+  apiUrl?: string
+  /** The OAuth2 token endpoint. Default: InPost's stage or production account service. */
+  tokenUrl?: string
 }
+
+/** InPost's addresses (Integration guidelines, "Gdzie szukać wskazówek"). */
+export const ENDPOINTS = {
+  sandbox: { apiUrl: "https://stage-api.inpost-group.com/inpsa", tokenUrl: "https://stage-account.inpost-group.com/oauth2/token" },
+  live: { apiUrl: "https://api.inpost-group.com/inpsa", tokenUrl: "https://account.inpost-group.com/oauth2/token" },
+} as const
 
 export interface VonHalskyPluginOptions {
   /**
-   * Demo mode: offers, orders and tracking run on the store's own catalog
-   * and orders, and nothing is ever sent outside. Only on explicit request;
-   * it wins over the credentials. Default false.
+   * Demo mode: a simulated marketplace on the store's own catalog (offers
+   * get published, orders, returns and claims arrive), and nothing is ever
+   * sent outside. Only on explicit request; it wins over the credentials.
+   * Default false.
    */
   demo?: boolean | string
   /** Which credentials are used: "sandbox" (default) or "live". The two sets are kept apart. */
@@ -36,10 +54,22 @@ export interface VonHalskyPluginOptions {
   salesChannelId?: string
   /** The region of imported orders (PLN). Default: the first PLN region. The admin setting wins. */
   regionId?: string
-  /** Import new marketplace orders on a schedule (every 15 minutes). Default false. The admin setting wins. */
+  /** Import new marketplace orders on a schedule (the sync, every 5 minutes). Default false. The admin setting wins. */
   autoImport?: boolean | string
-  /** WRITER: send tracking numbers back to the marketplace. Default false; demo records them locally. */
-  sendTracking?: boolean | string
+  /**
+   * WRITER: keep the price and the stock of listed offers equal to Medusa's,
+   * every 5 minutes (the sync; the marketplace batch price and
+   * stock updates). Default true; listing itself is always a person's click.
+   */
+  syncPriceStock?: boolean | string
+  /** Days the store needs to ship (the offer's `shippingTime.daysToShip`, 0 to 60). Default 2. The admin setting wins. */
+  daysToShip?: number | string
+  /** Metadata key of a per product VAT rate (like 8 or "5%") when it is not the default `vatRate`. Default "vat_rate". */
+  vatKey?: string
+  /** Units of Medusa's variant dimensions: "mm" or "cm" (the marketplace takes mm). Default "mm". */
+  dimensionUnit?: "mm" | "cm" | string
+  /** Unit of Medusa's variant weight: "g" or "kg" (the marketplace takes grams). Default "g". */
+  weightUnit?: "g" | "kg" | string
   /** Metadata key of the brand on the variant, then the product. Default "brand". */
   brandKey?: string
   /** Metadata key of the manufacturer part number on the variant, then the product. Default "mpn". */
@@ -57,9 +87,11 @@ export interface VonHalskyPluginOptions {
 export type VonHalskyMode = "demo" | "sandbox" | "live" | "off"
 
 export interface ResolvedCredentials {
-  apiUrl: string
+  clientId: string
+  clientSecret: string
   organizationId: string
-  accessToken: string
+  apiUrl: string
+  tokenUrl: string
 }
 
 export interface ResolvedVonHalskyOptions {
@@ -72,10 +104,14 @@ export interface ResolvedVonHalskyOptions {
   salesChannelId: string | null
   regionId: string | null
   autoImport: boolean
-  sendTracking: boolean
+  syncPriceStock: boolean
+  daysToShip: number
   brandKey: string
   mpnKey: string
   eanKey: string
+  vatKey: string
+  dimensionUnit: "mm" | "cm"
+  weightUnit: "g" | "kg"
   stockLocationIds: string[]
   untrackedStock: number
   timeoutMs: number
@@ -86,6 +122,8 @@ export interface ResolvedVonHalskyOptions {
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "")
 const bool = (v: unknown): boolean => v === true || v === "true" || v === "1"
+/** A switch that is on unless it is set to something false. */
+const boolOn = (v: unknown): boolean => v === undefined || v === null || v === "" || bool(v)
 
 export function num(v: unknown, fallback: number, min: number, max: number): number {
   if (v === undefined || v === null || v === "") return fallback
@@ -112,13 +150,19 @@ function ids(v: unknown): string[] {
   return list.map((x) => str(x)).filter((x) => /^[A-Za-z0-9_]{1,64}$/.test(x))
 }
 
-function credentials(v: unknown, name: string, problems: string[]): ResolvedCredentials {
+function credentials(v: unknown, name: "sandbox" | "live", problems: string[]): ResolvedCredentials {
   const o = (v && typeof v === "object" ? v : {}) as VonHalskyCredentials
-  return { apiUrl: url(o.apiUrl, `${name}.apiUrl`, problems), organizationId: str(o.organizationId), accessToken: str(o.accessToken) }
+  return {
+    clientId: str(o.clientId),
+    clientSecret: str(o.clientSecret),
+    organizationId: str(o.organizationId),
+    apiUrl: url(o.apiUrl, `${name}.apiUrl`, problems) || ENDPOINTS[name].apiUrl,
+    tokenUrl: url(o.tokenUrl, `${name}.tokenUrl`, problems) || ENDPOINTS[name].tokenUrl,
+  }
 }
 
 export function complete(c: ResolvedCredentials): boolean {
-  return Boolean(c.apiUrl && c.organizationId && c.accessToken)
+  return Boolean(c.clientId && c.clientSecret && c.organizationId && c.apiUrl && c.tokenUrl)
 }
 
 export function resolveOptions(input: VonHalskyPluginOptions | undefined | null): ResolvedVonHalskyOptions {
@@ -134,6 +178,10 @@ export function resolveOptions(input: VonHalskyPluginOptions | undefined | null)
   const include = o.pricesIncludeTax === undefined || o.pricesIncludeTax === null || o.pricesIncludeTax === "" ? null : bool(o.pricesIncludeTax)
   const channel = str(o.salesChannelId)
   const region = str(o.regionId)
+  const dim = str(o.dimensionUnit).toLowerCase()
+  const weight = str(o.weightUnit).toLowerCase()
+  if (dim && dim !== "mm" && dim !== "cm") problems.push("dimensionUnit (mm or cm)")
+  if (weight && weight !== "g" && weight !== "kg") problems.push("weightUnit (g or kg)")
   return {
     demo,
     environment,
@@ -144,10 +192,14 @@ export function resolveOptions(input: VonHalskyPluginOptions | undefined | null)
     salesChannelId: /^sc_[A-Za-z0-9]+$/.test(channel) ? channel : null,
     regionId: /^reg_[A-Za-z0-9]+$/.test(region) ? region : null,
     autoImport: bool(o.autoImport),
-    sendTracking: bool(o.sendTracking),
+    syncPriceStock: boolOn(o.syncPriceStock),
+    daysToShip: Math.round(num(o.daysToShip, 2, 0, 60)),
     brandKey: key(o.brandKey, "brand"),
     mpnKey: key(o.mpnKey, "mpn"),
     eanKey: key(o.eanKey, "ean"),
+    vatKey: key(o.vatKey, "vat_rate"),
+    dimensionUnit: dim === "cm" ? "cm" : "mm",
+    weightUnit: weight === "kg" ? "kg" : "g",
     stockLocationIds: ids(o.stockLocationIds),
     untrackedStock: Math.round(num(o.untrackedStock, 0, 0, 100_000)),
     timeoutMs: Math.round(num(o.timeoutMs, 15_000, 1_000, 60_000)),
@@ -175,9 +227,9 @@ export function missingOptions(o: ResolvedVonHalskyOptions): string[] {
   if (o.demo) return []
   const prefix = o.environment
   const missing: string[] = []
-  if (!o.credentials.apiUrl) missing.push(`${prefix}.apiUrl`)
+  if (!o.credentials.clientId) missing.push(`${prefix}.clientId`)
+  if (!o.credentials.clientSecret) missing.push(`${prefix}.clientSecret`)
   if (!o.credentials.organizationId) missing.push(`${prefix}.organizationId`)
-  if (!o.credentials.accessToken) missing.push(`${prefix}.accessToken`)
   return missing
 }
 

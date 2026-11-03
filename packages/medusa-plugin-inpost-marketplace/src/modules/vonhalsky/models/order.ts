@@ -8,7 +8,13 @@ import { model } from "@medusajs/framework/utils"
  * No name, address, e-mail or phone of the buyer is kept here: those go on
  * the Medusa order only. The row keeps the delivery type, the parcel
  * locker, the payment type, the lines (offer, variant, quantity, price),
- * the tracking numbers sent back and a short history.
+ * the parcels the marketplace shows, money facts (paid, refunded, the
+ * discounts of promotions and the price program) and a short history.
+ *
+ * TRACKING: the seller API takes no tracking number. A ShipX shipment made
+ * with the order's InPost e-mail is linked by InPost and shows up in the
+ * order's `delivery.parcels`; `tracking_status` says whether the numbers of
+ * Medusa's fulfillments are there yet (none, waiting, linked).
  */
 const VonHalskyOrder = model
   .define("vonhalsky_order", {
@@ -31,9 +37,9 @@ const VonHalskyOrder = model
     total_minor: model.number().nullable(),
     /** [{ offer_id, variant_id, sku, title, quantity, unit_price_minor }] */
     lines: model.json().nullable(),
-    /** none, sent, failed, pending_api */
+    /** none, waiting (Medusa has numbers the marketplace does not show yet), linked */
     tracking_status: model.text().default("none"),
-    /** The numbers already sent (demo: recorded). */
+    /** The tracking numbers of Medusa's fulfillments of this order. */
     tracking_numbers: model.json().nullable(),
     tracking_sent_at: model.dateTime().nullable(),
     placed_at: model.dateTime().nullable(),
@@ -43,6 +49,22 @@ const VonHalskyOrder = model
     error: model.text().nullable(),
     /** The newest events, at most 40: [{ at, kind, message, demo? }]. */
     events: model.json().nullable(),
+    remote_updated_at: model.dateTime().nullable(),
+    paid_at: model.dateTime().nullable(),
+    /** PERSON or COMPANY (who the invoice is for), when the marketplace says. */
+    buyer_kind: model.text().nullable(),
+    delivery_minor: model.number().nullable(),
+    /** What the lines cost without a promotion or the price program, and the two discounts. */
+    base_total_minor: model.number().nullable(),
+    promotion_discount_minor: model.number().nullable(),
+    program_discount_minor: model.number().nullable(),
+    /** The marketplace's parcels: [{ trackingNumber, createdAt, status }]. */
+    parcels: model.json().nullable(),
+    shipped_at: model.dateTime().nullable(),
+    expected_delivery_at: model.dateTime().nullable(),
+    refunded_minor: model.number().default(0),
+    returns_count: model.number().default(0),
+    claims_count: model.number().default(0),
   })
   .indexes([
     { on: ["marketplace_order_id"], unique: true, where: "deleted_at IS NULL" },

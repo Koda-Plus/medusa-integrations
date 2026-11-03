@@ -1,6 +1,7 @@
 /**
  * THE MEDUSA SIDE OF AN OFFER: the variants with their matching keys, the
- * PLN price, the stock, the photo and the GPSR manufacturer (from the EU
+ * PLN price, the stock, the description, the images, the categories, the
+ * package dimensions and the GPSR manufacturer (from the EU
  * Compliance plugin when its module is in the container, else from product
  * metadata). Read through Query; nothing is written.
  */
@@ -28,7 +29,23 @@ interface VariantRecord {
   product_id?: string | null
   manage_inventory?: boolean | null
   metadata?: Record<string, unknown> | null
-  product?: { title?: string | null; status?: string | null; thumbnail?: string | null; metadata?: Record<string, unknown> | null } | null
+  weight?: number | string | null
+  length?: number | string | null
+  height?: number | string | null
+  width?: number | string | null
+  product?: {
+    title?: string | null
+    status?: string | null
+    thumbnail?: string | null
+    description?: string | null
+    metadata?: Record<string, unknown> | null
+    weight?: number | string | null
+    length?: number | string | null
+    height?: number | string | null
+    width?: number | string | null
+    images?: Array<{ url?: string | null; rank?: number | null } | null> | null
+    categories?: Array<{ id?: string | null } | null> | null
+  } | null
   inventory_items?: Array<{
     required_quantity?: number | string | null
     inventory?: { location_levels?: Array<{ location_id?: string | null; stocked_quantity?: number | string | null; reserved_quantity?: number | string | null } | null> | null } | null
@@ -53,6 +70,41 @@ function stockOf(raw: VariantRecord): VariantStock {
           .map((l) => ({ locationId: String(l.location_id ?? ""), stocked: Number(l.stocked_quantity ?? 0) || 0, reserved: Number(l.reserved_quantity ?? 0) || 0 })),
       })),
   }
+}
+
+const num = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v.replace(",", ".")) : NaN
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** Package dimensions in mm and g from the variant, else the product; all four or none (the marketplace takes all or nothing). */
+export function dimensionOf(raw: Pick<VariantRecord, "weight" | "length" | "height" | "width" | "product">, units: { dimensionUnit: "mm" | "cm"; weightUnit: "g" | "kg" }): VariantFacts["dimension"] {
+  const side = (k: "length" | "height" | "width") => num(raw[k]) ?? num(raw.product?.[k])
+  const w = side("width")
+  const h = side("height")
+  const l = side("length")
+  const g = num(raw.weight) ?? num(raw.product?.weight)
+  if (w === null || h === null || l === null || g === null) return null
+  const mm = (x: number) => Math.max(1, Math.round(units.dimensionUnit === "cm" ? x * 10 : x))
+  return { width: mm(w), height: mm(h), length: mm(l), weight: Math.max(1, Math.round(units.weightUnit === "kg" ? g * 1000 : g)) }
+}
+
+/** A VAT rate like 23, "8" or "5%"; null when absent or not a rate. */
+export function vatOf(v: unknown): number | null {
+  const s = typeof v === "number" ? String(v) : typeof v === "string" ? v.replace("%", "").trim() : ""
+  const n = Number(s.replace(",", "."))
+  return s && Number.isFinite(n) && n >= 0 && n <= 100 ? n : null
+}
+
+/** The images in Medusa's order with the thumbnail first, http(s) only, at most 20 (the marketplace's limit). */
+export function imagesOf(product: VariantRecord["product"]): string[] {
+  const list = [...(product?.images ?? [])]
+    .filter((i): i is NonNullable<typeof i> => Boolean(i && i.url))
+    .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+    .map((i) => String(i.url))
+  const thumb = str(product?.thumbnail)
+  const all = [...(thumb ? [thumb] : []), ...list]
+  return [...new Set(all)].filter((u) => /^https?:\/\//i.test(u)).slice(0, 20)
 }
 
 /** The default PLN price per variant (no price list, no rules, no quantity tier), in minor units. */
@@ -150,10 +202,22 @@ export async function loadFacts(scope: Scope, o: ResolvedVonHalskyOptions, only:
         "product_id",
         "manage_inventory",
         "metadata",
+        "weight",
+        "length",
+        "height",
+        "width",
         "product.title",
         "product.status",
         "product.thumbnail",
+        "product.description",
         "product.metadata",
+        "product.weight",
+        "product.length",
+        "product.height",
+        "product.width",
+        "product.images.url",
+        "product.images.rank",
+        "product.categories.id",
         "inventory_items.required_quantity",
         "inventory_items.inventory.location_levels.location_id",
         "inventory_items.inventory.location_levels.stocked_quantity",
@@ -186,12 +250,18 @@ export async function loadFacts(scope: Scope, o: ResolvedVonHalskyOptions, only:
       sku: str(r.sku),
       title,
       thumbnail: str(r.product?.thumbnail),
+      images: imagesOf(r.product),
+      description: str(r.product?.description),
       productStatus: str(r.product?.status),
       ean: normalizeEan(r.ean) ?? normalizeEan(r.barcode) ?? normalizeEan(meta(r, o.eanKey)),
       brand: meta(r, o.brandKey),
       mpn: meta(r, o.mpnKey),
       manufacturer: picked.manufacturer,
       gpsrSource: picked.source,
+      gpsrExempt: [r.metadata?.gpsr_exempt, r.product?.metadata?.gpsr_exempt].some((v) => v === true || v === "true"),
+      categoryIds: (r.product?.categories ?? []).map((c) => str(c?.id)).filter((x): x is string => Boolean(x)),
+      dimension: dimensionOf(r, o),
+      vatRate: vatOf(meta(r, o.vatKey)),
       basePriceMinor: prices.get(r.id) ?? null,
       stock: availableQuantity(stockOf(r), o.stockLocationIds, o.untrackedStock),
     }

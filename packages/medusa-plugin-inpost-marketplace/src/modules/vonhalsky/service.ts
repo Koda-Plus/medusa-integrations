@@ -4,6 +4,9 @@ import VonHalskyOffer from "./models/offer"
 import VonHalskyOrder from "./models/order"
 import VonHalskySyncLog from "./models/sync-log"
 import VonHalskySetting from "./models/setting"
+import VonHalskyCase from "./models/case"
+import VonHalskyCategory from "./models/category"
+import VonHalskySnapshot from "./models/snapshot"
 import { resolveOptions, type ResolvedVonHalskyOptions, type VonHalskyPluginOptions } from "./lib/options"
 
 type InjectedDependencies = {
@@ -12,8 +15,9 @@ type InjectedDependencies = {
 
 /**
  * InPost Von Halsky module service: generated CRUD for the offers, the
- * marketplace orders, the sync log and the settings, plus the resolved
- * options. Nothing else.
+ * marketplace orders, the after sale cases, the category tree, the daily
+ * snapshots, the sync log and the settings, plus the resolved options.
+ * Nothing else.
  *
  * THE SERVICE STAYS THIN ON PURPOSE. Building offers, importing orders and
  * sending tracking live in `lib/*` and `workflows/vonhalsky/*`, which call
@@ -26,6 +30,9 @@ class VonHalskyModuleService extends MedusaService({
   VonHalskyOrder,
   VonHalskySyncLog,
   VonHalskySetting,
+  VonHalskyCase,
+  VonHalskyCategory,
+  VonHalskySnapshot,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedVonHalskyOptions
@@ -36,11 +43,11 @@ class VonHalskyModuleService extends MedusaService({
     this.logger_ = deps.logger
     this.options_ = resolveOptions(options)
     if (this.options_.demo) {
-      this.logger_.info("[vonhalsky] Demo mode: offers, orders and tracking run on the store catalog; the marketplace is never called.")
+      this.logger_.info("[vonhalsky] Demo mode: a simulated marketplace on the store catalog; InPost is never called.")
     } else if (this.options_.mode === "off") {
       this.logger_.info("[vonhalsky] No InPost Von Halsky credentials: the routes answer politely and the admin shows the setup.")
     } else {
-      this.logger_.info(`[vonhalsky] ${this.options_.mode} credentials are set; the seller API client waits for the official documentation, so nothing is sent yet.`)
+      this.logger_.info(`[vonhalsky] ${this.options_.mode === "live" ? "Production" : "Stage (sandbox)"} seller API of InPost Von Halsky, organization ${this.options_.credentials.organizationId}.`)
     }
   }
 

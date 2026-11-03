@@ -16,6 +16,8 @@ export interface OrderRow {
   payment_type: string | null
   tracking_status: string
   tracking_numbers: string[]
+  returns_count?: number
+  claims_count?: number
   updated_at: string | Date | null
 }
 
@@ -34,10 +36,12 @@ export function orderSummary(row: OrderRow | undefined): SummaryDraft | undefine
   if (row.tracking_numbers.length > 0) {
     facts.push({ slot: "delivery", priority: 25, value: { key: "integration.fact.tracking", params: { numbers: row.tracking_numbers.slice(0, 3).join(", ") } } })
   }
+  const returns = row.returns_count ?? 0
+  const claims = row.claims_count ?? 0
+  if (returns + claims > 0) facts.push({ slot: "channel", priority: 35, code: "after_sale", value: { key: "integration.fact.afterSale", params: { returns, claims } } })
   const base = { facts, links: [link], widget: "vonhalsky.order", updatedAt: row.updated_at ?? null }
-  if (row.tracking_status === "failed") return { ...base, state: "failed", title: { key: "integration.order.trackingFailed" } }
-  if (row.tracking_status === "sent") return { ...base, state: "ok", title: { key: row.demo ? "integration.order.trackingRecorded" : "integration.order.trackingSent" } }
-  if (row.tracking_status === "pending_api") return { ...base, state: "attention", title: { key: "integration.order.trackingPending" } }
+  if (row.tracking_status === "waiting") return { ...base, state: "attention", title: { key: "integration.order.trackingWaiting" } }
+  if (row.tracking_status === "linked") return { ...base, state: "ok", title: { key: row.demo ? "integration.order.trackingDemo" : "integration.order.trackingLinked" } }
   if (row.demo) return { ...base, state: "active", title: { key: "integration.order.demo" } }
   return { ...base, state: "active", title: { key: "integration.order.awaiting" } }
 }
@@ -68,11 +72,16 @@ export function productSummary(productId: string, rows: ProductOfferRow[]): Summ
   return { ...base, state: "none", title: { key: "integration.product.closed" } }
 }
 
-/** The board counters: imports that are held and tracking that failed (red), blocked offers (orange), orders to ship (blue). */
-export function vonHalskyCounters(c: { held: number; trackingFailed: number; blockedOffers: number; awaitingShipment: number }): CounterDraft[] {
+/**
+ * The board counters: imports that are held (red), shipments InPost has not
+ * linked yet and open returns or claims (orange), blocked offers (orange),
+ * orders to ship (blue).
+ */
+export function vonHalskyCounters(c: { held: number; trackingWaiting: number; openCases: number; blockedOffers: number; awaitingShipment: number }): CounterDraft[] {
   return [
     { key: "held_orders", scope: "orders", count: c.held, tone: "red", link: { kind: "admin", href: "/vonhalsky?section=orders&filter=held" } },
-    { key: "tracking_failed", scope: "orders", count: c.trackingFailed, tone: "red", link: { kind: "admin", href: "/vonhalsky?section=orders&filter=errors" }, entity: "order" },
+    { key: "tracking_waiting", scope: "orders", count: c.trackingWaiting, tone: "orange", link: { kind: "admin", href: "/vonhalsky?section=orders&filter=tracking_waiting" }, entity: "order" },
+    { key: "open_cases", scope: "orders", count: c.openCases, tone: "orange", link: { kind: "admin", href: "/vonhalsky?section=after-sale" } },
     { key: "awaiting_shipment", scope: "orders", count: c.awaitingShipment, tone: "blue", link: { kind: "admin", href: "/vonhalsky?section=orders&filter=awaiting_shipment" }, entity: "order" },
     { key: "blocked_offers", scope: "products", count: c.blockedOffers, tone: "orange", link: { kind: "admin", href: "/vonhalsky?section=offers&filter=blocked" } },
   ]

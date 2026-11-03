@@ -2,7 +2,9 @@
  * The shipping method data of an imported order, the pure parts: what the
  * import asks the provider of the mapped shipping option, and when its
  * answer is kept. The provider answers below have the shape the InPost
- * plugin of Koda Plus returns from `validateFulfillmentData`.
+ * plugin of Koda Plus returns from `validateFulfillmentData`. An order paid
+ * through the marketplace carries a booked payment (`paymentDetails.payments`);
+ * cash on delivery and an unknown payment carry none.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -11,15 +13,20 @@ import { parseMarketplaceOrder } from "../src/modules/vonhalsky/lib/orders.ts"
 
 const BASE = {
   id: "8c4c2f2e-0000-4000-8000-000000000002",
-  status: "CREATED",
+  status: "ACCEPTED",
   customer: { email: "buyer@example.com", firstName: "Jan", lastName: "Testowy", phoneNumber: "+48500000000", address: { street: "Przykładowa", building: "1", city: "Warszawa", postCode: "00-001", countryCode: "pl" } },
   orderLines: [{ offer: { offerId: "off-1", externalId: "variant_1", price: { amount: 49.99, currency: "PLN" } } }],
 }
 
+/** The marketplace's payment details: a booked payment unless it is cash on delivery or unknown. */
+const paymentDetails = (payment: string | null) => ({
+  selectedPaymentType: payment,
+  payments: payment && payment !== "CASH_ON_DELIVERY" && payment !== "UNKNOWN" ? [{ paymentId: "pay-1", paymentType: payment, paymentDate: "2026-10-18T10:01:00Z" }] : [],
+})
 const locker = (payment: string | null = "BLIK_CODE") =>
-  parseMarketplaceOrder({ ...BASE, finalPrice: { amount: 59.98, currency: "PLN" }, delivery: { deliveryType: "APM", deliveryPoint: "waw01m", price: { amount: 9.99, currency: "PLN" } }, paymentDetails: { selectedPaymentType: payment } })
+  parseMarketplaceOrder({ ...BASE, finalPrice: { amount: 59.98, currency: "PLN" }, delivery: { deliveryType: "APM", deliveryPoint: "waw01m", price: { amount: 9.99, currency: "PLN" } }, paymentDetails: paymentDetails(payment) })
 const courier = (payment = "BLIK_CODE") =>
-  parseMarketplaceOrder({ ...BASE, finalPrice: { amount: 64.98, currency: "PLN" }, delivery: { deliveryType: "COURIER", price: { amount: 14.99, currency: "PLN" } }, paymentDetails: { selectedPaymentType: payment } })
+  parseMarketplaceOrder({ ...BASE, finalPrice: { amount: 64.98, currency: "PLN" }, delivery: { deliveryType: "COURIER", price: { amount: 14.99, currency: "PLN" } }, paymentDetails: paymentDetails(payment) })
 
 /** The totals of the Medusa orders the import makes of them: 49.99 + 9.99 and 49.99 + 14.99. */
 const LOCKER_TOTAL = 5998
@@ -46,7 +53,7 @@ const codeOf = (r: ReturnType<typeof handoffResult>): string | null => (r.kind =
 test("request: a locker delivery names its locker as a storefront would, a courier sends no data", () => {
   assert.deepEqual(handoffRequest(locker(), CONTEXT), { data: { machine_id: "waw01m", machine_name: "waw01m" }, context: CONTEXT })
   assert.deepEqual(handoffRequest(courier(), CONTEXT).data, {})
-  const noPoint = parseMarketplaceOrder({ ...BASE, delivery: { deliveryType: "APM", price: { amount: 9.99, currency: "PLN" } }, paymentDetails: { selectedPaymentType: "BLIK_CODE" } })
+  const noPoint = parseMarketplaceOrder({ ...BASE, delivery: { deliveryType: "APM", price: { amount: 9.99, currency: "PLN" } }, paymentDetails: paymentDetails("BLIK_CODE") })
   assert.deepEqual(handoffRequest(noPoint, CONTEXT).data, {})
 })
 

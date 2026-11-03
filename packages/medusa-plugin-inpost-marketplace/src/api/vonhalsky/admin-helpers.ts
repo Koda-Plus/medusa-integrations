@@ -18,8 +18,8 @@ export async function respond(res: MedusaResponse, fn: () => Promise<unknown>): 
   }
 }
 
-/** Offer or order row ids from a body: `{ ids: [...] }`, at most 200, our prefixes only. */
-export function idsOf(body: unknown, prefix: "vhoff" | "vhord"): string[] {
+/** Offer, order or case row ids from a body: `{ ids: [...] }`, at most 200, our prefixes only. */
+export function idsOf(body: unknown, prefix: "vhoff" | "vhord" | "vhcase"): string[] {
   const list = body && typeof body === "object" ? (body as { ids?: unknown }).ids : undefined
   if (!Array.isArray(list)) return []
   const re = new RegExp(`^${prefix}_[A-Za-z0-9]+$`)

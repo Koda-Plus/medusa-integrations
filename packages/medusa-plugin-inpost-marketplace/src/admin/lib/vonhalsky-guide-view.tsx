@@ -10,20 +10,20 @@ import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type Gu
  * Every sentence comes from the i18n files.
  */
 
-const NEEDS = ["agreement", "credentials", "catalog", "gpsr", "shipping"] as const
-const FAQ_KEYS = ["pending", "blocked", "ean", "price", "held", "demo"] as const
+const NEEDS = ["account", "credentials", "catalog", "gpsr", "shipping", "shipx"] as const
+const FAQ_KEYS = ["check", "pending", "blocked", "category", "ean", "price", "held", "tracking", "demo"] as const
 const API_PORTAL = "https://inpsa-api-portal.inpost-group.com/"
 
 const ENV = `# .env
-VONHALSKY_DEMO=true                     # a simulation, nothing leaves the server
-VONHALSKY_ENV=sandbox                   # sandbox or live
-VONHALSKY_SANDBOX_API_URL=...           # from InPost, under the integrator agreement
+VONHALSKY_DEMO=false                          # true: a simulation, nothing leaves the server
+VONHALSKY_ENV=sandbox                         # sandbox or live
+VONHALSKY_SANDBOX_CLIENT_ID=...               # Merchant Portal: Integrations, API, Create App
+VONHALSKY_SANDBOX_CLIENT_SECRET=...           # shown once, when the app is created
 VONHALSKY_SANDBOX_ORGANIZATION_ID=...
-VONHALSKY_SANDBOX_TOKEN=...
-VONHALSKY_LIVE_API_URL=...
+VONHALSKY_LIVE_CLIENT_ID=...
+VONHALSKY_LIVE_CLIENT_SECRET=...
 VONHALSKY_LIVE_ORGANIZATION_ID=...
-VONHALSKY_LIVE_TOKEN=...
-VONHALSKY_MARKUP_PERCENT=10             # the channel markup, the admin setting wins`
+VONHALSKY_MARKUP_PERCENT=10                   # the channel markup, the admin setting wins`
 
 const CONFIG = `// medusa-config.ts
 module.exports = defineConfig({
@@ -34,18 +34,20 @@ module.exports = defineConfig({
         demo: process.env.VONHALSKY_DEMO === "true",
         environment: process.env.VONHALSKY_ENV,
         sandbox: {
-          apiUrl: process.env.VONHALSKY_SANDBOX_API_URL,
+          clientId: process.env.VONHALSKY_SANDBOX_CLIENT_ID,
+          clientSecret: process.env.VONHALSKY_SANDBOX_CLIENT_SECRET,
           organizationId: process.env.VONHALSKY_SANDBOX_ORGANIZATION_ID,
-          accessToken: process.env.VONHALSKY_SANDBOX_TOKEN,
         },
         live: {
-          apiUrl: process.env.VONHALSKY_LIVE_API_URL,
+          clientId: process.env.VONHALSKY_LIVE_CLIENT_ID,
+          clientSecret: process.env.VONHALSKY_LIVE_CLIENT_SECRET,
           organizationId: process.env.VONHALSKY_LIVE_ORGANIZATION_ID,
-          accessToken: process.env.VONHALSKY_LIVE_TOKEN,
         },
         markupPercent: process.env.VONHALSKY_MARKUP_PERCENT,
-        // sendTracking: true,   // writer: tracking numbers back to the marketplace
-        // brandKey: "brand", mpnKey: "mpn",
+        // apiUrl and tokenUrl (inside sandbox or live): InPost's addresses by default
+        // daysToShip: 2, syncPriceStock: true,   // the admin settings win
+        // dimensionUnit: "mm", weightUnit: "g",   // the units of Medusa's variants
+        // brandKey: "brand", mpnKey: "mpn", eanKey: "ean", vatKey: "vat_rate",
       },
     },
   ],
@@ -76,20 +78,25 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
   const state = (done: boolean, otherwise: StepState = "todo"): StepState => (done ? "done" : otherwise)
   const mapped = Boolean(s.settings.shipping.APM && s.settings.shipping.COURIER)
   const keys = { brandKey: s.options.brandKey, mpnKey: s.options.mpnKey }
+  /* A rate limit is kept after the first answer of the seller API: the credentials worked at least once. */
+  const connected = real && s.limits !== null
+  const categoriesMapped = Object.keys(s.settings.categories).length > 0
+  const defaults = s.settings.offerDefaults
+  const shipped = s.counts.orders > 0 && s.counts.awaiting_shipment === 0 && s.counts.tracking_waiting === 0
 
   const steps: GuideStep[] = [
     {
-      id: "agreement",
-      title: t("guide.step.agreement.title"),
+      id: "credentials",
+      title: t("guide.step.credentials.title"),
       state: state(real, demo ? "optional" : "todo"),
       body: (
         <>
-          {p("guide.step.agreement.body1")}
-          {p("guide.step.agreement.body2")}
+          {p("guide.step.credentials.body1")}
+          {p("guide.step.credentials.body2")}
         </>
       ),
-      link: { label: t("guide.step.agreement.link"), href: API_PORTAL },
-      check: t("guide.step.agreement.check"),
+      link: { label: t("guide.step.credentials.link"), href: API_PORTAL },
+      check: t("guide.step.credentials.check"),
     },
     {
       id: "install",
@@ -105,6 +112,25 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
       check: t("guide.step.install.check"),
     },
     {
+      id: "check",
+      title: t("guide.step.check.title"),
+      state: state(connected, demo ? "optional" : "todo"),
+      body: p("guide.step.check.body"),
+      check: t("guide.step.check.check"),
+    },
+    {
+      id: "categories",
+      title: t("guide.step.categories.title"),
+      state: state(s.categories.count > 0 && categoriesMapped),
+      body: (
+        <>
+          {p("guide.step.categories.body1")}
+          {p("guide.step.categories.body2")}
+        </>
+      ),
+      check: t("guide.step.categories.check"),
+    },
+    {
       id: "catalog",
       title: t("guide.step.catalog.title"),
       state: state(s.counts.offers > 0 && s.counts.draft + s.counts.listed > 0),
@@ -115,6 +141,13 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
         </>
       ),
       check: t("guide.step.catalog.check"),
+    },
+    {
+      id: "defaults",
+      title: t("guide.step.defaults.title"),
+      state: state(Boolean(defaults.returnPolicy.trim() || defaults.complaintPolicy.trim()), "optional"),
+      body: p("guide.step.defaults.body"),
+      check: t("guide.step.defaults.check"),
     },
     {
       id: "pricing",
@@ -145,12 +178,23 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
       check: t("guide.step.orders.check"),
     },
     {
-      id: "tracking",
-      title: t("guide.step.tracking.title"),
-      state: state(s.counts.tracking_sent > 0, s.options.sendTracking || demo ? "later" : "optional"),
-      body: p("guide.step.tracking.body"),
-      code: "sendTracking: true,",
-      check: t("guide.step.tracking.check"),
+      id: "shipx",
+      title: t("guide.step.shipx.title"),
+      state: state(shipped, "later"),
+      body: (
+        <>
+          {p("guide.step.shipx.body1")}
+          {p("guide.step.shipx.body2")}
+        </>
+      ),
+      check: t("guide.step.shipx.check"),
+    },
+    {
+      id: "afterSale",
+      title: t("guide.step.afterSale.title"),
+      state: "later",
+      body: p("guide.step.afterSale.body"),
+      check: t("guide.step.afterSale.check"),
     },
     {
       id: "live",
@@ -163,12 +207,15 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
 
   const checklist = [
     { label: t("guide.checklist.credentials"), done: real },
+    { label: t("guide.checklist.connection"), done: connected },
+    { label: t("guide.checklist.categories"), done: s.categories.count > 0 && categoriesMapped },
     { label: t("guide.checklist.gpsr"), done: s.counts.offers > 0 && s.counts.blocked < s.counts.offers },
+    { label: t("guide.checklist.defaults"), done: Boolean(defaults.returnPolicy.trim() && defaults.complaintPolicy.trim()) },
     { label: t("guide.checklist.shipping"), done: mapped },
     { label: t("guide.checklist.channel"), done: Boolean(s.target.salesChannel && s.target.region) },
     { label: t("guide.checklist.listed"), done: s.counts.listed > 0 },
     { label: t("guide.checklist.firstOrder"), done: s.counts.orders > 0 },
-    { label: t("guide.checklist.tracking"), done: s.options.sendTracking },
+    { label: t("guide.checklist.shipx"), done: shipped },
   ]
 
   return (

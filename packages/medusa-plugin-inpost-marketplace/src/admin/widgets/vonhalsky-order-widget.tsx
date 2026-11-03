@@ -13,7 +13,7 @@ import { EventList, ImportBadge, TrackingBadge } from "../lib/vonhalsky-ui"
 /**
  * Order page, side column: whether the order came from InPost Von Halsky,
  * the marketplace order id, the delivery and the parcel locker, the payment
- * and the tracking sent back, with the history. Hidden on every other order.
+ * and the tracking numbers of its parcels, with the history. Hidden on every other order.
  *
  * A host (an app that shows every integration as tabs of one card) embeds it
  * with `embedded`: no frame of its own, a line while loading and when empty.

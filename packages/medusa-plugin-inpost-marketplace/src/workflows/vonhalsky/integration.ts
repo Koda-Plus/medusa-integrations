@@ -2,7 +2,7 @@ import { orderSummary, productSummary, vonHalskyCounters, type OrderRow, type Pr
 import { integrationEn, integrationPl } from "../../modules/vonhalsky/lib/integration-texts"
 import { KIT_META } from "../../modules/vonhalsky/lib/kit-meta"
 import { integrationRoutes, type SummaryDraft } from "../../modules/vonhalsky/lib/kit-routes"
-import { vonHalskySvc } from "../../modules/vonhalsky/lib/store"
+import { caseFilter, orderFilter, vonHalskySvc } from "../../modules/vonhalsky/lib/store"
 
 /**
  * koda.integration/1 for InPost Von Halsky: the manifest, one line per
@@ -38,11 +38,12 @@ export const vonHalskyIntegration = integrationRoutes({
     } catch {
       lastSyncAt = null
     }
-    const problems = o.mode === "off" ? [{ key: "integration.problems.credentials" }] : o.mode === "live" || o.mode === "sandbox" ? [{ key: "integration.problems.pending" }] : []
+    const problems = o.mode === "off" ? [{ key: "integration.problems.credentials" }] : []
     return {
       mode: o.mode,
       configured: o.mode !== "off",
-      writers: { armed: o.sendTracking ? 1 : 0, total: 1 },
+      /* The one writer: offers, prices and stock sent to the marketplace (live and sandbox). */
+      writers: { armed: o.mode === "live" || o.mode === "sandbox" ? 1 : 0, total: 1 },
       lastSyncAt,
       problems,
     }
@@ -64,6 +65,8 @@ export const vonHalskyIntegration = integrationRoutes({
           payment_type: r.payment_type ?? null,
           tracking_status: String(r.tracking_status ?? "none"),
           tracking_numbers: Array.isArray(r.tracking_numbers) ? r.tracking_numbers.map(String) : [],
+          returns_count: Number(r.returns_count) || 0,
+          claims_count: Number(r.claims_count) || 0,
           updated_at: r.updated_at ?? null,
         }
         const draft = orderSummary(row)
@@ -90,9 +93,16 @@ export const vonHalskyIntegration = integrationRoutes({
   async count(ctx) {
     const svc = vonHalskySvc(ctx.scope)
     const [, held] = await svc.listAndCountVonHalskyOrders({ status: "held" }, { take: 1 })
-    const [, trackingFailed] = await svc.listAndCountVonHalskyOrders({ tracking_status: "failed" }, { take: 1 })
-    const [, awaitingShipment] = await svc.listAndCountVonHalskyOrders({ status: "imported", tracking_status: ["none", "pending_api"] }, { take: 1 })
+    const [, trackingWaiting] = await svc.listAndCountVonHalskyOrders({ tracking_status: "waiting" }, { take: 1 })
+    const [, awaitingShipment] = await svc.listAndCountVonHalskyOrders(orderFilter("awaiting_shipment"), { take: 1 })
     const [, blockedOffers] = await svc.listAndCountVonHalskyOffers({ status: "blocked" }, { take: 1 })
-    return vonHalskyCounters({ held, trackingFailed, awaitingShipment, blockedOffers })
+    let openCases = 0
+    try {
+      const [, n] = await svc.listAndCountVonHalskyCases(caseFilter("open"), { take: 1 })
+      openCases = Number(n) || 0
+    } catch {
+      openCases = 0
+    }
+    return vonHalskyCounters({ held, trackingWaiting, openCases, awaitingShipment, blockedOffers })
   },
 })

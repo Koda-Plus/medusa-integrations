@@ -6,9 +6,9 @@ import { vonHalskySvc, type Scope } from "../../modules/vonhalsky/lib/store"
 
 /**
  * What the flows and routes share: the module service, the options and ONE
- * marketplace client per process. Demo mode gets the in-memory client, which
- * never calls fetch; sandbox and live get the pending client, which refuses
- * politely.
+ * marketplace client per process. Demo mode gets the simulated marketplace,
+ * which never calls fetch; sandbox and live get the seller API client of
+ * InPost's stage or production gateway.
  */
 
 export { VonHalskyFlowError }
@@ -43,10 +43,13 @@ let client: { key: string; value: MarketplaceClient } | null = null
 export function clientOf(scope: Scope): MarketplaceClient | null {
   const o = optionsOf(scope)
   if (o.mode === "off") return null
-  const key = `${o.mode}|${o.credentials.apiUrl}|${o.credentials.organizationId}`
+  const c = o.credentials
+  const key = `${o.mode}|${c.apiUrl}|${c.tokenUrl}|${c.organizationId}|${c.clientId}`
   if (client && client.key === key) return client.value
   const value: MarketplaceClient =
-    o.mode === "demo" ? createDemoClient() : createLiveClient({ mode: o.mode, apiUrl: o.credentials.apiUrl, organizationId: o.credentials.organizationId, accessToken: o.credentials.accessToken })
+    o.mode === "demo"
+      ? createDemoClient()
+      : createLiveClient({ mode: o.mode, apiUrl: c.apiUrl, tokenUrl: c.tokenUrl, clientId: c.clientId, clientSecret: c.clientSecret, organizationId: c.organizationId, timeoutMs: o.timeoutMs })
   client = { key, value }
   return value
 }
@@ -82,9 +85,9 @@ export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T>
   }
 }
 
-/** The message of an error, with the access token and any bearer value masked, for rows and logs. */
+/** The message of an error, with the client secret and any bearer value masked, for rows and logs. */
 export function errorText(err: unknown, scope?: Scope): string {
-  const secrets = scope ? [optionsOf(scope).credentials.accessToken] : []
+  const secrets = scope ? [optionsOf(scope).credentials.clientSecret, optionsOf(scope).credentials.clientId] : []
   /* Workflows may throw plain objects ({ message, type }) instead of Error instances. */
   const message =
     err instanceof Error
