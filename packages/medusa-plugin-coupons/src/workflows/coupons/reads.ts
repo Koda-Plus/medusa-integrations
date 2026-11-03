@@ -10,7 +10,7 @@
 
 import { DETAIL_ORDERS, EXPIRING_DAYS, LIST_LIMIT } from "../../modules/coupons/lib/constants"
 import type { CouponDto, CouponOrderDto, CouponStats, CouponTiles, CustomerHit, NameMaps } from "../../modules/coupons/lib/contract"
-import { isForCustomer, reachesProduct, toCouponDto, withTerms, type PromotionLike } from "../../modules/coupons/lib/describe"
+import { couponCodesOf, isForCustomer, reachesProduct, toCouponDto, withTerms, type PromotionLike } from "../../modules/coupons/lib/describe"
 import type { StoreTerms } from "../../modules/coupons/lib/contract"
 import { readTerms, storeLookups } from "./terms"
 import { customerModule, num, queryOf, sqlOf, str, type Scope, couponsService } from "./runtime"
@@ -156,6 +156,31 @@ export async function ordersUsing(scope: Scope, promotionId: string): Promise<nu
   return num(r.rows?.[0]?.orders)
 }
 
+/** At most this many orders of one coupon are read for the results of its e-mails. */
+export const FACTS_LIMIT = 5000
+
+/**
+ * Every non-canceled order with the coupon: its customer, date and total
+ * (gross, the order's current total). For the results of the code's e-mails.
+ */
+export async function couponOrderFacts(scope: Scope, promotionId: string): Promise<Array<{ orderId: string; customerId: string | null; createdAt: string; total: number }>> {
+  const sql = `with ${adjustments(scope, (pid) => `${pid} = ?`)},
+    per_order as (select distinct order_id from adj)
+    select o.id, o.customer_id, o.created_at, coalesce((s.totals->>'current_order_total')::numeric, 0)::float as total
+    from per_order po
+    join "order" o on o.id = po.order_id
+    left join order_summary s on s.order_id = o.id and s.version = o.version and s.deleted_at is null
+    order by o.created_at desc
+    limit ${FACTS_LIMIT}`
+  const r = await sqlOf(scope).raw(sql, [promotionId, promotionId])
+  return (r.rows ?? []).map((row) => ({
+    orderId: String(row.id),
+    customerId: str(row.customer_id),
+    createdAt: new Date(row.created_at).toISOString(),
+    total: Math.round(num(row.total) * 100) / 100,
+  }))
+}
+
 /** Orders with any coupon and the discount they got, in the last 30 days. */
 async function last30Days(scope: Scope): Promise<{ orders: number; discount: number }> {
   const sql = `with ${adjustments(scope, (pid) => `${pid} is not null and o.created_at > now() - interval '30 days'`)}
@@ -204,7 +229,24 @@ export function variantLabel(row: Record<string, unknown>): string | null {
   return product ?? own ?? str(row.sku)
 }
 
-export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<NameMaps> {
+/**
+ * The codes of every coupon of the store, for the sentence of a coupon that
+ * adds up with or never goes with other codes ("free delivery", "other
+ * coupons"). `all`: the store's coupons when the caller has them already.
+ */
+async function codesFor(scope: Scope, coupons: CouponDto[], all?: CouponDto[]): Promise<NameMaps["couponCodes"]> {
+  const stacking = coupons.some((c) => (c.terms?.combines?.with.length ?? 0) + (c.terms?.combines?.never.length ?? 0) > 0)
+  if (!stacking) return {}
+  if (all) return couponCodesOf(all)
+  try {
+    const now = new Date()
+    return couponCodesOf((await readPromotions(scope)).map((p) => toCouponDto(p, undefined, now)))
+  } catch {
+    return {}
+  }
+}
+
+export async function namesFor(scope: Scope, coupons: CouponDto[], all?: CouponDto[]): Promise<NameMaps> {
   const groups = coupons.flatMap((c) => [...c.shape.groupIds, ...(c.shape.excludedGroupIds ?? [])])
   const categories = coupons.flatMap((c) => c.shape.categoryIds)
   const products = coupons.flatMap((c) => c.shape.productIds)
@@ -225,6 +267,7 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
     nameMap(scope, "product_variant", coupons.flatMap((c) => c.shape.excludedVariantIds ?? []), variantLabel, ["title", "sku", "product.title"]),
     needStore ? storeLookups(scope).then((x) => x.lookups) : Promise.resolve(null),
   ])
+  const couponCodes = await codesFor(scope, coupons, all)
   /* The store's own rules (option storeRules), never a reason for the page to fail. */
   let storeRules: NameMaps["storeRules"] = {}
   const resolver = couponsService(scope).getOptions().storeRules
@@ -237,8 +280,10 @@ export async function namesFor(scope: Scope, coupons: CouponDto[]): Promise<Name
   }
   const pools = Object.fromEntries((store?.pools ?? []).map((x) => [x.id, x.name]))
   const priceLists = Object.fromEntries((store?.priceLists ?? []).map((x) => [x.id, x.name]))
-  const nobody = couponsService(scope).getOptions().nobodyCustomerId
-  return { groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, tags, variants, pools, priceLists, nobody, storeRules }
+  const options = couponsService(scope).getOptions()
+  const nobody = options.nobodyCustomerId
+  const members = { ids: [...(options.memberGroupIds ?? [])], label: options.memberGroupsLabel ?? null }
+  return { couponCodes, members, groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, tags, variants, pools, priceLists, nobody, storeRules }
 }
 
 /* ------------------------------------------------------------------ */
@@ -249,7 +294,7 @@ export async function listCoupons(scope: Scope, now: Date = new Date()): Promise
   const promotions = await readPromotions(scope)
   const stats = await statsFor(scope, promotions.map((p) => p.id))
   const coupons = await toCoupons(scope, promotions, stats, now)
-  const [names, recent] = await Promise.all([namesFor(scope, coupons), last30Days(scope)])
+  const [names, recent] = await Promise.all([namesFor(scope, coupons, coupons), last30Days(scope)])
   const soon = now.getTime() + EXPIRING_DAYS * 24 * 3600 * 1000
   const tiles: CouponTiles = {
     active: coupons.filter((c) => c.status === "active").length,
@@ -311,6 +356,7 @@ export async function lookups(scope: Scope, memberGroupIds: readonly string[], f
   const store = await storeLookups(scope)
   return {
     store: store.lookups,
+    memberGroupsLabel: couponsService(scope).getOptions().memberGroupsLabel ?? null,
     groups: groups.map((g) => ({ id: String(g.id), name: str(g.name) ?? String(g.id), member: memberGroupIds.includes(String(g.id)) })).sort((a, b) => a.name.localeCompare(b.name)),
     categories: categories.map((c) => ({ id: String(c.id), name: str(c.name) ?? String(c.id) })).sort((a, b) => a.name.localeCompare(b.name)),
     currencies: currencies.size ? [...currencies] : [fallbackCurrency],

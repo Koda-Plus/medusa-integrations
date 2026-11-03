@@ -1,4 +1,6 @@
 import {
+  DEFAULT_CATCH_UP_MAX_AGE_DAYS,
+  DEFAULT_CATCH_UP_MIN_AGE_MINUTES,
   DEFAULT_COD_PROVIDERS,
   DEFAULT_MAX_PRICE_CHANGES_PER_RUN,
   DEFAULT_MAX_PRODUCTS_PER_RUN,
@@ -95,6 +97,15 @@ export interface SubiektPluginOptions {
   salesDocumentAfter?: "wz" | "zk"
   /** Stores that run this integration in production, shown in the admin. See the README. */
   references?: unknown[]
+
+  /* ---------------------------- 0.3.0 ---------------------------- */
+
+  /** Safety net job: recent orders with neither a ZK task nor a ZK get their task. Default true. */
+  catchUpEnabled?: boolean
+  /** The safety net leaves orders younger than this to the subscriber. Minutes, default 10. */
+  catchUpMinAgeMinutes?: number
+  /** The safety net never looks at orders older than this. Days, default 7. */
+  catchUpMaxAgeDays?: number
 }
 
 export interface ResolvedSubiektOptions {
@@ -133,6 +144,9 @@ export interface ResolvedSubiektOptions {
   salesDocument: SalesDocumentOption
   salesDocumentAfter: "wz" | "zk"
   references: ReferenceDto[]
+  catchUpEnabled: boolean
+  catchUpMinAgeMinutes: number
+  catchUpMaxAgeDays: number
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
@@ -203,6 +217,9 @@ export function resolveOptions(o: SubiektPluginOptions | undefined | null): Reso
     salesDocument: salesDocument ?? (demo ? "auto" : "none"),
     salesDocumentAfter: str(opts.salesDocumentAfter).toLowerCase() === "zk" ? "zk" : "wz",
     references: normalizeReferences(opts.references),
+    catchUpEnabled: bool(opts.catchUpEnabled, true),
+    catchUpMinAgeMinutes: count(opts.catchUpMinAgeMinutes, DEFAULT_CATCH_UP_MIN_AGE_MINUTES, 24 * 60),
+    catchUpMaxAgeDays: count(opts.catchUpMaxAgeDays, DEFAULT_CATCH_UP_MAX_AGE_DAYS, 60),
   }
 }
 

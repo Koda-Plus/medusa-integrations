@@ -86,6 +86,11 @@ const FakturowniaDocument = model
     reminder_at: model.dateTime().nullable(),
     finals_checked_at: model.dateTime().nullable(),
     converted_at: model.dateTime().nullable(),
+    /* 0.4.0: when the KSeF number was first seen, and what Fakturownia says of its own e-mail */
+    ksef_number_at: model.dateTime().nullable(),
+    remote_email_status: model.text().nullable(),
+    remote_sent_at: model.dateTime().nullable(),
+    remote_email_checked_at: model.dateTime().nullable(),
   })
   .indexes([
     { on: ["order_id", "kind", "demo"], unique: true, where: "kind <> 'correction' AND deleted_at IS NULL" },

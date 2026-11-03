@@ -10,7 +10,7 @@ export const SUBIEKT_MODULE = "subiekt_nexo"
 export const CONTRACT_VERSION = "1.1.0"
 
 /** Version of this plugin, sent in the User-Agent and shown in the admin. */
-export const PLUGIN_VERSION = "0.2.0"
+export const PLUGIN_VERSION = "0.3.0"
 
 /**
  * The row of `subiekt_connection`: one per mode, so switching between the demo
@@ -39,6 +39,19 @@ export const STOCK_SCHEDULE = "*/10 * * * *"
 
 /** Products and prices from Subiekt: once an hour. Prices change rarely and the bridge reads whole price lists. */
 export const PRODUCTS_SCHEDULE = "17 * * * *"
+
+/**
+ * Safety net (0.3.0): every 10 minutes, recent orders that have neither a ZK
+ * task nor a ZK in the plugin tables get their task. Catches an `order.placed`
+ * that never reached the subscriber, or a task row that could not be written.
+ */
+export const CATCH_UP_SCHEDULE = "*/10 * * * *"
+/** Orders younger than this are left to the subscriber. */
+export const DEFAULT_CATCH_UP_MIN_AGE_MINUTES = 10
+/** Orders older than this are never caught up. */
+export const DEFAULT_CATCH_UP_MAX_AGE_DAYS = 7
+/** Orders read in one safety net run at most, oldest first. */
+export const CATCH_UP_MAX_ORDERS_PER_RUN = 1000
 
 /** Tasks taken from the queue in one pass. */
 export const TASKS_PER_PASS = 25

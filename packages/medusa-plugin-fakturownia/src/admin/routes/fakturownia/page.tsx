@@ -46,6 +46,7 @@ import { KitLoading, KitSkeletonRows } from "../../lib/fakturownia-kit"
 import { DemoDetails, MailboxSection, SummarySection, UnpaidSection, WritersSection } from "../../lib/fakturownia-panels"
 import {
   BuyerWarningText,
+  WatchText,
   DocumentStatusBadge,
   Fact,
   KindBadge,
@@ -516,6 +517,8 @@ function ConnectionSection({ status, lang }: { status: StatusResponse; lang: str
         <Fact label={t("connection.cancel")}>{o.cancelOnOrderCanceled ? t("connection.cancelOn") : onOff(false)}</Fact>
         <Fact label={t("connection.corrections")}>{o.corrections === "plan" ? t("connection.correctionsPlan") : onOff(false)}</Fact>
         <Fact label={t("connection.reminders")}>{t("connection.days", { count: o.reminderAfterDays })}</Fact>
+        <Fact label={t("connection.ksefStuck")}>{o.ksefStuckAfterDays > 0 ? t("connection.days", { count: o.ksefStuckAfterDays }) : onOff(false)}</Fact>
+        <Fact label={t("connection.notEmailed")}>{o.notEmailedAfterHours > 0 ? t("connection.hours", { count: o.notEmailedAfterHours }) : onOff(false)}</Fact>
         <Fact label={t("connection.nipSources")} mono>
           <span className="txt-compact-xsmall">{o.nipSources.join(", ")}</span>
         </Fact>
@@ -768,6 +771,7 @@ function DocumentsSection({
                       </Text>
                     ) : null}
                     <BuyerWarningText warning={d.buyerWarning} />
+                    <WatchText doc={d} lang={lang} />
                     {d.status === "pending" && d.nextAttemptAt && d.attempts > 0 ? (
                       <Text size="xsmall" className="text-ui-fg-muted">
                         {t("documents.nextAttempt", { time: fmtDateTime(d.nextAttemptAt, lang) })}

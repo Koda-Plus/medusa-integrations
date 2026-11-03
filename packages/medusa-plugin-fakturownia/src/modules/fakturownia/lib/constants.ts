@@ -128,6 +128,37 @@ export const DEFAULT_PAYMENT_TYPE = "transfer"
 /** Issued documents whose KSeF status is read, for this many days after issue. */
 export const STATUS_WINDOW_DAYS = 14
 
+/* ---- 0.4.0 ---------------------------------------------------------- */
+
+/**
+ * A VAT invoice or correction still without a KSeF number this many days
+ * after issue is listed under "Needs attention" (`ksefStuckAfterDays`).
+ */
+export const DEFAULT_KSEF_STUCK_AFTER_DAYS = 3
+
+/**
+ * A document with a KSeF number that neither Fakturownia nor the plugin
+ * e-mailed this many hours after the number appeared is listed under "Needs
+ * attention" (`notEmailedAfterHours`).
+ */
+export const DEFAULT_NOT_EMAILED_AFTER_HOURS = 24
+
+/**
+ * Past the status window, documents still without a KSeF number (and ones
+ * with a number the buyer may not have) are read again until this many days
+ * after issue, so a number or an e-mail that comes late clears them by itself.
+ */
+export const KSEF_LATE_WINDOW_DAYS = 60
+
+/** While Fakturownia was never seen e-mailing a document of the account, numbered documents are read for this many days to find out. */
+export const EMAIL_PROBE_DAYS = 2
+
+/** Late documents read in one pass, on top of the status window. */
+export const LATE_PER_PASS = 20
+
+/** A late document is read at most once in this time. */
+export const LATE_RECHECK_MS = 60 * 60 * 1000
+
 /** Documents whose KSeF status is read in one pass. */
 export const STATUSES_PER_PASS = 40
 
