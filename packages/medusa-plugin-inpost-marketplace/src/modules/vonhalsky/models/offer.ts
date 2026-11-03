@@ -48,12 +48,41 @@ const VonHalskyOffer = model
     synced_at: model.dateTime().nullable(),
     /** A masked error of the last failed step. */
     error: model.text().nullable(),
+    /** The marketplace leaf category, and where it came from: "map" (a Medusa category), "hint" (the catalog) or "manual". */
+    category_id: model.text().nullable(),
+    category_source: model.text().nullable(),
+    /** The category attributes sent: [{ id, values }]. */
+    attributes: model.json().nullable(),
+    /** What the catalog matched by EAN or part number: { productId, categoryId, name, brand } or null. */
+    hint: model.json().nullable(),
+    /* WHAT THE MARKETPLACE SAYS, beside what the plugin sent. */
+    remote_price_minor: model.number().nullable(),
+    /** What a buyer pays now, after a promotion or the price program. */
+    remote_final_price_minor: model.number().nullable(),
+    remote_stock: model.number().nullable(),
+    /** The promotion: { start, end, status, mode, value } or null. */
+    promotion: model.json().nullable(),
+    /** The price program declaration: IN, OUT or null. */
+    program: model.text().nullable(),
+    /** Why the marketplace keeps it PENDING or REJECTED: [{ code, message }]. */
+    validation: model.json().nullable(),
+    /** The last asynchronous write: its id, what it was (create, price, stock, close, reopen, patch, promotion, program) and its status. */
+    command_id: model.text().nullable(),
+    command_kind: model.text().nullable(),
+    command_status: model.text().nullable(),
+    command_at: model.dateTime().nullable(),
+    /** The price and stock last sent, so only a difference is sent again. */
+    pushed_price_minor: model.number().nullable(),
+    pushed_stock: model.number().nullable(),
+    image_count: model.number().nullable(),
+    published_at: model.dateTime().nullable(),
   })
   .indexes([
     { on: ["variant_id"], unique: true, where: "deleted_at IS NULL" },
     { on: ["product_id"], where: "deleted_at IS NULL" },
     { on: ["status"], where: "deleted_at IS NULL" },
     { on: ["remote_id"], where: "deleted_at IS NULL" },
+    { on: ["command_status"], where: "deleted_at IS NULL" },
   ])
 
 export default VonHalskyOffer

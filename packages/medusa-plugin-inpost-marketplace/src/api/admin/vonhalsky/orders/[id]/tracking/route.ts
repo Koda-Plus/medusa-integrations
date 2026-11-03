@@ -5,8 +5,8 @@ import { respond } from "../../../../../vonhalsky/admin-helpers"
 
 /**
  * POST /admin/vonhalsky/orders/:id/tracking: reads the tracking numbers of
- * the Medusa order again and sends the ones that failed or waited (demo:
- * records them). Numbers already sent are not sent twice.
+ * the Medusa order and the marketplace order again, and says whether InPost
+ * shows the parcels (linked) or not yet (waiting).
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const id = String(req.params.id ?? "")
@@ -17,6 +17,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   await respond(res, async () => {
     const [row] = ((await vonHalskySvc(req.scope).listVonHalskyOrders({ id }, { take: 1 })) ?? []) as Array<Record<string, any>>
     if (!row?.order_id) return { outcome: "none", order: row ? toOrderDto(row) : null }
-    return syncTracking(req.scope, String(row.order_id), { force: true })
+    return syncTracking(req.scope, String(row.order_id), { fresh: true })
   })
 }

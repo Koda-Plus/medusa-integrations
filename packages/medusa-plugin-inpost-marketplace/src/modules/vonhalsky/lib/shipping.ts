@@ -55,29 +55,3 @@ export function trackingNumbersOf(fulfillments: readonly (FulfillmentLike | null
   }
   return out
 }
-
-/** The numbers not sent yet. */
-export function unsentNumbers(all: readonly string[], sent: unknown): string[] {
-  const done = new Set(Array.isArray(sent) ? sent.map((x) => String(x)) : [])
-  return all.filter((n) => !done.has(n))
-}
-
-export type TrackingDecision =
-  | { kind: "none"; reason: "no_numbers" | "all_sent" | "not_imported" }
-  | { kind: "record"; numbers: string[] }
-  | { kind: "send"; numbers: string[] }
-  | { kind: "off"; numbers: string[] }
-
-/**
- * What happens with the tracking numbers of one imported order: demo
- * records them (nothing leaves the server); with the writer on they are
- * sent; with it off they are only noted, so the panel shows they wait.
- */
-export function trackingDecision(input: { imported: boolean; numbers: string[]; sent: unknown; demo: boolean; sendTracking: boolean }): TrackingDecision {
-  if (!input.imported) return { kind: "none", reason: "not_imported" }
-  if (input.numbers.length === 0) return { kind: "none", reason: "no_numbers" }
-  const fresh = unsentNumbers(input.numbers, input.sent)
-  if (fresh.length === 0) return { kind: "none", reason: "all_sent" }
-  if (input.demo) return { kind: "record", numbers: fresh }
-  return input.sendTracking ? { kind: "send", numbers: fresh } : { kind: "off", numbers: fresh }
-}
