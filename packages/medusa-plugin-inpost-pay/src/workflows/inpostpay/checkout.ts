@@ -15,6 +15,7 @@ import { proofSecret, sessionProof } from "../../modules/inpostpay/lib/proof"
 import { readSettings, withEvent } from "../../modules/inpostpay/lib/store"
 import { basketRow, updateRow } from "./baskets"
 import { loadCart, shippingOptionsFor } from "./carts"
+import { annotatePayments } from "./payments"
 import { InpostPayFlowError, loggerOf, optionsOf, withBasketLock } from "./runtime"
 
 /**
@@ -138,6 +139,10 @@ export async function placeOrder(scope: MedusaContainer, input: PlaceInput): Pro
 
       const { result } = await completeCartWorkflow(scope).run({ input: { id: cartId } })
       const orderId = (result as { id: string }).id
+      /* A refund finds the InPost transaction by this id; without it the order still stands. */
+      await annotatePayments(scope, orderId, { order_id: orderId }).catch((e: unknown) =>
+        loggerOf(scope).warn(`[inpostpay] The payment of ${orderId} did not get its order id: ${(e as Error)?.message ?? e}`),
+      )
       await updateRow(scope, row.id, {
         status: "ordered",
         order_id: orderId,

@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { StatusResponse } from "../../../modules/inpostpay/lib/contract"
-import { mask, missingOptions } from "../../../modules/inpostpay/lib/options"
+import { mask, missingOptions, refundMode } from "../../../modules/inpostpay/lib/options"
 import { inpostPaySvc, PAYMENT_PROBLEMS, readSettings } from "../../../modules/inpostpay/lib/store"
 import { optionsOf } from "../../../workflows/inpostpay/runtime"
 import { backendUrlOf, providerState, shippingOptionsOfStore } from "../../inpostpay/admin-helpers"
@@ -53,6 +53,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       storefrontUrl: o.storefrontUrl,
       sendOrderEvents: o.sendOrderEvents,
       basketTtlHours: o.basketTtlHours,
+      merchantSecret: mask(o.merchantSecret),
+      refunds: refundMode(o),
+      autoCapture: o.autoCapture,
     },
     urls: { merchantApi: backend ? `${backend}/inpostpay` : "/inpostpay", api: o.apiUrl, widget: o.widgetUrl },
     settings: await readSettings(req.scope),

@@ -80,6 +80,11 @@ export interface StatusResponse {
     storefrontUrl: string | null
     sendOrderEvents: boolean
     basketTtlHours: number
+    /** "***" and the last four characters, or empty. */
+    merchantSecret: string
+    /** How a refund in Medusa reaches the money (options merchantSecret, manualRefunds). */
+    refunds: "demo" | "inpost" | "manual" | "off"
+    autoCapture: boolean
   }
   urls: {
     /** What goes into the merchant portal as the Merchant Backend API address. */
