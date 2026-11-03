@@ -29,6 +29,7 @@ import { waybillsOf, type ShipmentRow } from "../../modules/dpd/lib/dto"
 import { canCallDpd } from "../../modules/dpd/lib/options"
 import type { ShipmentPatch } from "../../modules/dpd/lib/store"
 import { boxesWithWaybills, createAttempt, deferredCode, labelAttempt, mustFind, sourceOf, type Trigger } from "./create"
+import { expireDispatches } from "./dispatch"
 import { latestLabel, saveLabel } from "./documents"
 import { refreshProblems } from "./plan"
 import {
@@ -272,7 +273,7 @@ export async function acceptShipment(scope: Scope, id: string, actor: string | n
 /* The pass                                                            */
 /* ------------------------------------------------------------------ */
 
-export type PassResult = { purged: number; expired: number; lookedUp: number; created: number; labeled: number; ran: boolean }
+export type PassResult = { purged: number; expired: number; dispatchesExpired: number; lookedUp: number; created: number; labeled: number; ran: boolean }
 
 const LIST_TAKE = 200
 /** Codes of a `created` row whose label the pass asks for again: no clear answer, a lease that ran out, or the pacing that sent nothing (never rate_limited_manual: a person asked, a person asks again). */
@@ -295,7 +296,7 @@ async function purgeDocuments(scope: Scope, now: Date): Promise<number> {
 }
 
 export async function runShipmentPass(scope: Scope, now: Date = new Date()): Promise<PassResult> {
-  const idle: PassResult = { purged: 0, expired: 0, lookedUp: 0, created: 0, labeled: 0, ran: false }
+  const idle: PassResult = { purged: 0, expired: 0, dispatchesExpired: 0, lookedUp: 0, created: 0, labeled: 0, ran: false }
   const svc = dpdService(scope)
   const o = svc.getOptions()
   const configured = o.demo || canCallDpd(o)
@@ -333,6 +334,10 @@ export async function runShipmentPass(scope: Scope, now: Date = new Date()): Pro
         mode,
       })
     }
+    /* Dispatch leases too (DS8): never a print, an order or a resolve, only where the state says. */
+    await safely("dispatches", async () => {
+      out.dispatchesExpired = await expireDispatches(scope, mode, now)
+    })
 
     const writers = await writerStates(svc)
     if (!writers.shipment.armed) return out
@@ -442,7 +447,7 @@ export async function runShipmentPass(scope: Scope, now: Date = new Date()): Pro
   svc
     .getLogger()
     .info(
-      `[dpd] Pass: ${result.purged} documents removed, ${result.expired} leases expired, ${result.lookedUp} looked up, ${result.created} created, ${result.labeled} labels asked again.`,
+      `[dpd] Pass: ${result.purged} documents removed, ${result.expired} leases expired, ${result.dispatchesExpired} dispatch leases expired, ${result.lookedUp} looked up, ${result.created} created, ${result.labeled} labels asked again.`,
     )
   return result
 }

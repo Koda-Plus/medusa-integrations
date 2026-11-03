@@ -122,16 +122,24 @@ function modelColumns(file: string): string[] {
   return [...readFileSync(file, "utf8").matchAll(/^\s+(\w+): model\./gm)].map((m) => m[1])
 }
 
-test("tables: every model column is in the migration, with the table names of the plan", () => {
+test("tables: every model column is in the migrations, with the table names of the plan", () => {
   const migration = readFileSync(join(PKG, "src/modules/dpd/migrations/Migration20261102120000_dpd.ts"), "utf8")
+  /* Stage 4 adds the columns of the handover to dpd_dispatch in a second migration (alter table only). */
+  const second = readFileSync(join(PKG, "src/modules/dpd/migrations/Migration20261103120000_dpd_dispatch.ts"), "utf8")
+  const added = [...second.matchAll(/add column if not exists "(\w+)"/g)].map((m) => m[1])
+  assert.deepEqual(added, ["location_id", "sender", "params", "problems", "plan_hash", "attempts", "protocol_at", "ordered_at", "updated_by"])
   const tables = ["dpd_shipment", "dpd_document", "dpd_event", "dpd_dispatch", "dpd_setting"]
   for (const table of tables) {
     const file = join(PKG, "src/modules/dpd/models", `${table.replace("_", "-")}.ts`)
     assert.match(readFileSync(file, "utf8"), new RegExp(`model\\s*\\.define\\("${table}"`), table)
     const block = migration.split(`create table if not exists "${table}" (`)[1]?.split(");")[0] ?? ""
     assert.ok(block, `the migration creates ${table}`)
-    for (const column of modelColumns(file)) assert.match(block, new RegExp(`"${column}" `), `${table}.${column}`)
+    const columns = new Set([...[...block.matchAll(/"(\w+)" /g)].map((m) => m[1]), ...(table === "dpd_dispatch" ? added : [])])
+    for (const column of modelColumns(file)) assert.ok(columns.has(column), `${table}.${column}`)
   }
+  /* Never @mikro-orm/migrations directly: the package has no @mikro-orm dependency nor peer (E11). */
+  assert.match(second, /^import \{ Migration \} from "@medusajs\/framework\/mikro-orm\/migrations"$/m)
+  assert.ok(!second.includes('"@mikro-orm/'), "no direct @mikro-orm import")
   assert.match(migration, /"IDX_dpd_shipment_fulfillment_id_kind_mode_unique" on "dpd_shipment" \("fulfillment_id", "kind", "mode"\)/)
   assert.match(migration, /create unique index if not exists "IDX_dpd_event_dedupe_key_unique"/)
   assert.match(migration, /create unique index if not exists "IDX_dpd_setting_key_unique" on "dpd_setting" \("key"\) where "deleted_at" is null;/)
@@ -144,6 +152,24 @@ test("tables: every model column is in the migration, with the table names of th
     for (const m of model.matchAll(/\{ on: \[[^\]]*\], unique: true([^}]*)\}/g)) assert.match(m[1], /deleted_at IS NULL/, `${table}: the unique index says its scope`)
   }
   assert.match(migration, /export class Migration20261102120000_dpd extends Migration/)
+})
+
+test("the second migration drops only its own columns", () => {
+  const first = readFileSync(join(PKG, "src/modules/dpd/migrations/Migration20261102120000_dpd.ts"), "utf8")
+  const second = readFileSync(join(PKG, "src/modules/dpd/migrations/Migration20261103120000_dpd_dispatch.ts"), "utf8")
+  const [up, down] = second.split(/async down\(\)/)
+  assert.ok(up && down, "an up and a down")
+  const added = [...up.matchAll(/add column if not exists "(\w+)"/g)].map((m) => m[1])
+  const dropped = [...down.matchAll(/drop column if exists "(\w+)"/g)].map((m) => m[1])
+  assert.deepEqual(dropped, added, "down drops exactly what up added (DS2)")
+  assert.ok(added.length > 0)
+  /* Nothing of the first migration: no table, no index, no column it created. */
+  assert.ok(!/drop (table|index)|create table|truncate|delete from|rename/i.test(second), "alter table only")
+  assert.equal([...second.matchAll(/alter table if exists "(\w+)"/g)].map((m) => m[1]).join(","), "dpd_dispatch,dpd_dispatch")
+  const block = first.split('create table if not exists "dpd_dispatch" (')[1]?.split(");")[0] ?? ""
+  const own = new Set([...block.matchAll(/"(\w+)" /g)].map((m) => m[1]))
+  for (const column of dropped) assert.ok(!own.has(column), `${column} belongs to the first migration`)
+  assert.match(second, /export class Migration20261103120000_dpd_dispatch extends Migration/)
 })
 
 test("the migration name is unique across every package of the repository", () => {

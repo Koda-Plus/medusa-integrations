@@ -8,17 +8,22 @@
  *                the given states and only on PATCHABLE_COLUMNS, events
  *                deduplicated, one setting per key, the groups of groupOf,
  *                claims with a token and a lease, finish by the owner only,
- *                leases that ran out taken back
+ *                leases that ran out taken back; the dispatches of stage 4
+ *                with the same rules (JSON columns stored as JSON)
  *   setup   a fake Medusa container: the DPD module service (the generated
  *           CRUD of the five tables over Tables, the options, masking),
  *           the memory store, Query over a list of orders, the event bus,
- *           a logger, the fulfillment module (retrieve and update of the
- *           fulfillments of the orders), given a FakeDpdServices, the
+ *           a logger, the fulfillment module (retrieve, list and update of
+ *           the fulfillments of the orders; update merges `data` shallowly
+ *           like MikroORM, faults on demand), given a FakeDpdServices, the
  *           DPDServices client over its fetch under "dpdServicesClient", and
  *           the points source under "dpdPointsSource" (the one given, else
  *           the source of the mode: the catalogs of sandbox and demo never
  *           fetch, live without MyPudo credentials is not_configured)
  *   settle  waits until the work started in the background is done
+ *   labeledOrder, insertLabeled  a labeled domestic shipment with its order
+ *           and fulfillment (and its package in the fake, when there is one)
+ *   cancelFulfillment  a fulfillment canceled in Medusa
  *
  * Nothing here reaches a network: without a fake the client is the demo
  * client (demo mode) or none.
@@ -31,15 +36,21 @@ import { createDpdServicesClient } from "../src/modules/dpd/lib/dpdservices.ts"
 import { createPointsSource, type PointsSource } from "../src/modules/dpd/lib/points.ts"
 import {
   CLAIMED_STATES,
+  DISPATCH_JSON_COLUMNS,
+  DISPATCH_PATCHABLE_COLUMNS,
   LABEL_LEASE_EXPIRED_ERROR,
   LEASE_EXPIRED_ERROR,
   PATCHABLE_COLUMNS,
   searchText,
+  type DispatchExpect,
   type DpdStore,
   type NewEvent,
   type NewShipment,
   type TransitionExpect,
 } from "../src/modules/dpd/lib/store.ts"
+import { DISPATCH_CLAIMED_STATES } from "../src/modules/dpd/lib/constants.ts"
+import { DISPATCH_ATTENTION_CODES } from "../src/modules/dpd/lib/contract.ts"
+import type { ShipmentRow } from "../src/modules/dpd/lib/dto.ts"
 import type { FakeDpdServices } from "./fake-dpdservices.ts"
 
 export type Row = Record<string, unknown>
@@ -185,7 +196,7 @@ export class Table {
 
 /** Defaults of the columns, as the migration gives them. */
 export const SHIPMENT_DEFAULTS: Row = { kind: "outbound", state: "pending", attempts: 0 }
-export const DISPATCH_DEFAULTS: Row = { state: "pending" }
+export const DISPATCH_DEFAULTS: Row = { state: "pending", attempts: 0 }
 export const DOCUMENT_DEFAULTS: Row = { format: "PDF" }
 
 /* ------------------------------------------------------------------ */
@@ -236,7 +247,7 @@ function searchHit(r: Row, q: string): boolean {
   return Array.isArray(r.waybills) && r.waybills.some(has)
 }
 
-export function memoryStore(shipments: Table, events: Table, settings: Table): DpdStore {
+export function memoryStore(shipments: Table, events: Table, settings: Table, dispatches = new Table("dpddsp", DISPATCH_DEFAULTS)): DpdStore {
   const live = (id: string) => shipments.rows.find((r) => r.id === id && !r.deleted_at)
   const apply = (r: Row, patch: object, withState: boolean) => {
     const values = patch as Row
@@ -245,9 +256,37 @@ export function memoryStore(shipments: Table, events: Table, settings: Table): D
       if (column in values && values[column] !== undefined) r[column] = values[column]
     }
   }
-  /* The expect of the SQL store: the point and the boxes as given (null matches null), the boxes by their JSON. */
+  /* The expect of the SQL store: the point, the boxes and the dispatch as given (null matches null), the boxes by their JSON. */
   const holds = (r: Row, expect: TransitionExpect | undefined) =>
-    (expect?.pudo_id === undefined || (r.pudo_id ?? null) === expect.pudo_id) && (expect?.boxes === undefined || JSON.stringify(r.boxes ?? null) === JSON.stringify(expect.boxes))
+    (expect?.pudo_id === undefined || (r.pudo_id ?? null) === expect.pudo_id) &&
+    (expect?.boxes === undefined || JSON.stringify(r.boxes ?? null) === JSON.stringify(expect.boxes)) &&
+    (expect?.dispatch_id === undefined || (r.dispatch_id ?? null) === expect.dispatch_id)
+  const dispatch = (id: string) => dispatches.rows.find((r) => r.id === id && !r.deleted_at)
+  const claimed = (r: Row) => (DISPATCH_CLAIMED_STATES as readonly string[]).includes(String(r.state))
+  /* jsonb in and out: a row never shares an object with the caller. */
+  const jsonCopy = (v: unknown): unknown => (v === null || v === undefined ? null : JSON.parse(JSON.stringify(v)))
+  const out = (r: Row): Row => {
+    const copy: Row = { ...r }
+    for (const column of DISPATCH_JSON_COLUMNS) if (column in copy) copy[column] = jsonCopy(copy[column])
+    return copy
+  }
+  const applyDispatch = (r: Row, patch: object) => {
+    const values = patch as Row
+    for (const column of DISPATCH_PATCHABLE_COLUMNS) {
+      if (!(column in values) || values[column] === undefined) continue
+      r[column] = DISPATCH_JSON_COLUMNS.includes(column) ? jsonCopy(values[column]) : values[column]
+    }
+  }
+  const expectHolds = (r: Row, expect: DispatchExpect | undefined) => {
+    for (const column of ["plan_hash", "error_code", "order_number"] as const) {
+      const v = expect?.[column]
+      if (v !== undefined && (r[column] ?? null) !== v) return false
+    }
+    if (expect?.check_sum_set !== undefined && (r.check_sum !== null && r.check_sum !== undefined) !== expect.check_sum_set) return false
+    return true
+  }
+  const attention = (r: Row) => r.state === "unknown" || (r.state === "ordered" && typeof r.error_code === "string" && DISPATCH_ATTENTION_CODES.includes(r.error_code))
+  const expired = (r: Row, mode: string, now: Date) => !r.deleted_at && r.mode === mode && r.lease_until instanceof Date && r.lease_until.getTime() < now.getTime()
   return {
     async claim(id, from, args) {
       const r = live(id)
@@ -339,6 +378,125 @@ export function memoryStore(shipments: Table, events: Table, settings: Table): D
         .sort((a, b) => time(b.created_at) - time(a.created_at) || (String(a.id) < String(b.id) ? 1 : String(a.id) > String(b.id) ? -1 : 0))
       return { rows: found.slice(args.offset, args.offset + args.limit).map((r) => ({ ...r })) as never, count: found.length }
     },
+    /* Stage 4: the dispatch rules of the SQL store on `dispatches` (14.4). */
+    async createDispatch(row, ids) {
+      const picked = shipments.rows.filter(
+        (r) =>
+          ids.includes(String(r.id)) &&
+          !r.deleted_at &&
+          r.mode === row.mode &&
+          r.kind === "outbound" &&
+          r.state === "labeled" &&
+          (r.session_type === null || r.session_type === undefined || r.session_type === "DOMESTIC") &&
+          (r.dispatch_id === null || r.dispatch_id === undefined) &&
+          !r.handed_over_at,
+      )
+      if (picked.length !== ids.length) return null
+      const created = dispatches.insert({
+        mode: row.mode,
+        state: "pending",
+        location_id: row.location_id,
+        sender: jsonCopy(row.sender),
+        params: jsonCopy(row.params),
+        problems: jsonCopy(row.problems),
+        plan_hash: row.plan_hash,
+        shipment_ids: [...ids],
+        protocols: null,
+        protocol_at: null,
+        pickup_date: null,
+        pickup_time_from: null,
+        pickup_time_to: null,
+        order_type: row.order_type,
+        order_number: null,
+        check_sum: null,
+        ordered_at: null,
+        claim_token: null,
+        lease_until: null,
+        error: null,
+        error_code: null,
+        attempts: 0,
+        created_by: row.created_by,
+        updated_by: null,
+      })
+      for (const r of picked) Object.assign(r, { dispatch_id: created.id, updated_at: new Date() })
+      return { dispatch: out(created) as never, shipments: picked.map((r) => ({ ...r })) as never }
+    },
+    async claimDispatch(id, from, args) {
+      const r = dispatch(id)
+      const states = from.filter((x) => !(DISPATCH_CLAIMED_STATES as readonly string[]).includes(x))
+      if (!r || !states.includes(r.state as never) || !expectHolds(r, args.expect)) return null
+      const { state: _ignored, ...patch } = args.patch
+      applyDispatch(r, patch)
+      Object.assign(r, { state: args.to, claim_token: args.token, lease_until: args.leaseUntil, attempts: Number(r.attempts ?? 0) + 1, updated_at: new Date() })
+      return out(r) as never
+    },
+    async finishDispatch(id, token, patch, options) {
+      const r = dispatch(id)
+      if (!r || !claimed(r) || r.claim_token !== token) return null
+      applyDispatch(r, patch)
+      Object.assign(r, { claim_token: null, lease_until: null, updated_at: options?.unsent?.updatedAt ?? new Date() })
+      if (options?.unsent) r.attempts = Math.max(Number(r.attempts ?? 0) - 1, 0)
+      return out(r) as never
+    },
+    async transitionDispatch(id, from, patch, expect) {
+      const r = dispatch(id)
+      if (!r || claimed(r) || !from.includes(r.state as never) || !expectHolds(r, expect)) return null
+      applyDispatch(r, patch)
+      r.updated_at = new Date()
+      return out(r) as never
+    },
+    async expireDispatchLeases(mode, now) {
+      const changed: Row[] = []
+      for (const r of dispatches.rows) {
+        if (!expired(r, mode, now)) continue
+        if (r.state === "printing") r.state = r.ordered_at ? "ordered" : r.protocol_at ? "printed" : "pending"
+        else if (r.state === "ordering") r.state = "unknown"
+        else if (r.state === "updating") r.state = "ordered"
+        else continue
+        Object.assign(r, { claim_token: null, lease_until: null, updated_at: new Date() })
+        changed.push(out(r))
+      }
+      return changed as never
+    },
+    async claimExpiredFirstPrints(mode, now, args) {
+      const taken: Row[] = []
+      for (const r of dispatches.rows) {
+        if (!expired(r, mode, now) || r.state !== "printing" || r.protocol_at || r.ordered_at) continue
+        Object.assign(r, { claim_token: args.token, lease_until: args.leaseUntil, updated_at: new Date() })
+        taken.push(out(r))
+      }
+      return taken as never
+    },
+    async releaseShipments(dispatchId, ids) {
+      if (ids !== null && ids.length === 0) return []
+      const released: Row[] = []
+      for (const r of shipments.rows) {
+        if (r.deleted_at || r.dispatch_id !== dispatchId || (ids !== null && !ids.includes(String(r.id)))) continue
+        Object.assign(r, { dispatch_id: null, handed_over_at: null, updated_at: new Date() })
+        released.push({ ...r })
+      }
+      return released as never
+    },
+    async markHandedOver(dispatchId, at) {
+      const marked: Row[] = []
+      for (const r of shipments.rows) {
+        if (r.deleted_at || r.dispatch_id !== dispatchId || r.handed_over_at) continue
+        Object.assign(r, { handed_over_at: at, updated_at: new Date() })
+        marked.push({ ...r })
+      }
+      return marked as never
+    },
+    async dispatchCounts(mode) {
+      const rows = dispatches.rows.filter((r) => !r.deleted_at && r.mode === mode)
+      return { open: rows.filter((r) => r.state !== "canceled").length, attention: rows.filter(attention).length }
+    },
+    async listDispatches(args) {
+      const found = dispatches.rows
+        .filter((r) => !r.deleted_at && r.mode === args.mode)
+        .filter((r) => (args.filter === "open" ? r.state !== "canceled" : args.filter === "attention" ? attention(r) : true))
+        .sort((a, b) => time(b.created_at) - time(a.created_at) || (String(a.id) < String(b.id) ? 1 : String(a.id) > String(b.id) ? -1 : 0))
+      return { rows: found.slice(args.offset, args.offset + args.limit).map(out) as never, count: found.length }
+    },
   }
 }
 
@@ -346,8 +504,11 @@ export function memoryStore(shipments: Table, events: Table, settings: Table): D
 /* The fake Medusa container                                           */
 /* ------------------------------------------------------------------ */
 
-/** A row of the fake fulfillment module: its id and the provider data the plugin merges into. */
-export type FakeFulfillment = { id: string; data: Row }
+/** A row of the fake fulfillment module: its id, the provider data the plugin merges into, its stock location and when Medusa canceled it. */
+export type FakeFulfillment = { id: string; data: Row; location_id: string | null; canceled_at: Date | null }
+
+/** Faults of the fake fulfillment module: an id in `update` throws on its write, `list` throws on every read, `beforeUpdate` runs before a write (a test cancels the fulfillment there). */
+export type FulfillmentFaults = { update: Set<string>; list: boolean; beforeUpdate?: (id: string, data: Row) => void }
 
 /** A points source that counts its calls and can be told to fail: the catalog of a mode underneath. */
 export type CountingPoints = PointsSource & { searches: number; reads: number; fail: { search?: PointsFailureLike; details?: PointsFailureLike; throws?: boolean } }
@@ -392,6 +553,9 @@ export type Setup = {
   orders: Map<string, Row>
   /** The fulfillment module's rows (id, data), filled from the orders' fulfillments. */
   fulfillments: Map<string, FakeFulfillment>
+  fulfillmentFaults: FulfillmentFaults
+  /** Every updateFulfillment, in order; `at` is the number of fake DPD calls made before it (0 without a fake). */
+  fulfillmentUpdates: Array<{ id: string; data: Row; at: number }>
   fake: FakeDpdServices | null
 }
 
@@ -434,7 +598,7 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
   const events = new Table("dpdevt")
   const dispatches = new Table("dpddsp", DISPATCH_DEFAULTS)
   const settings = new Table("dpdset")
-  const store = memoryStore(shipments, events, settings)
+  const store = memoryStore(shipments, events, settings, dispatches)
   const logs: string[] = []
   const log = (level: string) => (msg: string) => void logs.push(`${level} ${msg}`)
   const svc = {
@@ -473,9 +637,10 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
     dpdPointsSource: extra.points ?? createPointsSource(o, { logger: svc.getLogger() }),
   }
   const fulfillments = new Map<string, FakeFulfillment>()
-  for (const o of orders) {
-    for (const f of (o.fulfillments as Row[] | undefined) ?? []) fulfillments.set(String(f.id), { id: String(f.id), data: structuredClone((f.data as Row | null | undefined) ?? {}) })
-  }
+  for (const o of orders) for (const f of (o.fulfillments as Row[] | undefined) ?? []) fulfillments.set(String(f.id), fakeFulfillment(f))
+  const fulfillmentFaults: FulfillmentFaults = { update: new Set(), list: false }
+  const fulfillmentUpdates: Array<{ id: string; data: Row; at: number }> = []
+  const fake = extra.fake ?? null
   if (!extra.noFulfillmentModule) {
     registry.fulfillment = {
       retrieveFulfillment: async (id: string) => {
@@ -483,15 +648,27 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
         if (!f) throw new Error(`Fulfillment with id: ${id} was not found`)
         return structuredClone(f)
       },
-      updateFulfillment: async (id: string, data: Row) => {
+      listFulfillments: async (filters: Row = {}) => {
+        if (fulfillmentFaults.list) throw new Error("fulfillment module down")
+        const raw = filters.id
+        const ids = raw === undefined ? null : (Array.isArray(raw) ? raw : [raw]).map(String)
+        return [...fulfillments.values()].filter((f) => ids === null || ids.includes(f.id)).map((f) => structuredClone(f))
+      },
+      /* Like MikroORM: `data` is merged shallowly (a key set to null stays as null); `data: null` replaces it. */
+      updateFulfillment: async (id: string, update: Row) => {
+        fulfillmentFaults.beforeUpdate?.(id, structuredClone(update))
+        if (fulfillmentFaults.update.has(id)) throw new Error("fulfillment write failed")
         const f = fulfillments.get(id)
         if (!f) throw new Error(`Fulfillment with id: ${id} was not found`)
-        Object.assign(f, structuredClone(data))
+        fulfillmentUpdates.push({ id, data: structuredClone(update), at: fake?.calls.length ?? 0 })
+        const { data, ...rest } = structuredClone(update)
+        Object.assign(f, rest)
+        if (data === null) f.data = {}
+        else if (data && typeof data === "object") f.data = { ...f.data, ...(data as Row) }
         return structuredClone(f)
       },
     }
   }
-  const fake = extra.fake ?? null
   if (fake) {
     registry.dpdServicesClient = createDpdServicesClient({
       host: fake.host,
@@ -512,7 +689,17 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
       return registry[key] as T
     },
   }
-  return { container, options: o, shipments, documents, events, dispatches, settings, store, emitted, logs, orders: orderMap, fulfillments, fake }
+  return { container, options: o, shipments, documents, events, dispatches, settings, store, emitted, logs, orders: orderMap, fulfillments, fulfillmentFaults, fulfillmentUpdates, fake }
+}
+
+function fakeFulfillment(f: Row): FakeFulfillment {
+  const canceled = f.canceled_at
+  return {
+    id: String(f.id),
+    data: structuredClone((f.data as Row | null | undefined) ?? {}),
+    location_id: typeof f.location_id === "string" ? f.location_id : null,
+    canceled_at: canceled instanceof Date ? canceled : typeof canceled === "string" ? new Date(canceled) : null,
+  }
 }
 
 /** Arms a writer in the settings table, as the admin route does. */
@@ -537,4 +724,87 @@ export function order(overrides: Row = {}): Row {
     fulfillments: [],
     ...overrides,
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* The handover (stage 4)                                              */
+/* ------------------------------------------------------------------ */
+
+/** Cancels a fulfillment in Medusa: canceled_at in the fulfillment module and in the order Query returns. */
+export function cancelFulfillment(s: Setup, id: string, at: Date = new Date()): void {
+  const f = s.fulfillments.get(id)
+  if (f) f.canceled_at = at
+  for (const o of s.orders.values()) {
+    for (const x of (o.fulfillments as Row[] | undefined) ?? []) if (x.id === id) x.canceled_at = at
+  }
+}
+
+/** An order with one fulfillment and its labeled domestic courier shipment: one 1 kg box of 10 cm sides, one waybill, reference = the fulfillment id. */
+export function labeledOrder(i: number, overrides: Partial<ShipmentRow> = {}): { order: Row; row: Row } {
+  const n = String(i).padStart(4, "0")
+  const orderId = `order_01HAND${n}`
+  const fulfillmentId = `ful_01HAND${n}`
+  const waybill = `0000${n}0000U`
+  const row: Row = {
+    order_id: orderId,
+    display_id: 2000 + i,
+    fulfillment_id: fulfillmentId,
+    return_id: null,
+    kind: "outbound",
+    option_id: "dpd-courier",
+    service: "courier",
+    pudo_id: null,
+    country_code: "PL",
+    session_type: "DOMESTIC",
+    cod_minor: null,
+    currency: null,
+    reference: fulfillmentId,
+    references: null,
+    boxes: { edited: false, items: [{ weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10, reference: `${fulfillmentId}-1`, waybill }] },
+    waybills: [waybill],
+    session_id: null,
+    state: "labeled",
+    status: null,
+    stage: null,
+    plan_hash: null,
+    problems: null,
+    dispatch_id: null,
+    handed_over_at: null,
+    claim_token: null,
+    lease_until: null,
+    error: null,
+    error_code: null,
+    attempts: 1,
+    ...(overrides as Row),
+  }
+  const ord = order({
+    id: orderId,
+    display_id: 2000 + i,
+    fulfillments: [{ id: fulfillmentId, provider_id: "dpd_dpd", location_id: null, canceled_at: null, data: { dpd_option: "dpd-courier", dpd_kind: "courier", dpd_cod: false, dpd_country: "PL" } }],
+  })
+  return { order: ord, row }
+}
+
+/**
+ * Adds the order to Query, its fulfillment (data with dpd_shipment_id and
+ * dpd_waybills) to the fulfillment module and the row to the shipments of
+ * the mode. With a fake DPDServices the package is seeded there first, so
+ * the protocol finds it by the reference. Returns the stored row.
+ */
+export function insertLabeled(s: Setup, labeled: { order: Row; row: Row }, overrides: Partial<ShipmentRow> = {}): Row {
+  const row: Row = { mode: s.options.mode, ...labeled.row, ...(overrides as Row) }
+  if (s.fake && typeof row.reference === "string") {
+    const waybills = s.fake.seedPackage(row.reference, 1)
+    const boxes = row.boxes as { edited: boolean; items: Row[] } | null
+    row.waybills = waybills
+    if (boxes) row.boxes = { ...boxes, items: boxes.items.map((b, i) => ({ ...b, waybill: waybills[i] ?? b.waybill })) }
+  }
+  const inserted = s.shipments.insert(row)
+  s.orders.set(String(labeled.order.id), labeled.order)
+  for (const f of (labeled.order.fulfillments as Row[] | undefined) ?? []) {
+    const fake = fakeFulfillment(f)
+    fake.data = { ...fake.data, dpd_shipment_id: inserted.id, dpd_waybills: inserted.waybills }
+    s.fulfillments.set(fake.id, fake)
+  }
+  return inserted
 }

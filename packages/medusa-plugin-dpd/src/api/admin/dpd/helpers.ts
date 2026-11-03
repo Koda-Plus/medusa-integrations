@@ -1,24 +1,55 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type DpdModuleService from "../../../modules/dpd/service"
-import { LABEL_PAGES, type LabelPage } from "../../../modules/dpd/lib/constants"
+import { DISPATCH_MAX_SHIPMENTS, LABEL_PAGES, PROTOCOL_MAX_PACKAGES, type LabelPage } from "../../../modules/dpd/lib/constants"
+import { courierOrdersOf, type CourierWindow } from "../../../modules/dpd/lib/courier"
 import {
   SHIPMENT_GROUPS,
   type ActionResponse,
+  type DispatchDto,
+  type DispatchResponse,
   type ErrorResponse,
   type EventDto,
+  type FieldErrorDto,
   type OptionsSummaryDto,
+  type ProblemDto,
   type ShipmentFilter,
   type StatusResponse,
   type WriterDto,
   type WriterKey,
 } from "../../../modules/dpd/lib/contract"
-import { countsOf, toEventDto, toShipmentDto, toWriterDto, type EventRow, type ShipmentRow } from "../../../modules/dpd/lib/dto"
+import {
+  countsOf,
+  dispatchCanOrder,
+  dispatchShipmentIdsOf,
+  toDispatchDto,
+  toEventDto,
+  toShipmentDto,
+  toWriterDto,
+  type DispatchRow,
+  type EventRow,
+  type ShipmentRow,
+} from "../../../modules/dpd/lib/dto"
 import { pickupAuthOf, type ResolvedDpdOptions } from "../../../modules/dpd/lib/options"
 import { secretState } from "../../../modules/dpd/lib/security"
 import { DEMO_SEEDED_KEY } from "../../../modules/dpd/lib/settings"
 import { WRITERS } from "../../../modules/dpd/lib/writers"
 import { KIT_META } from "../../../modules/dpd/lib/kit-meta"
-import { ActionError, actorNames, dpdService, getSetting, settingsOf, storeFor, writerStates, type Scope } from "../../../workflows/dpd/runtime"
+import type { DispatchView } from "../../../workflows/dpd/dispatch"
+import { existingProtocolIds, withExistingProtocols } from "../../../workflows/dpd/documents"
+import {
+  ActionError,
+  actorNames,
+  dpdService,
+  errorText,
+  getSetting,
+  listEvents,
+  listShipments,
+  readFulfillments,
+  settingsOf,
+  storeFor,
+  writerStates,
+  type Scope,
+} from "../../../workflows/dpd/runtime"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
 
@@ -159,6 +190,7 @@ export function optionsSummary(o: ResolvedDpdOptions): OptionsSummaryDto {
     autoCreate: o.autoCreate,
     senderLocations: Object.keys(o.senders),
     pickupCheck: o.mode !== "live" ? "catalog" : pickupAuthOf(o).kind !== "none" ? "mypudo" : "not_configured",
+    courierOrders: courierOrdersOf(o),
   }
 }
 
@@ -171,7 +203,8 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   const svc = dpdService(scope)
   const o = svc.getOptions()
   const mode = svc.mode()
-  const counts = countsOf(await storeFor(scope).counts(mode))
+  const store = storeFor(scope)
+  const counts = countsOf(await store.counts(mode), await store.dispatchCounts(mode))
   const settings = await settingsOf(svc)
   const seeded = o.demo ? Boolean(await getSetting(svc, DEMO_SEEDED_KEY)) : false
   return {
@@ -188,4 +221,122 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     demoSeeded: seeded,
     version: KIT_META.version,
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dispatches (stage 4)                                                */
+/* ------------------------------------------------------------------ */
+
+/** A dispatch id of a route: the shape of SHIPMENT_ID. */
+export const DISPATCH_ID = /^[A-Za-z0-9_]{1,64}$/
+
+/** The `:id` of a dispatch route, or a 400 invalid. */
+export function dispatchIdOf(req: MedusaRequest): string {
+  const id = String((req.params as Record<string, unknown> | undefined)?.id ?? "")
+  if (!DISPATCH_ID.test(id)) throw new ActionError(400, "invalid", "The dispatch id is not valid.")
+  return id
+}
+
+/** shipmentIds of a body: an array of SHIPMENT_ID strings, duplicates dropped (first kept), at most PROTOCOL_MAX_PACKAGES. [] is valid (the plan says no_shipments). */
+export function shipmentIdsOf(body: Record<string, unknown>): string[] {
+  const raw = body.shipmentIds
+  if (!Array.isArray(raw)) throw new ActionError(400, "invalid", "shipmentIds is a list of shipment ids.", [{ index: 0, field: "shipmentIds" }])
+  if (raw.length > PROTOCOL_MAX_PACKAGES) {
+    throw new ActionError(400, "invalid", `shipmentIds has at most ${PROTOCOL_MAX_PACKAGES} ids.`, [{ index: PROTOCOL_MAX_PACKAGES, field: "shipmentIds" }])
+  }
+  const bad: FieldErrorDto[] = []
+  const out: string[] = []
+  raw.forEach((v: unknown, index: number) => {
+    if (typeof v !== "string" || !SHIPMENT_ID.test(v)) bad.push({ index, field: "shipmentIds" })
+    else if (!out.includes(v)) out.push(v)
+  })
+  if (bad.length > 0) throw new ActionError(400, "invalid", "A shipment id in shipmentIds is not valid.", bad)
+  return out
+}
+
+const WINDOW_KEYS = ["pickupDate", "pickupTimeFrom", "pickupTimeTo"] as const
+
+/** CourierOrderRequest from a body: three non-empty strings (trimmed); 400 invalid with the missing keys in fields. The rules of the window are checked by the flow (422 courier_window). */
+export function courierWindowOf(body: Record<string, unknown>): CourierWindow {
+  const text = (k: (typeof WINDOW_KEYS)[number]): string => {
+    const v = body[k]
+    return typeof v === "string" ? v.trim() : ""
+  }
+  const missing = WINDOW_KEYS.filter((k) => text(k) === "")
+  if (missing.length > 0) {
+    throw new ActionError(400, "invalid", `Missing or not a text: ${missing.join(", ")}.`, missing.map((field) => ({ index: 0, field })))
+  }
+  return { pickupDate: text("pickupDate"), pickupTimeFrom: text("pickupTimeFrom"), pickupTimeTo: text("pickupTimeTo") }
+}
+
+/** The courier order of a demo or sandbox dispatch is simulated (DS4). */
+function simulatedOf(row: DispatchRow): boolean {
+  return row.mode !== "live"
+}
+
+/**
+ * E4: the fulfillments of the shipments read now (one call): a canceled one
+ * (outside demo also a missing one) is a shipment_canceled problem of that
+ * shipment. A read error logs and gives []: the answer never fails on it.
+ */
+async function shipmentProblemsOf(scope: Scope, view: DispatchView): Promise<ProblemDto[]> {
+  if (view.dispatch.state === "canceled" || view.shipments.length === 0) return []
+  const svc = dpdService(scope)
+  const ids = [...new Set(view.shipments.map((s) => s.fulfillment_id).filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, DISPATCH_MAX_SHIPMENTS)
+  try {
+    const current = await readFulfillments(scope, ids)
+    const out: ProblemDto[] = []
+    for (const s of view.shipments) {
+      const f = s.fulfillment_id ? current.get(s.fulfillment_id) : undefined
+      if (f ? Boolean(f.canceled_at) : !svc.isDemo()) out.push({ code: "shipment_canceled", field: `shipments.${s.id}` })
+    }
+    return out
+  } catch (err) {
+    svc.getLogger().warn(svc.mask(`[dpd] dispatch ${view.dispatch.id}: the fulfillments could not be read for the dispatch view: ${errorText(svc, err)}`))
+    return []
+  }
+}
+
+/** One dispatch with its shipments, the problems of its fulfillments read now (E4), its history, the writers and how courier orders run. */
+export async function dispatchResponse(scope: Scope, view: DispatchView): Promise<DispatchResponse> {
+  const svc = dpdService(scope)
+  const row = withExistingProtocols(view.dispatch, await existingProtocolIds(scope, [view.dispatch.id]))
+  const shipmentProblems = await shipmentProblemsOf(scope, view)
+  const events = await listEvents(svc, { dispatch_id: row.id }, { take: 100, order: { occurred_at: "DESC" } })
+  return {
+    dispatch: toDispatchDto(row, view.shipments, { canOrder: dispatchCanOrder(row), simulated: simulatedOf(row), shipmentProblems }),
+    events: await eventDtos(scope, events),
+    writers: await writersDto(scope),
+    courierOrders: courierOrdersOf(svc.getOptions()),
+  }
+}
+
+/** The answer of a dispatch route: DispatchResponse of the view the work returns, or the refusal. Private, no-store. */
+export async function respondDispatch(req: MedusaRequest, res: MedusaResponse, work: () => Promise<DispatchView>): Promise<void> {
+  noStore(res)
+  try {
+    const view = await work()
+    res.json(await dispatchResponse(req.scope, view))
+  } catch (err) {
+    sendError(req.scope, res, err)
+  }
+}
+
+/** DispatchDto of each row with its current shipments (one listShipments by dispatch_id for all rows); shipmentProblems [] (no fulfillment reads per row, E4). The list, orders/:orderId and withdraw use it. */
+export async function dispatchDtos(scope: Scope, rows: readonly DispatchRow[]): Promise<DispatchDto[]> {
+  if (rows.length === 0) return []
+  const svc = dpdService(scope)
+  const ids = rows.map((r) => r.id)
+  const shipments = await listShipments(svc, { dispatch_id: ids, mode: svc.mode() }, { take: rows.length * (DISPATCH_MAX_SHIPMENTS + 1) })
+  const existing = await existingProtocolIds(scope, ids)
+  return rows.map((r) => {
+    const row = withExistingProtocols(r, existing)
+    const order = dispatchShipmentIdsOf(row.shipment_ids)
+    const at = (s: ShipmentRow) => {
+      const i = order.indexOf(s.id)
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i
+    }
+    const own = shipments.filter((s) => s.dispatch_id === row.id).sort((a, b) => at(a) - at(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    return toDispatchDto(row, own, { canOrder: dispatchCanOrder(row), simulated: simulatedOf(row), shipmentProblems: [] })
+  })
 }

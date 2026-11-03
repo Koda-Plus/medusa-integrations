@@ -79,7 +79,7 @@ function writesOf(s: Setup): () => string[] {
       }
     }
   }
-  wrap(s.store as unknown as Record<string, unknown>, "store", (k) => k !== "counts" && k !== "list")
+  wrap(s.store as unknown as Record<string, unknown>, "store", (k) => !["counts", "list", "dispatchCounts", "listDispatches"].includes(k))
   wrap(s.container.resolve<Record<string, unknown>>("dpd"), "dpd", (k) => /^(create|update|delete)/.test(k))
   wrap(s.container.resolve<Record<string, unknown>>("event_bus"), "event_bus", () => true)
   return () => calls
@@ -434,4 +434,12 @@ test("middlewares: a write guard on /admin/dpd*, the dpd_ metadata keys refused 
   assert.equal(run(cart.middlewares[0], { method: "POST", body: { metadata: { DPD_pudo_id: "PL14509" } } }).status, 400)
   assert.equal(run(cart.middlewares[0], { method: "POST", body: { metadata: { gift: true } } }).next, true)
   assert.ok(routes.some((r) => r.matcher === "/store/customers/me*"))
+})
+
+test("excluded is cancelable with the fulfillment", async () => {
+  const s = setup(SANDBOX, [withFulfillment(PICKUP_DATA)])
+  const row = await recordFulfillment(s.container, ORDER, FUL)
+  await s.store.transition(String(row?.id), ["pending"], { state: "labeled", waybills: ["99000000000001D"] })
+  await s.store.transition(String(row?.id), ["labeled"], { state: "excluded" }, { dispatch_id: null })
+  assert.equal((await onFulfillmentCanceled(s.container, FUL))?.state, "canceled", "do not send, then canceled in Medusa: nothing is left to send")
 })

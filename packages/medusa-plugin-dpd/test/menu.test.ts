@@ -41,6 +41,10 @@ test("menu: the icon is a generic shipping icon from @medusajs/icons, never a lo
 
 test("menu: deep links and views are read from the URL", () => {
   assert.match(page, /params\.get\("filter"\)/)
+  /* The handover list (?view=dispatches&filter=) and one handover (?dispatch=). */
+  assert.match(page, /params\.get\("view"\) === "dispatches"/)
+  assert.match(page, /dispatchFilterOf\(params\.get\("filter"\)\)/)
+  assert.match(page, /params\.get\("dispatch"\)/)
   assert.match(page, /params\.get\("q"\)/)
   assert.match(page, /usePageNav\(SETTINGS_TABS\)/)
 })
@@ -62,8 +66,10 @@ test("page: Refresh spins for the person's own refresh only, a reset re-arms the
 test("page: the writing badge lists only the writers that write in this version, never an armed later writer", () => {
   const w = (key: WriterKey, armed: boolean) => ({ key, armed, allowed: armed, on: armed, updatedBy: null, updatedAt: null })
   const all = { shipment: w("shipment", true), pickup: w("pickup", true), fulfillmentStatus: w("fulfillmentStatus", true) }
-  assert.deepEqual(writingWriters(all).map((x) => x.key), ["shipment"])
-  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false) }), [], "armed later writers alone: read only")
+  /* The pickup writer orders couriers since stage 4; only the Medusa status writer waits. */
+  assert.deepEqual(writingWriters(all).map((x) => x.key), ["shipment", "pickup"])
+  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false), pickup: w("pickup", false) }), [], "armed later writers alone: read only")
+  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false) }).map((x) => x.key), ["pickup"])
   assert.deepEqual(writingWriters(undefined), [])
   /* The header counts and names the writers from writingWriters, not every armed writer. */
   assert.match(page, /const armedWriters = writingWriters\(status\?\.writers\)/)

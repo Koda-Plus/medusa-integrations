@@ -8,7 +8,12 @@
  * The client is the one door to DPD: a client registered under CLIENT_KEY
  * (tests, custom code), else the simulated client of demo mode, else the
  * REST client of the sandbox or live host. Without credentials there is no
- * client and nothing is sent.
+ * client and nothing is sent. In sandbox the courier order (packagesPickupCall)
+ * comes from a simulator in this process (DS4), also for a registered client.
+ *
+ * The handover marker in fulfillment.data (dpd_handed_over_at, DS6) is
+ * written and cleared only here (markFulfillments, clearFulfillmentMarkers),
+ * never in demo (O18).
  *
  * The points source is the one door to DPD Pickup points: a source
  * registered under POINTS_KEY (tests, custom code), else the source of the
@@ -20,9 +25,11 @@ import { ContainerRegistrationKeys, Modules, generateEntityId } from "@medusajs/
 import type DpdModuleService from "../../modules/dpd/service"
 import { DPD_MODULE } from "../../modules/dpd/lib/constants"
 import type { FieldErrorDto, ProblemDto } from "../../modules/dpd/lib/contract"
+import { createCourierSimulator, withSimulatedCourier } from "../../modules/dpd/lib/courier-sim"
+import { clearedMarkerData } from "../../modules/dpd/lib/dispatch"
 import { createDpdServicesClient, type DpdServicesClient } from "../../modules/dpd/lib/dpdservices"
-import { waybillsOf, type EventRow, type SettingRow, type ShipmentRow } from "../../modules/dpd/lib/dto"
-import { canCallDpd, dpdServicesHost } from "../../modules/dpd/lib/options"
+import { waybillsOf, type DispatchRow, type EventRow, type SettingRow, type ShipmentRow } from "../../modules/dpd/lib/dto"
+import { canCallDpd, dpdServicesHost, type ResolvedDpdOptions } from "../../modules/dpd/lib/options"
 import { PLAN_ORDER_FIELDS, type PlanOrder } from "../../modules/dpd/lib/plan"
 import { createPointsSource, type PointsSource } from "../../modules/dpd/lib/points"
 import { effectiveSettings, readStoredSettings, settingsKey, type EffectiveSettings } from "../../modules/dpd/lib/settings"
@@ -69,11 +76,26 @@ export function errorText(svc: DpdModuleService, err: unknown): string {
 export const CLIENT_KEY = "dpdServicesClient"
 
 const clients = new WeakMap<object, DpdServicesClient>()
+const simulated = new WeakMap<DpdServicesClient, DpdServicesClient>()
 
-/** The registered client, else the demo client (demo mode), else a real client for sandbox or live (one per service instance, WeakMap); null when not configured. */
+/**
+ * Sandbox only: the client with packagesPickupCall from a courier simulator
+ * (DS4: the DPD test host answers every order UNKNOWN_ERROR), one simulator
+ * per client. Demo simulates on its own; live is never wrapped.
+ */
+function withSandboxCourier(client: DpdServicesClient, o: ResolvedDpdOptions): DpdServicesClient {
+  if (o.demo || o.mode !== "sandbox") return client
+  const known = simulated.get(client)
+  if (known) return known
+  const wrapped = withSimulatedCourier(client, createCourierSimulator({ payerFid: o.payerFid ?? 0 }))
+  simulated.set(client, wrapped)
+  return wrapped
+}
+
+/** The registered client, else the demo client (demo mode), else a real client for sandbox or live (one per service instance, WeakMap); null when not configured. In sandbox the courier order is simulated (also for a registered client). */
 export function clientFor(scope: Scope): DpdServicesClient | null {
   const registered = resolveOptional<DpdServicesClient>(scope, CLIENT_KEY)
-  if (registered) return registered
+  if (registered) return withSandboxCourier(registered, dpdService(scope).getOptions())
   const svc = dpdService(scope)
   const known = clients.get(svc)
   if (known) return known
@@ -94,6 +116,7 @@ export function clientFor(scope: Scope): DpdServicesClient | null {
       requestsPerMinute: o.requestsPerMinute,
       logger: { info: (m) => logger.info(svc.mask(m)), warn: (m) => logger.warn(svc.mask(m)), error: (m) => logger.error(svc.mask(m)) },
     })
+    client = withSandboxCourier(client, o)
   }
   clients.set(svc, client)
   return client
@@ -149,6 +172,10 @@ export async function listShipments(svc: DpdModuleService, filters: Record<strin
 export async function getShipmentOfMode(svc: DpdModuleService, id: string): Promise<ShipmentRow | null> {
   const [row] = await listShipments(svc, { id }, { take: 1 })
   return row && row.mode === svc.mode() ? row : null
+}
+
+export async function listDispatches(svc: DpdModuleService, filters: Record<string, unknown>, config: Record<string, unknown> = {}): Promise<DispatchRow[]> {
+  return (await svc.listDpdDispatches(filters as never, config as never)) as unknown as DispatchRow[]
 }
 
 export async function listEvents(svc: DpdModuleService, filters: Record<string, unknown>, config: Record<string, unknown> = {}): Promise<EventRow[]> {
@@ -292,6 +319,86 @@ export async function loadOrder(scope: Scope, orderId: string): Promise<OrderRec
 type FulfillmentModuleLike = {
   retrieveFulfillment(id: string, config?: Record<string, unknown>): Promise<{ id: string; data?: Record<string, unknown> | null }>
   updateFulfillment(id: string, data: Record<string, unknown>): Promise<unknown>
+  listFulfillments(
+    filters: { id: string[] },
+    config?: { select?: string[]; take?: number },
+  ): Promise<Array<{ id: string; location_id?: string | null; canceled_at?: string | Date | null; data?: Record<string, unknown> | null }>>
+}
+
+/** A fulfillment as the handover reads it now (DS6). */
+export type FulfillmentState = { id: string; location_id: string | null; canceled_at: string | Date | null; data: Record<string, unknown> | null }
+/** What a marker write did, per fulfillment. */
+export type MarkerResult = { written: string[]; missing: string[]; failed: Array<{ fulfillmentId: string; message: string }> }
+
+/** listFulfillments by id with id, location_id, canceled_at and data; a missing module gives an empty map. Throws on a module error (the caller decides). */
+export async function readFulfillments(scope: Scope, ids: readonly string[]): Promise<Map<string, FulfillmentState>> {
+  const out = new Map<string, FulfillmentState>()
+  const wanted = [...new Set(ids.filter((id) => typeof id === "string" && id.length > 0))]
+  if (wanted.length === 0) return out
+  const fulfillment = resolveOptional<FulfillmentModuleLike>(scope, Modules.FULFILLMENT)
+  if (!fulfillment) return out
+  const rows = await fulfillment.listFulfillments({ id: wanted }, { select: ["id", "location_id", "canceled_at", "data"], take: wanted.length })
+  for (const f of rows ?? []) {
+    if (!f?.id) continue
+    out.set(f.id, {
+      id: f.id,
+      location_id: f.location_id ?? null,
+      canceled_at: f.canceled_at ?? null,
+      data: f.data && typeof f.data === "object" && !Array.isArray(f.data) ? f.data : null,
+    })
+  }
+  return out
+}
+
+/** A "not found" error of the fulfillment module (the fulfillment is gone, not the module down). */
+function isNotFound(err: unknown): boolean {
+  const type = (err as { type?: unknown } | null)?.type
+  if (type === "not_found") return true
+  return /not (been )?found/i.test((err as Error)?.message ?? String(err))
+}
+
+/**
+ * updateFulfillment(id, { data }) with only the given keys (MikroORM merges
+ * data into what is there), one by one; never annotateFulfillment (that one
+ * swallows errors and skips demo). In demo no call at all (O18: demo never
+ * writes the marker keys, not even null, so a demo step cannot touch a
+ * marker of sandbox or live on the same fulfillment). No module: every id is
+ * missing.
+ */
+export async function markFulfillments(scope: Scope, fulfillmentIds: readonly string[], data: Record<string, string | null>): Promise<MarkerResult> {
+  const result: MarkerResult = { written: [], missing: [], failed: [] }
+  const svc = dpdService(scope)
+  if (svc.isDemo()) return result
+  const ids = [...new Set(fulfillmentIds.filter((id) => typeof id === "string" && id.length > 0))]
+  if (ids.length === 0) return result
+  const fulfillment = resolveOptional<FulfillmentModuleLike>(scope, Modules.FULFILLMENT)
+  if (!fulfillment) {
+    result.missing.push(...ids)
+    return result
+  }
+  for (const id of ids) {
+    try {
+      await fulfillment.updateFulfillment(id, { data: { ...data } })
+      result.written.push(id)
+    } catch (err) {
+      if (isNotFound(err)) result.missing.push(id)
+      else result.failed.push({ fulfillmentId: id, message: errorText(svc, err).slice(0, 300) })
+    }
+  }
+  return result
+}
+
+/** markFulfillments with clearedMarkerData(); logs what failed, never throws. In demo the same no-op (O18). */
+export async function clearFulfillmentMarkers(scope: Scope, fulfillmentIds: readonly string[]): Promise<MarkerResult> {
+  const svc = dpdService(scope)
+  try {
+    const result = await markFulfillments(scope, fulfillmentIds, clearedMarkerData())
+    for (const f of result.failed) svc.getLogger().warn(`[dpd] Could not clear the handover marker of fulfillment ${f.fulfillmentId}: ${f.message}`)
+    return result
+  } catch (err) {
+    svc.getLogger().warn(`[dpd] Could not clear the handover markers: ${errorText(svc, err)}`)
+    return { written: [], missing: [], failed: fulfillmentIds.map((fulfillmentId) => ({ fulfillmentId, message: errorText(svc, err).slice(0, 300) })) }
+  }
 }
 
 /**

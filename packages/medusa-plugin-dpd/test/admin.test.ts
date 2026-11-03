@@ -4,8 +4,10 @@
  * from the source. The label is fetched with the admin's auth, a refused
  * action refreshes what the page shows, the boxes editor names the refused
  * fields and fits a phone, a writer off in the options says so, an
- * amount reads as money of the admin's language, and a DPD Pickup point
- * reads as its card, can be changed from the plan and shows what DPD said.
+ * amount reads as money of the admin's language, a DPD Pickup point
+ * reads as its card, can be changed from the plan and shows what DPD said,
+ * and a handover to the courier picks its windows from the server's clock,
+ * asks the writer the server asks and names its actions in both languages.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -14,20 +16,40 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import en from "../src/admin/i18n/en.ts"
 import { POINT_TYPES } from "../src/modules/dpd/lib/constants.ts"
-import type { PointDto, PointLimitsDto } from "../src/modules/dpd/lib/contract.ts"
+import type { DispatchActions, DispatchDto, PointDto, PointLimitsDto, WriterDto, WriterKey } from "../src/modules/dpd/lib/contract.ts"
 import {
   BOX_FIELDS,
+  DISPATCH_FILTERS,
   DpdRequestError,
+  LATER_WRITERS,
+  SELECTION_MAX,
   answerProblems,
   boxFieldErrors,
   canChangePoint,
+  courierBlock,
+  changeReasonCode,
+  courierFormAllowed,
+  courierRequestOf,
+  courierWindowChoices,
   customerChoseOther,
+  defaultCourierDate,
+  dispatchActionWriter,
+  dispatchErrorTone,
+  dispatchFilterOf,
+  dispatchLeftClaim,
+  dispatchMainAction,
+  dispatchTone,
   errorTone,
   fetchLabelFile,
   fmtMinor,
+  fmtPickupDate,
+  handoverStepOf,
   isLaterWriter,
   labelFileName,
+  latestProtocol,
+  pageInRange,
   pointAddressLine,
+  printToastKind,
   pointHoursRows,
   pointLimitParts,
   pointTypeKey,
@@ -36,6 +58,10 @@ import {
   problemsOfBody,
   requestError,
   sameSearch,
+  selectionPageState,
+  selectionPrune,
+  selectionToggle,
+  stoppedRunMovedOn,
   writerBlock,
 } from "../src/admin/lib/dpd-logic.ts"
 
@@ -173,7 +199,7 @@ test("the order_paid amount reads as money of the admin's language; without it t
 
 test("the later note is for the writers this version does not use yet, not for the shipment writer", () => {
   assert.equal(isLaterWriter("shipment"), false)
-  assert.equal(isLaterWriter("pickup"), true)
+  assert.equal(isLaterWriter("pickup"), false)
   assert.equal(isLaterWriter("fulfillmentStatus"), true)
   assert.match(source("lib/dpd-settings.tsx"), /isLaterWriter\(writer\.key\) \? \(/)
   /* The header lists the armed writers instead of a note about one of them. */
@@ -399,4 +425,458 @@ test("a pending row the pass left to a person says why: point_unchecked and rate
   assert.ok(!ui.includes("ERROR_STATES"), "one rule, in dpd-logic.ts")
   assert.match(source("lib/dpd-panel.tsx"), /<ErrorText shipment=\{s\} \/>/)
   assert.match(source("widgets/dpd-order-widget.tsx"), /<ErrorText shipment=\{s\} \/>/)
+})
+
+/* ------------------------------------------------------------------ */
+/* The handover to the courier (stage 4)                               */
+/* ------------------------------------------------------------------ */
+
+const dispatchSource = source("lib/dpd-dispatch.tsx")
+const plActions = source("i18n/pl.ts").match(/\n {4}actions: \{([^}]*)\}/)?.[1] ?? ""
+
+const NO_ACTIONS: DispatchActions = { print: false, reprint: false, protocol: false, order: false, reschedule: false, cancelCourier: false, resolve: false, cancel: false, withdraw: false }
+
+/** A handover as the server answers it, with the fields a test changes. */
+function dispatchOf(over: Partial<DispatchDto> = {}): DispatchDto {
+  return {
+    id: "dsp_1",
+    mode: "sandbox",
+    demo: false,
+    state: "pending",
+    locationId: null,
+    sender: null,
+    shipmentIds: ["s1"],
+    shipments: [],
+    boxes: 1,
+    weightKg: 2,
+    params: null,
+    problems: [],
+    warnings: [],
+    shipmentProblems: [],
+    protocols: [],
+    protocolAt: null,
+    pickupDate: null,
+    pickupTimeFrom: null,
+    pickupTimeTo: null,
+    orderType: null,
+    orderNumber: null,
+    hasCheckSum: false,
+    orderedAt: null,
+    simulated: true,
+    error: null,
+    errorCode: null,
+    attempts: 0,
+    createdBy: null,
+    updatedBy: null,
+    createdAt: "2026-11-03T10:00:00.000Z",
+    updatedAt: null,
+    attention: false,
+    actions: NO_ACTIONS,
+    ...over,
+  }
+}
+
+test("the later note is for the Medusa status writer only: the pickup writer orders couriers now", () => {
+  assert.equal(isLaterWriter("pickup"), false)
+  assert.ok(!LATER_WRITERS.includes("pickup"))
+  assert.deepEqual([...LATER_WRITERS], ["fulfillmentStatus"])
+})
+
+test("courierWindowChoices drops a passed window today and keeps it tomorrow", () => {
+  const r = (from: string, to: string) => ({ from, to, offset: null, raw: `${from}-${to}` })
+  const ranges = [r("12:00", "16:00"), r("08:00", "12:00"), r("08:00", "12:00"), r("08:00", "16:00")]
+  /* Today at 12:30 the morning window has passed (its end is not after now); 12:00 to 16:00 still runs. */
+  assert.deepEqual(courierWindowChoices(ranges, "2026-11-03", "2026-11-03", "12:30").map((c) => c.value), ["08:00-16:00", "12:00-16:00"])
+  /* At the very end of a window it is gone too. */
+  assert.deepEqual(courierWindowChoices(ranges, "2026-11-03", "2026-11-03", "16:00"), [])
+  /* Tomorrow every window stays, sorted and without repeats. */
+  const tomorrow = courierWindowChoices(ranges, "2026-11-04", "2026-11-03", "12:30")
+  assert.deepEqual(tomorrow.map((c) => c.value), ["08:00-12:00", "08:00-16:00", "12:00-16:00"])
+  assert.deepEqual(tomorrow[0], { value: "08:00-12:00", from: "08:00", to: "12:00", raw: "08:00-12:00" })
+  assert.deepEqual(courierRequestOf("2026-11-04", tomorrow[0]), { pickupDate: "2026-11-04", pickupTimeFrom: "08:00", pickupTimeTo: "12:00" })
+})
+
+test("the drawer takes today and nowTime from the availability answer, never from the browser clock", () => {
+  const fields = body(dispatchSource, "CourierWindowFields")
+  assert.match(fields, /courierWindowChoices\(availability\.ranges, date, availability\.today, availability\.nowTime\)/)
+  /* Wherever the choices are read, the today and nowTime of the same answer go in. */
+  for (const m of dispatchSource.matchAll(/courierWindowChoices\(([^)]*)\)/g)) assert.match(m[1], /^(\w+)\.ranges, date, \1\.today, \1\.nowTime$/, m[0])
+  assert.ok(!/new Date\(\)|Date\.now\(\)[^\n]*(today|nowTime)/.test(dispatchSource.replace(/const startedAt = Date\.now\(\)/g, "")), "no clock of the browser for the windows")
+})
+
+test("dispatchActionWriter: resolve, order, reschedule and cancelCourier need pickup; print, reprint and cancel need shipment", () => {
+  for (const state of ["pending", "printed", "ordered", "unknown"] as const) {
+    for (const action of ["resolve", "order", "reschedule", "cancelCourier"] as const) assert.equal(dispatchActionWriter(action, state), "pickup", `${action} ${state}`)
+    for (const action of ["print", "reprint", "cancel"] as const) assert.equal(dispatchActionWriter(action, state), "shipment", `${action} ${state}`)
+  }
+  /* The drawer, the list and its main button disable an action by the writer of dispatchActionWriter. */
+  const actions = body(dispatchSource, "useDispatchActions")
+  for (const action of ["print", "reprint", "order", "reschedule", "cancelCourier", "resolve", "cancel"]) assert.ok(actions.includes(`blocked("${action}")`), action)
+  assert.match(body(dispatchSource, "useDispatchBlock"), /dispatchActionWriter\(action, state\)/)
+  assert.match(body(dispatchSource, "DispatchView"), /blockOf\("resolve", d\.state\)/)
+})
+
+test("dispatchActionWriter: withdraw needs pickup only for ordered, shipment for pending, printed and canceled", () => {
+  assert.equal(dispatchActionWriter("withdraw", "ordered"), "pickup")
+  for (const state of ["pending", "printed", "canceled"] as const) assert.equal(dispatchActionWriter("withdraw", state), "shipment", state)
+  /* One writer for a withdraw in the action bar, never both. */
+  const bar = body(plan, "ShipmentActionBar")
+  assert.match(bar, /dispatchActionWriter\("withdraw", dispatch\.state\)/)
+  assert.match(bar, /hidden: !\(s\.actions\.withdraw && dispatch\)/)
+  /* The panel list does not know the handovers: no withdraw there, only the way to the handover (E14). */
+  assert.ok(!/dispatch=\{/.test(source("lib/dpd-panel.tsx")))
+  assert.match(source("lib/dpd-panel.tsx"), /onOpenDispatch=\{onOpenDispatch\}/)
+  assert.match(source("widgets/dpd-order-widget.tsx"), /dispatch=\{dispatch\}/)
+})
+
+test("dispatchErrorTone: none without an error or while claimed, red for attention, else orange", () => {
+  const e = { error: "DPD refused", errorCode: "pickup_time" }
+  assert.equal(dispatchErrorTone({ state: "printed", error: null, errorCode: null, attention: false }), null)
+  for (const state of ["printing", "ordering", "updating"] as const) assert.equal(dispatchErrorTone({ state, ...e, attention: false }), null, state)
+  assert.equal(dispatchErrorTone({ state: "unknown", ...e, errorCode: "order_unclear", attention: true }), "red")
+  assert.equal(dispatchErrorTone({ state: "ordered", ...e, errorCode: "update_unclear", attention: true }), "red")
+  assert.equal(dispatchErrorTone({ state: "printed", ...e, attention: false }), "orange")
+  assert.equal(dispatchErrorTone({ state: "pending", error: null, errorCode: "protocol_unclear", attention: false }), "orange")
+})
+
+test("the drawer renders dispatch.warnings with the orange tone and dispatch errors with DispatchErrorText", () => {
+  assert.match(dispatchSource, /<ProblemList items=\{d\.warnings\} tone="orange" \/>/)
+  assert.match(dispatchSource, /<ProblemList items=\{d\.problems\} \/>/)
+  assert.match(dispatchSource, /<DispatchErrorText dispatch=\{d\} \/>/)
+  /* The ErrorText of dpd-ui takes a shipment: never used for a handover. */
+  assert.ok(!/\bErrorText\b[^\n]*from "\.\/dpd-ui"/.test(dispatchSource))
+  assert.ok(!/<ErrorText /.test(dispatchSource))
+  const text = body(dispatchSource, "DispatchErrorText")
+  assert.match(text, /const tone = dispatchErrorTone\(d\)/)
+  assert.match(text, /text-ui-tag-orange-text/)
+  assert.match(text, /title=\{t\("dispatch\.error"\)\}/)
+  assert.equal(typeof en.dispatch.error, "string")
+})
+
+test("useWriterBlockText is exported and names the option of the writer it gets", () => {
+  const hook = body(plan, "useWriterBlockText")
+  assert.match(plan, /export function useWriterBlockText\(\): \(block: "off" \| "not_armed", writer: WriterKey\)/)
+  assert.match(hook, /WRITER_OPTION\[writer\]/)
+  assert.ok(!hook.includes("WRITER_OPTION.shipment"))
+  assert.match(dispatchSource, /import \{[^}]*useWriterBlockText[^}]*\} from "\.\/dpd-plan"/)
+  /* The courier block of the drawer names the pickup writer's option. */
+  assert.match(dispatchSource, /blockText\(.*, "pickup"\)/)
+})
+
+test("a not armed writer is named by its own words: a pickup block never asks to arm the shipment writer", () => {
+  const hook = body(plan, "useWriterBlockText")
+  assert.match(hook, /t\(`writers\.notArmed\.\$\{writer\}`\)/)
+  assert.ok(!hook.includes("actionError.not_armed"), "the shipment words for every writer")
+  assert.equal(en.writers.notArmed.shipment, en.actionError.not_armed)
+  assert.notEqual(en.writers.notArmed.pickup, en.writers.notArmed.shipment)
+  assert.match(en.writers.notArmed.pickup, /courier order/)
+  /* Order, change, cancel, resolve and the withdraw from an ordered handover all ask with the pickup writer. */
+  assert.match(body(dispatchSource, "useDispatchBlock"), /blockText\(block, key\)/)
+  assert.match(plan, /blockText\(withdrawBlock, withdrawWriter\)/)
+  /* A not armed refusal of a withdraw from the server names the same writer the button asks for. */
+  assert.match(body(plan, "ShipmentActionBar"), /err\.code === "not_armed" \? blockText\("not_armed", withdrawWriter\)\.title : errorText\(err\)/)
+})
+
+test("defaultCourierDate prefers tomorrow", () => {
+  assert.equal(defaultCourierDate(["2026-11-03", "2026-11-04", "2026-11-05"]), "2026-11-04")
+  assert.equal(defaultCourierDate(["2026-11-03"]), "2026-11-03")
+  assert.equal(defaultCourierDate([]), null)
+})
+
+test("a pickup date reads as a day in Warsaw in the admin's language, whatever the browser zone", () => {
+  assert.equal(fmtPickupDate("2026-03-29", "en-GB"), "29 Mar 2026")
+  assert.equal(fmtPickupDate("2026-10-25", "pl"), "25 paź 2026")
+  assert.equal(fmtPickupDate("not a date", "pl"), "not a date")
+  assert.match(source("lib/dpd-logic.ts"), /timeZone: "Europe\/Warsaw"/)
+})
+
+test("a list that shrank below its page goes to its last page with rows, in both lists", () => {
+  assert.equal(pageInRange(1, 20, 20), 0, "21 rows on two pages, one resolved: back to the first page")
+  assert.equal(pageInRange(1, 21, 20), 1)
+  assert.equal(pageInRange(3, 45, 20), 2)
+  assert.equal(pageInRange(2, 0, 20), 0, "an empty list has page 0")
+  assert.equal(pageInRange(0, 0, 20), 0)
+  assert.equal(pageInRange(-1, 50, 20), 0)
+  assert.match(source("lib/dpd-dispatch.tsx"), /setPage\(\(p\) => pageInRange\(p, total, DISPATCH_PAGE\)\)/)
+  assert.match(source("lib/dpd-panel.tsx"), /setPage\(\(p\) => pageInRange\(p, total, PAGE_SIZE\)\)/)
+})
+
+test("selectionToggle never goes above 100; selectionPageState none, some, all", () => {
+  assert.equal(SELECTION_MAX, 100)
+  const ids = Array.from({ length: 120 }, (_, i) => `s${i}`)
+  const all = selectionToggle(new Set(), ids, true)
+  assert.equal(all.size, 100)
+  assert.ok(all.has("s0") && all.has("s99") && !all.has("s100"))
+  assert.equal(selectionToggle(all, ["s150"], true).size, 100, "the limit holds for one more tick")
+  assert.equal(selectionToggle(all, ["s5", "s6"], false).size, 98)
+  const original = new Set(["a"])
+  selectionToggle(original, ["b"], true)
+  assert.deepEqual([...original], ["a"], "a new set, the old one untouched")
+  assert.equal(selectionPageState(new Set(["a", "x"]), ["a", "b"]), "some")
+  assert.equal(selectionPageState(new Set(["a", "b"]), ["a", "b"]), "all")
+  assert.equal(selectionPageState(new Set(["x"]), ["a", "b"]), "none")
+  assert.equal(selectionPageState(new Set(["x"]), []), "none")
+  /* A picked row that stopped being a candidate leaves the selection; ids of other pages stay. */
+  const picked = new Set(["a", "b", "z"])
+  const pruned = selectionPrune(picked, [
+    { id: "a", actions: { dispatch: false } },
+    { id: "b", actions: { dispatch: true } },
+    { id: "c", actions: { dispatch: false } },
+  ])
+  assert.deepEqual([...pruned], ["b", "z"])
+  assert.equal(selectionPrune(picked, [{ id: "b", actions: { dispatch: true } }]), picked, "nothing gone: the same set")
+  assert.match(source("lib/dpd-panel.tsx"), /setSelected\(\(sel\) => selectionPrune\(sel, listed\)\)/)
+  assert.match(source("lib/dpd-dispatch.tsx"), /onPickGroup\(candidates\.map\(\(s\) => s\.id\)\)/, "the drawer hands over the rest without the left out ones")
+  /* The list: a checkbox only for a candidate, the header one indeterminate for some. */
+  const panel = source("lib/dpd-panel.tsx")
+  assert.match(panel, /s\.actions\.dispatch \? \(\s*<Checkbox/)
+  assert.match(panel, /pageState === "some" \? "indeterminate"/)
+  assert.match(panel, /t\("shipments\.selectLimit", \{ max: SELECTION_MAX \}\)/)
+  assert.match(panel, /<DispatchActionBar count=\{selected\.size\}/)
+  /* The header box at the limit adds nothing: disabled with the limit hint, as the row boxes. */
+  assert.match(panel, /const pageFull = full && pageState !== "all"/)
+  assert.match(panel, /title=\{pageFull \? t\("shipments\.selectLimit", \{ max: SELECTION_MAX \}\) : t\("shipments\.selectPage"\)\}/)
+  assert.match(panel, /disabled=\{pageIds\.length === 0 \|\| pageFull\}/)
+  /* The page scrolls to the handover list once per request, not on every new status. */
+  const page = source("routes/dpd/page.tsx")
+  assert.match(page, /if \(scrollTo <= scrolled\.current \|\| !status\.data\) return/)
+  assert.match(page, /scrolled\.current = scrollTo/)
+})
+
+test("dispatchMainAction order: resolve, print, order, protocol", () => {
+  const all: DispatchActions = { ...NO_ACTIONS, print: true, order: true, protocol: true, resolve: true }
+  assert.equal(dispatchMainAction(dispatchOf({ state: "unknown", attention: true, actions: all })), "resolve")
+  assert.equal(dispatchMainAction(dispatchOf({ actions: { ...all, resolve: false } })), "print")
+  assert.equal(dispatchMainAction(dispatchOf({ actions: { ...NO_ACTIONS, order: true, protocol: true } })), "order")
+  assert.equal(dispatchMainAction(dispatchOf({ actions: { ...NO_ACTIONS, protocol: true, reprint: true } })), "protocol")
+  assert.equal(dispatchMainAction(dispatchOf()), null)
+  /* Ordered without a checkSum and without attention (O16): resolve stays an icon, the protocol is the button. */
+  const calm = dispatchOf({ state: "ordered", hasCheckSum: false, attention: false, actions: { ...NO_ACTIONS, resolve: true, protocol: true, reprint: true } })
+  assert.equal(dispatchMainAction(calm), "protocol")
+  assert.equal(dispatchMainAction({ ...calm, actions: { ...calm.actions, protocol: false } }), null)
+  /* Each name it can give has its words in both dictionaries (E25). */
+  for (const name of ["resolve", "print", "order", "protocol"]) {
+    assert.equal(typeof (en.dispatch.actions as Record<string, string>)[name], "string", name)
+    assert.match(plActions, new RegExp(`\\b${name}: "`), `pl ${name}`)
+  }
+  assert.match(body(dispatchSource, "useDispatchActions"), /t\(`dispatch\.actions\.\$\{mainKey\}`\)/)
+})
+
+test("courierBlock: writer first, then the order problems", () => {
+  const w = (key: WriterKey, armed: boolean, allowed = true): WriterDto => ({ key, armed, allowed, on: armed, updatedBy: null, updatedAt: null })
+  const writers = (pickup: WriterDto) => ({ shipment: w("shipment", true), pickup, fulfillmentStatus: w("fulfillmentStatus", false) })
+  const problems = [{ code: "courier_over_50kg" }]
+  const off = w("pickup", false, false)
+  assert.deepEqual(courierBlock(writers(off), problems), { kind: "writer", writer: off })
+  assert.equal(courierBlock(writers(w("pickup", false)), [])?.kind, "writer")
+  assert.deepEqual(courierBlock(writers(w("pickup", true)), problems), { kind: "problems", problems })
+  assert.equal(courierBlock(writers(w("pickup", true)), []), null)
+  assert.deepEqual(courierBlock(undefined, problems), { kind: "problems", problems })
+  assert.equal(courierBlock(undefined, []), null)
+})
+
+test("dispatchFilterOf falls back to open", () => {
+  assert.deepEqual([...DISPATCH_FILTERS], ["open", "attention", "all"])
+  for (const f of DISPATCH_FILTERS) assert.equal(dispatchFilterOf(f), f)
+  assert.equal(dispatchFilterOf(null), "open")
+  assert.equal(dispatchFilterOf("problems"), "open")
+  assert.equal(dispatchFilterOf(""), "open")
+})
+
+test("the tone of a handover: red when it needs a person, orange while it waits, blue while it works, green ordered, grey canceled", () => {
+  assert.equal(dispatchTone({ state: "pending", attention: false }), "orange")
+  assert.equal(dispatchTone({ state: "printed", attention: false }), "orange")
+  for (const state of ["printing", "ordering", "updating"] as const) assert.equal(dispatchTone({ state, attention: false }), "blue", state)
+  assert.equal(dispatchTone({ state: "ordered", attention: false }), "green")
+  assert.equal(dispatchTone({ state: "ordered", attention: true }), "red")
+  assert.equal(dispatchTone({ state: "unknown", attention: true }), "red")
+  assert.equal(dispatchTone({ state: "canceled", attention: false }), "grey")
+})
+
+test("the toast of a print: success only with a new protocol, never from a leftover attention code", () => {
+  const p = (id: string) => ({ id, documentId: null, createdAt: null, shipments: 1, stale: false })
+  const d = (state: DispatchDto["state"], errorCode: string | null, attention: boolean, n: number) => ({ state, errorCode, attention, protocols: Array.from({ length: n }, (_, i) => p(String(i))) })
+  assert.equal(printToastKind(d("printed", null, false, 1), 0), "printed")
+  /* A reprint of an ordered handover with update_unclear or order_status keeps the code (P10): a new protocol is still a success. */
+  assert.equal(printToastKind(d("ordered", "update_unclear", true, 2), 1), "printed")
+  assert.equal(printToastKind(d("ordered", "order_status", true, 1), 1), "failed", "no new protocol: the attention code says nothing about the print")
+  assert.equal(printToastKind(d("pending", "pickup_fid", false, 0), 0), "refused")
+  assert.equal(printToastKind(d("printed", "pickup_fid", false, 1), 1), "refused")
+  assert.equal(printToastKind(d("pending", "protocol_unclear", false, 0), 0), "unclear")
+  const toastBody = body(dispatchSource, "useDispatchToast")
+  assert.match(toastBody, /printToastKind\(d, protocolsBefore\)/)
+  assert.match(body(dispatchSource, "useDispatchActions"), /const protocolsBefore = d\.protocols\.length/)
+})
+
+test("the newest protocol, and the stage a stopped run starts again at, never the create once the handover exists", () => {
+  const p = (id: string, createdAt: string | null) => ({ id, documentId: null, createdAt, shipments: 1, stale: false })
+  assert.equal(latestProtocol({ protocols: [] }), null)
+  assert.equal(latestProtocol({ protocols: [p("a", "2026-11-03T10:00:00Z"), p("b", "2026-11-03T11:00:00Z"), p("c", null)] })?.id, "b")
+  assert.equal(handoverStepOf(null, false, false), 0)
+  assert.equal(handoverStepOf("pending", false, true), 0)
+  /* A refused first protocol (pickup_fid, parcel_limit come from the protocol too) starts again at the print, with or without a courier. */
+  assert.equal(handoverStepOf("pending", true, false), 1)
+  assert.equal(handoverStepOf("pending", true, true), 1)
+  assert.equal(handoverStepOf("printed", true, true), 2)
+  /* Printed meanwhile (the view's button, an answer lost on the way back): never printed again by "Try again". */
+  assert.equal(handoverStepOf("printed", true, false), null)
+  for (const state of ["ordered", "unknown", "canceled", "printing", "ordering", "updating"] as const) assert.equal(handoverStepOf(state, true, true), null, state)
+  assert.equal(handoverStepOf(null, true, true), null, "the state not read yet")
+  const drawer = body(dispatchSource, "NewDispatch")
+  assert.match(drawer, /handoverStepOf\(nowState, createdId !== null, order !== null\)/)
+  assert.match(drawer, /live\.dataUpdatedAt > stopped\.at/, "only a read after the stop replaces the state of the answer")
+  assert.match(drawer, /run && !movedOn \?/, "the loader of a stopped run goes once the handover moved on")
+  assert.match(drawer, /const movedOn = stoppedRunMovedOn\(stopped, fresh, retryFrom\)/)
+  assert.match(drawer, /setStopped\(\{ stage: key, state:/)
+  /* A stop with the state of the answer: any other state later is history. */
+  assert.equal(stoppedRunMovedOn({ stage: "order", state: "printed" }, "ordered", null), true)
+  assert.equal(stoppedRunMovedOn({ stage: "order", state: "printed" }, "printed", 2), false)
+  /* A failed request (no state): past the stage and nothing to continue is history; still at it, or a retry to offer, keeps the loader. */
+  assert.equal(stoppedRunMovedOn({ stage: "protocol", state: null }, "printed", null), true, "the server printed behind a lost answer")
+  assert.equal(stoppedRunMovedOn({ stage: "protocol", state: null }, "printed", 2), false, "with a courier the run goes on to the order")
+  assert.equal(stoppedRunMovedOn({ stage: "protocol", state: null }, "pending", 1), false)
+  assert.equal(stoppedRunMovedOn({ stage: "protocol", state: null }, "printing", null), false, "still printing")
+  assert.equal(stoppedRunMovedOn({ stage: "order", state: null }, "ordered", null), true, "ordered from the view")
+  assert.equal(stoppedRunMovedOn({ stage: "order", state: null }, "ordering", null), false)
+  assert.equal(stoppedRunMovedOn({ stage: "order", state: null }, null, null), false, "no read after the stop yet")
+  assert.equal(stoppedRunMovedOn(null, "ordered", null), false)
+  assert.match(drawer, /retryFrom !== null \? onRetry : undefined/)
+  assert.doesNotMatch(drawer, /stopped\.code|stopped\.printed/)
+  /* The protocol and the order wait for their state: a 200 in another state stops the stage. */
+  assert.match(drawer, /res\.dispatch\.state !== "printed"/)
+  assert.match(drawer, /res\.dispatch\.state !== "ordered"/)
+})
+
+test("a failed change on an attention handover never gives its kept code as the reason; a new code does", () => {
+  const attention = { attention: true, errorCode: "update_unclear" }
+  assert.equal(changeReasonCode(attention, { errorCode: "update_unclear" }), null, "kept by P10: says nothing about this attempt")
+  assert.equal(changeReasonCode(attention, { errorCode: "cancel_unclear" }), "cancel_unclear")
+  assert.equal(changeReasonCode(attention, { errorCode: null }), null)
+  assert.equal(changeReasonCode({ attention: false, errorCode: "pickup_time" }, { errorCode: "pickup_time" }), "pickup_time", "not attention: the code is this answer's")
+  assert.equal(changeReasonCode({ attention: false, errorCode: null }, { errorCode: "update_unclear" }), "update_unclear")
+  assert.match(body(dispatchSource, "useDispatchToast"), /codeText\(before \? changeReasonCode\(before, d\) : d\.errorCode\)/)
+  assert.match(body(dispatchSource, "useDispatchActions"), /action === "cancelCourier" \? before : undefined/)
+  assert.match(body(dispatchSource, "CourierOrderForm"), /dispatchToast\(res, mode, 0, before\)/)
+  assert.match(body(dispatchSource, "CourierOrderForm"), /codeText\(changeReasonCode\(before, res\.dispatch\)\)/)
+  assert.match(plan, /const code = dispatch \? changeReasonCode\(dispatch, res\.dispatch\) : res\.dispatch\.errorCode/)
+})
+
+test("courierFormAllowed: the form sends and offers Try again only while the newer of the handover and its answer allows the mode", () => {
+  const printed = dispatchOf({ state: "printed", updatedAt: "2026-11-03T10:00:00.000Z", actions: { ...NO_ACTIONS, order: true, cancel: true } })
+  const unknown = dispatchOf({ state: "unknown", errorCode: "order_unclear", updatedAt: "2026-11-03T10:00:05.000Z", actions: { ...NO_ACTIONS, resolve: true } })
+  const ordered = dispatchOf({ state: "ordered", hasCheckSum: true, updatedAt: "2026-11-03T10:00:05.000Z", actions: { ...NO_ACTIONS, reschedule: true, cancelCourier: true } })
+  assert.equal(courierFormAllowed("order", printed, null), true)
+  /* The answer went unknown, the host has not read it yet: no second order. */
+  assert.equal(courierFormAllowed("order", printed, unknown), false)
+  /* The host read it. */
+  assert.equal(courierFormAllowed("order", unknown, unknown), false)
+  /* Resolved back to printed after the answer: the order is open again. */
+  assert.equal(courierFormAllowed("order", { ...printed, updatedAt: "2026-11-03T10:01:00.000Z" }, unknown), true)
+  /* A refused order stays printed: Try again is fine. */
+  assert.equal(courierFormAllowed("order", printed, { ...printed, errorCode: "pickup_time", updatedAt: "2026-11-03T10:00:05.000Z" }), true)
+  /* An order ordered with a code (or ordered elsewhere) is no order any more; a change is. */
+  assert.equal(courierFormAllowed("order", printed, ordered), false)
+  assert.equal(courierFormAllowed("reschedule", ordered, null), true)
+  assert.equal(courierFormAllowed("reschedule", ordered, { ...ordered, errorCode: "update_unclear" }), true, "a change may be tried again")
+  assert.equal(courierFormAllowed("reschedule", ordered, { ...unknown, updatedAt: "2026-11-03T10:00:06.000Z" }), false)
+  assert.equal(courierFormAllowed("reschedule", { ...ordered, updatedAt: null }, { ...printed, updatedAt: "2026-11-03T10:00:06.000Z" }), false, "no time on the host: the answer counts")
+  const form = body(dispatchSource, "CourierOrderForm")
+  assert.match(form, /const allowed = courierFormAllowed\(mode, dispatch, answer\)/)
+  assert.match(form, /setAnswer\(res\.dispatch\)/)
+  assert.match(form, /onRetry=\{run\.status === "error" && allowed \? /)
+  assert.match(form, /disabled=\{!allowed \|\| !choice/)
+  assert.match(form, /if \(!choice \|\| !date \|\| !allowed\) return/)
+})
+
+test("the list's courier drawer reads the handover by its id: the form never works on the row of the click", () => {
+  const section = body(dispatchSource, "DispatchesSection")
+  assert.match(section, /useState<\{ id: string; mode: "order" \| "reschedule" \} \| null>/)
+  assert.match(section, /setForm\(\{ id: d\.id, mode: "order" \}\)/)
+  assert.match(section, /setForm\(\{ id: d\.id, mode: "reschedule" \}\)/)
+  assert.match(section, /<CourierOrderDrawer id=\{form\.id\}/)
+  assert.ok(!/useState<\{ dispatch: DispatchDto/.test(section), "no snapshot of a row in the state")
+  const drawer = body(dispatchSource, "CourierOrderDrawer")
+  assert.match(drawer, /const q = useDpdDispatch\(id\)/)
+  assert.match(drawer, /<CourierOrderForm dispatch=\{d\} mode=\{mode\}/)
+})
+
+test("no courier hours from DPD: the tip reads them again or prints only, the ticked courier is never dropped quietly", () => {
+  const drawer = body(dispatchSource, "NewDispatch")
+  assert.match(drawer, /availability\.refetch\(\)/)
+  assert.match(drawer, /onClick=\{\(\) => setCourier\(false\)\}>\s*\{t\("dispatch\.courier\.printOnly"\)\}/)
+  assert.match(drawer, /\(!wantsCourier \|\| \(choice && date\)\)/, "with the box ticked the create still needs a window (13.2.4 point 7)")
+})
+
+test("a handover drawer opened from the page closes back to the entry it came from; from a link it replaces it", () => {
+  const page = source("routes/dpd/page.tsx")
+  assert.match(page, /if \(!id && pushed\.current\) \{\s*pushed\.current = false\s*navigate\(-1\)/)
+  assert.match(page, /pushed\.current = Boolean\(id\)\s*setParams\(p, \{ replace: !id \}\)/)
+})
+
+test("the availability key is outside dpdKeys.all", () => {
+  assert.match(api, /export const availabilityKey = \(target: `dispatch:\$\{string\}` \| `group:\$\{string\}`\) => \["dpd-availability", target\] as const/)
+  for (const name of ["useDpdDispatchAvailability", "useDpdGroupAvailability"]) {
+    const hook = body(api, name)
+    assert.match(hook, /queryKey: availabilityKey\(/, name)
+    assert.match(hook, /staleTime: 60_000/, name)
+    assert.match(hook, /retry: false/, name)
+  }
+  /* Every action refreshes dpdKeys.all, never the hours. */
+  assert.match(body(api, "useBoundAction"), /onSettled: \(\) => void client\.invalidateQueries\(\{ queryKey: dpdKeys\.all \}\)/)
+  assert.match(body(api, "useDpdDispatch"), /isClaimedDispatch\(state\) \? 3000 : false/)
+})
+
+test("the poll of a claimed handover refreshes the list, the shipments and the tile once the work ends", () => {
+  assert.equal(dispatchLeftClaim("printing", "printed"), true)
+  assert.equal(dispatchLeftClaim("printing", "unknown"), true, "a lease expiry needs a person: the tile counts it now")
+  assert.equal(dispatchLeftClaim("ordering", "ordered"), true)
+  assert.equal(dispatchLeftClaim("updating", "ordered"), true)
+  assert.equal(dispatchLeftClaim("printing", "printing"), false, "still working: the poll goes on")
+  assert.equal(dispatchLeftClaim("printing", "ordering"), false)
+  assert.equal(dispatchLeftClaim("printed", "printed"), false, "never claimed: nothing to catch up")
+  assert.equal(dispatchLeftClaim("pending", "printed"), false)
+  assert.equal(dispatchLeftClaim(null, "printed"), false, "the first read")
+  assert.equal(dispatchLeftClaim("printing", null), false)
+  const hook = body(api, "useDpdDispatch")
+  assert.match(hook, /const seen = useRef<\{ id: string \| null; state: DispatchState \| null \}>\(\{ id, state \}\)/)
+  assert.match(hook, /if \(before\.id === id && dispatchLeftClaim\(before\.state, state\)\) void client\.invalidateQueries\(\{ queryKey: dpdKeys\.all \}, \{ cancelRefetch: false \}\)/)
+  assert.match(hook, /\}, \[client, id, state\]\)/)
+})
+
+test("openProtocol opens the tab before the request", () => {
+  const open = body(api, "openProtocol")
+  const tab = open.indexOf('window.open("", "_blank")')
+  const request = open.indexOf("fetchLabelFile(")
+  assert.ok(tab > 0 && request > tab, "the tab first, while the click still allows it")
+  assert.match(open, /kitRequestInit\(/)
+  assert.match(open, /URL\.createObjectURL\(/)
+  assert.match(open, /tab\?\.close\(\)/)
+  assert.ok(!/window\.open\(\s*protocolUrl/.test(dispatchSource), "a bare protocol URL in a new tab carries no JWT")
+})
+
+test("the subtitle no longer says the courier order comes later", () => {
+  assert.ok(!/courier order[^.;]*later/i.test(en.subtitle), en.subtitle)
+  assert.ok(!/courier order[^.;]*later/i.test(en.writers.later), en.writers.later)
+})
+
+test("the drawer uses a native date input and the ui Select, never a menu", () => {
+  assert.match(dispatchSource, /type="date"/)
+  assert.match(dispatchSource, /<Select\.Item /)
+  assert.ok(!dispatchSource.includes("DropdownMenu"))
+  /* The cost is asked before a courier is ordered, never before the protocol alone. */
+  assert.match(body(dispatchSource, "NewDispatch"), /if \(courierOrder\) \{\s*const yes = await prompt\(/)
+})
+
+test("the handover texts: a refused action reads the handover words first, then the shipment ones", () => {
+  const text = body(dispatchSource, "useDispatchErrorText")
+  assert.match(text, /`dispatch\.actionError\.\$\{code\}`/)
+  assert.match(text, /actionText\(err\)/)
+  for (const code of ["busy", "not_armed", "writer_off", "not_found", "wrong_state", "plan_changed"]) assert.equal(typeof (en.dispatch.actionError as Record<string, string>)[code], "string", code)
+})
+
+test("settings: the pickup writer says when its orders are simulated", () => {
+  const settings = source("lib/dpd-settings.tsx")
+  assert.match(settings, /key === "pickup" && s\.options\.courierOrders === "simulated"/)
+  assert.match(settings, /<InlineTip variant="info" label=\{t\("writers\.pickupSimulatedLabel"\)\}>/)
+  assert.match(settings, /\{note \? <div className="pt-1">\{note\}<\/div> : null\}/)
 })

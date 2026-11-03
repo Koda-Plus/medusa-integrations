@@ -11,19 +11,27 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
+  classifyAvailabilityAnswer,
   classifyLabelsAnswer,
   classifyNumbersAnswer,
+  classifyPickupCallAnswer,
+  classifyPickupCallChangeAnswer,
+  classifyProtocolAnswer,
   cleanDpdText,
+  COURIER_ERROR_CODES,
   DPD_ERROR_CODES,
   DPD_PROBLEM_CODES,
   isPdfBase64,
   PICKUP_ANSWER_CODES,
   problemsOfBean,
   problemsOfGpn,
+  problemsOfPickupCall,
+  problemsOfProtocol,
   transportFailure,
   type LabelsOutcome,
   type NumbersOutcome,
 } from "../src/modules/dpd/lib/dpd-answers.ts"
+import { protocolRequest } from "../src/modules/dpd/lib/dispatch.ts"
 import type { DpdHttpAnswer, GeneratePackagesNumbersRequest } from "../src/modules/dpd/lib/dpdservices.ts"
 import { FakeDpdServices, loadFixture, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
 
@@ -399,4 +407,322 @@ test("the fake DPDServices refuses Pickup like the demo host did (14.3): each re
     if (got.kind === "refused" && want.kind === "refused") assert.deepEqual(got.problems, want.problems, name)
   }
   assert.equal(fake.count("numbers"), names.length)
+})
+
+/* Stage 4 (spec 8.2 to 8.6): one case per row of the tables, on the masked fixtures and on bodies built from the schema. */
+
+/** "kind:code" of any outcome ("ok:" for ok). */
+const kc = (o: { kind: string }): string => `${o.kind}:${"code" in o && typeof o.code === "string" ? o.code : ""}`
+
+/** A protocol request for these references (the payer FID is never read by the classifier). */
+const sentProtocol = (...references: string[]) => protocolRequest(references, { fid: 1000 })
+
+type Obj = Record<string, unknown>
+const objOf = (v: unknown): Obj | null => (v !== null && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v)) : null)
+
+/** The references the protocol fixture asked for. */
+function protocolRefsOf(name: string): string[] {
+  const session = objOf(objOf(objOf(loadFixture(name).request.body)?.protocolSearchParams)?.session)
+  const packages = Array.isArray(session?.packages) ? session.packages : []
+  return packages.map((p: unknown) => {
+    const reference = objOf(p)?.reference
+    return typeof reference === "string" ? reference : ""
+  })
+}
+
+const protocol = (name: string) => classifyProtocolAnswer(answerOf(name), sentProtocol(...protocolRefsOf(name)))
+
+/** An INCORRECT_DATA protocol body with this session status and these package statuses. */
+function protocolBody(sessionStatus: string | null, packages: Array<[string, string]>): unknown {
+  return {
+    status: "INCORRECT_DATA",
+    documentData: "",
+    session: {
+      statusInfo: sessionStatus === null ? {} : { status: sessionStatus },
+      packages: packages.map(([reference, status]) => ({ reference, statusInfo: { status }, parcels: [] })),
+    },
+    documentId: null,
+  }
+}
+
+const courierStatus = (status: string, details: Array<{ code: string; fields?: string; description?: string | null }> = []) => ({
+  orderNumber: null,
+  checkSum: "null",
+  status: { status, errorDetails: details.map((d) => ({ code: d.code, description: d.description ?? null, fields: d.fields ?? "orderNumber;" })) },
+})
+
+test("protocol (8.2) fixtures: 05a, 05c, 11j, 11n ok; 11h, 11i protocol_not_found; 11k pickup_fid; 11l session_type; 11m by count", () => {
+  for (const name of ["05a-protocol-by-package-ref", "05c-protocol-again", "11j-protocol-three-pickupaddress", "11n-protocol-no-label"]) {
+    const o = protocol(name)
+    assert.equal(o.kind, "ok", name)
+    if (o.kind !== "ok") continue
+    assert.equal(o.pdfBase64, TINY_PDF_BASE64, name)
+    assert.ok(o.documentId !== null && /^\d+$/.test(o.documentId), name)
+    assert.deepEqual(o.references, protocolRefsOf(name), name)
+    assert.equal(o.httpStatus, 200)
+  }
+  for (const name of ["11h-protocol-stop-missing", "11i-protocol-ignore-missing"]) {
+    const o = protocol(name)
+    assert.equal(kc(o), "refused:protocol_not_found", name)
+    if (o.kind !== "refused") continue
+    assert.deepEqual(o.problems, [{ code: "dpd_protocol_not_found", field: "session.packages", detail: "probe-mw0lmyze-Hmissing" }], name)
+    assert.equal(o.httpStatus, 400)
+    assert.equal(o.message, "DPD refused the protocol (INCORRECT_DATA, NOT_FOUND): DPD does not know probe-mw0lmyze-Hmissing.")
+    assert.ok(!o.message.includes("2032191"), "the documentId of a refusal is dropped (H3)")
+  }
+  /* 11p (live check of stage 4): DPD knows none of the sent references and lists no package, so every sent reference is missing. */
+  const p = protocol("11p-protocol-all-missing")
+  assert.equal(kc(p), "refused:protocol_not_found")
+  if (p.kind === "refused") {
+    assert.deepEqual(p.problems, [{ code: "dpd_protocol_not_found", field: "session.packages", detail: "probe-mw0xpilq-ghost" }])
+    assert.equal(p.message, "DPD refused the protocol (INCORRECT_DATA, NOT_FOUND): DPD does not know probe-mw0xpilq-ghost.")
+  }
+  const k = protocol("11k-protocol-wrong-fid")
+  assert.equal(kc(k), "refused:pickup_fid")
+  if (k.kind === "refused") {
+    assert.deepEqual(k.problems, [{ code: "dpd_payer_fid" }])
+    assert.ok(k.message.includes("Access denied for pickup fid") && !k.message.includes("PickupAddress/FID"), "the description is cleaned of its brackets")
+  }
+  const l = protocol("11l-protocol-international")
+  assert.equal(kc(l), "refused:session_type")
+  if (l.kind === "refused") assert.deepEqual(l.problems, [])
+  /* 11m: packages without a reference; ok when the count equals the count sent, references empty. */
+  const m = classifyProtocolAnswer(answerOf("11m-protocol-by-waybill"), sentProtocol("ful_1"))
+  assert.equal(kc(m), "ok:")
+  if (m.kind === "ok") assert.deepEqual(m.references, [])
+  assert.equal(kc(classifyProtocolAnswer(answerOf("11m-protocol-by-waybill"), sentProtocol("ful_1", "ful_2"))), "unclear:partial")
+})
+
+test("protocol (8.2) enum and synthetic rows: session first, then packages; 5xx unclear whatever the body", () => {
+  const sent = sentProtocol("ful_1", "ful_2")
+  const at = (status: number, body: unknown) => kc(classifyProtocolAnswer(synthetic(status, body), sent))
+  for (const http of [200, 400]) {
+    assert.equal(at(http, protocolBody("INCORRECT_PICKUP_ADDRESS_FID", [["ful_1", "NOT_PROCESSED"]])), "refused:pickup_fid", `${http}`)
+    assert.equal(at(http, protocolBody("INCORRECT_PICKUP_ADDRESS_COMPANY", [["ful_1", "NOT_PROCESSED"]])), "refused:pickup_address")
+    assert.equal(at(http, protocolBody("PARCEL_LIMIT_EXCEEDED", [["ful_1", "OK"]])), "refused:parcel_limit")
+    assert.equal(at(http, protocolBody("NOT_PROCESSED", [["ful_1", "OK"], ["ful_2", "PARCEL_LIMIT_EXCEEDED"]])), "refused:parcel_limit")
+    for (const session of ["NOT_PROCESSED", "UNKNOWN_ERROR", null]) {
+      assert.equal(at(http, protocolBody(session, [["ful_1", "PARCEL_LIMIT_EXCEEDED"], ["ful_2", "NOT_FOUND"]])), "refused:protocol_not_found", String(session))
+    }
+    assert.equal(at(http, protocolBody("SOMETHING_NEW", [["ful_1", "NOT_PROCESSED"]])), "refused:incorrect_data")
+    assert.equal(at(http, protocolBody(null, [["ful_1", "NOT_PROCESSED"]])), "refused:incorrect_data", "NOT_PROCESSED is never a problem")
+    assert.equal(at(http, { status: "DISABLED_API" }), "refused:disabled_api")
+    assert.equal(at(http, { status: "UNKNOWN_ERROR" }), "unclear:dpd_unknown_error")
+    assert.equal(at(http, { status: "BRAND_NEW" }), "unclear:unknown_status")
+  }
+  const disabled = classifyProtocolAnswer(synthetic(200, { status: "DISABLED_API" }), sent)
+  if (disabled.kind === "refused") assert.deepEqual(disabled.problems, [{ code: "dpd_disabled_api" }])
+  const okBody = (documentData: unknown, packages: Array<[string, string]>, documentId: unknown = 5) => ({
+    status: "OK",
+    documentData,
+    session: { statusInfo: { status: "OK" }, packages: packages.map(([reference, status]) => ({ reference, statusInfo: { status }, parcels: [] })) },
+    documentId,
+  })
+  assert.equal(at(200, okBody("", [["ful_1", "OK"], ["ful_2", "OK"]])), "unclear:not_pdf")
+  assert.equal(at(200, okBody("bm90IGEgcGRm", [["ful_1", "OK"], ["ful_2", "OK"]])), "unclear:not_pdf")
+  assert.equal(at(200, okBody(TINY_PDF_BASE64, [["ful_1", "OK"], ["ful_2", "NOT_PROCESSED"]])), "unclear:partial")
+  assert.equal(at(200, okBody(TINY_PDF_BASE64, [["ful_1", "OK"]])), "unclear:partial")
+  assert.equal(at(200, okBody(TINY_PDF_BASE64, [["ful_1", "OK"], ["ful_3", "OK"]])), "unclear:partial")
+  const ok = classifyProtocolAnswer(synthetic(200, okBody(TINY_PDF_BASE64, [["ful_2", "OK"], ["ful_1", "OK"]], 203216918)), sent)
+  assert.equal(kc(ok), "ok:")
+  if (ok.kind === "ok") assert.deepEqual([ok.documentId, ok.references], ["203216918", ["ful_2", "ful_1"]], "a number as a string, DPD's order")
+  const noId = classifyProtocolAnswer(synthetic(200, okBody(TINY_PDF_BASE64, [["ful_1", "OK"], ["ful_2", "OK"]], { id: 1 })), sent)
+  assert.equal(kc(noId), "ok:")
+  if (noId.kind === "ok") assert.equal(noId.documentId, null)
+  const bean = classifyProtocolAnswer(synthetic(400, { errors: [{ field: "protocolSearchParams.session.type", userMessage: "must not be null" }] }), sent)
+  assert.equal(kc(bean), "refused:validation")
+  if (bean.kind === "refused") assert.deepEqual(bean.problems.map((p) => p.code), ["dpd_validation"])
+  assert.equal(at(500, protocolBody("NOT_FOUND", [["ful_1", "NOT_FOUND"]])), "unclear:server_error")
+  assert.equal(at(503, null), "unclear:server_error")
+  assert.equal(at(401, null), "refused:auth")
+  assert.equal(at(404, null), "unclear:http_404")
+  assert.equal(at(200, { documentData: TINY_PDF_BASE64 }), "unclear:bad_answer")
+  const five = classifyProtocolAnswer(synthetic(500, { status: "UNKNOWN_ERROR" }), sent)
+  assert.equal(five.kind !== "ok" ? five.message : "", "DPD answered HTTP 500 (UNKNOWN_ERROR); the result of the protocol is not known.")
+  /* problemsOfProtocol: a package without a reference names its NOT_FOUND waybills; OK and NOT_PROCESSED are skipped; no duplicates. */
+  assert.deepEqual(
+    problemsOfProtocol({
+      session: {
+        packages: [
+          { statusInfo: { status: "NOT_FOUND" }, parcels: [{ waybill: "W1", statusInfo: { status: "NOT_FOUND" } }, { waybill: "W2", statusInfo: { status: "OK" } }, { waybill: "W3", statusInfo: { status: "NOT_FOUND" } }] },
+          { reference: "ful_1", statusInfo: { status: "NOT_FOUND" } },
+          { reference: "ful_1", statusInfo: { status: "NOT_FOUND" } },
+          { reference: "ful_2", statusInfo: { status: "NOT_PROCESSED" } },
+          { reference: "ful_3", statusInfo: { status: "OK" } },
+        ],
+      },
+    }),
+    [
+      { code: "dpd_protocol_not_found", field: "session.packages", detail: "W1, W3" },
+      { code: "dpd_protocol_not_found", field: "session.packages", detail: "ful_1" },
+    ],
+  )
+})
+
+test("availability (8.3): 11a, 11c, 11e ok; 11b, 11d postal_code_not_found under 404; enum and synthetic rows", () => {
+  const avail = (name: string) => classifyAvailabilityAnswer(answerOf(name))
+  const a = avail("11a-avail-02274")
+  assert.equal(kc(a), "ok:")
+  if (a.kind === "ok") assert.deepEqual(a.ranges.map((r) => [r.from, r.to, r.offset]), [["09:00", "17:00", 360], ["11:00", "14:00", 180], ["14:00", "17:00", 180]])
+  const c = avail("11c-avail-99999")
+  assert.equal(kc(c), "ok:")
+  if (c.kind === "ok") assert.deepEqual(c.ranges.map((r) => r.raw), ["01:00-06:00", "06:00-12:00", "12:00-18:00", "18:00-23:30"])
+  assert.equal(kc(avail("11e-avail-de")), "ok:")
+  for (const name of ["11b-avail-dash", "11d-avail-letters"]) {
+    const o = avail(name)
+    assert.equal(kc(o), "refused:postal_code_not_found", name)
+    assert.equal(o.httpStatus, 404, "the body is read before the HTTP status")
+  }
+  const at = (status: number, body: unknown) => classifyAvailabilityAnswer(synthetic(status, body))
+  for (const http of [200, 404]) {
+    assert.equal(kc(at(http, { status: "RANGE_NOT_FOUND", ranges: [] })), "refused:range_not_found")
+    assert.equal(kc(at(http, { status: "WRONG_POSTAL_PATTERN" })), "refused:postal_pattern")
+    assert.equal(kc(at(http, { status: "COUNTRY_CODE_NOT_FOUND" })), "refused:country_not_found")
+    assert.equal(kc(at(http, { status: "DISABLED_API" })), "refused:disabled_api")
+    assert.equal(kc(at(http, { status: "UNKNOWN_ERROR" })), "unclear:dpd_unknown_error")
+    assert.equal(kc(at(http, { status: "BRAND_NEW" })), "unclear:unknown_status")
+  }
+  const disabled = at(200, { status: "DISABLED_API" })
+  if (disabled.kind === "refused") assert.deepEqual(disabled.problems, [{ code: "dpd_disabled_api" }])
+  assert.equal(kc(at(200, { status: "OK", ranges: [] })), "refused:range_not_found")
+  assert.equal(kc(at(200, { status: "OK" })), "refused:range_not_found")
+  assert.equal(kc(at(200, { status: "OK", ranges: [{ range: "17:00-09:00" }, { range: "nine" }] })), "unclear:bad_answer")
+  const some = at(200, { status: "OK", ranges: [{ range: "nine" }, { range: "10:00-12:00", offset: 1.5 }] })
+  assert.equal(kc(some), "ok:")
+  if (some.kind === "ok") assert.deepEqual(some.ranges, [{ from: "10:00", to: "12:00", offset: null, raw: "10:00-12:00" }])
+  assert.equal(kc(at(500, { status: "OK", ranges: [{ range: "10:00-12:00" }] })), "unclear:server_error")
+  assert.equal(kc(at(401, null)), "refused:auth")
+  assert.equal(kc(at(404, null)), "unclear:http_404")
+  assert.equal(kc(at(400, { errors: [{ field: "zipCode", userMessage: "must match" }] })), "refused:validation")
+  assert.equal(kc(at(429, null)), "refused:rate_limited")
+})
+
+test("courier order POST (8.4): 12a is unclear dpd_unknown_error, never ok; 12d pickup_time; 12g validation; 12h payer_fid", () => {
+  const post = (name: string) => classifyPickupCallAnswer(answerOf(name))
+  const a = post("12a-order")
+  assert.equal(kc(a), "unclear:dpd_unknown_error")
+  assert.equal(a.httpStatus, 200)
+  /* 12b, 12c, 12e, 12f, 12p to 12t have the shape of 12a. */
+  assert.equal(kc(classifyPickupCallAnswer(synthetic(200, { orderNumber: null, checkSum: "null", status: { status: "UNKNOWN_ERROR", errorDetails: [] } }))), "unclear:dpd_unknown_error")
+  const d = post("12d-order-yesterday")
+  assert.equal(kc(d), "refused:pickup_time")
+  if (d.kind === "refused") assert.deepEqual(d.problems, [{ code: "dpd_validation", field: "pickupDate", detail: "must be a date in the present or in the future" }])
+  const g = post("12g-order-maxweight-51")
+  assert.equal(kc(g), "refused:validation")
+  if (g.kind === "refused") assert.deepEqual(g.problems, [{ code: "dpd_validation", field: "packagesForCollection.packagesParams.parcel.maxWeight", detail: "must be less than or equal to 50" }])
+  const h = post("12h-order-wrong-payer")
+  assert.equal(kc(h), "refused:payer_fid")
+  if (h.kind === "refused") assert.deepEqual(h.problems, [{ code: "dpd_payer_fid" }, { code: "dpd_courier", field: "PickupPayer/PickupNumber", detail: "INCORRECT_VALUE" }])
+
+  const at = (status: number, body: unknown) => classifyPickupCallAnswer(synthetic(status, body))
+  const ok = at(200, { orderNumber: 1234567890, checkSum: " 01234567 ", status: { status: "OK", errorDetails: [] } })
+  assert.equal(kc(ok), "ok:")
+  if (ok.kind === "ok") assert.deepEqual([ok.orderNumber, ok.checkSum], ["1234567890", "01234567"], "a number as a string, leading zeros kept")
+  const num = at(200, { orderNumber: "SBX00000000001", checkSum: 12345678, status: { status: "OK" } })
+  assert.equal(kc(num), "ok:")
+  if (num.kind === "ok") assert.equal(num.checkSum, "12345678")
+  for (const [orderNumber, checkSum] of [[null, "12345678"], ["", "12345678"], ["1", null], ["1", ""], ["1", "null"], ["1", "NULL"], ["1", " Null "]]) {
+    assert.equal(kc(at(200, { orderNumber, checkSum, status: { status: "OK" } })), "unclear:no_order_number", `${orderNumber}/${checkSum}`)
+  }
+  for (const http of [200, 400]) {
+    assert.equal(kc(at(http, courierStatus("SERVICE_UNAVAILABLE"))), "unclear:service_unavailable")
+    assert.equal(kc(at(http, courierStatus("VALIDATION_ERROR", [{ code: "INCORRECT_VALUE" }, { code: "SERVICE_UNAVAILABLE" }]))), "unclear:service_unavailable")
+    assert.equal(kc(at(http, courierStatus("VALIDATION_ERROR", [{ code: "INCORRECT_VALUE", fields: "PickupSender/Phone;" }]))), "refused:validation")
+    assert.equal(kc(at(http, courierStatus("NOT_FOUND"))), "refused:order_not_found")
+    assert.equal(kc(at(http, courierStatus("BRAND_NEW"))), "unclear:unknown_status")
+  }
+  const disabled = at(200, courierStatus("DISABLED_API", [{ code: "VALIDATION", fields: "" }]))
+  assert.equal(kc(disabled), "refused:disabled_api")
+  if (disabled.kind === "refused") assert.deepEqual(disabled.problems, [{ code: "dpd_disabled_api" }, { code: "dpd_courier", detail: "VALIDATION" }])
+  assert.equal(kc(at(200, { orderNumber: "1", checkSum: "12345678" })), "unclear:bad_answer")
+  assert.equal(kc(at(200, { status: { status: "OK" } })), "unclear:no_order_number")
+  assert.equal(kc(at(500, courierStatus("OK"))), "unclear:server_error")
+  assert.equal(kc(at(502, null)), "unclear:server_error")
+  assert.equal(kc(at(404, null)), "unclear:http_404")
+  assert.equal(kc(at(429, null)), "refused:rate_limited")
+  assert.equal(kc(at(401, null)), "refused:auth")
+  assert.equal(kc(at(403, null)), "refused:forbidden")
+  assert.equal(kc(at(415, null)), "refused:unsupported")
+})
+
+test("courier change and cancellation (8.5): 12u and 12v unclear server_error; 12w checksum; enum rows for both ops", () => {
+  const u = classifyPickupCallChangeAnswer(answerOf("12u-patch-unknown-order"), "update")
+  assert.equal(kc(u), "unclear:server_error")
+  assert.equal(u.kind !== "ok" ? u.message : "", "DPD answered HTTP 500 (UNKNOWN_ERROR); the result of the courier change is not known.")
+  const v = classifyPickupCallChangeAnswer(answerOf("12v-delete-unknown-order"), "delete")
+  assert.equal(kc(v), "unclear:server_error")
+  assert.equal(v.kind !== "ok" ? v.message : "", "DPD answered HTTP 500 (UNKNOWN_ERROR); the result of the courier cancellation is not known.")
+  const w = classifyPickupCallChangeAnswer(answerOf("12w-delete-short-checksum"), "delete")
+  assert.equal(kc(w), "refused:checksum")
+  if (w.kind === "refused") assert.deepEqual(w.problems, [{ code: "dpd_validation", field: "packagesPickupCallDelete.checkSum", detail: "size must be between 8 and 36" }])
+  for (const op of ["update", "delete"] as const) {
+    const at = (status: number, body: unknown) => classifyPickupCallChangeAnswer(synthetic(status, body), op)
+    const ok = at(200, { orderNumber: "1234567890", checkSum: "87654321", status: { status: "OK" } })
+    assert.equal(kc(ok), "ok:")
+    if (ok.kind === "ok") assert.deepEqual([ok.orderNumber, ok.checkSum], ["1234567890", "87654321"])
+    const nothing = at(200, { status: { status: "OK" } })
+    assert.equal(kc(nothing), "ok:")
+    if (nothing.kind === "ok") assert.deepEqual([nothing.orderNumber, nothing.checkSum], [null, null], "null keeps the stored values (DS13)")
+    const empty = at(200, { orderNumber: "", checkSum: "null", status: { status: "OK" } })
+    if (empty.kind === "ok") assert.deepEqual([empty.orderNumber, empty.checkSum], [null, null])
+    for (const http of [200, 400]) {
+      assert.equal(kc(at(http, courierStatus("UNKNOWN_ERROR"))), "unclear:dpd_unknown_error", op)
+      assert.equal(kc(at(http, courierStatus("SERVICE_UNAVAILABLE"))), "unclear:service_unavailable")
+      assert.equal(kc(at(http, courierStatus("NOT_FOUND"))), "refused:order_not_found")
+      assert.equal(kc(at(http, courierStatus("VALIDATION_ERROR", [{ code: "ORDER_CLOSED_STATUS" }]))), "refused:order_closed")
+      assert.equal(kc(at(http, courierStatus("VALIDATION_ERROR", [{ code: "INCORRECT_CHECKSUM", fields: "checkSum;" }]))), "refused:checksum")
+      assert.equal(kc(at(http, courierStatus("VALIDATION_ERROR", [{ code: "INCORRECT_STATUS" }]))), "refused:order_status")
+      assert.equal(kc(at(http, courierStatus("VALIDATION_ERROR", [{ code: "INCORRECT_PICKUP_TIME", fields: "pickupTimeFrom;" }]))), "refused:pickup_time")
+      assert.equal(kc(at(http, courierStatus("DISALLOWED_FID"))), "refused:payer_fid")
+      assert.equal(kc(at(http, courierStatus("DISABLED_API"))), "refused:disabled_api")
+    }
+    const closed = at(400, courierStatus("VALIDATION_ERROR", [{ code: "ORDER_CLOSED_STATUS", fields: "orderNumber;" }]))
+    if (closed.kind === "refused") assert.deepEqual(closed.problems, [{ code: "dpd_courier", field: "orderNumber", detail: "ORDER_CLOSED_STATUS" }])
+    const fid = at(400, courierStatus("DISALLOWED_FID", [{ code: "INCORRECT_VALUE", fields: "PickupPayer/PickupNumber;" }]))
+    if (fid.kind === "refused") assert.deepEqual(fid.problems.map((p) => p.code), ["dpd_payer_fid", "dpd_courier"])
+    const disabled = at(200, courierStatus("DISABLED_API", [{ code: "VALIDATION" }]))
+    if (disabled.kind === "refused") assert.deepEqual(disabled.problems.map((p) => p.code), ["dpd_disabled_api", "dpd_courier"])
+    assert.equal(kc(at(502, courierStatus("NOT_FOUND"))), "unclear:server_error")
+    assert.equal(kc(at(401, null)), "refused:auth")
+    assert.equal(kc(at(404, null)), "unclear:http_404")
+  }
+})
+
+test("errorDetails and Bean (8.6): the first code by order decides; problemsOfPickupCall cuts the fields and dedupes", () => {
+  const code = (...codes: string[]) => kc(classifyPickupCallChangeAnswer(synthetic(400, courierStatus("VALIDATION_ERROR", codes.map((c) => ({ code: c })))), "update"))
+  assert.equal(code("INCORRECT_PICKUP_TIME", "INCORRECT_STATUS", "NOT_FOUND", "INCORRECT_CHECKSUM", "ORDER_CLOSED_STATUS"), "refused:order_closed")
+  assert.equal(code("INCORRECT_PICKUP_TIME", "INCORRECT_STATUS", "NOT_FOUND", "INCORRECT_CHECKSUM"), "refused:checksum")
+  assert.equal(code("INCORRECT_PICKUP_TIME", "INCORRECT_STATUS", "NOT_FOUND"), "refused:order_not_found")
+  assert.equal(code("INCORRECT_PICKUP_TIME", "INCORRECT_STATUS"), "refused:order_status")
+  assert.equal(code("ORDER_NUMBER_ERROR", "INCORRECT_PICKUP_TIME"), "refused:pickup_time")
+  assert.equal(code("ORDER_NUMBER_ERROR", "INCORRECT_VALUE"), "refused:order_number")
+  assert.equal(code("INCORRECT_VALUE", "VALIDATION", "SOMETHING_NEW"), "refused:validation")
+  assert.equal(code(), "refused:validation")
+  assert.equal(code("ORDER_CLOSED_STATUS", "SERVICE_UNAVAILABLE"), "unclear:service_unavailable")
+  /* Bean of a courier call: checkSum before the pickup time before anything else. */
+  const bean = (...fields: string[]) => kc(classifyPickupCallAnswer(synthetic(400, { errors: fields.map((field) => ({ field, userMessage: "is wrong" })) })))
+  assert.equal(bean("packagesForCollection.sender.phone", "pickupTimeTo", "checkSum"), "refused:checksum")
+  assert.equal(bean("packagesForCollection.sender.phone", "pickupTimeFrom"), "refused:pickup_time")
+  assert.equal(bean("packagesForCollection.sender.phone"), "refused:validation")
+  assert.deepEqual(
+    problemsOfPickupCall({
+      status: {
+        status: "VALIDATION_ERROR",
+        errorDetails: [
+          { code: "INCORRECT_VALUE", description: null, fields: " PickupSender/Phone ; PickupSender/Email;;" },
+          { code: "INCORRECT_VALUE", description: null, fields: " PickupSender/Phone ; PickupSender/Email;;" },
+          { code: "INCORRECT_PICKUP_TIME", description: "Pickup time is wrong", fields: "" },
+          { code: "", description: null, fields: "" },
+          "not an entry",
+        ],
+      },
+    }),
+    [
+      { code: "dpd_courier", field: "PickupSender/Phone, PickupSender/Email", detail: "INCORRECT_VALUE" },
+      { code: "dpd_courier", detail: "INCORRECT_PICKUP_TIME: Pickup time is wrong" },
+    ],
+  )
+  assert.deepEqual(problemsOfPickupCall(null), [])
+  /* The courier codes stay apart from the shipment codes. */
+  for (const c of COURIER_ERROR_CODES) assert.ok(!(DPD_ERROR_CODES as readonly string[]).includes(c), c)
 })

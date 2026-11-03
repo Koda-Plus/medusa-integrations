@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Beaker, BuildingStorefront, CheckCircle, ExclamationCircle, Eye, Key, LockClosedSolid, ShieldCheck, User } from "@medusajs/icons"
 import { InlineTip, Switch, Text, toast } from "@medusajs/ui"
@@ -217,7 +218,7 @@ export function SenderSection({ status: s }: { status: StatusResponse }) {
 /* Writers                                                             */
 /* ------------------------------------------------------------------ */
 
-function WriterRow({ writer, lang, busy, onFlip }: { writer: WriterDto; lang: string; busy: boolean; onFlip: (armed: boolean) => void }) {
+function WriterRow({ writer, lang, busy, onFlip, note }: { writer: WriterDto; lang: string; busy: boolean; onFlip: (armed: boolean) => void; note?: ReactNode }) {
   const { t } = useTranslation("dpd")
   /* Still armed here while the options turn it off: it does not write, and the switch stays to disarm it
      (the server always allows that), so it cannot come back armed when the option returns. */
@@ -244,12 +245,13 @@ function WriterRow({ writer, lang, busy, onFlip }: { writer: WriterDto; lang: st
                 ? t(writer.on ? "writers.onBy" : "writers.offBy", { who: writer.updatedBy ?? "-", time: fmtDateTime(writer.updatedAt, lang) })
                 : t("writers.never")}
         </Text>
-        {/* Only the writers this version does not use yet; the shipment writer creates shipments now. */}
+        {/* Only the writers this version does not use yet; the shipment and pickup writers write now. */}
         {isLaterWriter(writer.key) ? (
           <Text size="xsmall" className={writer.armed ? "text-ui-tag-orange-text" : "text-ui-fg-muted"}>
             {t("writers.later")}
           </Text>
         ) : null}
+        {note ? <div className="pt-1">{note}</div> : null}
       </div>
       {/* Arming needs the option; disarming never does. */}
       <Switch
@@ -289,7 +291,21 @@ export function WritersSection({ status: s, lang }: { status: StatusResponse; la
       ]}
     >
       {WRITERS.map((key) => (
-        <WriterRow key={key} writer={s.writers[key]} lang={lang} busy={toggle.isPending && toggle.variables?.writer === key} onFlip={(armed) => void flip(key, armed)} />
+        <WriterRow
+          key={key}
+          writer={s.writers[key]}
+          lang={lang}
+          busy={toggle.isPending && toggle.variables?.writer === key}
+          onFlip={(armed) => void flip(key, armed)}
+          /* Sandbox: the DPD test host cannot order a courier, so the plugin simulates the order (DS4). */
+          note={
+            key === "pickup" && s.options.courierOrders === "simulated" ? (
+              <InlineTip variant="info" label={t("writers.pickupSimulatedLabel")}>
+                {t("writers.pickupSimulated")}
+              </InlineTip>
+            ) : undefined
+          }
+        />
       ))}
       <div className="flex flex-col gap-y-1 px-6 py-4">
         <span className="flex flex-wrap items-center gap-2">

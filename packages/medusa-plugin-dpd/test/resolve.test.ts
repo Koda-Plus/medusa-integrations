@@ -20,7 +20,9 @@ import dpdSyncShipments, { config as jobConfig } from "../src/jobs/dpd-sync-ship
 import type { DpdPluginOptions } from "../src/modules/dpd/lib/options.ts"
 import { catalogSource, SANDBOX_POINTS, type PointsSource } from "../src/modules/dpd/lib/points.ts"
 import { FakeDpdServices, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
-import { arm, countingPoints, order, SANDBOX, setup, type Container, type Row, type Setup } from "./helpers.ts"
+import { PROTOCOL_LEASE_MS } from "../src/modules/dpd/lib/constants.ts"
+import { createDispatch, planDispatch } from "../src/workflows/dpd/dispatch.ts"
+import { arm, countingPoints, insertLabeled, labeledOrder, order, SANDBOX, setup, type Container, type Row, type Setup } from "./helpers.ts"
 
 const realFetch = globalThis.fetch
 let requests = 0
@@ -377,7 +379,7 @@ test("the pass removes old documents also while DPD is not configured (no DPD ca
   const s = setup({ shipmentWriter: true, documentRetentionDays: 30 }, [])
   s.documents.insert({ shipment_id: "dpdshp_x", type: "label", data: "old", mode: s.options.mode, created_at: new Date(Date.now() - 31 * 86_400_000) })
   s.documents.insert({ shipment_id: "dpdshp_x", type: "label", data: "new", mode: s.options.mode, created_at: new Date(Date.now() - 29 * 86_400_000) })
-  assert.deepEqual(await runShipmentPass(s.container), { purged: 1, expired: 0, lookedUp: 0, created: 0, labeled: 0, ran: false })
+  assert.deepEqual(await runShipmentPass(s.container), { purged: 1, expired: 0, dispatchesExpired: 0, lookedUp: 0, created: 0, labeled: 0, ran: false })
   assert.deepEqual(s.documents.rows.map((d) => d.data), ["new"])
 })
 
@@ -392,7 +394,7 @@ test("the pass removes documents older than the retention (E10), waits while DPD
   assert.deepEqual(s.documents.rows.map((d) => d.data).sort(), ["y", "z"], "another mode is not touched")
 
   const bare = setup({ shipmentWriter: true }, [])
-  assert.deepEqual(await runShipmentPass(bare.container), { purged: 0, expired: 0, lookedUp: 0, created: 0, labeled: 0, ran: false })
+  assert.deepEqual(await runShipmentPass(bare.container), { purged: 0, expired: 0, dispatchesExpired: 0, lookedUp: 0, created: 0, labeled: 0, ran: false })
 
   assert.equal(jobConfig.name, "dpd-sync-shipments")
   assert.equal(jobConfig.schedule, "*/5 * * * *")
@@ -658,4 +660,53 @@ test("points that never answer do not hold an older row back: the point_unchecke
     assert.equal(rowOf(s, id).error_code, "point_unchecked")
   }
   assert.equal(s.events.rows.slice(lines).filter((e) => (e.data as Row | null)?.action === "create_deferred").length, 0, "a retry adds no history line")
+})
+
+/* Stage 4: the pass and the dispatches (DS8). */
+
+async function dispatchesIn(states: string[]) {
+  const fake = new FakeDpdServices({ courier: "works" })
+  const s = setup({ ...SANDBOX, mode: "live", shipmentWriter: true, pickupWriter: true }, [], { fake })
+  arm(s, "shipment")
+  arm(s, "pickup")
+  const ids: string[] = []
+  for (const [i, state] of states.entries()) {
+    const row = insertLabeled(s, labeledOrder(i + 1))
+    const { plan } = await planDispatch(s.container, [String(row.id)])
+    const view = await createDispatch(s.container, { shipmentIds: [String(row.id)], planHash: plan.hash }, { actor: ADMIN })
+    const d = s.dispatches.rows.find((r) => r.id === view.dispatch.id)
+    assert.ok(d)
+    d.state = state
+    ids.push(view.dispatch.id)
+  }
+  return { s, fake, ids }
+}
+
+test("the pass expires dispatch leases and counts them in dispatchesExpired", async () => {
+  const { s, fake, ids } = await dispatchesIn(["printing", "ordering", "updating", "printing"])
+  const past = (ms: number) => new Date(Date.now() - ms - 1000)
+  const at = (i: number) => s.dispatches.rows.find((r) => r.id === ids[i]) as Row
+  Object.assign(at(0), { claim_token: "a", lease_until: past(0), error_code: "protocol_unclear" })
+  Object.assign(at(1), { claim_token: "b", lease_until: past(0), error_code: "order_unclear", pickup_date: "2026-12-01" })
+  Object.assign(at(2), { claim_token: "c", lease_until: past(0), error_code: "update_unclear", order_number: "2026000001", check_sum: "12345678", ordered_at: new Date() })
+  Object.assign(at(3), { claim_token: "d", lease_until: new Date(Date.now() + PROTOCOL_LEASE_MS), error_code: "protocol_unclear" })
+  const result = await runShipmentPass(s.container, new Date())
+  assert.equal(result.dispatchesExpired, 3)
+  assert.equal(at(0).state, "pending")
+  assert.equal(at(1).state, "unknown")
+  assert.equal(at(2).state, "ordered")
+  assert.equal(at(2).error_code, "update_unclear")
+  assert.equal(at(3).state, "printing", "a lease that did not run out stays")
+  assert.equal(fake.calls.length, 0)
+  assert.ok(s.logs.some((l) => l.includes("dispatch leases expired")))
+})
+
+test("the pass never prints or orders by itself", async () => {
+  const { s, fake, ids } = await dispatchesIn(["pending", "printed"])
+  await runShipmentPass(s.container, new Date())
+  await runShipmentPass(s.container, new Date(Date.now() + 3_600_000))
+  assert.deepEqual(ids.map((id) => s.dispatches.rows.find((r) => r.id === id)?.state), ["pending", "printed"])
+  assert.equal(fake.count("protocol"), 0)
+  assert.equal(fake.count("availability"), 0)
+  assert.equal(fake.count("pickupCreate"), 0)
 })

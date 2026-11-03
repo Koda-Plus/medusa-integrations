@@ -2,8 +2,8 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { OrderDpdResponse } from "../../../../../modules/dpd/lib/contract"
 import { toShipmentDto } from "../../../../../modules/dpd/lib/dto"
 import { pickDpdMethod } from "../../../../../modules/dpd/lib/option-data"
-import { listEvents, listShipments, queryOf } from "../../../../../workflows/dpd/runtime"
-import { dpdService, eventDtos, refuse, sendError, writersDto } from "../../helpers"
+import { listDispatches, listEvents, listShipments, queryOf } from "../../../../../workflows/dpd/runtime"
+import { dispatchDtos, dpdService, eventDtos, refuse, sendError, writersDto } from "../../helpers"
 
 type OrderMethods = {
   id: string
@@ -18,8 +18,9 @@ type OrderMethods = {
  * the order in the current mode with their history, and the writers. With
  * several DPD methods (a claim, an exchange) the choice is the one the
  * recording uses without a fulfillment: the method the checkout validated,
- * else the first DPD method (pickDpdMethod). Reads
- * only; 404 not_found when there is no such order.
+ * else the first DPD method (pickDpdMethod). The dispatches of its shipments
+ * (unique, newest first). Reads only; 404 not_found when there is no such
+ * order.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   try {
@@ -45,6 +46,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       : null
     const rows = await listShipments(svc, { order_id: orderId, mode: svc.mode() }, { take: 50, order: { created_at: "ASC", id: "ASC" } })
     const events = rows.length > 0 ? await listEvents(svc, { shipment_id: rows.map((r) => r.id) }, { take: 60, order: { occurred_at: "DESC" } }) : []
+    const dispatchIds = [...new Set(rows.map((r) => r.dispatch_id).filter((id): id is string => typeof id === "string" && id.length > 0))]
+    const dispatchRows =
+      dispatchIds.length > 0 ? await listDispatches(svc, { id: dispatchIds, mode: svc.mode() }, { take: dispatchIds.length, order: { created_at: "DESC", id: "DESC" } }) : []
     const body: OrderDpdResponse = {
       mode: svc.mode(),
       configured: svc.isConfigured(),
@@ -52,6 +56,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       shipments: rows.map((r) => toShipmentDto(r)),
       events: await eventDtos(req.scope, events),
       writers: await writersDto(req.scope),
+      dispatches: await dispatchDtos(req.scope, dispatchRows),
     }
     res.json(body)
   } catch (err) {

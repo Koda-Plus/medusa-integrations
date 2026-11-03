@@ -37,6 +37,8 @@ export const integrationEn = {
     returnDelivered: "Return back at the store",
     skipped: "Shipped outside DPD",
     canceled: "Shipment canceled",
+    excluded: "Not to be sent with DPD",
+    inDispatch: "In a handover to the courier",
     more_one: "and {{count}} more shipment",
     more_other: "and {{count}} more shipments",
     notArmed: "Shipments are created once a person arms the writer in Settings",
@@ -56,6 +58,7 @@ export const integrationEn = {
     shipments_problems: "DPD problems",
     shipments_to_create: "To ship with DPD",
     shipments_labeled: "To hand to the DPD courier",
+    dispatches_attention: "Handovers to the courier that need a person",
   },
   problem: {
     not_configured: "No DPD login, password or master FID: nothing goes to DPD",
@@ -91,6 +94,8 @@ export const integrationPl = {
     returnDelivered: "Zwrot dotarł do sklepu",
     skipped: "Wysłana poza DPD",
     canceled: "Przesyłka anulowana",
+    excluded: "Nie do nadania w DPD",
+    inDispatch: "W przekazaniu kurierowi",
     more_one: "i jeszcze {{count}} przesyłka",
     more_few: "i jeszcze {{count}} przesyłki",
     more_many: "i jeszcze {{count}} przesyłek",
@@ -112,6 +117,7 @@ export const integrationPl = {
     shipments_problems: "Problemy z DPD",
     shipments_to_create: "Do nadania w DPD",
     shipments_labeled: "Do przekazania kurierowi DPD",
+    dispatches_attention: "Przekazania kurierowi wymagające działania",
   },
   problem: {
     not_configured: "Brak loginu, hasła albo master FID DPD: nic nie idzie do DPD",

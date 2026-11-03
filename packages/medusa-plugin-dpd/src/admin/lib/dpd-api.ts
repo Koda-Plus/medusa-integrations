@@ -1,10 +1,19 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query"
+import { useEffect, useRef } from "react"
 import type {
   ActionResponse,
+  AvailabilityResponse,
   BoxesRequest,
+  CreateDispatchRequest,
   CreateRequest,
   DemoResetResponse,
   DemoSeedResponse,
+  DispatchFilter,
+  DispatchPlanResponse,
+  DispatchResponse,
+  DispatchState,
+  DispatchesResponse,
+  GroupAvailabilityRequest,
   LabelRequest,
   OrderDpdResponse,
   PlanResponse,
@@ -14,12 +23,13 @@ import type {
   ShipmentResponse,
   ShipmentsResponse,
   StatusResponse,
+  WithdrawResponse,
   WriterRequest,
   WritersResponse,
 } from "../../modules/dpd/lib/contract"
 
 import { backendUrl, kitRequestInit } from "./dpd-kit"
-import { DpdRequestError, fetchLabelFile, parseJson, pointsQuery, requestError } from "./dpd-logic"
+import { DpdRequestError, dispatchLeftClaim, fetchLabelFile, isClaimedDispatch, parseJson, pointsQuery, requestError } from "./dpd-logic"
 
 /* The backend the dashboard talks to, with its auth (session or JWT): from the kit. */
 export { backendUrl }
@@ -48,7 +58,21 @@ export const dpdKeys = {
   plan: (id: string) => ["dpd", "plan", id] as const,
   /** A point search of the admin, by its query (zip, city, cod). */
   points: (q: Record<string, string>) => ["dpd", "points", q] as const,
+  /** A page of the handover list. */
+  dispatches: (q: { filter: DispatchFilter; offset: number; limit: number }) => ["dpd", "dispatches", q] as const,
+  dispatch: (id: string) => ["dpd", "dispatch", id] as const,
+  /** ids sorted, so the same selection in another order reuses the query. */
+  dispatchPlan: (ids: readonly string[]) => ["dpd", "dispatchPlan", [...ids].sort()] as const,
 }
+
+/**
+ * The courier hours of a handover or of a group of a plan. Outside
+ * dpdKeys.all on purpose: every action invalidates dpdKeys.all, and reading
+ * the hours again is a call to DPD.
+ */
+export const availabilityKey = (target: `dispatch:${string}` | `group:${string}`) => ["dpd-availability", target] as const
+
+export const dispatchPath = (id: string, action?: string) => `/admin/dpd/dispatches/${encodeURIComponent(id)}${action ? `/${action}` : ""}`
 
 const shipmentPath = (id: string, action?: string) => `/admin/dpd/shipments/${encodeURIComponent(id)}${action ? `/${action}` : ""}`
 
@@ -86,6 +110,39 @@ export async function openLabel(id: string, download: boolean): Promise<void> {
       tab.opener = null
       tab.location.href = url
       /* The tab needs the URL while it loads the PDF; a minute is plenty. */
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } else {
+      saveFile(url, fileName)
+    }
+  } catch (err) {
+    tab?.close()
+    throw err
+  }
+}
+
+/** Backend URL of a stored handover protocol: the newest, or one document of the protocols list. */
+export function protocolUrl(id: string, opts: { download: boolean; document?: string }): string {
+  const params = new URLSearchParams()
+  if (opts.download) params.set("download", "1")
+  if (opts.document) params.set("document", opts.document)
+  const query = params.toString()
+  return `${backendUrl()}${dispatchPath(id, "protocol")}${query ? `?${query}` : ""}`
+}
+
+/**
+ * Opens a stored protocol in a new tab, or saves it, the same way as a label
+ * (openLabel): the tab first, while the click still allows it, then the PDF
+ * with the dashboard's auth, opened from memory. A refusal closes the tab
+ * and goes to the caller; a blocked tab falls back to saving the file.
+ */
+export async function openProtocol(id: string, opts: { download: boolean; document?: string }): Promise<void> {
+  const tab = opts.download ? null : window.open("", "_blank")
+  try {
+    const { blob, fileName } = await fetchLabelFile((url, init) => fetch(url, init), protocolUrl(id, opts), kitRequestInit({ headers: { Accept: "application/pdf, application/json" } }), `dpd-protocol-${id.replace(/[^\w-]/g, "_")}.pdf`)
+    const url = URL.createObjectURL(blob)
+    if (tab && !tab.closed) {
+      tab.opener = null
+      tab.location.href = url
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } else {
       saveFile(url, fileName)
@@ -236,6 +293,145 @@ export function useDpdSetPoint(id: string): UseMutationResult<PlanResponse, Erro
       void client.invalidateQueries({ queryKey: [...dpdKeys.all, "order"] })
     },
   })
+}
+
+/* ------------------------------------------------------------------ */
+/* Handovers to the courier                                            */
+/* ------------------------------------------------------------------ */
+
+/** A page of the handover list; the previous page stays on screen while the next one loads. */
+export function useDpdDispatches(q: { filter: DispatchFilter; offset: number; limit: number }): UseQueryResult<DispatchesResponse, Error> {
+  const params = new URLSearchParams({ filter: q.filter, offset: String(q.offset), limit: String(q.limit) })
+  return useQuery<DispatchesResponse, Error>({
+    queryKey: dpdKeys.dispatches(q),
+    queryFn: () => dpdFetch<DispatchesResponse>(`/admin/dpd/dispatches?${params.toString()}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+/**
+ * One handover with its history; read every 3 s while a request works on it
+ * (printing, ordering, changing). Only this view polls, so once the poll sees
+ * the work end everything under dpdKeys.all is read again, once: the list,
+ * the shipments and the tile would else keep the claimed state. A fetch
+ * already running (the onSettled of the request) is reused, not restarted.
+ */
+export function useDpdDispatch(id: string | null): UseQueryResult<DispatchResponse, Error> {
+  const client = useQueryClient()
+  const q = useQuery<DispatchResponse, Error>({
+    queryKey: dpdKeys.dispatch(id ?? ""),
+    queryFn: () => dpdFetch<DispatchResponse>(dispatchPath(id ?? "")),
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const state = query.state.data?.dispatch.state
+      return state && isClaimedDispatch(state) ? 3000 : false
+    },
+  })
+  const state = q.data?.dispatch.state ?? null
+  const seen = useRef<{ id: string | null; state: DispatchState | null }>({ id, state })
+  useEffect(() => {
+    const before = seen.current
+    seen.current = { id, state }
+    if (before.id === id && dispatchLeftClaim(before.state, state)) void client.invalidateQueries({ queryKey: dpdKeys.all }, { cancelRefetch: false })
+  }, [client, id, state])
+  return q
+}
+
+/**
+ * The plan of a handover for the selected shipments, read now (a read, like
+ * useDpdPlan): never cached, so a create always follows a fresh read. null
+ * turns it off, also once the handover exists.
+ */
+export function useDpdDispatchPlan(ids: readonly string[] | null): UseQueryResult<DispatchPlanResponse, Error> {
+  return useQuery<DispatchPlanResponse, Error>({
+    queryKey: dpdKeys.dispatchPlan(ids ?? []),
+    queryFn: () => dpdFetch<DispatchPlanResponse>("/admin/dpd/dispatch-plan", { method: "POST", body: { shipmentIds: ids ?? [] } }),
+    enabled: ids !== null && ids.length > 0,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  })
+}
+
+/** The courier hours of a handover, while the courier form is open. Kept a minute; never retried by itself. */
+export function useDpdDispatchAvailability(id: string | null, enabled: boolean): UseQueryResult<AvailabilityResponse, Error> {
+  return useQuery<AvailabilityResponse, Error>({
+    queryKey: availabilityKey(`dispatch:${id ?? ""}`),
+    queryFn: () => dpdFetch<AvailabilityResponse>(dispatchPath(id ?? "", "availability")),
+    enabled: Boolean(id) && enabled,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
+/** The courier hours of one group of a plan, before the handover exists (13.1a). Same rules as for a handover. */
+export function useDpdGroupAvailability(input: GroupAvailabilityRequest | null): UseQueryResult<AvailabilityResponse, Error> {
+  const ids = input ? [...input.shipmentIds].sort() : []
+  return useQuery<AvailabilityResponse, Error>({
+    queryKey: availabilityKey(`group:${input?.groupKey ?? ""}:${ids.join(",")}`),
+    queryFn: () => dpdFetch<AvailabilityResponse>("/admin/dpd/courier-availability", { method: "POST", body: { shipmentIds: ids, groupKey: input?.groupKey ?? "" } }),
+    enabled: input !== null && ids.length > 0 && Boolean(input.groupKey),
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
+/**
+ * Create a handover from the plan that was read (its hash). The answer is the
+ * new handover, put straight into its query; every answer, a refusal too,
+ * invalidates what the page shows.
+ */
+export function useDpdCreateDispatch(): UseMutationResult<DispatchResponse, Error, CreateDispatchRequest> {
+  const client = useQueryClient()
+  return useMutation<DispatchResponse, Error, CreateDispatchRequest>({
+    mutationFn: (body) => dpdFetch<DispatchResponse>("/admin/dpd/dispatches", { method: "POST", body }),
+    onSuccess: (data) => client.setQueryData(dpdKeys.dispatch(data.dispatch.id), data),
+    onSettled: () => void client.invalidateQueries({ queryKey: dpdKeys.all }),
+  })
+}
+
+/**
+ * A POST on one record whose id the hook already knows: the variables are the
+ * body. Every answer, a refusal too, invalidates what the page shows.
+ */
+function useBoundAction<TBody, TResult>(path: string) {
+  const client = useQueryClient()
+  return useMutation<TResult, Error, TBody>({
+    mutationFn: (body) => dpdFetch<TResult>(path, { method: "POST", body: body ?? {} }),
+    onSettled: () => void client.invalidateQueries({ queryKey: dpdKeys.all }),
+  })
+}
+
+/** The actions of a handover, each a POST on .../dispatches/:id/<action>. */
+export type DispatchActionPath = "print" | "order" | "reschedule" | "cancel-courier" | "resolve" | "cancel"
+
+/**
+ * One step of a run on a handover the same drawer has just created: its id
+ * is known only after the create, so it comes with the step. Same rules as
+ * useDpdDispatchAction.
+ */
+export function useDpdDispatchStep(): UseMutationResult<DispatchResponse, Error, { id: string; action: DispatchActionPath; body?: object }> {
+  const client = useQueryClient()
+  return useMutation<DispatchResponse, Error, { id: string; action: DispatchActionPath; body?: object }>({
+    mutationFn: ({ id, action, body }) => dpdFetch<DispatchResponse>(dispatchPath(id, action), { method: "POST", body: body ?? {} }),
+    onSettled: () => void client.invalidateQueries({ queryKey: dpdKeys.all }),
+  })
+}
+
+export function useDpdDispatchAction<TBody>(id: string, action: DispatchActionPath): UseMutationResult<DispatchResponse, Error, TBody> {
+  return useBoundAction<TBody, DispatchResponse>(dispatchPath(id, action))
+}
+/** Mark a shipment "do not send" (DS15). */
+export function useDpdExclude(id: string): UseMutationResult<ActionResponse, Error, Record<string, never>> {
+  return useBoundAction<Record<string, never>, ActionResponse>(shipmentPath(id, "exclude"))
+}
+/** Back to the shipments to send. */
+export function useDpdRestore(id: string): UseMutationResult<ActionResponse, Error, Record<string, never>> {
+  return useBoundAction<Record<string, never>, ActionResponse>(shipmentPath(id, "restore"))
+}
+/** Take a shipment out of its handover (DS12). */
+export function useDpdWithdraw(id: string): UseMutationResult<WithdrawResponse, Error, Record<string, never>> {
+  return useBoundAction<Record<string, never>, WithdrawResponse>(shipmentPath(id, "withdraw"))
 }
 
 /** Demo mode only: the sample rows, built once on the first visit (reads never write). */

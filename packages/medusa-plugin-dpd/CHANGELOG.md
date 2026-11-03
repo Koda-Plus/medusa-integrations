@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+- The handover to the courier within Poland, in two steps on one dispatch: a protocol (`generateProtocol`, `DOMESTIC`, PDF) for up to 100 labeled shipments of one sender, courier, cash on delivery and DPD Pickup together; then, optionally, the courier order.
+- The protocol is all or nothing: a protocol DPD refuses changes no shipment. It is stored with the dispatch and served from the database; printing it again is a deliberate action and gives a new DPD document.
+- The handover marker: before the protocol is asked for, `dpd_handed_over_at` and `dpd_dispatch_id` are written into the fulfillment data, and Medusa then refuses to cancel the fulfillment (`NOT_ALLOWED`). A refused first protocol, a withdrawn shipment and a canceled dispatch clear it.
+- The courier order (writer `pickup`): the availability for the sender's postal code, a date from today to 14 days ahead and a window inside an offered range (Europe/Warsaw), the box count and weights from the plan (a box over 50 kg blocks the order). Never sent twice: an unclear answer is `unknown`, and a person says whether the courier was ordered.
+- A new date or window, withdrawing a shipment (locally before the courier order, by changing the courier order after it), canceling the courier and canceling the dispatch.
+- "Do not send" (`excluded`) for a shipment with waybills that will not go, and its restore.
+- Sandbox: protocols and availability on the DPD demo host; the courier order, its change and its cancel are simulated in the process, because the demo host cannot order a courier. Demo mode: sample protocols and a simulated courier.
+- The shipment pass takes back dispatch claims that ran out; it never prints a protocol or orders a courier.
+- Admin: shipments can be selected and handed over from a drawer with the plan; a Dispatches section with its actions and a tile for dispatches that need a person; the order card shows the dispatch of each shipment; the `pickup` writer is no longer "for later".
+- Migration `Migration20261103120000_dpd_dispatch` (new columns of `dpd_dispatch`).
+- Handovers abroad, marking fulfillments shipped after the handover, dispatch events, pallets and envelopes are not in this version.
+
 ## 0.3.0 (unreleased)
 
 - DPD Pickup shipments to points in Poland (`dpd-pickup`, `dpd-pickup-cod`): `DPD_PICKUP` with the point as `PUDO`, cash on delivery next to it, the person who collects as `pudoReceiver` (read live from the order, never stored), one box of at most 20 kg, and the box size against the limits of a confirmed point.

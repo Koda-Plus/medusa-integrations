@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowDownTray, ArrowRightOnRectangle, CheckCircle, DocumentText, MagnifyingGlass, MapPin, PaperPlane, Plus, Trash } from "@medusajs/icons"
+import { ArrowDownTray, ArrowRightOnRectangle, ArrowUturnLeft, CheckCircle, DocumentText, EyeSlash, HandTruck, MagnifyingGlass, MapPin, MinusCircle, PaperPlane, Plus, Trash, TruckFast } from "@medusajs/icons"
 import { Button, Drawer, IconButton, InlineTip, Input, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import type { BoxDto, LabelPage, PlanAddressDto, PlanDto, PlanPudoReceiverDto, PointDto, ShipmentDto, WriterDto } from "../../modules/dpd/lib/contract"
+import type { BoxDto, DispatchDto, LabelPage, PlanAddressDto, PlanDto, PlanPudoReceiverDto, PointDto, ShipmentDto, WriterDto, WriterKey } from "../../modules/dpd/lib/contract"
 import { WRITER_OPTION } from "../../modules/dpd/lib/writers"
 import {
   DpdRequestError,
@@ -11,15 +11,18 @@ import {
   useDpdAccept,
   useDpdBoxes,
   useDpdCreate,
+  useDpdExclude,
   useDpdFetchLabel,
   useDpdLookup,
   useDpdPlan,
+  useDpdRestore,
   useDpdSkip,
+  useDpdWithdraw,
 } from "./dpd-api"
 import { RowActions, ToneBadge, type RowAction } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
 import { KitLoading } from "./dpd-kit"
-import { answerProblems, boxFieldErrors, canChangePoint, isBoxField, writerBlock, type BoxFieldError } from "./dpd-logic"
+import { answerProblems, boxFieldErrors, canChangePoint, changeReasonCode, dispatchActionWriter, isBoxField, writerBlock, type BoxFieldError } from "./dpd-logic"
 import { PointCard, PointChangeDialog, PointPicker } from "./dpd-point"
 import { ErrorText, Fact, KindBadges, ProblemList, fmtMoney, fmtNumber } from "./dpd-ui"
 
@@ -41,15 +44,17 @@ export function useActionErrorText(): (err: unknown) => string {
 }
 
 /**
- * Why the shipment writer does not write, in words: the options turn it off
- * (arming would not help, so the hint names the option) or nobody armed it.
+ * Why a writer does not write, in words: the options turn it off (arming
+ * would not help, so the hint names the option of that writer) or nobody
+ * armed that writer, named by its own words. The handover drawer asks it for
+ * the pickup writer too.
  */
-function useWriterBlockText(): (block: "off" | "not_armed") => { title: string; hint: string } {
+export function useWriterBlockText(): (block: "off" | "not_armed", writer: WriterKey) => { title: string; hint: string } {
   const { t } = useTranslation("dpd")
-  return (block) =>
+  return (block, writer) =>
     block === "off"
-      ? { title: t("actionError.writer_off"), hint: t("writers.blockedHint", { option: `${WRITER_OPTION.shipment}: true` }) }
-      : { title: t("actionError.not_armed"), hint: "" }
+      ? { title: t("actionError.writer_off"), hint: t("writers.blockedHint", { option: `${WRITER_OPTION[writer]}: true` }) }
+      : { title: t(`writers.notArmed.${writer}`), hint: "" }
 }
 
 /**
@@ -123,7 +128,7 @@ function PlanPart({ title, badge, children }: { title: string; badge?: ReactNode
 }
 
 /** A receiver or a sender as DPD gets it: who, where, how to reach. */
-function AddressLines({ address: a }: { address: PlanAddressDto }) {
+export function AddressLines({ address: a }: { address: PlanAddressDto }) {
   const { t } = useTranslation("dpd")
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -534,8 +539,8 @@ export function PlanDrawer({
           {/* The point change needs no writer: it writes only the plugin row (DS4). */}
           {plan && shipment ? <PlanBody plan={plan} shipment={shipment} lang={lang} pointChange={canChangePoint(shipment, plan)} /> : null}
           {block === "off" ? (
-            <InlineTip variant="warning" label={blockText("off").title}>
-              {blockText("off").hint}
+            <InlineTip variant="warning" label={blockText("off", "shipment").title}>
+              {blockText("off", "shipment").hint}
             </InlineTip>
           ) : null}
           {block === "not_armed" ? (
@@ -578,6 +583,9 @@ export function PlanDrawer({
  * their names as tooltips. The actions of the row say what its state allows;
  * the calls to DPD (the label, the lookup) also need the shipment writer
  * and say why not instead of failing: off in the options, or not armed.
+ * Taking a shipment out of its handover needs the writer the server asks for
+ * the state of that handover (dispatchActionWriter), so it shows only where
+ * the handover is known: the handover drawer and the order card (E14).
  * Named apart from the ShipmentActions type of the contract.
  */
 export function ShipmentActionBar({
@@ -585,12 +593,24 @@ export function ShipmentActionBar({
   writerArmed,
   writer,
   onPlan,
+  pickupWriter,
+  dispatch,
+  onHandover,
+  onOpenDispatch,
 }: {
   shipment: ShipmentDto
   writerArmed: boolean
   /** The shipment writer: whether the options allow it (absent: only writerArmed counts). */
   writer?: Pick<WriterDto, "allowed">
   onPlan: () => void
+  /** The pickup writer: taking a shipment out of an ordered handover changes the courier order. */
+  pickupWriter?: Pick<WriterDto, "allowed" | "armed">
+  /** The handover of the shipment, when the host knows it: without it there is no withdraw. */
+  dispatch?: Pick<DispatchDto, "state" | "attention" | "errorCode">
+  /** Opens the handover drawer with these shipments (the panel only). */
+  onHandover?: (ids: string[]) => void
+  /** Opens the handover of the shipment. */
+  onOpenDispatch?: (id: string) => void
 }) {
   const { t, i18n } = useTranslation("dpd")
   const lang = i18n.language || "en"
@@ -601,11 +621,18 @@ export function ShipmentActionBar({
   const lookup = useDpdLookup()
   const accept = useDpdAccept()
   const skip = useDpdSkip()
+  const exclude = useDpdExclude(s.id)
+  const restore = useDpdRestore(s.id)
+  const withdraw = useDpdWithdraw(s.id)
   const now = useNow(Boolean(s.actions.lookup && s.lookupAfter))
   const tooEarly = Boolean(s.lookupAfter && Date.parse(s.lookupAfter) > now)
   const blockText = useWriterBlockText()
   const block = writerBlock(writer, writerArmed)
-  const blocked = block ? [blockText(block).title, blockText(block).hint].filter(Boolean).join(" ") : ""
+  const blocked = block ? [blockText(block, "shipment").title, blockText(block, "shipment").hint].filter(Boolean).join(" ") : ""
+  /* One writer for a withdraw, the one the server asks for the state of the handover (E21). */
+  const withdrawWriter = dispatch ? dispatchActionWriter("withdraw", dispatch.state) : "shipment"
+  const withdrawBlock = withdrawWriter === "pickup" ? writerBlock(pickupWriter, pickupWriter?.armed ?? false) : block
+  const withdrawBlocked = withdrawBlock ? [blockText(withdrawBlock, withdrawWriter).title, blockText(withdrawBlock, withdrawWriter).hint].filter(Boolean).join(" ") : ""
   const [labelBusy, setLabelBusy] = useState<"label" | "download" | null>(null)
 
   const run = async (fn: () => Promise<{ shipment: ShipmentDto }>, done: string) => {
@@ -629,6 +656,44 @@ export function ShipmentActionBar({
       } catch (err) {
         toast.error(errorText(err))
       }
+    }
+  }
+  const onExclude = async () => {
+    const yes = await prompt({ title: t("exclude.title"), description: t("exclude.text"), confirmText: t("exclude.confirm"), cancelText: t("plan.cancel") })
+    if (!yes) return
+    try {
+      await exclude.mutateAsync({})
+      toast.success(t("toast.excluded"))
+    } catch (err) {
+      toast.error(errorText(err))
+    }
+  }
+  const onRestore = async () => {
+    try {
+      await restore.mutateAsync({})
+      toast.success(t("toast.restored"))
+    } catch (err) {
+      toast.error(errorText(err))
+    }
+  }
+  /* Out of an ordered handover the plugin also changes the courier order in DPD; a refusal there keeps the shipment in. */
+  const onWithdraw = async () => {
+    const text = dispatch?.state === "ordered" ? `${t("withdraw.text")} ${t("withdraw.textOrdered")}` : t("withdraw.text")
+    const yes = await prompt({ title: t("withdraw.title"), description: text, confirmText: t("withdraw.confirm"), cancelText: t("plan.cancel") })
+    if (!yes) return
+    try {
+      const res = await withdraw.mutateAsync({})
+      if (res.withdrawn) {
+        toast.success(t("toast.withdrawn"))
+      } else {
+        /* A kept attention code of the handover is no reason for this attempt (changeReasonCode). */
+        const code = dispatch ? changeReasonCode(dispatch, res.dispatch) : res.dispatch.errorCode
+        const key = code ? `errorCode.${code}` : ""
+        toast.warning(t("toast.withdrawFailed"), key && i18n.exists(key, { ns: "dpd" }) ? { description: t(key) } : undefined)
+      }
+    } catch (err) {
+      /* A not armed refusal names the writer the server asked for: the pickup one for an ordered handover. */
+      toast.error(err instanceof DpdRequestError && err.code === "not_armed" ? blockText("not_armed", withdrawWriter).title : errorText(err))
     }
   }
   /* The label is fetched with the admin's auth and opened from memory; a refusal (no_label) is a toast. */
@@ -667,12 +732,50 @@ export function ShipmentActionBar({
     },
     { key: "accept", label: t("actions.accept"), icon: <CheckCircle />, hidden: !s.actions.accept, loading: accept.isPending, onClick: () => void onAccept() },
     { key: "skip", label: t("actions.skip"), icon: <ArrowRightOnRectangle />, hidden: !s.actions.skip, loading: skip.isPending, onClick: () => void onSkip() },
+    { key: "handover", label: t("actions.handover"), icon: <HandTruck />, hidden: !(s.actions.dispatch && onHandover), onClick: () => onHandover?.([s.id]) },
+    {
+      key: "openDispatch",
+      label: t("actions.openDispatch"),
+      icon: <TruckFast />,
+      hidden: !(s.dispatchId && onOpenDispatch),
+      onClick: () => {
+        if (s.dispatchId) onOpenDispatch?.(s.dispatchId)
+      },
+    },
+    {
+      key: "withdraw",
+      label: withdrawBlock ? `${t("actions.withdraw")}: ${withdrawBlocked}` : t("actions.withdraw"),
+      icon: <MinusCircle />,
+      hidden: !(s.actions.withdraw && dispatch),
+      disabled: withdrawBlock !== null,
+      loading: withdraw.isPending,
+      onClick: () => void onWithdraw(),
+    },
+    {
+      key: "exclude",
+      label: block ? `${t("actions.exclude")}: ${blocked}` : t("actions.exclude"),
+      icon: <EyeSlash />,
+      danger: true,
+      hidden: !s.actions.exclude,
+      disabled: block !== null,
+      loading: exclude.isPending,
+      onClick: () => void onExclude(),
+    },
+    {
+      key: "restore",
+      label: block ? `${t("actions.restore")}: ${blocked}` : t("actions.restore"),
+      icon: <ArrowUturnLeft />,
+      hidden: !s.actions.restore,
+      disabled: block !== null,
+      loading: restore.isPending,
+      onClick: () => void onRestore(),
+    },
   ]
   /* The button text of the main action: its name, without the reason it waits. */
-  const names: Record<string, string> = { plan: t("actions.plan"), fetchLabel: t("actions.fetchLabel"), label: t("actions.label"), lookup: t("actions.lookup"), accept: t("actions.accept") }
+  const names: Record<string, string> = { plan: t("actions.plan"), fetchLabel: t("actions.fetchLabel"), label: t("actions.label"), lookup: t("actions.lookup"), accept: t("actions.accept"), restore: t("actions.restore") }
   const shown = actions.filter((a) => !a.hidden)
-  /* The one a person needs next, in this order; the others stay icons beside it. */
-  const main = ["plan", "fetchLabel", "label", "lookup", "accept"].map((k) => shown.find((a) => a.key === k)).find(Boolean)
+  /* The one a person needs next, in this order; the others stay icons beside it. A handover starts from the selection bar, never here. */
+  const main = ["plan", "fetchLabel", "label", "lookup", "accept", "restore"].map((k) => shown.find((a) => a.key === k)).find(Boolean)
   if (shown.length === 0) return null
 
   return (

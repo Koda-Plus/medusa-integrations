@@ -1,0 +1,60 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generateProtocol",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "protocolSearchParams": {
+        "policy": "IGNORE_ERRORS",
+        "session": {
+          "type": "DOMESTIC",
+          "packages": [
+            {
+              "reference": "probe-mw0lmyze-H2"
+            },
+            {
+              "reference": "probe-mw0lmyze-Hmissing"
+            }
+          ]
+        }
+      },
+      "outputDocFormat": "PDF"
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "INCORRECT_DATA",
+      "documentData": "",
+      "session": {
+        "statusInfo": {
+          "status": "NOT_FOUND"
+        },
+        "packages": [
+          {
+            "reference": "probe-mw0lmyze-H2",
+            "statusInfo": {
+              "status": "OK"
+            },
+            "parcels": []
+          },
+          {
+            "reference": "probe-mw0lmyze-Hmissing",
+            "statusInfo": {
+              "status": "NOT_FOUND"
+            },
+            "parcels": []
+          }
+        ]
+      },
+      "documentId": "203219110",
+      "traceId": "9937cdb6-8274-4daa-971d-5d24a49449b3"
+    }
+  }
+}

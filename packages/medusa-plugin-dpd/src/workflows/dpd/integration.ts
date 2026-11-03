@@ -81,6 +81,8 @@ export const dpdIntegration = integrationRoutes({
 
   async count(ctx) {
     const svc = dpdService(ctx.scope)
-    return dpdCounters(countsOf(await storeFor(ctx.scope).counts(svc.mode())))
+    const store = storeFor(ctx.scope)
+    const mode = svc.mode()
+    return dpdCounters(countsOf(await store.counts(mode), await store.dispatchCounts(mode)))
   },
 })

@@ -1,5 +1,6 @@
-import type { ProblemDto } from "./contract"
-import type { DpdHttpAnswer, GeneratePackagesNumbersRequest } from "./dpdservices"
+import type { CourierRangeDto, ProblemDto } from "./contract"
+import type { DpdHttpAnswer, GeneratePackagesNumbersRequest, GenerateProtocolRequest } from "./dpdservices"
+import { courierRangesOf } from "./courier"
 
 /**
  * WHAT A DPDSERVICES ANSWER MEANS. Pure functions over the raw answer (HTTP
@@ -32,6 +33,12 @@ import type { DpdHttpAnswer, GeneratePackagesNumbersRequest } from "./dpdservice
  * receiver codes DPD adds after a point code (it reads the receiver address
  * from the point) and its "Name or company is required" next to a missing
  * contact are dropped: they say nothing the point code does not.
+ *
+ * Stage 4 adds the answers of generateProtocol, courierOrderAvailability and
+ * packagesPickupCall (POST, PATCH, DELETE), with their own codes
+ * (COURIER_ERROR_CODES) and outcomes. The courier choices that only the
+ * OpenAPI shows [NZ] live in their classifiers and nowhere else (spec
+ * section 8).
  */
 
 export const DPD_ERROR_CODES = [
@@ -116,6 +123,72 @@ export type LabelsOutcome =
   | { kind: "not_found"; traceId: string | null; httpStatus: number }
   | DpdRefused
   | DpdUnclear
+
+/** Codes of the protocol and courier answers, next to DPD_ERROR_CODES (kept apart: codes.test requires DPD_ERROR_CODES to be shipment codes). */
+export const COURIER_ERROR_CODES = [
+  /* refused */
+  "protocol_not_found", "session_type", "pickup_fid", "pickup_address", "parcel_limit",
+  "postal_code_not_found", "range_not_found", "postal_pattern", "country_not_found",
+  "order_closed", "checksum", "pickup_time", "order_not_found", "order_number", "order_status",
+  /* unclear */
+  "service_unavailable", "no_order_number",
+] as const
+export type CourierErrorCode = (typeof COURIER_ERROR_CODES)[number]
+export type DispatchAnswerCode = DpdErrorCode | CourierErrorCode
+
+/** Problem codes built from a protocol or courier answer (source "dpd"). */
+export const DISPATCH_PROBLEM_SOURCE_CODES = ["dpd_courier", "dpd_protocol_not_found"] as const
+export type DispatchProblemSourceCode = (typeof DISPATCH_PROBLEM_SOURCE_CODES)[number]
+
+export type DispatchRefused = {
+  kind: "refused"
+  code: DispatchAnswerCode
+  /** One masked sentence, at most 1000 characters, for `dpd_dispatch.error`. */
+  message: string
+  /** dpd_courier (each errorDetails entry), dpd_protocol_not_found (detail: the reference). */
+  problems: ProblemDto[]
+  traceId: string | null
+  httpStatus: number
+}
+
+export type DispatchUnclear = {
+  kind: "unclear"
+  code: DispatchAnswerCode
+  message: string
+  traceId: string | null
+  httpStatus: number
+}
+
+export type ProtocolOutcome =
+  | {
+      kind: "ok"
+      /** base64 of a PDF, never logged or masked. */
+      pdfBase64: string
+      documentId: string | null
+      /** session.packages[].reference with status OK, in DPD's order. */
+      references: string[]
+      traceId: string | null
+      httpStatus: number
+    }
+  | DispatchRefused
+  | DispatchUnclear
+
+export type AvailabilityOutcome =
+  | { kind: "ok"; ranges: CourierRangeDto[]; traceId: string | null; httpStatus: number }
+  | DispatchRefused
+  | DispatchUnclear
+
+/** POST packagesPickupCall: ok only with an orderNumber and a checkSum that is not empty and not "null" (H10). [NZ] */
+export type PickupCallOutcome =
+  | { kind: "ok"; orderNumber: string; checkSum: string; traceId: string | null; httpStatus: number }
+  | DispatchRefused
+  | DispatchUnclear
+
+/** PATCH and DELETE: DPD may leave either value out (DS13); null keeps the stored one. [NZ] */
+export type PickupCallChangeOutcome =
+  | { kind: "ok"; orderNumber: string | null; checkSum: string | null; traceId: string | null; httpStatus: number }
+  | DispatchRefused
+  | DispatchUnclear
 
 const MESSAGE_MAX = 1000
 
@@ -415,4 +488,290 @@ export function classifyLabelsAnswer(answer: DpdHttpAnswer): LabelsOutcome {
   }
   if (body && Array.isArray(body.errors) && isClientError(answer)) return beanRefused(answer, body, "label request")
   return byHttp(answer, "label")
+}
+
+/* ------------------------------------------------------------------ */
+/* Stage 4: the protocol, the availability and the courier order       */
+/* ------------------------------------------------------------------ */
+
+function dispatchRefused(code: DispatchAnswerCode, message: string, answer: DpdHttpAnswer, problems: ProblemDto[] = []): DispatchRefused {
+  return { kind: "refused", code, message: cut(message), problems, traceId: answer.traceId, httpStatus: answer.httpStatus }
+}
+
+function dispatchUnclear(code: DispatchAnswerCode, message: string, answer: DpdHttpAnswer): DispatchUnclear {
+  return { kind: "unclear", code, message: cut(message), traceId: answer.traceId, httpStatus: answer.httpStatus }
+}
+
+/** A status DPD gave, cut and cleaned for a sentence. */
+function statusWord(status: string): string {
+  return cut(cleanDpdText(status), 60)
+}
+
+/**
+ * HTTP 500 to 599 is unclear whatever the body says (8.1 point 2): a refusal
+ * under a server error does not prove that nothing was stored. The status of
+ * a readable body only goes into the sentence (12u, 12v).
+ */
+function serverError(answer: DpdHttpAnswer, what: string, status: string): DispatchUnclear {
+  const said = status ? ` (${statusWord(status)})` : ""
+  return dispatchUnclear("server_error", `DPD answered HTTP ${answer.httpStatus}${said}; the result of the ${what} is not known.`, answer)
+}
+
+/** A status body counts under HTTP 200 or 4xx only. */
+function statusReadable(answer: DpdHttpAnswer): boolean {
+  return answer.httpStatus === 200 || isClientError(answer)
+}
+
+/** session.packages[] not OK as dpd_protocol_not_found problems (detail: the reference). */
+export function problemsOfProtocol(body: unknown): ProblemDto[] {
+  const out: ProblemDto[] = []
+  const seen = new Set<string>()
+  for (const p of list(obj(obj(body)?.session)?.packages)) {
+    const pkg = obj(p)
+    if (text(obj(pkg?.statusInfo)?.status) !== "NOT_FOUND") continue
+    const reference = text(pkg?.reference)
+    const detail = reference || list(pkg?.parcels)
+      .map((x) => obj(x))
+      .filter((x) => text(obj(x?.statusInfo)?.status) === "NOT_FOUND")
+      .map((x) => text(x?.waybill))
+      .filter(Boolean)
+      .join(", ")
+    if (seen.has(detail)) continue
+    seen.add(detail)
+    out.push({ code: "dpd_protocol_not_found", field: "session.packages", ...(detail ? { detail } : {}) })
+  }
+  return out
+}
+
+function packageStatuses(session: Obj | null): string[] {
+  return list(session?.packages).map((p) => text(obj(obj(p)?.statusInfo)?.status))
+}
+
+/** INCORRECT_DATA of a protocol: the session status decides first, then the packages (8.2). */
+function protocolRefused(answer: DpdHttpAnswer, body: Obj, sentRefs: readonly string[]): DispatchRefused {
+  const session = obj(body.session)
+  const info = obj(session?.statusInfo)
+  const sessionStatus = text(info?.status)
+  const description = cleanDpdText(info?.description)
+  const head = `DPD refused the protocol (INCORRECT_DATA, ${sessionStatus ? statusWord(sessionStatus) : "no session status"})`
+  const withDescription = `${head}${description ? `: ${description}` : ""}.`
+  const notFound = (): DispatchRefused => {
+    /* No package listed at all (11p): DPD found none of the sent references, so each of them is missing. */
+    const listed = problemsOfProtocol(body)
+    const problems: ProblemDto[] = listed.length > 0 || list(session?.packages).length > 0
+      ? listed
+      : sentRefs.filter(Boolean).map((detail) => ({ code: "dpd_protocol_not_found", field: "session.packages", detail }))
+    const missing = problems.map((p) => p.detail).filter(Boolean).join(", ")
+    return dispatchRefused("protocol_not_found", `${head}${missing ? `: DPD does not know ${missing}` : ""}.`, answer, problems)
+  }
+  if (sessionStatus === "NOT_FOUND") return notFound()
+  if (sessionStatus === "ACCESS_DENIED_FOR_FID" || sessionStatus === "INCORRECT_PICKUP_ADDRESS_FID") {
+    return dispatchRefused("pickup_fid", withDescription, answer, [{ code: "dpd_payer_fid" }])
+  }
+  if (sessionStatus === "INCORRECT_SESSION_TYPE") return dispatchRefused("session_type", withDescription, answer)
+  if (sessionStatus.startsWith("INCORRECT_PICKUP_ADDRESS")) return dispatchRefused("pickup_address", withDescription, answer)
+  if (sessionStatus === "PARCEL_LIMIT_EXCEEDED") return dispatchRefused("parcel_limit", withDescription, answer)
+  /* NOT_PROCESSED of a package is only the result of STOP_ON_FIRST_ERROR, never a problem. */
+  const packages = packageStatuses(session)
+  if (packages.includes("NOT_FOUND")) return notFound()
+  if (packages.includes("PARCEL_LIMIT_EXCEEDED")) return dispatchRefused("parcel_limit", withDescription, answer)
+  return dispatchRefused("incorrect_data", withDescription, answer)
+}
+
+/**
+ * The only place the [NZ] courier choices live (section 8): StatusInfo
+ * refusals count under HTTP 200 or 4xx only; under 5xx the answer is
+ * unclear. `sent` checks that DPD printed exactly what was asked for.
+ */
+export function classifyProtocolAnswer(answer: DpdHttpAnswer, sent: GenerateProtocolRequest): ProtocolOutcome {
+  if (answer.httpStatus === 401) return authRefused(answer)
+  const body = obj(answer.body)
+  if (answer.httpStatus >= 500) return serverError(answer, "protocol", typeof body?.status === "string" ? body.status : "")
+  const sentRefs = list(sent?.protocolSearchParams?.session?.packages).map((p) => text(obj(p)?.reference))
+  if (body && typeof body.status === "string" && statusReadable(answer)) {
+    const status = body.status
+    if (status === "OK") {
+      if (!isPdfBase64(body.documentData)) return dispatchUnclear("not_pdf", "DPD answered OK with a protocol that is not a PDF.", answer)
+      const packages = list(obj(body.session)?.packages).map((p) => obj(p))
+      const notOk = packages.some((p) => text(obj(p?.statusInfo)?.status) !== "OK")
+      const refs = packages.map((p) => text(p?.reference))
+      const everyRef = refs.every(Boolean)
+      const same = everyRef
+        ? new Set(refs).size === new Set(sentRefs).size && refs.every((r) => sentRefs.includes(r))
+        : packages.length === sentRefs.length
+      if (notOk || !same) {
+        return dispatchUnclear("partial", `DPD answered OK with ${packages.length} packages for ${sentRefs.length} sent, or not every package OK; the protocol is not stored.`, answer)
+      }
+      return { kind: "ok", pdfBase64: body.documentData, documentId: idOf(body.documentId), references: refs.filter(Boolean), traceId: answer.traceId, httpStatus: answer.httpStatus }
+    }
+    switch (status) {
+      case "INCORRECT_DATA":
+        return protocolRefused(answer, body, sentRefs)
+      case "DISABLED_API":
+        return dispatchRefused("disabled_api", "DPD turned this service off for the account (DISABLED_API).", answer, [{ code: "dpd_disabled_api" }])
+      case "UNKNOWN_ERROR":
+        return dispatchUnclear("dpd_unknown_error", "DPD reported an unknown error for the protocol (UNKNOWN_ERROR); nothing is printed again by itself.", answer)
+      default:
+        return dispatchUnclear("unknown_status", `DPD answered the protocol with a status the plugin does not know (${statusWord(status)}).`, answer)
+    }
+  }
+  if (body && Array.isArray(body.errors) && isClientError(answer)) return beanRefused(answer, body, "protocol")
+  return byHttp(answer, "protocol")
+}
+
+export function classifyAvailabilityAnswer(answer: DpdHttpAnswer): AvailabilityOutcome {
+  if (answer.httpStatus === 401) return authRefused(answer)
+  const body = obj(answer.body)
+  if (answer.httpStatus >= 500) return serverError(answer, "courier availability", typeof body?.status === "string" ? body.status : "")
+  if (body && typeof body.status === "string" && statusReadable(answer)) {
+    const status = body.status
+    switch (status) {
+      case "OK": {
+        const raw = list(body.ranges)
+        if (raw.length === 0) return dispatchRefused("range_not_found", "DPD gave no courier hours for this postal code (OK without ranges).", answer)
+        const ranges = courierRangesOf(raw)
+        if (ranges.length === 0) return dispatchUnclear("bad_answer", "DPD answered the courier availability with hours the plugin cannot read.", answer)
+        return { kind: "ok", ranges, traceId: answer.traceId, httpStatus: answer.httpStatus }
+      }
+      case "POSTAL_CODE_NOT_FOUND":
+        return dispatchRefused("postal_code_not_found", "DPD does not know this postal code for a courier (POSTAL_CODE_NOT_FOUND).", answer)
+      case "RANGE_NOT_FOUND":
+        return dispatchRefused("range_not_found", "DPD gave no courier hours for this postal code (RANGE_NOT_FOUND).", answer)
+      case "WRONG_POSTAL_PATTERN":
+        return dispatchRefused("postal_pattern", "DPD refused the postal code format (WRONG_POSTAL_PATTERN).", answer)
+      case "COUNTRY_CODE_NOT_FOUND":
+        return dispatchRefused("country_not_found", "DPD does not know this country for a courier (COUNTRY_CODE_NOT_FOUND).", answer)
+      case "DISABLED_API":
+        return dispatchRefused("disabled_api", "DPD turned this service off for the account (DISABLED_API).", answer, [{ code: "dpd_disabled_api" }])
+      case "UNKNOWN_ERROR":
+        return dispatchUnclear("dpd_unknown_error", "DPD reported an unknown error for the courier availability (UNKNOWN_ERROR).", answer)
+      default:
+        return dispatchUnclear("unknown_status", `DPD answered the courier availability with a status the plugin does not know (${statusWord(status)}).`, answer)
+    }
+  }
+  if (body && Array.isArray(body.errors) && isClientError(answer)) return beanRefused(answer, body, "courier availability")
+  return byHttp(answer, "courier availability")
+}
+
+/** status.errorDetails[] as dpd_courier problems (field: the DPD field list joined by ", ", detail: the code and description, masked). */
+export function problemsOfPickupCall(body: unknown): ProblemDto[] {
+  const info = obj(obj(body)?.status)
+  const status = text(info?.status)
+  const out: ProblemDto[] = []
+  if (status === "DISALLOWED_FID") out.push({ code: "dpd_payer_fid" })
+  if (status === "DISABLED_API") out.push({ code: "dpd_disabled_api" })
+  for (const d of list(info?.errorDetails)) {
+    const entry = obj(d)
+    if (!entry) continue
+    const code = text(entry.code)
+    const description = cleanDpdText(entry.description)
+    const field = text(entry.fields).split(";").map((f) => f.trim()).filter(Boolean).join(", ")
+    const detail = code && description ? `${code}: ${description}` : code || description
+    if (!field && !detail) continue
+    out.push({ code: "dpd_courier", ...(field ? { field } : {}), ...(detail ? { detail } : {}) })
+  }
+  return dedupe(out)
+}
+
+/** The code of a VALIDATION_ERROR from its errorDetails codes, the first that matches (8.6); null: the whole answer is unclear. */
+const DETAIL_CODES: ReadonlyArray<[string, CourierErrorCode]> = [
+  ["ORDER_CLOSED_STATUS", "order_closed"],
+  ["INCORRECT_CHECKSUM", "checksum"],
+  ["NOT_FOUND", "order_not_found"],
+  ["INCORRECT_STATUS", "order_status"],
+  ["INCORRECT_PICKUP_TIME", "pickup_time"],
+  ["ORDER_NUMBER_ERROR", "order_number"],
+]
+
+function validationCode(info: Obj | null): DispatchAnswerCode | null {
+  const codes = list(info?.errorDetails).map((d) => text(obj(d)?.code))
+  if (codes.includes("SERVICE_UNAVAILABLE")) return null
+  return DETAIL_CODES.find(([dpd]) => codes.includes(dpd))?.[1] ?? "validation"
+}
+
+/** A Bean refusal of a courier call: checkSum before the pickup time before anything else (8.6). */
+function courierBeanRefused(answer: DpdHttpAnswer, body: Obj, what: string): DispatchRefused {
+  const problems = problemsOfBean(body)
+  const fields = list(body.errors).map((e) => text(obj(e)?.field))
+  const code: DispatchAnswerCode = fields.some((f) => f.endsWith("checkSum"))
+    ? "checksum"
+    : fields.some((f) => f === "pickupDate" || f === "pickupTimeFrom" || f === "pickupTimeTo")
+      ? "pickup_time"
+      : "validation"
+  return dispatchRefused(code, refusedSentence(what, `HTTP ${answer.httpStatus}`, problems), answer, problems)
+}
+
+/** A StatusInfo answer of packagesPickupCall other than OK (8.4, 8.5, 8.6). */
+function courierStatusOutcome(answer: DpdHttpAnswer, body: Obj, status: string, what: string): DispatchRefused | DispatchUnclear {
+  const info = obj(body.status)
+  const problems = problemsOfPickupCall(body)
+  switch (status) {
+    case "UNKNOWN_ERROR":
+      return dispatchUnclear("dpd_unknown_error", `DPD reported an unknown error for the ${what} (UNKNOWN_ERROR); the result is not known. Check the DPD panel before trying again.`, answer)
+    case "SERVICE_UNAVAILABLE":
+      return dispatchUnclear("service_unavailable", `DPD said the courier service is unavailable (SERVICE_UNAVAILABLE); the result of the ${what} is not known.`, answer)
+    case "VALIDATION_ERROR": {
+      const code = validationCode(info)
+      if (code === null) return dispatchUnclear("service_unavailable", `DPD said the courier service is unavailable (VALIDATION_ERROR, SERVICE_UNAVAILABLE); the result of the ${what} is not known.`, answer)
+      return dispatchRefused(code, refusedSentence(what, status, problems), answer, problems)
+    }
+    case "DISALLOWED_FID":
+      return dispatchRefused("payer_fid", refusedSentence(what, status, problems.filter((p) => p.code === "dpd_courier")), answer, problems)
+    case "DISABLED_API":
+      return dispatchRefused("disabled_api", "DPD turned this service off for the account (DISABLED_API).", answer, problems)
+    case "NOT_FOUND":
+      return dispatchRefused("order_not_found", refusedSentence(what, status, problems), answer, problems)
+    default:
+      return dispatchUnclear("unknown_status", `DPD answered the ${what} with a status the plugin does not know (${statusWord(status)}).`, answer)
+  }
+}
+
+/** An orderNumber or checkSum DPD gave: a number as a string, a string trimmed (length and leading zeros kept); null when empty, null or "null". */
+function courierValue(v: unknown): string | null {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v)
+  if (typeof v !== "string") return null
+  const s = v.trim()
+  return s === "" || s.toLowerCase() === "null" ? null : s
+}
+
+/** The StatusInfo status of a courier answer ("" when there is none). */
+function courierStatusOf(body: Obj | null): string {
+  return text(obj(body?.status)?.status)
+}
+
+export function classifyPickupCallAnswer(answer: DpdHttpAnswer): PickupCallOutcome {
+  const what = "courier order"
+  if (answer.httpStatus === 401) return authRefused(answer)
+  const body = obj(answer.body)
+  if (answer.httpStatus >= 500) return serverError(answer, what, courierStatusOf(body))
+  const status = courierStatusOf(body)
+  if (body && status && statusReadable(answer)) {
+    if (status === "OK") {
+      const orderNumber = courierValue(body.orderNumber)
+      const checkSum = courierValue(body.checkSum)
+      if (orderNumber === null || checkSum === null) {
+        return dispatchUnclear("no_order_number", "DPD answered OK without an order number or a checkSum; the order may exist. Check the DPD panel before ordering again.", answer)
+      }
+      return { kind: "ok", orderNumber, checkSum, traceId: answer.traceId, httpStatus: answer.httpStatus }
+    }
+    return courierStatusOutcome(answer, body, status, what)
+  }
+  if (body && Array.isArray(body.errors) && isClientError(answer)) return courierBeanRefused(answer, body, what)
+  return byHttp(answer, what)
+}
+
+export function classifyPickupCallChangeAnswer(answer: DpdHttpAnswer, op: "update" | "delete"): PickupCallChangeOutcome {
+  const what = op === "update" ? "courier change" : "courier cancellation"
+  if (answer.httpStatus === 401) return authRefused(answer)
+  const body = obj(answer.body)
+  if (answer.httpStatus >= 500) return serverError(answer, what, courierStatusOf(body))
+  const status = courierStatusOf(body)
+  if (body && status && statusReadable(answer)) {
+    if (status === "OK") {
+      return { kind: "ok", orderNumber: courierValue(body.orderNumber), checkSum: courierValue(body.checkSum), traceId: answer.traceId, httpStatus: answer.httpStatus }
+    }
+    return courierStatusOutcome(answer, body, status, what)
+  }
+  if (body && Array.isArray(body.errors) && isClientError(answer)) return courierBeanRefused(answer, body, what)
+  return byHttp(answer, what)
 }

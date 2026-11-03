@@ -19,7 +19,11 @@ import { createShipment } from "../src/workflows/dpd/create.ts"
 import { createDemoDpdServicesClient } from "../src/workflows/dpd/demo-client.ts"
 import { planForShipment } from "../src/workflows/dpd/plan.ts"
 import { recordFulfillment } from "../src/workflows/dpd/shipments.ts"
-import { arm, order, SANDBOX, setup, type Row } from "./helpers.ts"
+import { courierDays } from "../src/modules/dpd/lib/courier.ts"
+import { PROTOCOL_LEASE_MS } from "../src/modules/dpd/lib/constants.ts"
+import { cancelCourier, cancelDispatch, createDispatch, expireDispatches, orderCourier, planDispatch, withdrawShipment } from "../src/workflows/dpd/dispatch.ts"
+import DpdFulfillmentProvider from "../src/providers/dpd/service.ts"
+import { arm, insertLabeled, labeledOrder, order, SANDBOX, setup, type Row } from "./helpers.ts"
 
 const realFetch = globalThis.fetch
 let requests = 0
@@ -228,4 +232,57 @@ test("a Pickup shipment in demo mode is created and labeled by the simulated DPD
   assert.deepEqual(await refused((pkg) => { if (pkg.pudoReceiver) Object.assign(pkg.pudoReceiver, { phone: undefined, email: undefined }) }), ["contact_missing/dpd"])
   assert.deepEqual(await refused((pkg) => { for (const a of pkg.services?.[0]?.attributes ?? []) a.value = "PL14509" }), ["pudo_not_found/dpd"])
   assert.deepEqual(await refused(() => {}), ["ok"])
+})
+
+/* Stage 4: the handover in demo mode, simulated end to end (O18). */
+
+function demoHandover(n: number) {
+  const s = setup({ demo: true }, [])
+  arm(s, "shipment")
+  arm(s, "pickup")
+  const rows = Array.from({ length: n }, (_, i) => insertLabeled(s, labeledOrder(i + 1)))
+  return { s, ids: rows.map((r) => String(r.id)), fulfillments: rows.map((r) => String(r.fulfillment_id)) }
+}
+
+const markerWrites = (updates: Array<{ data: Row }>) =>
+  updates.filter((u) => {
+    const data = (u.data.data ?? {}) as Row
+    return "dpd_handed_over_at" in data || "dpd_dispatch_id" in data
+  })
+
+test("demo handover: plan, print, order and cancel with zero fetch; sample protocol stored", async () => {
+  const { s, ids } = demoHandover(2)
+  const { plan } = await planDispatch(s.container, ids)
+  assert.ok(plan.ok, JSON.stringify(plan.problems))
+  const view = await createDispatch(s.container, { shipmentIds: ids, planHash: plan.hash, print: true }, { actor: "user_01ADMIN" })
+  assert.equal(view.dispatch.state, "printed", String(view.dispatch.error))
+  const doc = s.documents.rows.find((d) => d.type === "protocol")
+  assert.ok(doc)
+  assert.ok(Buffer.from(String(doc.data), "base64").toString("latin1").startsWith("%PDF"), "a sample PDF is stored")
+  const window = { pickupDate: courierDays(new Date())[1], pickupTimeFrom: "10:00", pickupTimeTo: "13:00" }
+  const ordered = await orderCourier(s.container, view.dispatch.id, window, { actor: "user_01ADMIN" })
+  assert.equal(ordered.dispatch.state, "ordered", String(ordered.dispatch.error))
+  assert.ok(ordered.dispatch.order_number)
+  const canceled = await cancelCourier(s.container, view.dispatch.id, { actor: "user_01ADMIN" })
+  assert.equal(canceled.dispatch.state, "printed")
+})
+
+test("demo never writes or clears the handover marker, also on a real fulfillment", async () => {
+  const { s, ids, fulfillments } = demoHandover(2)
+  const { plan } = await planDispatch(s.container, ids)
+  const view = await createDispatch(s.container, { shipmentIds: ids, planHash: plan.hash, print: true }, { actor: "user_01ADMIN" })
+  assert.equal(view.dispatch.state, "printed")
+  await withdrawShipment(s.container, ids[0], { actor: "user_01ADMIN" })
+  await cancelDispatch(s.container, view.dispatch.id, { actor: "user_01ADMIN" })
+
+  const { plan: again } = await planDispatch(s.container, [ids[0]])
+  const second = await createDispatch(s.container, { shipmentIds: [ids[0]], planHash: again.hash }, { actor: "user_01ADMIN" })
+  const row = s.dispatches.rows.find((r) => r.id === second.dispatch.id)
+  assert.ok(row)
+  Object.assign(row, { state: "printing", claim_token: "old", lease_until: new Date(Date.now() - PROTOCOL_LEASE_MS), error_code: "protocol_unclear" })
+  assert.equal(await expireDispatches(s.container, "demo", new Date()), 1)
+
+  assert.deepEqual(markerWrites(s.fulfillmentUpdates), [], "no marker write and no marker clearing in demo")
+  const provider = new DpdFulfillmentProvider({ logger: { info: () => {}, warn: () => {}, error: () => {} } }, { demo: true })
+  for (const f of fulfillments) assert.deepEqual(await provider.cancelFulfillment(s.fulfillments.get(f)?.data ?? {}), {})
 })

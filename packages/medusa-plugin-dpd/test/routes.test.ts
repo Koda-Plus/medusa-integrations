@@ -13,7 +13,7 @@ import { afterEach, beforeEach, test } from "node:test"
 import assert from "node:assert/strict"
 import type { ActionResponse, ErrorResponse, PlanResponse, PointResponse, PointsResponse, ShipmentResponse } from "../src/modules/dpd/lib/contract.ts"
 import { ACTION_ERROR_CODES } from "../src/modules/dpd/lib/contract.ts"
-import { shipmentActions } from "../src/modules/dpd/lib/dto.ts"
+import { countsOf, shipmentActions } from "../src/modules/dpd/lib/dto.ts"
 import { SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
 import { resolveOptions } from "../src/modules/dpd/lib/options.ts"
 import { optionsSummary } from "../src/api/admin/dpd/helpers.ts"
@@ -31,7 +31,12 @@ import { POST as postPoint } from "../src/api/admin/dpd/shipments/[id]/point/rou
 import { GET as getAdminPoints } from "../src/api/admin/dpd/points/route.ts"
 import { GET as getStorePoint } from "../src/api/store/dpd/points/[id]/route.ts"
 import { FakeDpdServices, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
-import { arm, order, SANDBOX, setup, type Row, type Setup } from "./helpers.ts"
+import { GET as getStatus } from "../src/api/admin/dpd/route.ts"
+import { GET as getShipments } from "../src/api/admin/dpd/shipments/route.ts"
+import { GET as getOrderCard } from "../src/api/admin/dpd/orders/[orderId]/route.ts"
+import type { OrderDpdResponse, ShipmentsResponse, StatusResponse } from "../src/modules/dpd/lib/contract.ts"
+import { createDispatch, planDispatch } from "../src/workflows/dpd/dispatch.ts"
+import { arm, insertLabeled, labeledOrder, order, SANDBOX, setup, type Row, type Setup } from "./helpers.ts"
 
 const realFetch = globalThis.fetch
 let requests = 0
@@ -250,16 +255,22 @@ test("POST lookup, skip and accept answer the row or their refusal; the writer r
 
 test("the actions of every state: what the buttons of the admin may offer", () => {
   const W = ["0000899000001Q"]
-  const on = (state: string, waybills: string[] | null = null, kind = "outbound") =>
-    Object.entries(shipmentActions({ state: state as never, kind: kind as never, waybills }))
+  type Extra = { dispatch_id?: string | null; handed_over_at?: Date | null; session_type?: string | null }
+  const on = (state: string, waybills: string[] | null = null, kind = "outbound", extra: Extra = {}) =>
+    Object.entries(shipmentActions({ state: state as never, kind: kind as never, waybills, dispatch_id: null, handed_over_at: null, session_type: null, ...extra }))
       .filter(([, v]) => v)
       .map(([k]) => k)
       .sort()
   assert.deepEqual(on("pending"), ["boxes", "create", "plan", "skip"])
   assert.deepEqual(on("failed"), ["boxes", "create", "plan", "skip"])
   assert.deepEqual(on("pending", null, "return"), ["boxes", "skip"])
-  assert.deepEqual(on("created", W), ["fetchLabel"])
-  assert.deepEqual(on("labeled", W), ["label"])
+  assert.deepEqual(on("created", W), ["exclude", "fetchLabel"])
+  assert.deepEqual(on("labeled", W), ["dispatch", "exclude", "label"])
+  assert.deepEqual(on("excluded"), ["restore"])
+  assert.deepEqual(on("labeled", W, "outbound", { dispatch_id: "dpddsp_01" }), ["label", "withdraw"], "in a dispatch: withdraw, never exclude or dispatch")
+  assert.deepEqual(on("labeled", W, "outbound", { handed_over_at: new Date() }), ["label"], "handed over without a dispatch: neither exclude nor dispatch")
+  assert.deepEqual(on("labeled", W, "return"), ["label"], "a return is never excluded or dispatched")
+  assert.deepEqual(on("labeled", W, "outbound", { session_type: "INTERNATIONAL" }), ["exclude", "label"], "an international shipment is not a candidate")
   assert.deepEqual(on("unknown"), ["lookup"])
   assert.deepEqual(on("abandoned_unknown"), ["lookup"])
   assert.deepEqual(on("abandoned_unknown", W), ["label"])
@@ -374,4 +385,56 @@ test("pickupCheck of the status: the catalog outside live, MyPudo with its crede
   assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, mode: "live" })).pickupCheck, "not_configured")
   assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, mode: "live", pickupApiKey: "testkeykoda0000000000" })).pickupCheck, "mypudo")
   assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, mode: "live", pickupLogin: "test", pickupPassword: "test-password-koda-0000" })).pickupCheck, "mypudo")
+})
+
+/* Stage 4: the counts and the order card with dispatches (10.11). */
+
+test("counts carry dispatches and dispatchesAttention", async () => {
+  const counts = countsOf([{ group: "labeled", count: 3 }], { open: 2, attention: 1 })
+  assert.equal(counts.dispatches, 2)
+  assert.equal(counts.dispatchesAttention, 1)
+  const none = countsOf([{ group: "labeled", count: 3 }])
+  assert.equal(none.dispatches, 0)
+  assert.equal(none.dispatchesAttention, 0)
+
+  const s = setup({ ...SANDBOX, shipmentWriter: true })
+  arm(s, "shipment")
+  const row = insertLabeled(s, labeledOrder(1))
+  const { plan } = await planDispatch(s.container, [String(row.id)])
+  const view = await createDispatch(s.container, { shipmentIds: [String(row.id)], planHash: plan.hash }, { actor: "user_01ADMIN" })
+  const d = s.dispatches.rows.find((r) => r.id === view.dispatch.id)
+  assert.ok(d)
+  d.state = "unknown"
+  const status = await call<StatusResponse>(getStatus, s, "")
+  assert.equal(status.body.counts.dispatches, 1)
+  assert.equal(status.body.counts.dispatchesAttention, 1)
+  const list = await call<ShipmentsResponse>(getShipments, s, "")
+  assert.equal(list.body.counts.dispatchesAttention, 1)
+})
+
+test("attention includes dispatchesAttention", () => {
+  const without = countsOf([{ group: "problems", count: 2 }, { group: "to_create", count: 1 }])
+  const withAttention = countsOf([{ group: "problems", count: 2 }, { group: "to_create", count: 1 }], { open: 4, attention: 2 })
+  assert.equal(withAttention.attention, without.attention + 2)
+})
+
+test("options summary has courierOrders per mode", () => {
+  assert.equal(optionsSummary(resolveOptions({ demo: true })).courierOrders, "demo")
+  assert.equal(optionsSummary(resolveOptions(SANDBOX)).courierOrders, "simulated")
+  assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, mode: "live" })).courierOrders, "dpd")
+})
+
+test("order card lists the dispatches of its shipments", async () => {
+  const s = setup({ ...SANDBOX, shipmentWriter: true })
+  arm(s, "shipment")
+  const labeled = labeledOrder(1)
+  const row = insertLabeled(s, labeled)
+  const free = await call<OrderDpdResponse>(getOrderCard, s, "", { params: { orderId: labeled.order.id } })
+  assert.deepEqual(free.body.dispatches, [])
+  const { plan } = await planDispatch(s.container, [String(row.id)])
+  const view = await createDispatch(s.container, { shipmentIds: [String(row.id)], planHash: plan.hash }, { actor: "user_01ADMIN" })
+  const card = await call<OrderDpdResponse>(getOrderCard, s, "", { params: { orderId: labeled.order.id } })
+  assert.equal(card.status, 200)
+  assert.deepEqual(card.body.dispatches.map((d) => d.id), [view.dispatch.id])
+  assert.deepEqual(card.body.dispatches[0]?.shipmentIds, [row.id])
 })

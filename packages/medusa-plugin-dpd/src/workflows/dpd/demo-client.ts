@@ -19,12 +19,28 @@
  *                            in the shape of demoWaybill counts as known (the
  *                            seeded rows); the label is a sample PDF that
  *                            says it is not a DPD label
+ *   generateProtocol         a session other than DOMESTIC is refused
+ *                            (INCORRECT_SESSION_TYPE, 11l), a pickup FID
+ *                            other than DEMO_PAYER_FID too (ACCESS_DENIED_
+ *                            FOR_FID, 11k); otherwise a sample protocol
+ *                            that lists the references and waybills only
+ *                            (never a name or an address) and a new
+ *                            documentId on every call (demoDocumentId, 05c);
+ *                            an unknown reference is not refused (seeded
+ *                            rows have none)
+ *   courierOrderAvailability a postal code that is not five digits is
+ *                            refused (POSTAL_CODE_NOT_FOUND, 11b); otherwise
+ *                            DEMO_COURIER_RANGES (11a)
+ *   packagesPickupCall       POST, PATCH and DELETE from one courier
+ *                            simulator per client (lib/courier-sim.ts) with
+ *                            the payer FID DEMO_PAYER_FID: SBX order numbers
  */
 
-import { PICKUP_MAX_BOXES, PICKUP_MAX_KG, type LabelPage } from "../../modules/dpd/lib/constants"
-import { DEMO_POINT_CATALOG, demoWaybill } from "../../modules/dpd/lib/demo"
-import type { LabelsOutcome, NumbersOutcome } from "../../modules/dpd/lib/dpd-answers"
-import type { DpdServicesClient, GeneratePackagesNumbersRequest, GenerateSpedLabelsRequest } from "../../modules/dpd/lib/dpdservices"
+import { DEMO_PAYER_FID, PICKUP_MAX_BOXES, PICKUP_MAX_KG, type LabelPage } from "../../modules/dpd/lib/constants"
+import { createCourierSimulator } from "../../modules/dpd/lib/courier-sim"
+import { DEMO_COURIER_RANGES, DEMO_POINT_CATALOG, demoDocumentId, demoWaybill } from "../../modules/dpd/lib/demo"
+import type { AvailabilityOutcome, LabelsOutcome, NumbersOutcome, ProtocolOutcome } from "../../modules/dpd/lib/dpd-answers"
+import type { CourierAvailabilityQuery, DpdServicesClient, GeneratePackagesNumbersRequest, GenerateProtocolRequest, GenerateSpedLabelsRequest } from "../../modules/dpd/lib/dpdservices"
 import { simpleLabelPdf, type LabelLine } from "../../modules/dpd/lib/pdf"
 
 /** The host the demo client says it talks to (nothing is called). */
@@ -57,6 +73,24 @@ function labelLines(p: { reference: string | null; waybills: string[]; cod: stri
 /** A sample label PDF as base64 (also what GET label builds on the fly for a seeded demo row). */
 export function demoLabelBase64(p: { reference: string | null; waybills: string[]; cod: string | null }, page: LabelPage): string {
   return Buffer.from(simpleLabelPdf(labelLines(p, page), page)).toString("base64")
+}
+
+/** References and waybills listed one by one before "... and <k> more". */
+const PROTOCOL_REFERENCES_SHOWN = 30
+const PROTOCOL_WAYBILLS_PER_LINE = 10
+
+/** A sample protocol PDF as base64: the references and waybills only, never names or addresses (also not the sender's). */
+export function demoProtocolBase64(p: { references: readonly string[]; waybills: readonly string[] }): string {
+  const lines: LabelLine[] = [
+    { text: "DPD by Koda Plus, sample handover protocol", size: 16, bold: true },
+    { text: "Not a DPD protocol, nothing was sent to DPD" },
+    { text: `Shipments: ${p.references.length}` },
+    ...p.references.slice(0, PROTOCOL_REFERENCES_SHOWN).map((r) => ({ text: r })),
+  ]
+  if (p.references.length > PROTOCOL_REFERENCES_SHOWN) lines.push({ text: `... and ${p.references.length - PROTOCOL_REFERENCES_SHOWN} more` })
+  lines.push({ text: `Waybills: ${p.waybills.length}` })
+  for (let i = 0; i < p.waybills.length; i += PROTOCOL_WAYBILLS_PER_LINE) lines.push({ text: p.waybills.slice(i, i + PROTOCOL_WAYBILLS_PER_LINE).join(" ") })
+  return Buffer.from(simpleLabelPdf(lines, "A4")).toString("base64")
 }
 
 type DemoRefusal = Extract<NumbersOutcome, { kind: "refused" }>
@@ -95,6 +129,8 @@ export function createDemoDpdServicesClient(): DpdServicesClient {
   const byReference = new Map<string, DemoPackage>()
   const byWaybill = new Map<string, DemoPackage>()
   let session = 1000
+  let protocols = 0
+  const courier = createCourierSimulator({ payerFid: DEMO_PAYER_FID })
 
   return {
     host: DEMO_HOST,
@@ -149,5 +185,58 @@ export function createDemoDpdServicesClient(): DpdServicesClient {
         httpStatus: 200,
       }
     },
+
+    async generateProtocol(body: GenerateProtocolRequest): Promise<ProtocolOutcome> {
+      const params = body.protocolSearchParams
+      if (params.session.type !== "DOMESTIC") {
+        return {
+          kind: "refused",
+          code: "session_type",
+          message: "DPD refused the protocol (INCORRECT_SESSION_TYPE): the session type does not match the packages.",
+          problems: [],
+          traceId: null,
+          httpStatus: 400,
+        }
+      }
+      if (params.pickupAddress.fid !== DEMO_PAYER_FID) {
+        return {
+          kind: "refused",
+          code: "pickup_fid",
+          message: "DPD refused the protocol (ACCESS_DENIED_FOR_FID): the pickup FID does not belong to this account.",
+          problems: [{ code: "dpd_payer_fid" }],
+          traceId: null,
+          httpStatus: 400,
+        }
+      }
+      protocols += 1
+      const references = params.session.packages.map((p) => p.reference)
+      const waybills = references.flatMap((r) => byReference.get(r)?.waybills ?? [])
+      return {
+        kind: "ok",
+        pdfBase64: demoProtocolBase64({ references, waybills }),
+        documentId: demoDocumentId(`${references.join(",")}#${protocols}`),
+        references,
+        traceId: null,
+        httpStatus: 200,
+      }
+    },
+
+    async courierOrderAvailability(query: CourierAvailabilityQuery): Promise<AvailabilityOutcome> {
+      if (!/^\d{5}$/.test(query.zipCode)) {
+        return {
+          kind: "refused",
+          code: "postal_code_not_found",
+          message: "DPD does not know this postal code for a courier (POSTAL_CODE_NOT_FOUND).",
+          problems: [],
+          traceId: null,
+          httpStatus: 404,
+        }
+      }
+      return { kind: "ok", ranges: DEMO_COURIER_RANGES.map((r) => ({ ...r })), traceId: null, httpStatus: 200 }
+    },
+
+    pickupCallCreate: (body) => courier.pickupCallCreate(body),
+    pickupCallUpdate: (body) => courier.pickupCallUpdate(body),
+    pickupCallDelete: (query) => courier.pickupCallDelete(query),
   }
 }
