@@ -30,6 +30,24 @@ test("key cache: forged versions cannot lock out the version in use", async () =
   assert.deepEqual(await cache.get("1", fetchKey, undefined, t0 + 2 * HOUR + 2), KEY)
 })
 
+test("key cache: a key InPost no longer knows is dropped, a stale one is kept a day at most", async () => {
+  const cache = createKeyCache()
+  let answer: "key" | "gone" | "down" = "key"
+  const fetchKey = async () => {
+    if (answer === "key") return KEY
+    throw answer === "gone" ? new InpostPayApiError(404, "not_found", "InPost answered 404") : new InpostPayApiError(0, "unavailable", "down")
+  }
+  assert.deepEqual(await cache.get("1", fetchKey, undefined, 0), KEY)
+  answer = "gone"
+  assert.equal(await cache.get("1", fetchKey, undefined, HOUR + 1), null, "revoked")
+  const other = createKeyCache()
+  answer = "key"
+  await other.get("2", fetchKey, undefined, 0)
+  answer = "down"
+  assert.deepEqual(await other.get("2", fetchKey, undefined, HOUR + 1), KEY)
+  assert.equal(await other.get("2", fetchKey, undefined, HOUR + 25 * HOUR), null, "not after a day without InPost")
+})
+
 test("key cache: a failed refresh keeps the last key; an unknown version waits 10 minutes", async () => {
   const cache = createKeyCache()
   let fail = false

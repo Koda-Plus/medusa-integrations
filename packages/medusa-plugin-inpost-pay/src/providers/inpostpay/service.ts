@@ -25,6 +25,7 @@ import type {
 import { randomUUID } from "node:crypto"
 import { createBasketAppClient, InpostPayApiError, type BasketAppClient } from "../../modules/inpostpay/lib/client"
 import { PROVIDER_IDENTIFIER } from "../../modules/inpostpay/lib/constants"
+import { withKeyLock } from "../../modules/inpostpay/lib/lock"
 import { refundMode, resolveOptions, type InpostPayPluginOptions, type ResolvedInpostPayOptions } from "../../modules/inpostpay/lib/options"
 import { proofSecret, proofValid } from "../../modules/inpostpay/lib/proof"
 import { pickTransaction, refundCommandId, refundWindowOpen, type InpostTransaction } from "../../modules/inpostpay/lib/refund"
@@ -52,6 +53,13 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "")
 /** Pages of the transaction list read to find the paid transaction of an order. */
 const TX_PAGES = 10
 const TX_PER_PAGE = 100
+
+/**
+ * The refunds InPost took per basket in this process. Medusa hands the
+ * provider the payment data as it was read before the refund, so two
+ * refunds made together see the same counter there; this one is current.
+ */
+const refundSeqs = new Map<string, number>()
 
 /**
  * THE PAYMENT PROVIDER of InPost Pay by Koda Plus (identifier "inpost-pay";
@@ -185,25 +193,33 @@ class InpostPayPaymentProvider extends AbstractPaymentProvider<InpostPayPluginOp
     if (!Number.isInteger(amountMinor) || amountMinor <= 0) throw new MedusaError(MedusaError.Types.INVALID_DATA, "The refund amount is not a positive amount")
     if (!refundWindowOpen(this.now())) throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "InPost Pay takes no refunds between 23:00 and 6:30 (Polish time). Try again after 6:30.")
 
-    const client = this.refundClient()
-    const transactionId = await this.transactionOf(client, data)
-    const commandId = refundCommandId(str(data.basket_id), refunds.length, amountMinor)
-    let status: string
-    try {
-      const result = await client.refund(transactionId, { commandId, body: { external_refund_id: commandId, refund_amount: amountMinor / 100 } })
-      if (result.status === "FAILED") throw new MedusaError(MedusaError.Types.NOT_ALLOWED, `InPost Pay refused the refund${result.description ? `: ${result.description}` : ""}`)
-      status = result.status
-    } catch (e) {
-      if (e instanceof MedusaError) throw e
-      if (e instanceof InpostPayApiError && (e.kind === "unavailable" || e.status >= 500)) {
-        throw new MedusaError(
-          MedusaError.Types.UNEXPECTED_STATE,
-          `InPost Pay gave no clear answer, the refund may have gone through: check merchant.inpost.pl. Repeating the same amount is safe, InPost does not refund one command twice (${e.message}).`,
-        )
+    const basketId = str(data.basket_id)
+    /* One refund of a basket at a time: two of the same amount made together must not share a command id. */
+    return withKeyLock(`inpostpay-refund:${basketId}`, async () => {
+      const client = this.refundClient()
+      const transactionId = await this.transactionOf(client, data)
+      const seq = Math.max(Number.isInteger(data.refund_seq) ? Number(data.refund_seq) : refunds.length, refundSeqs.get(basketId) ?? 0)
+      const commandId = refundCommandId(basketId, seq, amountMinor)
+      let status: string
+      try {
+        const result = await client.refund(transactionId, { commandId, body: { external_refund_id: commandId, refund_amount: amountMinor / 100 } })
+        if (result.status === "FAILED") throw new MedusaError(MedusaError.Types.NOT_ALLOWED, `InPost Pay refused the refund${result.description ? `: ${result.description}` : ""}`)
+        status = result.status
+      } catch (e) {
+        if (e instanceof MedusaError) throw e
+        if (e instanceof InpostPayApiError && (e.kind === "unavailable" || e.status >= 500)) {
+          throw new MedusaError(
+            MedusaError.Types.UNEXPECTED_STATE,
+            `InPost Pay gave no clear answer, the refund may have gone through: check merchant.inpost.pl. Repeating the same amount is safe, InPost does not refund one command twice (${e.message}).`,
+          )
+        }
+        throw new MedusaError(MedusaError.Types.NOT_ALLOWED, `InPost Pay refused the refund: ${(e as Error)?.message ?? e}`)
       }
-      throw new MedusaError(MedusaError.Types.NOT_ALLOWED, `InPost Pay refused the refund: ${(e as Error)?.message ?? e}`)
-    }
-    return record({ inpost: true, status, command_id: commandId }, { transaction_id: transactionId })
+      /* Only a refund InPost took moves the counter: a retry after an unclear answer keeps the command id. */
+      refundSeqs.set(basketId, seq + 1)
+      if (refundSeqs.size > 5000) refundSeqs.delete(refundSeqs.keys().next().value as string)
+      return record({ inpost: true, status, command_id: commandId }, { transaction_id: transactionId, refund_seq: seq + 1 })
+    })
   }
 
   /**
@@ -238,7 +254,8 @@ class InpostPayPaymentProvider extends AbstractPaymentProvider<InpostPayPluginOp
       items.push(...r.items)
       const pick = pickTransaction(items, orderId)
       if (pick.ok) return pick.transaction.transaction_id
-      if (r.items.length < TX_PER_PAGE || (r.count !== null && items.length >= r.count)) return fail(pick.reason)
+      /* The end: an empty page, or all of `count` read. A short page is not the end: InPost may cap per_page. */
+      if (r.items.length === 0 || (r.count !== null && items.length >= r.count)) return fail(pick.reason)
     }
     return fail("incomplete")
   }

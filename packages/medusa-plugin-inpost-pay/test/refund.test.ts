@@ -105,8 +105,12 @@ test("refund mode: InPost with the merchant secret, recorded only on request, re
   assert.equal(refundMode(resolveOptions({ ...keys, merchantSecret: "x" })), "inpost")
   assert.equal(refundMode(resolveOptions({ ...keys, manualRefunds: "true" })), "manual")
   assert.equal(refundMode(resolveOptions(keys)), "off")
-  assert.equal(resolveOptions(keys).autoCapture, true, "capture is automatic by default")
-  assert.equal(resolveOptions({ ...keys, autoCapture: "false" }).autoCapture, false)
+  assert.equal(refundMode(resolveOptions({ merchantSecret: "x" })), "off", "a secret without the keys refunds nothing")
+  assert.equal(resolveOptions({ ...keys, merchantSecret: "x" }).autoCapture, true, "capture is automatic when refunds work")
+  assert.equal(resolveOptions({ ...keys, manualRefunds: true }).autoCapture, true)
+  assert.equal(resolveOptions(keys).autoCapture, false, "without refunds a captured payment could not be canceled")
+  assert.equal(resolveOptions({ ...keys, autoCapture: "true" }).autoCapture, true)
+  assert.equal(resolveOptions({ ...keys, merchantSecret: "x", autoCapture: "false" }).autoCapture, false)
 })
 
 test("InPost events: a repeat or an older event is not applied", () => {
@@ -162,7 +166,7 @@ function providerWith(app: FakeApp, options: Record<string, unknown>, at = DAY) 
 
 const paid = { inpostpay: true, basket_id: "ipbsk_1", order_id: "order_1", authorized_at: "2026-11-02T12:00:00Z", inpost_payment_type: "BLIK_CODE" }
 
-test("provider refund: InPost returns the money, the transaction is kept, a retry reuses the command id", async () => {
+test("provider refund: InPost returns the money, the transaction is kept for the next refund", async () => {
   const app = new FakeApp()
   const p = providerWith(app, { merchantSecret: SECRET })
   const out = await p.refundPayment({ data: paid, amount: { value: "25.50", precision: 20 } })
@@ -178,6 +182,30 @@ test("provider refund: InPost returns the money, the transaction is kept, a retr
   assert.equal(app.transactionsSeen.length, 1, "the saved transaction is not looked up again")
   assert.equal(app.refunds[1].commandId, refundCommandId("ipbsk_1", 1, 1000))
   assert.equal((second.data?.refunds as unknown[]).length, 2)
+})
+
+test("provider refund: a retry after an unclear answer sends the same command id, the next refund a new one", async () => {
+  const app = new FakeApp()
+  const p = providerWith(app, { merchantSecret: SECRET })
+  const data = { ...paid, basket_id: "ipbsk_retry" }
+  app.answer = async () => {
+    throw new InpostPayApiError(0, "unavailable", "InPost did not answer within 15000 ms")
+  }
+  await assert.rejects(() => p.refundPayment({ data, amount: 5 }), MedusaError)
+  app.answer = async () => ({ external_refund_id: null, refund_amount: null, status: "SUCCESS", description: null })
+  const out = await p.refundPayment({ data, amount: 5 })
+  assert.equal(app.refunds[0].commandId, app.refunds[1].commandId, "the retry of the unclear refund is the same command")
+  await p.refundPayment({ data: out.data, amount: 5 })
+  assert.notEqual(app.refunds[2].commandId, app.refunds[1].commandId, "a new refund of the same amount is a new command")
+})
+
+test("provider refund: two refunds of one amount made together are two commands", async () => {
+  const app = new FakeApp()
+  const p = providerWith(app, { merchantSecret: SECRET })
+  const data = { ...paid, basket_id: "ipbsk_together" }
+  await Promise.all([p.refundPayment({ data, amount: 5 }), p.refundPayment({ data, amount: 5 })])
+  assert.equal(app.refunds.length, 2)
+  assert.notEqual(app.refunds[0].commandId, app.refunds[1].commandId)
 })
 
 test("provider refund: the payment reference of InPost's event is tried first", async () => {

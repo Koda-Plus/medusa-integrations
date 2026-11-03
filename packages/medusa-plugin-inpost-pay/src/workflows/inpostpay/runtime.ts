@@ -2,6 +2,7 @@ import { createBasketAppClient, type BasketAppClient } from "../../modules/inpos
 import { createDemoBasketAppClient } from "../../modules/inpostpay/lib/demo"
 import { resolveOptions, type ResolvedInpostPayOptions } from "../../modules/inpostpay/lib/options"
 import { InpostPayFlowError } from "../../modules/inpostpay/lib/errors"
+import { withKeyLock } from "../../modules/inpostpay/lib/lock"
 import { inpostPaySvc, type Scope } from "../../modules/inpostpay/lib/store"
 
 /**
@@ -45,19 +46,6 @@ export function clientOf(scope: Scope): BasketAppClient | null {
 }
 
 /** One flow per basket at a time in this process: a second confirm waits for the first and then sees its order. */
-const locks = new Map<string, Promise<unknown>>()
-
-export async function withBasketLock<T>(basketId: string, fn: () => Promise<T>): Promise<T> {
-  const previous = locks.get(basketId) ?? Promise.resolve()
-  let release!: () => void
-  const mine = new Promise<void>((r) => (release = r))
-  const chained = previous.then(() => mine)
-  locks.set(basketId, chained)
-  try {
-    await previous.catch(() => undefined)
-    return await fn()
-  } finally {
-    release()
-    if (locks.get(basketId) === chained) locks.delete(basketId)
-  }
+export function withBasketLock<T>(basketId: string, fn: () => Promise<T>): Promise<T> {
+  return withKeyLock(basketId, fn)
 }
