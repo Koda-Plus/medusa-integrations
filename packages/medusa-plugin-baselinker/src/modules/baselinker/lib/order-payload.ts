@@ -371,7 +371,12 @@ export function paymentFacts(collections: readonly PaymentCollectionRecord[], to
   }
 }
 
-const PICKUP_KEYS = ["pickup_point", "target_point", "point_id", "locker_id", "parcel_locker", "paczkomat"]
+/**
+ * Keys holding a point as a string or an object. `machine_id` (with its flat
+ * siblings) is read before them: the InPost plugin of Koda Plus, InPost Pay
+ * and the InPost geowidget store only that, and the InPost plugin ships to it.
+ */
+const PICKUP_KEYS = ["pickup_point", "target_point", "point_id", "locker_id", "parcel_locker", "paczkomat", "locker_code", "locker", "point"]
 
 export interface PickupPoint {
   id: string
@@ -381,32 +386,42 @@ export interface PickupPoint {
   city?: string
 }
 
+/** The street line, post code and city of a point address object; "NN-NNN City" in `line2` fills what is missing. */
+function fillAddress(point: PickupPoint, a: Record<string, unknown>): void {
+  point.address = text(a.line1) ?? text(a.street)
+  point.postcode = text(a.post_code) ?? text(a.postcode) ?? text(a.postal_code)
+  point.city = text(a.city)
+  const line2 = text(a.line2)
+  const m = line2 ? /^(\d{2}-\d{3})\s+(.+)$/.exec(line2) : null
+  if (m) {
+    point.postcode = point.postcode ?? m[1]
+    point.city = point.city ?? m[2]
+  }
+}
+
 /** Pickup point from shipping method data (InPost lockers and similar providers), best effort. */
 export function pickupPoint(data: Record<string, unknown> | null | undefined): PickupPoint | null {
   if (!data || typeof data !== "object") return null
+  const machine = text(data.machine_id)
+  if (machine) {
+    const point: PickupPoint = { id: machine, name: text(data.machine_name) }
+    const addr = data.machine_address
+    if (addr && typeof addr === "object") fillAddress(point, addr as Record<string, unknown>)
+    return point
+  }
   for (const key of PICKUP_KEYS) {
     const value = data[key]
     const direct = text(value)
     if (direct) return { id: direct }
     if (!value || typeof value !== "object") continue
     const v = value as Record<string, unknown>
-    const id = text(v.id) ?? text(v.name) ?? text(v.code)
+    /* The code before a display name, as the InPost plugin reads a nested locker. */
+    const id = text(v.id) ?? text(v.code) ?? text(v.name)
     if (!id) continue
     const point: PickupPoint = { id, name: text(v.name) ?? text(v.label) }
     const addr = v.address
     if (typeof addr === "string") point.address = text(addr)
-    else if (addr && typeof addr === "object") {
-      const a = addr as Record<string, unknown>
-      point.address = text(a.line1) ?? text(a.street)
-      point.postcode = text(a.post_code) ?? text(a.postcode) ?? text(a.postal_code)
-      point.city = text(a.city)
-      const line2 = text(a.line2)
-      const m = line2 ? /^(\d{2}-\d{3})\s+(.+)$/.exec(line2) : null
-      if (m) {
-        point.postcode = point.postcode ?? m[1]
-        point.city = point.city ?? m[2]
-      }
-    }
+    else if (addr && typeof addr === "object") fillAddress(point, addr as Record<string, unknown>)
     return point
   }
   return null

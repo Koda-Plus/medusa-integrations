@@ -127,7 +127,7 @@ function packAll(packages) {
         }
       }
     }
-    routes[p.ns] = { contract: fs.existsSync(path.join(admin, "integration", "route.ts")), status: fs.existsSync(path.join(admin, "route.ts")), tables: [...tables] }
+    routes[p.ns] = { contract: fs.existsSync(path.join(admin, "integration", "route.ts")), status: fs.existsSync(path.join(admin, "route.ts")), migrations: fs.existsSync(migrations), tables: [...tables] }
     log(`build and pack ${p.dir}`)
     must("npm run build", { cwd: dir }, `${p.dir}: npm run build`)
     const out = must(`npm pack --json --ignore-scripts --pack-destination "${tarDir}"`, { cwd: dir }, `${p.dir}: npm pack`)
@@ -399,7 +399,8 @@ async function smokeVersion(version, packages, tarballs, routes = {}) {
       }
       const own = names.filter((t) => t.startsWith(`${p.moduleDir}_`) || t.startsWith(`${p.ns}_`) || (p.ns === "subiekt" && t.startsWith("subiekt")))
       run.plugins[p.ns] = { tables: own.length }
-      if (p.ns !== "stripe") step(`${p.ns}: its tables exist`, own.length > 0, `tables: ${own.join(", ") || "none"}`)
+      /* A plugin without migrations keeps no tables of its own (stripe, coupons). */
+      if (routes[p.ns]?.migrations) step(`${p.ns}: its tables exist`, own.length > 0, `tables: ${own.join(", ") || "none"}`)
     }
     r = sh("npx medusa user -e smoke@example.com -p smoke-password-123", { cwd: dir, env })
     step("medusa user (admin)", r.ok, r.out.slice(-1500))

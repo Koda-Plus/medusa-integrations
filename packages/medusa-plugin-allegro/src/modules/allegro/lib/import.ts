@@ -33,6 +33,7 @@ import { createHash } from "node:crypto"
 import { isPaid, type CheckoutForm, type Money } from "./checkout"
 import { DEMO_ORDER_MARKER, IMPORT_MAX_ATTEMPTS, NOT_READY_GIVE_UP_DAYS, marketplaceRef } from "./constants"
 import type { EventIntent } from "./events"
+import { handoffNeedsAttention, type HandoffOutcome, type ShippingOptionSource } from "./handoff"
 
 export interface LineVariant {
   id: string
@@ -121,6 +122,8 @@ export type ImportDecision =
       paid: boolean
       paymentType: string | null
       total: Money | null
+      /** "method" when the option is mapped to the Allegro delivery method, "default" for `orderImport.shippingOptionId`. */
+      shippingOptionSource: ShippingOptionSource
       lines: Array<{ allegroLineId: string; variantId: string; quantity: number; sku: string }>
     }
   | { kind: "hold"; code: HoldCode; reason: string }
@@ -212,11 +215,11 @@ export function planImport(form: CheckoutForm, ctx: ImportContext): ImportDecisi
       : { ...shipping_address, address_2: undefined }
   if (!billing_address.address_2) delete billing_address.address_2
 
-  const shippingOptionId =
+  const mappedOptionId =
     (form.delivery.methodId ? ctx.shippingOptions[form.delivery.methodId] : undefined) ??
-    (form.delivery.methodName ? ctx.shippingOptions[form.delivery.methodName] : undefined) ??
-    ctx.shippingOptionId ??
-    undefined
+    (form.delivery.methodName ? ctx.shippingOptions[form.delivery.methodName] : undefined)
+  const shippingOptionId = mappedOptionId ?? ctx.shippingOptionId ?? undefined
+  const shippingOptionSource: ShippingOptionSource = mappedOptionId ? "method" : shippingOptionId ? "default" : null
 
   const order: MedusaOrderInput = {
     region_id: ctx.regionId,
@@ -270,6 +273,7 @@ export function planImport(form: CheckoutForm, ctx: ImportContext): ImportDecisi
     paid: isPaid(form),
     paymentType: form.payment.type,
     total: form.total,
+    shippingOptionSource,
     lines: lines.map((l) => ({ allegroLineId: l.allegroLineId, variantId: l.variant.id, quantity: l.quantity, sku: l.variant.sku })),
   }
 }
@@ -322,6 +326,8 @@ export interface ImportRow {
   status: string
   attempts: number
   created_at?: Date | string | null
+  /** What earlier attempts recorded (`importDetails`, `handoff`). */
+  details?: Record<string, unknown> | null
 }
 
 export interface CreatedOrder {
@@ -367,6 +373,12 @@ export interface ImportPorts {
    * payment collection, marked paid when Allegro holds the money.
    */
   complete(orderId: string, args: { email: string | null; paid: boolean }): Promise<CreatedOrder>
+  /**
+   * Asks the provider of the mapped shipping option to validate the method
+   * data, as a cart does (`lib/handoff.ts`), and returns the data the order
+   * is created with. Never throws. Without it the order keeps our own keys.
+   */
+  handoff?(decision: Extract<ImportDecision, { kind: "create" }>, form: CheckoutForm, ctx: ImportContext): Promise<HandoffOutcome>
 }
 
 export type ImportOutcome =
@@ -502,6 +514,8 @@ export async function processImport(row: ImportRow, ports: ImportPorts, mask: (s
     )
   }
 
+  /* What an earlier attempt learned from the provider stays on the row: a retry or an adoption never asks again. */
+  const earlierHandoff = typeof claimed.details?.handoff === "string" ? claimed.details.handoff : null
   const facts = {
     allegro_status: form.status,
     fulfillment_status: form.fulfillmentStatus,
@@ -510,14 +524,16 @@ export async function processImport(row: ImportRow, ports: ImportPorts, mask: (s
     total: form.total,
     line_count: form.lines.length,
     bought_at: form.boughtAt ? new Date(form.boughtAt) : null,
-    details: importDetails(form),
+    details: { ...importDetails(form), ...(earlierHandoff ? { handoff: earlierHandoff } : {}) },
   }
   const completion = { email: form.buyer.email, paid: isPaid(form) }
+  /* The provider's answer for this attempt (step 6), on every row written once the order exists. */
+  let handoffFacts: Record<string, unknown> = {}
 
   /* A failure after the order exists keeps its id on the row: the next attempt finds the order and finishes it. */
   const failed = (err: unknown, orderId: string | null): Promise<ImportOutcome> => {
     const reason = mask(message(err))
-    const keep = orderId ? { order_id: orderId } : {}
+    const keep = orderId ? { order_id: orderId, ...handoffFacts } : {}
     if (isDataError(err)) {
       return done({ ...facts, ...keep, status: "held", reason_code: "workflow_error", reason: `Medusa refused the order: ${reason}` }, { kind: "held", code: "workflow_error", reason })
     }
@@ -599,7 +615,17 @@ export async function processImport(row: ImportRow, ports: ImportPorts, mask: (s
   const stock = await ports.precheckStock(decision, ctx)
   if (stock) return done({ ...facts, status: "held", reason_code: "stock", reason: stock }, { kind: "held", code: "stock", reason: stock })
 
-  /* 6. Under the shared lock: the reference looked up again, then created as a draft and finished. */
+  /* 6. The shipping method data, validated by the provider of its option before the order exists. Outside the lock: it may wait on the provider. */
+  const handoff = ports.handoff ? await ports.handoff(decision, form, ctx) : null
+  if (handoff && decision.order.shipping_methods[0]) decision.order.shipping_methods[0].data = handoff.data
+  handoffFacts = handoff
+    ? {
+        details: { ...facts.details, handoff: handoff.kind === "handed" ? "handed" : handoff.code },
+        ...(handoffNeedsAttention(handoff) && handoff.kind === "kept" ? { attention: handoff.reason.slice(0, 1000) } : {}),
+      }
+    : {}
+
+  /* 7. Under the shared lock: the reference looked up again, then created as a draft and finished. */
   const locked = await ports.withRefLock(ref, async (): Promise<ImportOutcome> => {
     const late = await ports.findOrderByRef(ref)
     if (late && !late.ours) return done(duplicatePatch(late), { kind: "duplicate", orderId: late.id })
@@ -609,15 +635,24 @@ export async function processImport(row: ImportRow, ports: ImportPorts, mask: (s
     try {
       const draft = await ports.createDraft(decision, ctx)
       orderId = draft.orderId
-      /* The id is on the row the moment the order exists: a retry finds it, never makes a second one. */
-      if (!(await ports.progress(claimed, token, { order_id: draft.orderId, display_id: draft.displayId }))) {
+      /* The id is on the row the moment the order exists: a retry finds it, never makes a second one. The handoff goes with it, so a retry still says why the order was not handed over. */
+      if (!(await ports.progress(claimed, token, { order_id: draft.orderId, display_id: draft.displayId, ...handoffFacts }))) {
         return { kind: "lost", reason: "The claim expired right after the draft was created; the next run finds the order and finishes it." }
       }
       const created = await ports.complete(draft.orderId, { email: decision.email, paid: decision.paid })
       const mismatch = !sameTotal(created.total, decision.total)
+      /* Checked before the order existed; Medusa's own total decides what a cash on delivery parcel collects. */
+      const codMismatch = mismatch && handoff?.kind === "handed" && handoff.data.cod === true
       return done(
         {
           ...facts,
+          ...handoffFacts,
+          ...(codMismatch
+            ? {
+                details: { ...facts.details, handoff: "handed_cod_total_mismatch" },
+                attention: `Handed to the shipping provider as cash on delivery, but the Medusa total (${created.total ? `${created.total.value} ${created.total.currency}` : "none"}) differs from the Allegro total (${decision.total ? `${decision.total.value} ${decision.total.currency}` : "none"}): the parcel would collect the Medusa total. Correct the amount before shipping.`,
+              }
+            : {}),
           status: "imported",
           order_id: created.orderId,
           display_id: created.displayId ?? draft.displayId,

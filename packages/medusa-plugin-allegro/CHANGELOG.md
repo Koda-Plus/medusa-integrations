@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Imported orders reach the shipping provider of their mapped option. `createOrderWorkflow` stores the shipping method data as given and never asks the provider, so an order carried only `allegro_delivery_method_id` and `allegro_pickup_point_id`, and the InPost plugin of Koda Plus recorded no parcel for it. Now, for an Allegro delivery method mapped in `orderImport.shippingOptions`, the data is validated by the option's provider before the order is created (`validateFulfillmentData`, as a cart does), and the answer is kept next to the `allegro_*` keys. It is kept only when the payment type is known, a pickup delivery still has its point, cash on delivery follows the payment type (`CASH_ON_DELIVERY`, never "not paid": Allegro Pay collects nothing) and collects exactly the Allegro total. Otherwise, when the provider refuses, on the default `shippingOptionId` and for demo orders, the order keeps its own keys, the import goes on, and the import row says why (`details.handoff`, and `attention` when a person should act; both stay through a retry and the adoption of the order). When the created order's total differs from Allegro after a cash on delivery hand-over, the row asks a person to correct the amount before shipping (`handed_cod_total_mismatch`). The order card says "Shipping needs a person" for these rows.
+
+### Upgrade note
+
+- An Allegro delivery method mapped to an InPost option in `orderImport.shippingOptions` now becomes a ShipX parcel when the order is fulfilled in Medusa (with the InPost plugin's `autoCreate` and shipment writer armed). If you send those parcels elsewhere (Wysyłam z Allegro, BaseLinker), add `allegro_checkout_form_id` to the InPost plugin's `skipMetadataKeys`, or map the methods to an option of another provider.
+
 ## 0.3.1 (2026-10-18)
 
 - Shared kit 1.0.9: white label support (a store can hide the Koda Plus byline, prompt, community links and references), the order products cell (thumbnails, a dialog with the order lines, products of carts without an order) and the amount breakdown component are available to the admin pages, and loaders, skeleton rows and the guide got small fixes.

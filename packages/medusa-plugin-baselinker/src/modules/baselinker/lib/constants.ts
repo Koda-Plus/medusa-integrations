@@ -4,6 +4,15 @@
  * and every pure module may read it.
  */
 
+/**
+ * Fulfillment metadata of a fulfillment made because BaseLinker reports the
+ * order shipped (`fulfillOnStatusIds`): BaseLinker sent the parcel. The
+ * InPost plugin of Koda Plus reads `shipped_outside_medusa` and records such
+ * a fulfillment as skipped, so it never becomes a second parcel; any other
+ * plugin may read it the same way.
+ */
+export const SHIPPED_OUTSIDE_METADATA = { shipped_outside_medusa: "baselinker" } as const
+
 /** Container key of the module: `container.resolve(BASELINKER_MODULE)`. */
 export const BASELINKER_MODULE = "baselinker"
 

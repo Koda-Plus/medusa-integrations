@@ -156,6 +156,7 @@ export interface OrderRecord extends PlanOrder {
     id: string
     provider_id?: string | null
     data?: Record<string, unknown> | null
+    metadata?: Record<string, unknown> | null
     canceled_at?: string | Date | null
     shipped_at?: string | Date | null
     delivered_at?: string | Date | null
