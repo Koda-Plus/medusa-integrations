@@ -60,6 +60,8 @@ export interface ShippingOptionLite {
   id: string
   name: string
   provider_id: string | null
+  /** The fulfillment option of the shipping option (`data.id`), for the COD twins of the InPost plugin. */
+  data_id?: string | null
 }
 
 export type BasketFilter = "all" | BasketStatus | "payment_problems"

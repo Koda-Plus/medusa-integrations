@@ -15,8 +15,8 @@ export function backendUrlOf(req: MedusaRequest, configured: string | null): str
 export async function shippingOptionsOfStore(req: MedusaRequest): Promise<ShippingOptionLite[]> {
   try {
     const query = req.scope.resolve(ContainerRegistrationKeys.QUERY) as any
-    const { data } = await query.graph({ entity: "shipping_option", fields: ["id", "name", "provider_id"], pagination: { take: 200 } })
-    return (data as any[]).map((o) => ({ id: String(o.id), name: String(o.name ?? o.id), provider_id: o.provider_id ?? null }))
+    const { data } = await query.graph({ entity: "shipping_option", fields: ["id", "name", "provider_id", "data"], pagination: { take: 200 } })
+    return (data as any[]).map((o) => ({ id: String(o.id), name: String(o.name ?? o.id), provider_id: o.provider_id ?? null, data_id: typeof o.data?.id === "string" ? o.data.id : null }))
   } catch {
     return []
   }

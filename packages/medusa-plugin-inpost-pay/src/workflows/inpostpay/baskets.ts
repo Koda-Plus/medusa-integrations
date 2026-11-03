@@ -1,7 +1,7 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { PromotionActions } from "@medusajs/framework/utils"
 import { addToCartWorkflow, deleteLineItemsWorkflow, updateCartPromotionsWorkflow, updateLineItemInCartWorkflow } from "@medusajs/medusa/core-flows"
-import { basketPayload, cartTotalMinor, currencySupported, lineItemFor } from "../../modules/inpostpay/lib/basket"
+import { basketPayload, cartTotalMinor, currencySupported, lineItemFor, optionGross } from "../../modules/inpostpay/lib/basket"
 import { BINDING_PLACES, type BindingPlace } from "../../modules/inpostpay/lib/constants"
 import type { StoreBasketResponse } from "../../modules/inpostpay/lib/contract"
 import { maskPhone, normalizePhone } from "../../modules/inpostpay/lib/confirm"
@@ -51,7 +51,11 @@ export async function payloadForCart(scope: MedusaContainer, cart: LoadedCart): 
   const offered = offeredDeliveries(settings.delivery, options, o.demo)
   const now = Date.now()
   return basketPayload(cart, {
-    deliveries: offered.map((d) => ({ type: d.type, gross: options.find((x) => x.id === d.optionId)?.amount ?? 0 })),
+    deliveries: offered.map((d) => {
+      const base = options.find((x) => x.id === d.optionId)
+      const cod = d.codOptionId ? options.find((x) => x.id === d.codOptionId) : undefined
+      return { type: d.type, gross: base ? optionGross(base, o.shippingVatRate) : 0, codGross: cod ? optionGross(cod, o.shippingVatRate) : null }
+    }),
     shippingVatRate: o.shippingVatRate,
     storefrontUrl: o.storefrontUrl,
     expiresAt: new Date(now + o.basketTtlHours * 60 * 60 * 1000),

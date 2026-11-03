@@ -23,6 +23,10 @@ The first version: one-click checkout with the InPost mobile app (InPost Pay) fo
 - Refunds through InPost Pay (option `merchantSecret`): the transaction of the order is found in InPost's transaction list and the refund ordered with InPost's SHA-512 signature (both examples of the documentation verified in the tests) and an `X-Command-ID` derived from the refund, so a retry after a timeout is not paid twice. A refused or unsendable refund fails in Medusa as well, instead of being recorded as if the money went back. Without the secret refunds fail, or with `manualRefunds: true` are recorded only. Cash on delivery and demo refunds are recorded only.
 - The payment is captured in Medusa when InPost reports `AUTHORIZED` (option `autoCapture`, default on). The Medusa order id and InPost's payment reference are kept in the payment data.
 - InPost events sent twice or out of order (`event_id`, `event_data_time`) no longer overwrite a newer payment status.
+- Cash on delivery: the basket offers the `COD` delivery option when the mapped InPost option has a COD twin the cart can use, so the app offers CASH_ON_DELIVERY at all; a COD order is placed on the twin (`422 COD_NOT_AVAILABLE` without one) and a paid order never on a COD option.
+- The delivery price in the app is gross also when Medusa prices the shipping option net (`shippingVatRate` added), so such orders no longer fail with `409 BASKET_PRICE_CHANGED`.
+- A courier order without address, city or postal code is refused (`400 DELIVERY_ADDRESS_INVALID`) instead of placed with "-" in the address.
+- Signing keys: forged key versions use up only the pool of unknown versions; the version in use is refreshed in its own pool and keeps its last key while InPost is unreachable.
 
 ### Admin
 

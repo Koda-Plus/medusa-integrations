@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { InpostPayApiError } from "../../modules/inpostpay/lib/client"
-import { createLimiter } from "../../modules/inpostpay/lib/rate-limit"
+import { createKeyCache } from "../../modules/inpostpay/lib/key-cache"
 import { SIGNATURE_HEADERS } from "../../modules/inpostpay/lib/constants"
 import { header, safeKeyVersion, verifyInpostSignature, type SigningKey } from "../../modules/inpostpay/lib/signature"
 import { basketRow } from "../../workflows/inpostpay/baskets"
@@ -23,25 +23,17 @@ export function fail(res: MedusaResponse, status: number, code: string, message:
   res.status(status).json({ error_code: code, error_message: message })
 }
 
-/** Signing keys by version, for an hour; unknown versions are not fetched more than 10 times a minute. */
-const keys = new Map<string, { key: SigningKey; until: number }>()
-const keyFetches = createLimiter(10, 60_000)
+/** Signing keys by version (lib/key-cache.ts: forged versions cannot lock out the ones in use). */
+const keys = createKeyCache()
 
 async function keyFor(req: MedusaRequest, version: string): Promise<SigningKey | null> {
-  const cached = keys.get(version)
-  if (cached && cached.until > Date.now()) return cached.key
-  if (keyFetches.limited("all")) return null
   const client = clientOf(req.scope)
   if (!client) return null
-  try {
-    const key = await client.signingKey(version)
-    keys.set(version, { key, until: Date.now() + 60 * 60 * 1000 })
-    if (keys.size > 20) keys.delete(keys.keys().next().value as string)
-    return key
-  } catch (e) {
-    loggerOf(req.scope).warn(`[inpostpay] The signing key ${version} could not be read: ${(e as Error)?.message ?? e}`)
-    return null
-  }
+  return keys.get(
+    version,
+    (v) => client.signingKey(v),
+    (e) => loggerOf(req.scope).warn(`[inpostpay] The signing key ${version} could not be read: ${(e as Error)?.message ?? e}`),
+  )
 }
 
 /** The gate of every Merchant API route. Answers and returns false when the call may not go on. */
