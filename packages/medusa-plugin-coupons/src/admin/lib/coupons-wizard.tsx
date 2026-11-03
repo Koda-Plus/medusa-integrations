@@ -7,10 +7,12 @@ import { checkWizard, cleanCode, endOfMonth, suggestCode, wizardWarnings } from 
 import { CouponsRequestError, errorMessage, useCreateCoupon, useLookups, usePoolProducts } from "./coupons-api"
 import { BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, poolsWord } from "./coupons-fields"
 import { couponSentence, wizardCoupon } from "./coupons-sentence"
+import { couponCodesOf } from "../../modules/coupons/lib/describe"
 import { useFormat } from "./coupons-ui"
 import { ToneBadge } from "./coupons-blocks"
 import { KeyPoints, type KeyPointItem } from "./coupons-guide"
 import { PoolPicker, variantNames } from "./coupons-pool-picker"
+import { DayTimeRange, EMPTY_DAY_TIME, isoOf, stampOf, type DayTime } from "./coupons-when"
 
 /**
  * THE CREATOR, full screen: the steps on the left (each with what was
@@ -57,6 +59,8 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
   const [form, setForm] = useState<WizardInput>(START)
   const [customerNames, setCustomerNames] = useState<Record<string, string>>({})
   const [serverErrors, setServerErrors] = useState<string[]>([])
+  /* Own dates: a day each and an optional time, in the store's zone; the form keeps the exact moments. */
+  const [range, setRange] = useState<{ start: DayTime; end: DayTime }>({ start: EMPTY_DAY_TIME, end: EMPTY_DAY_TIME })
   const currency = form.currencyCode ?? lookups.data?.currencyCode ?? "pln"
   const store = lookups.data?.store ?? null
   const features = store?.features ?? []
@@ -71,6 +75,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
     setForm(START)
     setCustomerNames({})
     setServerErrors([])
+    setRange({ start: EMPTY_DAY_TIME, end: EMPTY_DAY_TIME })
   }
 
   const now = new Date()
@@ -94,8 +99,10 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
       pools: Object.fromEntries((store?.pools ?? []).map((p) => [p.id, p.name])),
       priceLists: Object.fromEntries((store?.priceLists ?? []).map((p) => [p.id, p.name])),
       variants: variantNames(poolProducts.byPool),
+      couponCodes: couponCodesOf(existing),
+      members: { ids: memberGroupIds, label: lookups.data?.memberGroupsLabel ?? null },
     }),
-    [lookups.data, customerNames, store, poolProducts.byPool],
+    [lookups.data, customerNames, store, poolProducts.byPool, existing, memberGroupIds],
   )
 
   const withCode = !form.code ? { ...form, code: suggestCode(form, codePrefix) } : form
@@ -176,7 +183,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
           : `-${form.value ?? 0}%`
   const sample = 300
   const after = form.kind === "fixed_order" ? Math.max(0, sample - Number(form.value ?? 0)) : form.kind === "free_shipping" || form.kind === "buy_get" ? sample : sample * (1 - Number(form.value ?? 0) / 100)
-  const validityText = dates.endsAt ? `${dates.startsAt ? fmt.date(dates.startsAt) : ""} - ${fmt.date(dates.endsAt)}` : t("wizard.validity.none")
+  const validityText = dates.endsAt ? `${dates.startsAt ? stampOf(fmt, dates.startsAt, "start") : ""} - ${stampOf(fmt, dates.endsAt, "end")}` : t("wizard.validity.none")
   const excludedNames = form.kind === "percent_pools" ? (form.excludedVariantIds ?? []).map((id) => names.variants?.[id] ?? id) : []
   const targetNames = usesPools ? (form.poolIds ?? []).map((id) => names.pools?.[id]).filter(Boolean) : usesCategories ? (form.categoryIds ?? []).map((id) => names.categories[id]).filter(Boolean) : []
 
@@ -405,13 +412,17 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
                   <Field label={t("wizard.validity.label")} hint={t("wizard.ui.validityHint")}>
                     <Chips value={form.validity} options={(["month", "30d", "none", "custom"] as const).map((v) => ({ value: v, label: t(`wizard.validity.${v}`) }))} onChange={(v) => set("validity", v)} />
                     {form.validity === "custom" ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Label size="xsmall">{t("wizard.validity.from")}</Label>
-                        {/* A day as a date: from its first second, to its last one. */}
-                        <Input size="small" type="date" className="w-40" value={(form.startsAt ?? "").slice(0, 10)} onChange={(e) => set("startsAt", e.target.value ? `${e.target.value}T00:00:00` : null)} />
-                        <Label size="xsmall">{t("wizard.validity.to")}</Label>
-                        <Input size="small" type="date" className="w-40" value={(form.endsAt ?? "").slice(0, 10)} onChange={(e) => set("endsAt", e.target.value ? `${e.target.value}T23:59:59` : null)} />
-                      </div>
+                      /* A day without a time counts whole: from its first millisecond to its last one, in the store's zone. */
+                      <DayTimeRange
+                        start={range.start}
+                        end={range.end}
+                        fromLabel={t("wizard.validity.from")}
+                        toLabel={t("wizard.validity.to")}
+                        onChange={(next) => {
+                          setRange(next)
+                          setForm((f) => ({ ...f, startsAt: isoOf(next.start, "start"), endsAt: isoOf(next.end, "end") }))
+                        }}
+                      />
                     ) : null}
                   </Field>
                   <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -442,7 +453,8 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
                     <Field label={t("fields.perCustomer")} hint={form.audience === "customer" ? t("fields.perCustomerHint") : t("fields.perCustomerOnlyCustomers")}>
                       <div className="flex flex-wrap items-center gap-3">
                         <Chips value={form.terms?.perCustomerOrders ? "own" : "none"} options={[{ value: "none", label: t("fields.perCustomerNone") }, { value: "own", label: t("fields.perCustomerOwn") }]} onChange={(v) => setTerm("perCustomerOrders", v === "none" ? null : 1)} />
-                        {form.terms?.perCustomerOrders ? <NumberInput value={form.terms.perCustomerOrders} onChange={(v) => setTerm("perCustomerOrders", v)} unit={t("fields.ordersUnit")} min={1} className="w-36" /> : null}
+                        {/* Pole widać zawsze; przy "bez ograniczeń" wyszarzone, "najwyżej" je odblokowuje. */}
+<NumberInput value={form.terms?.perCustomerOrders ?? 1} disabled={!form.terms?.perCustomerOrders} onChange={(v) => setTerm("perCustomerOrders", v)} unit={t("fields.timesUnit", { count: form.terms?.perCustomerOrders ?? 1 })} min={1} className="w-36" />
                       </div>
                     </Field>
                   ) : null}

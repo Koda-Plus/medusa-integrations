@@ -301,6 +301,8 @@ async function demoCreate(svc: FakturowniaModuleService, row: DocumentRow, order
     govVerificationLink: null,
     govLink: null,
     govCorrectedNumber: null,
+    emailStatus: null,
+    sentTime: null,
   }
 }
 
@@ -338,6 +340,7 @@ function issuedPatch(args: {
     gov_link: doc.govLink,
     gov_corrected_number: doc.govCorrectedNumber,
     gov_checked_at: now,
+    ksef_number_at: doc.govId ? now : null,
     issued_at: now,
     next_attempt_at: null,
     error: adopted ? "Adopted: the document was already in Fakturownia, nothing was sent again." : null,
@@ -879,6 +882,7 @@ export async function markIssued(scope: Scope, id: string, input: { number: stri
       gov_status: doc.govStatus,
       gov_id: doc.govId,
       gov_checked_at: now,
+      ...(doc.govId && !row.ksef_number_at ? { ksef_number_at: now } : {}),
     })
   }
   const moved = await storeFor(scope).transition(id, ["unknown", "failed"], patch)

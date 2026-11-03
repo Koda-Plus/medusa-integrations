@@ -56,6 +56,21 @@ export interface BuyerWarningDto {
   source: string | null
 }
 
+/**
+ * Why an issued document waits for a person although nothing failed (0.4.0):
+ *
+ *   ksef_stuck   a VAT invoice or correction still without a KSeF number
+ *                `days` after issue; `state` says what Fakturownia reports
+ *                (never sent to KSeF, on its way, offline, or a KSeF error
+ *                with its messages)
+ *   not_emailed  it has a KSeF number since `since`, and neither Fakturownia
+ *                nor the plugin e-mailed it to the buyer `hours` later
+ */
+export type KsefWaitState = "not_sent" | "processing" | "offline" | "error"
+export type DocumentWatchDto =
+  | { kind: "ksef_stuck"; state: KsefWaitState; govStatus: string | null; errors: string[]; since: string; days: number }
+  | { kind: "not_emailed"; since: string; hours: number }
+
 export interface DocumentDto {
   id: string
   orderId: string
@@ -98,6 +113,13 @@ export interface DocumentDto {
   emailStatus: EmailStatus | null
   emailedAt: string | null
   emailError: string | null
+  /** When the plugin first saw the KSeF number (0.4.0). */
+  ksefNumberAt: string | null
+  /** Fakturownia's own `email_status` and `sent_time` as last read (0.4.0): Fakturownia may e-mail the document itself. */
+  remoteEmailStatus: string | null
+  remoteSentAt: string | null
+  /** Why the document is under "Needs attention" without a failure; null otherwise (0.4.0). */
+  watch: DocumentWatchDto | null
   demo: boolean
   createdAt: string | null
   updatedAt: string | null
@@ -210,6 +232,10 @@ export interface StatusResponse {
     corrections: "plan" | "off"
     emailPdf: boolean
     reminderAfterDays: number
+    /** 0: off. */
+    ksefStuckAfterDays: number
+    /** 0: off. */
+    notEmailedAfterHours: number
     /** Where the buyer's NIP is looked for, in order. */
     nipSources: string[]
     departmentsBySalesChannel: Array<{ salesChannelId: string; departmentId: number }>
@@ -348,6 +374,8 @@ export interface EmailDto {
   subject: string | null
   error: string | null
   requestedBy: string | null
+  /** A reminder: what was left to pay according to Fakturownia when it went out (0.4.0). */
+  amount: number | null
   createdAt: string | null
   demo: boolean
   /** The document, for lists across documents. */
@@ -397,6 +425,8 @@ export interface ActionResponse {
   /** What the action found or did, for the toast. */
   outcome: string
   message?: string | null
+  /** A reminder: what is left to pay according to Fakturownia (0.4.0). */
+  outstanding?: number | null
 }
 
 /* ---- Reminders and the summary -------------------------------------- */
@@ -408,7 +438,12 @@ export interface ReminderDto {
   lastReminderAt: string | null
   /** False while the last reminder is younger than a day. */
   canRemind: boolean
+  /** The last reminder the plugin refused after the last one that went out, and why (0.4.0). */
+  lastRefusal: { at: string | null; reason: ReminderRefusal | null; message: string | null } | null
 }
+
+/** Why a reminder did not go out (0.4.0): Medusa has the payment, Fakturownia has it, or Fakturownia could not be read. */
+export type ReminderRefusal = "paid_in_medusa" | "paid_in_fakturownia" | "fakturownia_unreachable"
 
 export interface RemindersResponse {
   documents: ReminderDto[]

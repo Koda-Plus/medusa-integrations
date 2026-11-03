@@ -67,6 +67,10 @@ export type DocumentPatch = Partial<
     | "reminder_at"
     | "finals_checked_at"
     | "converted_at"
+    | "ksef_number_at"
+    | "remote_email_status"
+    | "remote_sent_at"
+    | "remote_email_checked_at"
   >
 >
 

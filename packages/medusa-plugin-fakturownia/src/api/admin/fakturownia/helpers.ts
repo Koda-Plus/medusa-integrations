@@ -18,6 +18,7 @@ import {
   documentFilters,
   withAlternatives,
 } from "../../../modules/fakturownia/lib/filters"
+import type { WatchContext } from "../../../modules/fakturownia/lib/ksef-watch"
 import { REMINDER_KINDS, unpaidFilters } from "../../../modules/fakturownia/lib/unpaid"
 import { ActionError } from "../../../workflows/fakturownia/documents"
 import {
@@ -31,10 +32,11 @@ import {
   writerStates,
   type Scope,
 } from "../../../workflows/fakturownia/runtime"
+import { watchContext } from "../../../workflows/fakturownia/watch"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
 
-export { fakturowniaService, ActionError }
+export { fakturowniaService, ActionError, watchContext }
 
 export { DOCUMENT_FILTERS, GOV_ACCEPTED_VALUES, GOV_PROBLEM_VALUES, GOV_PROCESSING_VALUES, documentFilters, withAlternatives }
 
@@ -93,6 +95,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   const o = svc.getOptions()
   const demo = o.demo
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000)
+  const watch = await watchContext(scope)
 
   const ksefKinds = ["vat", "correction"]
   const [total, issued24h, pending, issued, failed, unknown, needsCorrection, canceled, unpaid, ksefProblems, attention, corrections] = await Promise.all([
@@ -106,7 +109,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     count(svc, documentFilters("canceled", demo)),
     count(svc, documentFilters("unpaid", demo)),
     count(svc, documentFilters("ksef", demo)),
-    count(svc, documentFilters("attention", demo)),
+    count(svc, documentFilters("attention", demo, watch)),
     count(svc, documentFilters("corrections", demo)),
   ])
   const [ksefAccepted, ksefProcessing, buyerWarnings, correctionsOpen, correctionsApproved, correctionsIssued, reminders, emails] = await Promise.all([
@@ -157,6 +160,8 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
       corrections: o.corrections,
       emailPdf: o.emailPdf,
       reminderAfterDays: o.reminderAfterDays,
+      ksefStuckAfterDays: o.ksefStuckAfterDays,
+      notEmailedAfterHours: o.notEmailedAfterHours,
       nipSources: o.nipSources.map(describeNipSource),
       departmentsBySalesChannel: o.departmentsBySalesChannel.map(([salesChannelId, departmentId]) => ({ salesChannelId, departmentId })),
     },
@@ -192,8 +197,9 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
 }
 
 /** A row as the admin sees it: no secret, and the panel link only in live mode. */
-export function documentDto(svc: FakturowniaModuleService, row: DocumentRow) {
-  return toDocumentDto(row, accountUrl(svc.getOptions()))
+/** `watch` (from `watchContext`) fills the document's `watch`: why it is under "Needs attention" without a failure. */
+export function documentDto(svc: FakturowniaModuleService, row: DocumentRow, watch: WatchContext | null = null) {
+  return toDocumentDto(row, accountUrl(svc.getOptions()), watch)
 }
 
 export function intParam(value: unknown, fallback: number, min: number, max: number): number {

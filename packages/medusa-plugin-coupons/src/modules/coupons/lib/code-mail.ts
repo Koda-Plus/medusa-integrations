@@ -7,7 +7,7 @@
  * list of { customer_id, email, at, by }); a second send to the same person
  * never happens, the store's adapter adds an idempotency key on top.
  */
-import type { CodeSentEntry, CouponDto } from "./contract"
+import type { CodeMailCouponInput, CodeSentEntry, CouponDto } from "./contract"
 
 export const CODE_SENT_KEY = "code_sent"
 
@@ -16,6 +16,9 @@ export const MESSAGE_MAX = 1000
 
 /** At most this many people in one send. */
 export const RECIPIENTS_MAX = 200
+
+/** At most this many codes in one e-mail. */
+export const COUPONS_PER_SEND_MAX = 5
 
 const ID = /^[A-Za-z0-9_-]{1,80}$/
 
@@ -34,6 +37,8 @@ export function codeSentOf(metadata: unknown): CodeSentEntry[] {
       email: typeof x.email === "string" ? x.email : "",
       at: typeof x.at === "string" ? x.at : "",
       by: typeof x.by === "string" && x.by ? x.by : null,
+      ...(typeof x.campaign === "string" && x.campaign ? { campaign: x.campaign } : {}),
+      ...(Array.isArray(x.codes) && x.codes.length > 1 ? { codes: x.codes.filter((c): c is string => typeof c === "string").slice(0, COUPONS_PER_SEND_MAX) } : {}),
     })
   }
   return out
@@ -56,10 +61,102 @@ export function cleanMessage(raw: unknown): { ok: boolean; value: string; error:
   return { ok: true, value, error: null }
 }
 
+/** The sender's note: optional, trimmed, at most MESSAGE_MAX characters (empty = none). */
+export function cleanNote(raw: unknown): { ok: boolean; value: string | null; error: string | null } {
+  const value = typeof raw === "string" ? raw.replace(/\r\n/g, "\n").trim() : ""
+  if (!value) return { ok: true, value: null, error: null }
+  if (value.length > MESSAGE_MAX) return { ok: false, value, error: "note_long" }
+  return { ok: true, value, error: null }
+}
+
 /** Customer ids from a request: valid ones, once each, at most RECIPIENTS_MAX. */
 export function cleanIds(raw: unknown): string[] {
   const list = Array.isArray(raw) ? raw : []
   return [...new Set(list.filter((x): x is string => typeof x === "string" && ID.test(x)))].slice(0, RECIPIENTS_MAX)
+}
+
+/**
+ * The coupons of one send: the one of the address first, then the others
+ * asked for, once each, valid ids only, at most COUPONS_PER_SEND_MAX. With
+ * one coupon its sentence is the message (as before). With more, every
+ * sentence is checked like the message: never empty, never too long.
+ */
+export function cleanSendCoupons(mainId: string, raw: unknown, message: string): { ok: boolean; items: CodeMailCouponInput[]; errors: string[] } {
+  const list = Array.isArray(raw) ? raw : []
+  const seen = new Set<string>([mainId])
+  const sentences = new Map<string, string>()
+  const ids: string[] = [mainId]
+  for (const r of list) {
+    if (!r || typeof r !== "object") continue
+    const x = r as Record<string, unknown>
+    const id = typeof x.id === "string" ? x.id : ""
+    if (!ID.test(id)) continue
+    if (typeof x.sentence === "string") sentences.set(id, x.sentence)
+    if (seen.has(id)) continue
+    seen.add(id)
+    ids.push(id)
+  }
+  if (ids.length > COUPONS_PER_SEND_MAX) return { ok: false, items: [], errors: ["too_many_coupons"] }
+  if (ids.length === 1) return { ok: true, items: [{ id: mainId, sentence: message }], errors: [] }
+  const errors = new Set<string>()
+  const items = ids.map((id) => {
+    const s = cleanMessage(sentences.get(id))
+    if (!s.ok) errors.add(s.error === "message_long" ? "sentence_long" : "sentence")
+    return { id, sentence: s.value }
+  })
+  return errors.size ? { ok: false, items: [], errors: [...errors] } : { ok: true, items, errors: [] }
+}
+
+/**
+ * A send of several codes in one e-mail: per coupon its own plan (planSend),
+ * and per person the codes she gets now (those she did not get before).
+ * A person who already has every code is skipped. With one coupon this is
+ * planSend.
+ */
+export function planMultiSend(input: {
+  requested: readonly string[]
+  coupons: ReadonlyArray<{ id: string; sent: readonly CodeSentEntry[]; ruleIds: readonly string[] }>
+  nobody: string | null
+}): {
+  toSend: string[]
+  skipped: string[]
+  perCoupon: Record<string, ReturnType<typeof planSend>>
+  codesOf: Record<string, string[]>
+} {
+  const perCoupon: Record<string, ReturnType<typeof planSend>> = {}
+  for (const c of input.coupons) perCoupon[c.id] = planSend({ requested: input.requested, sent: c.sent, ruleIds: c.ruleIds, nobody: input.nobody })
+  const requested = [...new Set(input.requested)].filter((id) => id !== input.nobody)
+  const codesOf: Record<string, string[]> = {}
+  for (const cid of requested) {
+    const own = input.coupons.filter((c) => perCoupon[c.id].toSend.includes(cid)).map((c) => c.id)
+    if (own.length) codesOf[cid] = own
+  }
+  return { toSend: requested.filter((cid) => codesOf[cid]), skipped: requested.filter((cid) => !codesOf[cid]), perCoupon, codesOf }
+}
+
+/**
+ * The row a coupon keeps for one person of a send: with the campaign id and
+ * every code of her e-mail when there were several (one code: the old row).
+ */
+export function sentEntry(
+  r: { customerId: string; email: string; promotionIds?: readonly string[] },
+  coupons: ReadonlyArray<{ id: string; code: string }>,
+  at: { at: string; by: string | null; campaign: string | null },
+): CodeSentEntry {
+  const own = coupons.filter((c) => (r.promotionIds ?? coupons.map((x) => x.id)).includes(c.id)).map((c) => c.code)
+  return {
+    customer_id: r.customerId,
+    email: r.email,
+    at: at.at,
+    by: at.by,
+    ...(at.campaign ? { campaign: at.campaign } : {}),
+    ...(own.length > 1 ? { codes: own } : {}),
+  }
+}
+
+/** The id of one send of several codes, kept on each of its coupons. */
+export function campaignIdOf(now: Date, random: string): string {
+  return `cm_${now.getTime().toString(36)}${String(random).replace(/[^A-Za-z0-9]/g, "").slice(0, 8)}`
 }
 
 /**

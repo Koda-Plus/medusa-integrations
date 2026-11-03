@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { DocumentDetailResponse } from "../../../../../modules/fakturownia/lib/contract"
 import { toEmailDto, toKsefEventDto, type EmailRow, type KsefEventRow } from "../../../../../modules/fakturownia/lib/dto"
 import { actorNames, getDocument, listDocuments, listPlans } from "../../../../../workflows/fakturownia/runtime"
-import { documentDto, fakturowniaService, planDtos, writersDto } from "../../helpers"
+import { documentDto, fakturowniaService, planDtos, watchContext, writersDto } from "../../helpers"
 
 /**
  * GET /admin/fakturownia/documents/:id
@@ -32,7 +32,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   ])
   const names = await actorNames(req.scope, [...ksef.map((k) => k.requested_by), ...emails.map((e) => e.requested_by)])
   const body: DocumentDetailResponse = {
-    document: documentDto(svc, row),
+    document: documentDto(svc, row, await watchContext(req.scope)),
     ksef: ksef.map((k) => toKsefEventDto(k, names)),
     emails: emails.map((e) => toEmailDto(e, row, names)),
     corrections: corrections.map((c) => documentDto(svc, c)),
