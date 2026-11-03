@@ -93,8 +93,8 @@ export interface ShipxClient {
   getOrganization(): Promise<ShipxOrganization>
   createShipment(payload: ShipxCreatePayload): Promise<ShipxShipment>
   getShipment(id: string | number): Promise<ShipxShipment>
-  /** Shipments of the organization by the documented filters (receiver_email, receiver_phone, created_at_gteq...). */
-  findShipments(filters: Record<string, string>): Promise<ShipxShipment[]>
+  /** Shipments of the organization by the documented filters (receiver_email, receiver_phone, created_at_gteq...), page by page; `complete` is false when more pages were left unread. */
+  findShipments(filters: Record<string, string>): Promise<{ items: ShipxShipment[]; complete: boolean }>
   cancelShipment(id: string | number): Promise<void>
   buyOffer(id: string | number, offerId: string | number): Promise<ShipxShipment>
   getLabel(id: string | number, type: "normal" | "A6"): Promise<{ data: Uint8Array; contentType: string }>
@@ -104,6 +104,10 @@ export interface ShipxClient {
 type Method = "GET" | "POST" | "DELETE"
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/* A lookup after an unclear create reads at most this many shipments (8 pages of 25). */
+const FIND_PER_PAGE = 25
+const FIND_PAGES = 8
 
 export function createShipxClient(opts: ShipxClientOptions): ShipxClient {
   const host = opts.sandbox ? SHIPX_HOSTS.sandbox : SHIPX_HOSTS.production
@@ -206,11 +210,19 @@ export function createShipxClient(opts: ShipxClientOptions): ShipxClient {
     createShipment: async (payload) => json<ShipxShipment>("POST", `/v1/organizations/${org()}/shipments`, payload),
     getShipment: async (id) => json<ShipxShipment>("GET", `/v1/shipments/${sid(id)}`),
     async findShipments(filters) {
-      const params = new URLSearchParams()
-      for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v)
-      params.set("per_page", "25")
-      const body = await json<{ items?: ShipxShipment[] }>("GET", `/v1/organizations/${org()}/shipments?${params.toString()}`)
-      return Array.isArray(body?.items) ? body.items : []
+      const items: ShipxShipment[] = []
+      for (let page = 1; page <= FIND_PAGES; page++) {
+        const params = new URLSearchParams()
+        for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v)
+        params.set("per_page", String(FIND_PER_PAGE))
+        params.set("page", String(page))
+        const body = await json<{ items?: ShipxShipment[]; count?: number }>("GET", `/v1/organizations/${org()}/shipments?${params.toString()}`)
+        const got = Array.isArray(body?.items) ? body.items : []
+        items.push(...got)
+        const total = typeof body?.count === "number" ? body.count : null
+        if (got.length < FIND_PER_PAGE || (total !== null && items.length >= total)) return { items, complete: true }
+      }
+      return { items, complete: false }
     },
     async cancelShipment(id) {
       await send("DELETE", `/v1/shipments/${sid(id)}`)

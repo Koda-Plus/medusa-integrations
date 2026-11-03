@@ -377,6 +377,7 @@ const pl: typeof en = {
       requesting: "Zamawianie",
       requested: "Zamówiony (zlecenie odbioru {{id}})",
       failed: "Nieudany",
+      unknown: "Niejasne: sprawdź w Managerze Paczek",
     },
   },
   lockers: {
