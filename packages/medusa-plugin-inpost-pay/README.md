@@ -42,6 +42,7 @@ const inpostPay = {
   // backendUrl: "https://api.example.com",
   // storefrontUrl: "https://shop.example.com",
   // sendOrderEvents: true,
+  merchantSecret: process.env.INPOST_PAY_MERCHANT_SECRET, // refunds through InPost Pay
 }
 
 module.exports = defineConfig({
@@ -78,6 +79,7 @@ INPOST_PAY_CLIENT_ID=...
 INPOST_PAY_CLIENT_SECRET=...
 INPOST_PAY_MERCHANT_CLIENT_ID=...
 INPOST_PAY_SANDBOX=true
+INPOST_PAY_MERCHANT_SECRET=...
 # INPOST_PAY_DEMO=true
 ```
 
@@ -99,6 +101,9 @@ Every option is optional. Switches and numbers may come as strings, as environme
 - `shippingVatRate` (default `23`): the VAT rate of the shipping price shown in the app, in percent.
 - `timeoutMs` (default `15000`, 1000 to 60000): the timeout of one request to InPost.
 - `sendOrderEvents` (default `false`): the writer of order events to InPost (below).
+- `merchantSecret` (default none): the Merchant Secret from merchant.inpost.pl (API keys). With it a refund in Medusa returns the money through InPost Pay ([The payment provider](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost-pay#the-payment-provider)). Server only, masked like the client secret.
+- `manualRefunds` (default `false`): without `merchantSecret`, record refunds in Medusa only, for a store that returns the money in the merchant portal. Off, a refund without `merchantSecret` fails, so Medusa never shows money as returned when it was not.
+- `autoCapture` (default `true`): capture the Medusa payment when InPost reports `AUTHORIZED`.
 - `sessionSecret` (default derived from `clientSecret`): the key of the payment session proofs. Set it when the module and the provider run in different processes without the keys (demo mode on several instances).
 - `demo` (default `false`): demo mode, see [Demo mode](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost-pay#demo-mode). It wins over the keys.
 
@@ -211,8 +216,12 @@ As the "Signature verification" page describes it: the headers `x-signature`, `x
 The customer pays in the InPost app, never on the storefront, so the provider has nothing to redirect to:
 
 - **demo**: authorized at once; the session data says `demo: true`.
-- **sandbox and live**: authorized when InPost hands the order over (`POST /v1/izi/order`, a signed call), because Medusa needs an authorized session to turn the cart into an order. The money state is InPost's payment status, which the plugin keeps on the basket and shows on the order and in the panel. Capture the payment in Medusa when InPost reports `AUTHORIZED` (or when the courier collected cash on delivery).
-- **capture, cancel, refund** are recorded in the session data only: settlement and refunds of InPost Pay go through InPost (the merchant portal, or InPost's returns API), not through this provider.
+- **sandbox and live**: authorized when InPost hands the order over (`POST /v1/izi/order`, a signed call), because Medusa needs an authorized session to turn the cart into an order and InPost creates the order before the customer pays. The money state is InPost's payment status, which the plugin keeps on the basket and shows on the order and in the panel.
+- **capture**: when InPost reports `AUTHORIZED` the plugin captures the payment in Medusa itself (`autoCapture: false` leaves it to you). A failed capture is a line in the basket history; capture it on the order then. Cash on delivery is captured by hand when the courier collected the money.
+- **events**: InPost may send an event twice or late. A repeated `event_id` or an event older than the newest one applied (`event_data_time`) changes nothing and is noted in the history, so a late `PENDING` never undoes an `AUTHORIZED`. The status and InPost's `payment_reference` also go into the data of the Medusa payment.
+- **refund** with `merchantSecret`: the plugin finds the InPost transaction of the order (the payment reference of InPost's event, else `GET /v1/izi/transaction` from a day before the payment, matching `order_id` "Medusa order id|InPost order id") and orders the refund (`POST /v1/izi/transaction/{id}/refund`, signed with SHA-512 as InPost's page describes it). A refund InPost refuses, or one it cannot be sent (no paid transaction, two of them, between 23:00 and 6:30), fails in Medusa too, so the refund does not stand. After an unclear answer (a timeout, a 5xx) the error says so: the refund may have gone through, and repeating the same amount sends the same `X-Command-ID`, which InPost does not pay twice. The transaction id is kept on the payment for the next refund.
+- **refund** without `merchantSecret`: refused, unless `manualRefunds: true` (recorded only, you return the money in the merchant portal). Cash on delivery and the demo are always recorded only: InPost Pay holds no money of them.
+- **cancel** is recorded in the session data.
 - A session without the plugin's proof (an HMAC of the basket, the cart and the amount) is never authorized, so a shopper cannot complete a cart with this provider through the Store API.
 
 ## Order events to InPost (writer)
@@ -268,13 +277,15 @@ These parts were cut off or not stated in the pages that could be read, and the 
 - Whether `basket_price` of an order includes the delivery: both the cart total and the total without shipping are accepted.
 - The request body of the binding call (documented as none, so none is sent) and whether the Basket App API needs a path prefix (the signature page shows `/basket-app/api/v1/izi/...` in one example): use `apiUrl` to add one.
 - Whether the key hash header is hex or base64: both are accepted.
-- Where the POS id is used, and the returns API.
+- Where the POS id is used.
+- How a decimal `refund_amount` enters the refund signature: the plugin signs it as JSON writes it (`12.5`, not `12.50`), the same text it sends; the page's only example (`1.23`) fits both readings. And whether `order_id` of the transaction list filters by the merchant's part alone: the plugin does not rely on it and matches the list by date instead.
+- The transaction webhooks (refunds, settlements): configured in merchant.inpost.pl, their pages were not readable; the refund status is the one the refund call answers.
 
 Check these against the sandbox before going live; the option overrides and the history of every basket make the differences visible.
 
 ## Security and data
 
-- **Secrets**: the client secret is sent only to InPost's token endpoint, never to the admin (it sees `***` and the last four characters) and is masked in logs and stored errors. The Merchant Client Id is public by design.
+- **Secrets**: the client secret is sent only to InPost's token endpoint and the merchant secret never leaves the server (it only enters the refund signature); neither reaches the admin (it sees `***` and the last four characters) and is masked in logs and stored errors. The Merchant Client Id is public by design.
 - **InPost's calls are verified**: signature, key hash, exact body and the 240 second window; unknown key versions are not fetched more than 10 times a minute, so forged calls cannot make the store hammer InPost.
 - **Payment sessions**: only sessions with the plugin's proof are authorized.
 - **Public store routes** are rate limited per client IP in the memory of each process (the first address of `X-Forwarded-For` behind a proxy) and refuse anything but a `cart_...` id. The basket id is a random id only the storefront session that bound the basket knows.

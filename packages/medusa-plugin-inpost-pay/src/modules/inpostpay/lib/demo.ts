@@ -55,5 +55,12 @@ export function createDemoBasketAppClient(): DemoBasketApp {
     async signingKey() {
       throw new InpostPayApiError(409, "invalid", "Demo mode has no signing keys: the Merchant API is not used by the demo")
     },
+    async transactions() {
+      return { items: [], count: 0 }
+    },
+    async refund(transactionId, input) {
+      note("refund", transactionId, input)
+      return { external_refund_id: input.body.external_refund_id ?? null, refund_amount: input.body.refund_amount ?? null, status: "SUCCESS", description: "demo" }
+    },
   }
 }

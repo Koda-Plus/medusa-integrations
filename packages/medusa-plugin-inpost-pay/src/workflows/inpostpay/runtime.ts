@@ -34,12 +34,12 @@ let client: { key: string; value: BasketAppClient } | null = null
 export function clientOf(scope: Scope): BasketAppClient | null {
   const o = optionsOf(scope)
   if (o.mode === "off") return null
-  const key = `${o.mode}|${o.apiUrl}|${o.tokenUrl}|${o.clientId}`
+  const key = `${o.mode}|${o.apiUrl}|${o.tokenUrl}|${o.clientId}|${o.merchantSecret ? "refunds" : ""}`
   if (client && client.key === key) return client.value
   const value =
     o.mode === "demo"
       ? createDemoBasketAppClient()
-      : createBasketAppClient({ mode: o.mode, apiUrl: o.apiUrl, tokenUrl: o.tokenUrl, clientId: o.clientId, clientSecret: o.clientSecret, timeoutMs: o.timeoutMs })
+      : createBasketAppClient({ mode: o.mode, apiUrl: o.apiUrl, tokenUrl: o.tokenUrl, clientId: o.clientId, clientSecret: o.clientSecret, timeoutMs: o.timeoutMs, merchantSecret: o.merchantSecret })
   client = { key, value }
   return value
 }

@@ -20,6 +20,9 @@ The first version: one-click checkout with the InPost mobile app (InPost Pay) fo
 ### Payment provider
 
 - `pp_inpost-pay_inpost-pay`: authorizes only sessions with the plugin's proof (an HMAC of the basket, the cart and the amount), so the Store API cannot complete a cart with it. Demo authorizes at once, sandbox and live when InPost hands the order over; InPost's payment status is kept on the basket.
+- Refunds through InPost Pay (option `merchantSecret`): the transaction of the order is found in InPost's transaction list and the refund ordered with InPost's SHA-512 signature (both examples of the documentation verified in the tests) and an `X-Command-ID` derived from the refund, so a retry after a timeout is not paid twice. A refused or unsendable refund fails in Medusa as well, instead of being recorded as if the money went back. Without the secret refunds fail, or with `manualRefunds: true` are recorded only. Cash on delivery and demo refunds are recorded only.
+- The payment is captured in Medusa when InPost reports `AUTHORIZED` (option `autoCapture`, default on). The Medusa order id and InPost's payment reference are kept in the payment data.
+- InPost events sent twice or out of order (`event_id`, `event_data_time`) no longer overwrite a newer payment status.
 
 ### Admin
 
