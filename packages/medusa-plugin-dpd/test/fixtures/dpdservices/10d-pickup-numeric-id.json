@@ -1,0 +1,98 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "reference": "probe-mvzryyzy-Pd",
+          "pudoReceiver": {
+            "name": "Anna Przykładowa",
+            "countryCode": "PL",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "ref1": "9100",
+          "services": [
+            {
+              "code": "DPD_PICKUP",
+              "attributes": [
+                {
+                  "code": "PUDO",
+                  "value": "1111"
+                }
+              ]
+            }
+          ],
+          "parcels": [
+            {
+              "reference": "probe-mvzryyzy-Pd-1",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "INCORRECT_DATA",
+      "sessionId": null,
+      "beginTime": null,
+      "endTime": null,
+      "packages": [
+        {
+          "status": "INCORRECT_DATA",
+          "reference": "probe-mvzryyzy-Pd",
+          "validationInfo": [
+            {
+              "errorCode": "INCORRECT_RECEIVER_ADDRESS",
+              "info": "Adres odbiorcy jest wymagany"
+            },
+            {
+              "errorCode": "INCORRECT_RECEIVER_CITY",
+              "info": "Miasto odbiorcy jest wymagane"
+            },
+            {
+              "errorCode": "INCORRECT_RECEIVER_POSTAL_CODE",
+              "info": "Kod pocztowy odbiorcy jest wymagany"
+            },
+            {
+              "errorCode": "INCORRECT_PUDO",
+              "info": "Incorrect pudo identifier"
+            }
+          ],
+          "parcels": [
+            {
+              "status": "OK",
+              "reference": "probe-mvzryyzy-Pd-1",
+              "waybill": null,
+              "validationInfo": []
+            }
+          ]
+        }
+      ],
+      "traceId": "2996265a-cbf0-4302-ab04-108c99627cad"
+    }
+  }
+}

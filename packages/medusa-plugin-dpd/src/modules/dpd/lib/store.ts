@@ -13,7 +13,10 @@
  *   insertIgnore    a row per fulfillment, kind and mode; the unique index
  *                   refuses a second one
  *   transition      a state change only from the states it may come from,
- *                   setting only the columns of PATCHABLE_COLUMNS
+ *                   setting only the columns of PATCHABLE_COLUMNS; with
+ *                   `expect`, only while the row still has the point and
+ *                   the boxes a plan was built from (a write of problems
+ *                   never lands on a row whose point changed meanwhile)
  *   insertEvent     a history row, ignored when its dedupe key exists
  *   setSetting      one row per key, written in one statement
  *   claimSetting    a key only the first caller writes (the demo seed)
@@ -34,7 +37,11 @@
  *
  *   claim           a row in one of the given states moves to creating or
  *                   labeling with a token and a lease (attempts + 1); a
- *                   second process finds the state changed and gets null
+ *                   second process finds the state changed and gets null.
+ *                   With `expect` (the create), only while the row still
+ *                   has the point and the boxes its plan read: a change
+ *                   saved while the plan waited is never overwritten by
+ *                   the patch, nor sent to DPD
  *   finish          only the owner of the claim (state creating or labeling
  *                   and the same token) writes the result; a claim whose
  *                   lease ran out was taken back, so a late answer writes
@@ -136,6 +143,19 @@ export type ClaimArgs = {
   to: "creating" | "labeling"
   /** Columns set in the same statement (plan_hash, cod_minor, boxes...). `state` in it is ignored. */
   patch?: ShipmentPatch
+  /** The plan inputs the patch was built from, compared like the expect of transition (before the patch writes). */
+  expect?: TransitionExpect
+}
+
+/**
+ * What a transition expects the row to hold besides its state: the inputs of
+ * the plan its patch was built from. A key left out is not compared; null
+ * matches a null column.
+ */
+export type TransitionExpect = {
+  pudo_id?: string | null
+  /** Compared as jsonb (the same boxes in another key order are the same). */
+  boxes?: unknown
 }
 
 /** How a claim ends besides its patch. */
@@ -156,14 +176,15 @@ export const LEASE_EXPIRED_ERROR = "No answer from DPD within the lease; the shi
 export const LABEL_LEASE_EXPIRED_ERROR = "Getting the label took longer than its lease; get it again."
 
 export type DpdStore = {
-  /** state in `from` -> `to`, with the token and the lease, attempts + 1, updated_at = now(). Null when another process won. */
+  /** state in `from` -> `to`, with the token and the lease, attempts + 1, updated_at = now(). Null when another process won or the row no longer holds `args.expect`. */
   claim(id: string, from: readonly string[], args: ClaimArgs): Promise<ShipmentRow | null>
   /** Only the owner of the claim: state in (creating, labeling) and claim_token = token. Clears token and lease; `unsent` undoes the count of the claim. */
   finish(id: string, token: string, patch: ShipmentPatch & { state: string }, options?: FinishOptions): Promise<ShipmentRow | null>
   /** creating past its lease -> unknown (lease_expired); labeling past its lease -> created (label_lease_expired). Returns the rows changed. */
   expireLeases(mode: DpdMode, now: Date): Promise<ShipmentRow[]>
   insertIgnore(row: NewShipment): Promise<ShipmentRow | null>
-  transition(id: string, from: readonly string[], patch: ShipmentPatch): Promise<ShipmentRow | null>
+  /** state in `from` (and the columns of `expect` as given) -> patch, updated_at = now(). Null when the row is not there, moved on or changed meanwhile. */
+  transition(id: string, from: readonly string[], patch: ShipmentPatch, expect?: TransitionExpect): Promise<ShipmentRow | null>
   insertEvent(event: NewEvent): Promise<EventRow | null>
   setSetting(key: string, value: unknown, updatedBy: string | null): Promise<SettingRow | null>
   claimSetting(key: string, value: unknown): Promise<boolean>
@@ -258,6 +279,21 @@ export function setClause(patch: ShipmentPatch, updatedAt?: Date | null): { sql:
   return { sql: parts.join(", "), bindings }
 }
 
+/** The conditions of a TransitionExpect, each `and ...`, with its bindings; empty without one. */
+export function expectClause(expect?: TransitionExpect): { sql: string; bindings: unknown[] } {
+  const parts: string[] = []
+  const bindings: unknown[] = []
+  if (expect && "pudo_id" in expect && expect.pudo_id !== undefined) {
+    parts.push(` and "pudo_id" is not distinct from ?`)
+    bindings.push(expect.pudo_id)
+  }
+  if (expect && "boxes" in expect && expect.boxes !== undefined) {
+    parts.push(` and "boxes" is not distinct from ?::jsonb`)
+    bindings.push(expect.boxes === null ? null : JSON.stringify(expect.boxes))
+  }
+  return { sql: parts.join(""), bindings }
+}
+
 /** `%q%` for `ilike`, with the wildcard characters of the search escaped. */
 export function like(q: string): string {
   return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
@@ -299,12 +335,13 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       if (from.length === 0) return null
       const { state: _ignored, ...patch } = args.patch ?? {}
       const set = setClause(patch)
+      const guard = expectClause(args.expect)
       const placeholders = from.map(() => "?").join(", ")
       const result = await sql.raw(
         `update "${SHIPMENT_TABLE}" set ${set.sql}, "state" = ?, "claim_token" = ?, "lease_until" = ?, "attempts" = "attempts" + 1
-         where "id" = ? and "state" in (${placeholders}) and "deleted_at" is null
+         where "id" = ? and "state" in (${placeholders}) and "deleted_at" is null${guard.sql}
          returning *`,
-        [...set.bindings, args.to, args.token, args.leaseUntil, id, ...from],
+        [...set.bindings, args.to, args.token, args.leaseUntil, id, ...from, ...guard.bindings],
       )
       return rowsOf<ShipmentRow>(result)[0] ?? null
     },
@@ -369,15 +406,16 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       return rowsOf<ShipmentRow>(result)[0] ?? null
     },
 
-    async transition(id, from, patch) {
+    async transition(id, from, patch, expect) {
       if (from.length === 0) return null
       const set = setClause(patch)
+      const guard = expectClause(expect)
       const placeholders = from.map(() => "?").join(", ")
       const result = await sql.raw(
         `update "${SHIPMENT_TABLE}" set ${set.sql}
-         where "id" = ? and "state" in (${placeholders}) and "deleted_at" is null
+         where "id" = ? and "state" in (${placeholders}) and "deleted_at" is null${guard.sql}
          returning *`,
-        [...set.bindings, id, ...from],
+        [...set.bindings, id, ...from, ...guard.bindings],
       )
       return rowsOf<ShipmentRow>(result)[0] ?? null
     },

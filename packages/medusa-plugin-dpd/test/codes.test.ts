@@ -12,7 +12,7 @@ import { dirname, join, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import en from "../src/admin/i18n/en.ts"
 import { ACTION_ERROR_CODES, SHIPMENT_ERROR_CODES } from "../src/modules/dpd/lib/contract.ts"
-import { DPD_ERROR_CODES, DPD_PROBLEM_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
+import { DPD_ERROR_CODES, DPD_PROBLEM_CODES, PICKUP_ANSWER_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
 import { PLAN_PROBLEM_CODES, PLAN_WARNING_CODES } from "../src/modules/dpd/lib/plan.ts"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -167,6 +167,34 @@ test("every DPD error code is a value a row can keep", () => {
 
 test("the code lists have no duplicates", () => {
   for (const [what, , codes] of CASES) assert.equal(new Set(codes).size, codes.length, what)
+})
+
+/* The codes of stage 3, DPD Pickup: the refused point actions and searches, the row autoCreate did not send. */
+const PICKUP_ACTION_ERRORS = ["not_pickup", "point_refused", "points_unavailable", "rate_limited", "point_not_found"] as const
+const PICKUP_ROW_ERRORS = ["point_unchecked"] as const
+const PICKUP_PROBLEMS = ["pudo_not_found", "pudo_inactive", "pudo_no_delivery", "pudo_no_cod", "pickup_abroad_later"] as const
+
+test("the Pickup codes are in the lists the server sends and have their words in both dictionaries", async () => {
+  for (const c of PICKUP_ACTION_ERRORS) assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(c), `ACTION_ERROR_CODES: ${c}`)
+  for (const c of PICKUP_ROW_ERRORS) assert.ok((SHIPMENT_ERROR_CODES as readonly string[]).includes(c), `SHIPMENT_ERROR_CODES: ${c}`)
+  assert.ok((PLAN_WARNING_CODES as readonly string[]).includes("pudo_unchecked"))
+  const pl = await loadPl()
+  for (const [lang, tree] of [["en", en as unknown as Tree], ["pl", pl]] as const) {
+    assert.deepEqual(missing(tree, "actionError", PICKUP_ACTION_ERRORS), [], `${lang} actionError`)
+    assert.deepEqual(missing(tree, "errorCode", PICKUP_ROW_ERRORS), [], `${lang} errorCode`)
+    assert.deepEqual(missing(tree, "problem", PICKUP_PROBLEMS), [], `${lang} problem`)
+    assert.deepEqual(missing(tree, "warning", ["pudo_unchecked"]), [], `${lang} warning`)
+    assert.equal(typeof section(tree, "account").pickupNotConfigured, "string", `${lang} account.pickupNotConfigured`)
+  }
+  /* The point id goes in {{detail}} (classifyNumbersAnswer puts the sent PUDO there), in both languages. */
+  assert.match(String(section(en as unknown as Tree, "problem").pudo_not_found), /{{detail}}/)
+  assert.match(String(section(pl, "problem").pudo_not_found), /{{detail}}/)
+})
+
+test("every problem a DPD answer gives for a Pickup package is a plan problem code, so it has the plan's words", () => {
+  const plan = new Set<string>(PLAN_PROBLEM_CODES)
+  assert.deepEqual(PICKUP_ANSWER_CODES.filter((c) => !plan.has(c)), [])
+  assert.ok(PICKUP_ANSWER_CODES.length > 0)
 })
 
 test("the action errors live apart from the page error string, which stays a plain text", () => {

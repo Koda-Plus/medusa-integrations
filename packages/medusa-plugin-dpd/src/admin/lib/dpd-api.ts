@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query"
 import type {
   ActionResponse,
   BoxesRequest,
@@ -8,6 +8,8 @@ import type {
   LabelRequest,
   OrderDpdResponse,
   PlanResponse,
+  PointsResponse,
+  SetPointRequest,
   ShipmentFilter,
   ShipmentResponse,
   ShipmentsResponse,
@@ -17,7 +19,7 @@ import type {
 } from "../../modules/dpd/lib/contract"
 
 import { backendUrl, kitRequestInit } from "./dpd-kit"
-import { DpdRequestError, fetchLabelFile, parseJson, requestError } from "./dpd-logic"
+import { DpdRequestError, fetchLabelFile, parseJson, pointsQuery, requestError } from "./dpd-logic"
 
 /* The backend the dashboard talks to, with its auth (session or JWT): from the kit. */
 export { backendUrl }
@@ -44,6 +46,8 @@ export const dpdKeys = {
   order: (id: string) => ["dpd", "order", id] as const,
   shipment: (id: string) => ["dpd", "shipment", id] as const,
   plan: (id: string) => ["dpd", "plan", id] as const,
+  /** A point search of the admin, by its query (zip, city, cod). */
+  points: (q: Record<string, string>) => ["dpd", "points", q] as const,
 }
 
 const shipmentPath = (id: string, action?: string) => `/admin/dpd/shipments/${encodeURIComponent(id)}${action ? `/${action}` : ""}`
@@ -190,6 +194,47 @@ export function useDpdBoxes() {
     mutationFn: ({ id, ...body }) => dpdFetch<PlanResponse>(shipmentPath(id, "boxes"), { method: "POST", body }),
     onSuccess: (data, vars) => client.setQueryData(dpdKeys.plan(vars.id), data),
     onSettled: () => void client.invalidateQueries({ queryKey: dpdKeys.all }),
+  })
+}
+
+/**
+ * The DPD Pickup points a parcel can go to near a postal code (and city),
+ * from the source of the mode (MyPudo, the test or the sample catalog). Runs
+ * only with a five digit postal code; the panel has no map, so no search by
+ * coordinates. A search is kept 5 minutes (the route caches it longer).
+ */
+export function useDpdPoints(q: { zip?: string; city?: string; cod?: boolean } | null): UseQueryResult<PointsResponse, Error> {
+  const query = pointsQuery(q)
+  return useQuery<PointsResponse, Error>({
+    queryKey: dpdKeys.points(query ?? {}),
+    queryFn: () => dpdFetch<PointsResponse>(`/admin/dpd/points?${new URLSearchParams(query ?? {}).toString()}`),
+    enabled: query !== null,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+}
+
+/**
+ * Change the Pickup point of a shipment before it is created. The answer is
+ * the fresh plan with the new point, put straight into its query (like the
+ * boxes), so the drawer shows it without reading the point again. Every
+ * answer refreshes the lists, the shipment and the order card; a 409 (the
+ * row moved on) also reads the plan again. A refused point (422) changes
+ * nothing.
+ */
+export function useDpdSetPoint(id: string): UseMutationResult<PlanResponse, Error, SetPointRequest> {
+  const client = useQueryClient()
+  return useMutation<PlanResponse, Error, SetPointRequest>({
+    mutationFn: (body) => dpdFetch<PlanResponse>(shipmentPath(id, "point"), { method: "POST", body }),
+    onSuccess: (data) => client.setQueryData(dpdKeys.plan(id), data),
+    onError: (err) => {
+      if (err instanceof DpdRequestError && err.status === 409) void client.invalidateQueries({ queryKey: dpdKeys.plan(id) })
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: [...dpdKeys.all, "shipments"] })
+      void client.invalidateQueries({ queryKey: dpdKeys.shipment(id) })
+      void client.invalidateQueries({ queryKey: [...dpdKeys.all, "order"] })
+    },
   })
 }
 

@@ -5,19 +5,22 @@
  * labels call on the happy path, a refusal that keeps the reference, an
  * unclear answer that is never sent again, a duplicate taken over, a label
  * that did not come, the payer refused, cash on delivery on the first box
- * of an order only, and demo mode without a single fetch. No network.
+ * of an order only, demo mode without a single fetch, and Pickup: one box to
+ * a checked point, the answers of DPD kept with their source, no automatic
+ * send to a point nobody could check (DS13). No network.
  */
 import { afterEach, beforeEach, test } from "node:test"
 import assert from "node:assert/strict"
-import { createShipment, labelAttempt, labelShipment, withAttempt, boxesWithWaybills, labelSearchOf } from "../src/workflows/dpd/create.ts"
+import { createAttempt, createShipment, labelAttempt, labelShipment, withAttempt, boxesWithWaybills, labelSearchOf } from "../src/workflows/dpd/create.ts"
 import { labelsRequest, type DpdServicesClient } from "../src/modules/dpd/lib/dpdservices.ts"
-import { planForShipment } from "../src/workflows/dpd/plan.ts"
+import { mergeProblems, planForShipment } from "../src/workflows/dpd/plan.ts"
 import { recordFulfillment } from "../src/workflows/dpd/shipments.ts"
 import { acceptShipment, skipShipment } from "../src/workflows/dpd/resolve.ts"
-import type { ShipmentRow } from "../src/modules/dpd/lib/dto.ts"
+import { problemsOf, toShipmentDto, type ShipmentRow } from "../src/modules/dpd/lib/dto.ts"
+import { catalogSource, SANDBOX_POINTS } from "../src/modules/dpd/lib/points.ts"
 import type { DpdPluginOptions } from "../src/modules/dpd/lib/options.ts"
 import { FakeDpdServices, loadFixture, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
-import { arm, order, SANDBOX, settle, setup, type Row, type Setup } from "./helpers.ts"
+import { arm, countingPoints, order, SANDBOX, settle, setup, type CountingPoints, type Row, type Setup } from "./helpers.ts"
 
 const realFetch = globalThis.fetch
 let requests = 0
@@ -396,4 +399,113 @@ test("the pacing holds the label back: created, rate_limited, label_deferred, no
   assert.equal(again.row.state, "created")
   assert.equal(again.row.error_code, "rate_limited_manual", "a person asked: a person asks again")
   assert.equal(again.row.attempts, 1)
+})
+
+/* Stage 3: DPD Pickup (spec 8, 9.3, DS13). */
+
+const PICKUP = { dpd_option: "dpd-pickup", dpd_kind: "pickup", dpd_cod: false, dpd_pudo_id: "PL14509", dpd_country: "PL" }
+
+function pickupOrder(items: Row[] = [{ id: "li_1", quantity: 1, variant: { weight: 1500 } }], data: Row = PICKUP): Row {
+  return order({
+    id: ORDER,
+    items,
+    shipping_methods: [{ id: "sm_01", name: "DPD Pickup", shipping_option_id: "so_01", data }],
+    fulfillments: [{ id: FUL, provider_id: "dpd_dpd", data, canceled_at: null }],
+  })
+}
+
+type PickupReady = Ready & { points: CountingPoints }
+
+async function pickupReady(opts: { orders?: Row[]; fake?: FakeDpdServices } = {}): Promise<PickupReady> {
+  const fake = opts.fake ?? new FakeDpdServices()
+  const points = countingPoints(catalogSource("sandbox", SANDBOX_POINTS))
+  const s = setup(WRITING, opts.orders ?? [pickupOrder()], { fake, points })
+  arm(s, "shipment")
+  const row = await recordFulfillment(s.container, ORDER, FUL)
+  assert.ok(row)
+  const { plan } = await planForShipment(s.container, String(row.id))
+  return { s, fake, id: String(row.id), hash: plan.hash, points }
+}
+
+const codesOf = (v: unknown) => problemsOf(v).map((p) => p.code)
+
+test("Pickup: one numbers call with the point and the recipient of the point, labeled, the service stored", async () => {
+  const { s, fake, id, hash } = await pickupReady()
+  const row = await createShipment(s.container, id, manual(hash))
+  assert.equal(row.state, "labeled")
+  assert.equal(row.service, "pickup")
+  assert.equal(fake.count("numbers"), 1)
+  const body = fake.calls.find((c) => c.op === "numbers")?.body as { packages: Array<Row & { pudoReceiver?: Row; services?: Array<Row & { attributes?: Row[] }> }> }
+  const pkg = body.packages[0]
+  assert.ok(pkg?.pudoReceiver, "the recipient of the point")
+  const pudo = pkg?.services?.find((x) => x.code === "DPD_PICKUP")
+  assert.deepEqual(pudo?.attributes, [{ code: "PUDO", value: "PL14509" }])
+})
+
+test("Pickup refused before anything is sent: two boxes, a point the catalog does not know", async () => {
+  const two = await pickupReady()
+  rowOf(two.s, two.id).boxes = { edited: true, items: [1, 2].map((n) => ({ weightKg: n, lengthCm: null, widthCm: null, heightCm: null, reference: null, waybill: null })) }
+  const { plan } = await planForShipment(two.s.container, two.id)
+  await refusedWith(createShipment(two.s.container, two.id, manual(plan.hash)), 422, "plan_problems")
+  assert.deepEqual(codesOf(rowOf(two.s, two.id).problems), ["multi_box_not_allowed"])
+  const unknown = await pickupReady({ orders: [pickupOrder(undefined, { ...PICKUP, dpd_pudo_id: "PL0SBX99" })] })
+  await refusedWith(createShipment(unknown.s.container, unknown.id, manual(unknown.hash)), 422, "plan_problems")
+  assert.deepEqual(codesOf(rowOf(unknown.s, unknown.id).problems), ["pudo_not_found"])
+  assert.equal(two.fake.calls.length + unknown.fake.calls.length, 0)
+})
+
+test("a point nobody could check is sent by hand; the answer of DPD about it is kept with its source, next to the warning of the plan", async () => {
+  const { s, fake, id, points } = await pickupReady({ fake: new FakeDpdServices({ pudoIds: [] }) })
+  points.fail.details = "timeout"
+  const { plan } = await planForShipment(s.container, id)
+  assert.equal(plan.ok, true, "unchecked is a warning, never a problem")
+  assert.ok(plan.warnings.some((w) => w.code === "pudo_unchecked"))
+  const row = await createShipment(s.container, id, manual(plan.hash))
+  assert.equal(fake.count("numbers"), 1, "a manual create sends")
+  assert.equal(row.state, "failed")
+  const problems = problemsOf(row.problems)
+  assert.deepEqual(problems.map((p) => p.code), ["pudo_not_found"], "the point answer only, without the receiver codes DPD lists before it")
+  assert.equal(problems[0]?.source, "dpd")
+  assert.equal(toShipmentDto(row).problems?.[0]?.source, "dpd")
+  const again = await planForShipment(s.container, id)
+  assert.ok(again.plan.warnings.some((w) => w.code === "pudo_unchecked"))
+  assert.deepEqual(codesOf(again.row.problems), ["pudo_not_found"], "the plan does not wash the answer of DPD away")
+  assert.equal(problemsOf(again.row.problems)[0]?.source, "dpd")
+})
+
+test("the source of a problem: only dpd is kept; mergeProblems keeps the answers of DPD on a failed row and drops the point ones on request", () => {
+  assert.deepEqual(problemsOf([{ code: "a", source: "dpd" }, { code: "b", source: "plan" }, { code: "c", source: 1 }]), [{ code: "a", source: "dpd" }, { code: "b" }, { code: "c" }])
+  const stored = [{ code: "pudo_not_found", field: "INCORRECT_PUDO", detail: "PL14509", source: "dpd" }, { code: "dpd_validation", field: "x" }]
+  assert.deepEqual(codesOf(mergeProblems([], stored, "failed")), ["pudo_not_found", "dpd_validation"])
+  assert.equal(problemsOf(mergeProblems([], stored, "failed"))[0]?.source, "dpd")
+  assert.deepEqual(codesOf(mergeProblems([], stored, "failed", { dropPointAnswers: true })), ["dpd_validation"])
+  assert.equal(mergeProblems([], stored, "pending"), null)
+  assert.deepEqual(codesOf(mergeProblems([{ code: "pudo_not_found", field: "pudoId", detail: "PL14509" }], stored, "failed")), ["pudo_not_found", "dpd_validation"], "the finding of the plan is not doubled")
+})
+
+test("autoCreate never sends to a point nobody could check (DS13): pending with point_unchecked, one history line; once checked, it sends", async () => {
+  const { s, fake, id, points } = await pickupReady()
+  points.fail.details = "network"
+  for (let n = 0; n < 2; n += 1) {
+    const r = await createAttempt(s.container, id, { actor: "system", trigger: "auto" })
+    assert.equal(r.sent, false)
+  }
+  assert.equal(fake.calls.length, 0, "zero calls to DPD")
+  const row = rowOf(s, id)
+  assert.equal(row.state, "pending")
+  assert.equal(row.error_code, "point_unchecked")
+  assert.equal(row.attempts, 0)
+  assert.equal(actions(s, id).filter((a) => a === "create_deferred").length, 1, "one line over two runs")
+  assert.match(String(s.events.rows.find((e) => (e.data as Row | null)?.action === "create_deferred")?.message), /PL14509.*network/)
+  points.fail.details = undefined
+  const sent = await createAttempt(s.container, id, { actor: "system", trigger: "auto" })
+  assert.equal(sent.sent, true)
+  assert.equal(sent.row.state, "labeled")
+  assert.equal(sent.row.error_code, null)
+  assert.equal(fake.count("numbers"), 1)
+
+  const byHand = await pickupReady()
+  byHand.points.fail.details = "timeout"
+  const { plan } = await planForShipment(byHand.s.container, byHand.id)
+  assert.equal((await createShipment(byHand.s.container, byHand.id, manual(plan.hash))).state, "labeled", "by hand it goes, DPD checks the point")
 })

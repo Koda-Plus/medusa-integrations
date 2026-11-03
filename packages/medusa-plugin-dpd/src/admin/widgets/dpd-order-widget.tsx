@@ -12,6 +12,7 @@ import { EmptyState, ToneBadge } from "../lib/dpd-blocks"
 import { nb } from "../lib/dpd-guide"
 import { DpdIcon, DpdMark } from "../lib/dpd-icon"
 import { KitLoading, WidgetFrame, hostable } from "../lib/dpd-kit"
+import { customerChoseOther } from "../lib/dpd-logic"
 import { PlanDrawer, ShipmentActionBar } from "../lib/dpd-plan"
 import { Destination, ErrorText, KindBadges, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "../lib/dpd-ui"
 
@@ -93,6 +94,7 @@ const DpdOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { embe
             lang={lang}
             writerArmed={info.writers.shipment.armed}
             writerAllowed={info.writers.shipment.allowed}
+            chosenPudoId={chosen?.pudoId ?? null}
             onPlan={() => setPlanFor(s.id)}
             events={info.events.filter((e) => e.shipmentId === s.id)}
           />
@@ -119,6 +121,7 @@ function ShipmentBlock({
   lang,
   writerArmed,
   writerAllowed,
+  chosenPudoId,
   onPlan,
   events,
 }: {
@@ -127,11 +130,15 @@ function ShipmentBlock({
   writerArmed: boolean
   /** The options allow the shipment writer: when not, arming it would not help and the badge says so. */
   writerAllowed: boolean
+  /** The Pickup point of the customer's order; the shipment may go to another one after a change in the admin. */
+  chosenPudoId: string | null
   onPlan: () => void
   events: EventDto[]
 }) {
   const { t } = useTranslation("dpd")
   const [showHistory, setShowHistory] = useState(false)
+  /* The order keeps the customer's point; a person may have changed the shipment's since. */
+  const chose = customerChoseOther(chosenPudoId, s)
   return (
     <div className="flex flex-col gap-y-3 px-6 py-4">
       <div className="flex items-center justify-between gap-x-2">
@@ -140,7 +147,14 @@ function ShipmentBlock({
       </div>
       {s.optionKind === "pickup" || s.kind === "return" ? (
         <Line label={t("widget.destination")}>
-          <Destination shipment={s} />
+          <span className="flex flex-col items-end gap-y-0.5">
+            <Destination shipment={s} />
+            {chose ? (
+              <Text size="xsmall" className="text-ui-tag-orange-text">
+                {t("pudo.customerChose", { id: chose })}
+              </Text>
+            ) : null}
+          </span>
         </Line>
       ) : null}
       {s.waybills.length > 0 ? (

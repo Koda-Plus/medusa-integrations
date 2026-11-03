@@ -39,8 +39,21 @@ export type DpdAddress = {
   email?: string
 }
 
+/** PudoReceiver of DPDServices: who collects at a DPD Pickup point. Empty optional fields are left out. */
+export type DpdPudoReceiver = {
+  company?: string
+  /** Required by the OpenAPI; max 100. */
+  name: string
+  /** alpha-2 */
+  countryCode: string
+  phone?: string
+  email?: string
+}
+
 export type DpdAttribute = { code: string; value: string }
-export type DpdServiceItem = { code: "COD"; attributes: DpdAttribute[] }
+export type DpdServiceItem =
+  | { code: "COD"; attributes: DpdAttribute[] }
+  | { code: "DPD_PICKUP"; attributes: [{ code: "PUDO"; value: string }] }
 
 export type DpdParcel = {
   reference: string
@@ -57,7 +70,10 @@ export type DpdPackage = {
   ref1?: string
   ref2?: string
   sender: DpdAddress
-  receiver: DpdAddress
+  /** Courier. Exactly one of receiver and pudoReceiver is set. */
+  receiver?: DpdAddress
+  /** DPD Pickup. */
+  pudoReceiver?: DpdPudoReceiver
   payerFID: number
   parcels: DpdParcel[]
   services?: DpdServiceItem[]

@@ -255,3 +255,63 @@ export const DPDSERVICES_PATHS = {
   numbers: "/public/shipment/v1/generatePackagesNumbers",
   labels: "/public/shipment/v1/generateSpedLabels",
 } as const
+
+/* ------------------------------------------------------------------ */
+/* Stage 3: DPD Pickup points (MyPudoAPI)                              */
+/* ------------------------------------------------------------------ */
+
+/** MyPudo paths under MYPUDO_URL (GET only). [NZ] */
+export const MYPUDO_PATHS = {
+  byAddress: "pudo/list/byaddress",
+  byLongLat: "pudo/list/bylonglat",
+  details: "pudo/details",
+} as const
+
+/** Service codes of a point (servicePudo). Unknown codes are ignored. [NZ] */
+export const POINT_SERVICES = ["100", "101", "102", "200", "201", "204", "300"] as const
+export type PointService = (typeof POINT_SERVICES)[number]
+export const SERVICE_DELIVERY = "100"
+export const SERVICE_COD = "101"
+
+/** Point types (pudoType) [MP s.9 to s.11] [NZ]; the admin has a word for each. */
+export const POINT_TYPES = ["100", "200", "300", "400401", "400402", "500501", "500502", "400", "501"] as const
+export const LOCKER_TYPES: readonly string[] = ["400401", "400402", "400"]
+export const ZABKA_TYPE = "500502"
+
+/** DPD Pickup in Poland: one box, at most 20 kg inclusive (fixtures 10b, 10g, 10l). */
+export const PICKUP_MAX_KG = 20
+export const PICKUP_MAX_BOXES = 1
+
+/** Box limits by kind of point [MP s.36] [NZ]. Sides in cm. */
+export const POINT_BOX_LIMITS = {
+  locker: { kind: "fits", sidesCm: [59, 50, 44] },
+  zabka: { kind: "fits", sidesCm: [64, 41, 38] },
+  regular: { kind: "sum", maxSideCm: 150, maxSumCm: 300 },
+  abroad: { kind: "girth", maxLengthCm: 100, maxGirthCm: 250 },
+} as const
+
+/** Results asked of MyPudo and shown by the routes: the lower of 25 and 250 [MP s.5, s.36]. */
+export const POINTS_MAX_RESULTS = 25
+export const POINTS_DEFAULT_RESULTS = 10
+/** Radius of bylonglat in metres: 100 to 50000 [MP s.5, s.19]; the routes ask 5000. */
+export const POINTS_RADIUS_M = 5000
+
+export const POINTS_SEARCH_TTL_MS = 10 * 60_000
+export const POINTS_DETAILS_TTL_MS = 60 * 60_000
+export const POINTS_MISSING_TTL_MS = 10 * 60_000
+
+export const POINTS_TIMEOUT_DEFAULT_MS = 3000
+export const POINTS_TIMEOUT_MIN_MS = 1000
+export const POINTS_TIMEOUT_MAX_MS = 10_000
+export const POINTS_PER_MINUTE_DEFAULT = 30
+export const POINTS_PER_MINUTE_MIN = 5
+export const POINTS_PER_MINUTE_MAX = 600
+/** Source calls (cache misses) of the store routes per process and minute, all clients together (DS8). */
+export const POINTS_STORE_CALLS_PER_MINUTE = 120
+/** Decimals of lat and lng in a coordinate search and its cache key (about 100 m). */
+export const POINTS_COORD_DECIMALS = 3
+/** Stage 3 ships Pickup in Poland only: the point routes answer PL points only (E21). */
+export const POINTS_COUNTRY = "PL"
+
+/** The only point the DPDServices demo host takes (fixture 10a). */
+export const SANDBOX_PUDO_ID = "PL14509"

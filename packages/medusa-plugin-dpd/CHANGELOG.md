@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+- DPD Pickup shipments to points in Poland (`dpd-pickup`, `dpd-pickup-cod`): `DPD_PICKUP` with the point as `PUDO`, cash on delivery next to it, the person who collects as `pudoReceiver` (read live from the order, never stored), one box of at most 20 kg, and the box size against the limits of a confirmed point.
+- The point source of each mode: MyPudo live (`pickupLogin` and `pickupPassword`, or `pickupApiKey`; GET only, the key masked everywhere), a test catalog in the sandbox (`PL14509` passes, the only point the DPD demo host takes), a sample catalog in demo mode. The sandbox and demo mode never call MyPudo.
+- Checkout: the point is checked fresh and a public snapshot of it is kept with the shipping method; a point that is not there, inactive, handing out no parcels, without cash on delivery for a cash on delivery option or outside Poland is refused. When the point cannot be checked, it is let through without a check and logged. Demo mode accepts a point id outside its catalog without a check.
+- The plan reads the point fresh, warns about a point it could not check, and DPD's answers about a Pickup package (a wrong point, two boxes, over 20 kg, no phone or e-mail) become the plan's own problems on the failed shipment.
+- `autoCreate` and the shipment pass never send a Pickup shipment to a point nobody could check: it waits (`point_unchecked`) and is tried again within `autoCreateMaxAgeHours`.
+- Store routes `GET /store/dpd/points` (by postal code or by place, `cod`, `limit`) and `GET /store/dpd/points/:id`, with a limit per client address, a cache and a budget of MyPudo calls per process.
+- Admin: the point and the person who collects in the plan drawer, a point search and the point change of a pending or failed shipment (checked fresh, never unchecked, written to the history), a note on the order card when the shipment's point is not the customer's, a note in Settings when a live store has no MyPudo credentials. `GET /admin/dpd/points` and `POST /admin/dpd/shipments/:id/point`.
+- New options `pointsTimeoutMs` and `pointsPerMinute`.
+- Courier orders and protocols, tracking, returns and shipments abroad (also to Pickup points abroad) are not in this version.
+
 ## 0.2.0 (unreleased)
 
 - DPD courier shipments in Poland (`dpd-courier`, `dpd-courier-cod`) on the DPDServices REST API: `generatePackagesNumbers`, then `generateSpedLabels` in the same click.

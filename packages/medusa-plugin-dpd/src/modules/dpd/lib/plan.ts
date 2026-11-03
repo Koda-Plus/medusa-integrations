@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto"
-import { DEMO_PAYER_FID, DPD_TEXT_LIMITS, OPTION_SPECS, REFERENCE_MAX, type OptionKind } from "./constants"
+import { DEMO_PAYER_FID, DPD_TEXT_LIMITS, OPTION_SPECS, PICKUP_MAX_BOXES, PICKUP_MAX_KG, REFERENCE_MAX, type OptionKind } from "./constants"
 import type { PlanWarningDto, ProblemDto } from "./contract"
 import { boxesForPlan, roundKg, type BoxesSource, type PlanBox, type StoredBoxes } from "./boxes"
 import { codFor, type CodPlan } from "./cod"
 import { DEMO_SENDER } from "./demo"
-import type { DpdAddress, DpdPackage, DpdParcel, DpdSessionType, GeneratePackagesNumbersRequest } from "./dpdservices"
+import type { DpdAddress, DpdPackage, DpdParcel, DpdPudoReceiver, DpdServiceItem, DpdSessionType, GeneratePackagesNumbersRequest } from "./dpdservices"
+import { isPudoId } from "./option-data"
 import type { ResolvedDpdOptions } from "./options"
+import { pointProblems, type PointCheck } from "./points"
 import { hasSender, isEmail, normalizePhone, normalizePostalCode, senderFor, validateSender, type ResolvedSender } from "./sender"
 
 /**
@@ -22,9 +24,16 @@ import { hasSender, isEmail, normalizePhone, normalizePostalCode, senderFor, val
  * phone, total, boxes) asks them to read it again. Warnings, problems, the
  * label page and display only fields are outside the hash.
  *
- * Stage 2 creates courier shipments in Poland. A Pickup option or a return
- * gives option_later, an address abroad abroad_later; nothing of those goes
- * to DPD.
+ * Courier shipments and DPD Pickup shipments go to Poland. A Pickup plan
+ * sends pudoReceiver (who collects, read live like the receiver, never
+ * stored) and the DPD_PICKUP service with the point id, before COD; it
+ * takes one box of at most 20 kg, and the point as planOf read it a moment
+ * ago (ctx.point): unknown, inactive or not handing out parcels is a
+ * problem, a point that could not be checked a warning (DPD checks it when
+ * the shipment is created). The name, hours and status of the point are not
+ * in the hash: another point is another request. A return gives
+ * option_later, an address or a point abroad abroad_later; nothing of those
+ * goes to DPD.
  */
 
 export type PlanOrderAddress = {
@@ -98,7 +107,15 @@ export type PlanContext = {
   options: ResolvedDpdOptions
   demo: boolean
   codCarrier?: boolean
+  /** A Pickup row: the point read fresh by planOf. Missing for a Pickup row = unchecked "not_configured". */
+  point?: PointCheck
 }
+
+/** The point of a Pickup plan: a check, or why there was nothing to check (E3). */
+export type PlanPoint =
+  | PointCheck
+  | { status: "missing"; pudoId: null }
+  | { status: "invalid"; pudoId: string }
 
 export type PlanProblemCode =
   | "order_missing"
@@ -125,6 +142,16 @@ export type PlanProblemCode =
   | "cod_paid_online"
   | "cod_amount_unknown"
   | "cod_zero"
+  | "pudo_missing"
+  | "pudo_invalid"
+  | "pudo_not_found"
+  | "pudo_inactive"
+  | "pudo_no_delivery"
+  | "pudo_no_cod"
+  | "cod_pickup_abroad"
+  | "multi_box_not_allowed"
+  | "pickup_over_limit"
+  | "contact_missing"
 
 export type PlanWarningCode =
   | "weight_default_box"
@@ -134,6 +161,7 @@ export type PlanWarningCode =
   | "receiver_phone_invalid"
   | "courier_over_50kg"
   | "sample_sender"
+  | "pudo_unchecked"
 
 export const PLAN_PROBLEM_CODES: readonly PlanProblemCode[] = [
   "order_missing",
@@ -160,6 +188,16 @@ export const PLAN_PROBLEM_CODES: readonly PlanProblemCode[] = [
   "cod_paid_online",
   "cod_amount_unknown",
   "cod_zero",
+  "pudo_missing",
+  "pudo_invalid",
+  "pudo_not_found",
+  "pudo_inactive",
+  "pudo_no_delivery",
+  "pudo_no_cod",
+  "cod_pickup_abroad",
+  "multi_box_not_allowed",
+  "pickup_over_limit",
+  "contact_missing",
 ]
 
 export const PLAN_WARNING_CODES: readonly PlanWarningCode[] = [
@@ -170,6 +208,7 @@ export const PLAN_WARNING_CODES: readonly PlanWarningCode[] = [
   "receiver_phone_invalid",
   "courier_over_50kg",
   "sample_sender",
+  "pudo_unchecked",
 ]
 
 export type Plan = {
@@ -195,6 +234,10 @@ export type Plan = {
   /** The exact body of generatePackagesNumbers, or null when there are problems. */
   request: GeneratePackagesNumbersRequest | null
   hash: string
+  /** Pickup: the point and how it was checked (also missing and invalid); null for a courier row and for a Pickup plan that stopped before the point (no order). */
+  point: PlanPoint | null
+  /** Pickup: what goes as pudoReceiver (read live from the order, never stored); null for a courier row. */
+  pudoReceiver: DpdPudoReceiver | null
 }
 
 /** JSON with the keys of every object sorted and undefined values left out: the same value gives the same text. */
@@ -259,6 +302,58 @@ export function receiverOf(order: PlanOrder): { receiver: DpdAddress | null; cou
   if (email) receiver.email = email
   return { receiver: orderedAddress(receiver), country, problems, warnings }
 }
+
+/**
+ * pudoReceiver from the order (spec 7.1): the name, else the company as the
+ * name (DPD wants one of them, the OpenAPI wants name); the point country;
+ * the phone or the e-mail, at least one of them (DPD sends the collection
+ * notice). Null without a name and a company.
+ */
+export function pudoReceiverOf(order: PlanOrder, country: string): { pudoReceiver: DpdPudoReceiver | null; problems: ProblemDto[]; warnings: ProblemDto[] } {
+  const problems: ProblemDto[] = []
+  const warnings: ProblemDto[] = []
+  const a = order.shipping_address ?? {}
+  const person = clean(`${clean(a.first_name)} ${clean(a.last_name)}`)
+  const company = clean(a.company)
+  if (!person && !company) problems.push({ code: "receiver_name_missing", field: "pudoReceiver.name" })
+  const name = person || company
+  tooLong("name", name, "pudoReceiver.name", problems)
+  if (person && company) tooLong("company", company, "pudoReceiver.company", problems)
+  let phone: string | null = null
+  const phoneRaw = clean(a.phone)
+  if (!phoneRaw) warnings.push({ code: "receiver_phone_missing" })
+  else {
+    phone = normalizePhone(phoneRaw, "PL")
+    if (phone === null) warnings.push({ code: "receiver_phone_invalid" })
+  }
+  const email = [clean(order.email), clean(order.customer?.email)].find((e) => e !== "" && isEmail(e) && e.length <= DPD_TEXT_LIMITS.email) ?? null
+  /* A wrong phone and no e-mail leave DPD nothing to send the notice to. */
+  if (phone === null && email === null) problems.push({ code: "contact_missing", field: "pudoReceiver" })
+  if (!name) return { pudoReceiver: null, problems, warnings }
+  /* Keys in the order of the DPD schema (readable when shown raw; the hash sorts them anyway). */
+  const pudoReceiver: DpdPudoReceiver = {
+    ...(person && company ? { company } : {}),
+    name,
+    countryCode: country,
+    ...(phone ? { phone } : {}),
+    ...(email ? { email } : {}),
+  }
+  return { pudoReceiver, problems, warnings }
+}
+
+/** The box against the limits of a checked point (spec 7.2, step 7): sides sorted, longest first; null when it fits. */
+function boxOverPoint(sides: [number, number, number], box: PointCheckOk["point"]["limits"]["box"]): string | null {
+  const [a, b, c] = [...sides].sort((x, y) => y - x)
+  if (box.kind === "fits") {
+    const [la, lb, lc] = box.sidesCm
+    return a <= la && b <= lb && c <= lc ? null : `${la} x ${lb} x ${lc} cm`
+  }
+  if (box.kind === "sum") return a <= box.maxSideCm && a + b + c <= box.maxSumCm ? null : `${box.maxSideCm} cm, sides together ${box.maxSumCm} cm`
+  /* [NZ] "girth of the base plus the height", the height being the longest side [MP s.36]. */
+  return a <= box.maxLengthCm && a + 2 * (b + c) <= box.maxGirthCm ? null : `${box.maxLengthCm} cm, length and girth ${box.maxGirthCm} cm`
+}
+
+type PointCheckOk = Extract<PointCheck, { status: "ok" }>
 
 /** The address with its keys in the order of the DPD schema (readable when shown raw; the hash sorts them anyway). */
 function orderedAddress(a: DpdAddress): DpdAddress {
@@ -338,6 +433,8 @@ export function buildPlan(row: PlanRow, order: PlanOrder | null, ctx: PlanContex
     warnings,
     request: null,
     hash: planHash({ request: null, rowId: row.id }),
+    point: null,
+    pudoReceiver: null,
   })
 
   /* 1. the order */
@@ -350,16 +447,17 @@ export function buildPlan(row: PlanRow, order: PlanOrder | null, ctx: PlanContex
     if (isSetTime(f.shippedAt)) problems.push({ code: "fulfillment_shipped" })
     if (isSetTime(f.deliveredAt)) problems.push({ code: "fulfillment_delivered" })
   }
-  /* 3. the option: stage 2 sends courier shipments only */
+  /* 3. the option: courier and Pickup shipments; returns come later */
   if (!spec) {
     problems.push({ code: "option_unknown", detail: row.optionId })
     return stopped()
   }
-  if (spec.kind !== "courier" || row.kind === "return") {
+  if (spec.kind === "return" || row.kind === "return") {
     problems.push({ code: "option_later" })
     return stopped()
   }
   if (order === null) return stopped()
+  if (spec.kind === "pickup") return pickupPlan(row, order, ctx, { base, reference, problems, warnings })
 
   /* 4. the receiver */
   const rec = receiverOf(order)
@@ -370,15 +468,9 @@ export function buildPlan(row: PlanRow, order: PlanOrder | null, ctx: PlanContex
     if (!o.countries.includes(country)) problems.push({ code: "country_unsupported", detail: country })
     else if (country !== "PL") problems.push({ code: "abroad_later", detail: country })
   }
-  /* 5. the sender */
-  const locationId = f?.locationId ?? null
-  const snd = senderOf(o, locationId, ctx.demo)
-  problems.push(...snd.problems)
-  warnings.push(...snd.warnings)
-  /* Outside demo mode the payer is payerFid, else masterFid; without either the request would carry payerFID 0. */
-  if (!ctx.demo && o.payerFid === null) problems.push({ code: "payer_fid_missing", field: "payerFid" })
-  /* 6. the reference, with room for "-100" */
-  if (reference.length > REFERENCE_MAX - 4) problems.push({ code: "reference_too_long", detail: `max ${REFERENCE_MAX - 4}` })
+  /* 5. the sender; 6. the payer and the reference */
+  const snd = senderPart(row, ctx, reference, problems, warnings)
+  const locationId = snd.locationId
   /* 7. the boxes */
   const bx = boxesForPlan(row, order, { weightUnit: o.weightUnit, defaultBox: o.defaultBox })
   problems.push(...bx.problems)
@@ -441,5 +533,139 @@ export function buildPlan(row: PlanRow, order: PlanOrder | null, ctx: PlanContex
     warnings,
     request,
     hash: planHash({ request, rowId: row.id }),
+    point: null,
+    pudoReceiver: null,
+  }
+}
+
+/** The sender, the payer FID and the reference (steps 5 and 6 of the courier, the same for Pickup). */
+function senderPart(row: PlanRow, ctx: PlanContext, reference: string, problems: ProblemDto[], warnings: PlanWarningDto[]): { sender: DpdAddress | null; locationId: string | null } {
+  const o = ctx.options
+  const locationId = row.fulfillment?.locationId ?? null
+  const snd = senderOf(o, locationId, ctx.demo)
+  problems.push(...snd.problems)
+  warnings.push(...snd.warnings)
+  /* Outside demo mode the payer is payerFid, else masterFid; without either the request would carry payerFID 0. */
+  if (!ctx.demo && o.payerFid === null) problems.push({ code: "payer_fid_missing", field: "payerFid" })
+  /* The reference, with room for "-100". */
+  if (reference.length > REFERENCE_MAX - 4) problems.push({ code: "reference_too_long", detail: `max ${REFERENCE_MAX - 4}` })
+  return { sender: snd.sender, locationId }
+}
+
+/**
+ * The plan of a DPD Pickup row (spec 7.2, steps 4 to 9): the point, who
+ * collects, the sender, one box of at most 20 kg that fits the point, cash on
+ * delivery next to DPD_PICKUP.
+ */
+function pickupPlan(
+  row: PlanRow,
+  order: PlanOrder,
+  ctx: PlanContext,
+  acc: { base: Pick<Plan, "optionId" | "kind" | "cod" | "reference">; reference: string; problems: ProblemDto[]; warnings: PlanWarningDto[] },
+): Plan {
+  const o = ctx.options
+  const { base, reference, problems, warnings } = acc
+  const optionCod = base.cod
+  /* 4. the point */
+  let point: PlanPoint
+  let country: string | null = null
+  const pudoId = row.pudoId
+  if (pudoId === null || pudoId === "") {
+    point = { status: "missing", pudoId: null }
+    problems.push({ code: "pudo_missing", field: "pudoId" })
+  } else if (!isPudoId(pudoId)) {
+    point = { status: "invalid", pudoId }
+    problems.push({ code: "pudo_invalid", field: "pudoId", detail: pudoId })
+  } else {
+    const check: PointCheck = ctx.point ?? { status: "unchecked", pudoId, reason: "not_configured" }
+    point = check
+    problems.push(...pointProblems(check, { cod: optionCod }))
+    if (check.status === "unchecked") warnings.push({ code: "pudo_unchecked", detail: check.reason })
+    /* DS9: the country of a checked point, else the prefix of its id. */
+    country = check.status === "ok" ? check.point.address.country : pudoId.slice(0, 2)
+    if (!o.countries.includes(country)) problems.push({ code: "country_unsupported", detail: country })
+    else if (country !== "PL") {
+      problems.push({ code: "abroad_later", detail: country })
+      if (optionCod) problems.push({ code: "cod_pickup_abroad", detail: country })
+    }
+  }
+  /* 5. who collects */
+  const rec = pudoReceiverOf(order, country ?? "PL")
+  problems.push(...rec.problems)
+  warnings.push(...rec.warnings)
+  /* 6. the sender, the payer, the reference */
+  const snd = senderPart(row, ctx, reference, problems, warnings)
+  /* 7. the boxes: DPD takes one box of at most 20 kg inclusive (fixtures 10b, 10g, 10l) */
+  const bx = boxesForPlan(row, order, { weightUnit: o.weightUnit, defaultBox: o.defaultBox })
+  problems.push(...bx.problems)
+  warnings.push(...bx.warnings)
+  if (bx.boxes.length > PICKUP_MAX_BOXES) problems.push({ code: "multi_box_not_allowed", detail: String(bx.boxes.length) })
+  bx.boxes.forEach((b, i) => {
+    if (b.weightKg > PICKUP_MAX_KG) problems.push({ code: "pickup_over_limit", field: `parcels[${i}].weight`, detail: `${PICKUP_MAX_KG} kg` })
+    /* DS10: the size only against a checked point and a box with all three sides. */
+    if (point.status !== "ok" || b.lengthCm === null || b.widthCm === null || b.heightCm === null) return
+    const over = boxOverPoint([b.lengthCm, b.widthCm, b.heightCm], point.point.limits.box)
+    if (over !== null) problems.push({ code: "pickup_over_limit", field: `parcels[${i}].size`, detail: over })
+  })
+  /* 8. cash on delivery */
+  const cod = codFor({ optionCod, country, order, options: o, carrier: ctx.codCarrier })
+  problems.push(...cod.problems)
+  warnings.push(...cod.warnings)
+
+  const parcelReferences = bx.boxes.map((_, i) => parcelReference(reference, i + 1))
+  /* 9. the request, only without problems */
+  let request: GeneratePackagesNumbersRequest | null = null
+  if (problems.length === 0 && rec.pudoReceiver && snd.sender && pudoId) {
+    const parcels: DpdParcel[] = bx.boxes.map((b, i) => ({
+      reference: parcelReferences[i],
+      weight: roundKg(b.weightKg),
+      ...(b.lengthCm !== null ? { sizeX: Math.round(b.lengthCm) } : {}),
+      ...(b.widthCm !== null ? { sizeY: Math.round(b.widthCm) } : {}),
+      ...(b.heightCm !== null ? { sizeZ: Math.round(b.heightCm) } : {}),
+    }))
+    /* DPD_PICKUP first, then COD (fixture 10e). */
+    const services: DpdServiceItem[] = [{ code: "DPD_PICKUP", attributes: [{ code: "PUDO", value: pudoId }] }]
+    if (cod.cod) {
+      services.push({
+        code: "COD",
+        attributes: [
+          { code: "AMOUNT", value: cod.cod.amount },
+          { code: "CURRENCY", value: cod.cod.currency },
+        ],
+      })
+    }
+    const pkg: DpdPackage = {
+      reference,
+      ...(typeof order.display_id === "number" ? { ref1: String(order.display_id) } : {}),
+      ...(order.id.length <= DPD_TEXT_LIMITS.ref ? { ref2: order.id } : {}),
+      sender: snd.sender,
+      /* No receiver: DPD takes the address of the point (fixture 10a). */
+      pudoReceiver: rec.pudoReceiver,
+      payerFID: ctx.demo ? DEMO_PAYER_FID : (o.payerFid ?? 0),
+      parcels,
+      services,
+    }
+    request = { generationPolicy: "STOP_ON_FIRST_ERROR", packages: [pkg] }
+  }
+
+  return {
+    ...base,
+    ok: request !== null,
+    /* A request exists only for a point in Poland. */
+    sessionType: "DOMESTIC",
+    country,
+    receiver: null,
+    sender: snd.sender,
+    senderLocationId: snd.locationId && o.senders[snd.locationId] ? snd.locationId : null,
+    boxes: bx.boxes,
+    boxesSource: bx.source,
+    codDue: cod.cod,
+    parcelReferences,
+    problems,
+    warnings,
+    request,
+    hash: planHash({ request, rowId: row.id }),
+    point,
+    pudoReceiver: rec.pudoReceiver,
   }
 }

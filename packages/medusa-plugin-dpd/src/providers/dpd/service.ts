@@ -8,9 +8,21 @@ import type {
   FulfillmentOrderDTO,
   Logger,
 } from "@medusajs/framework/types"
-import { OPTION_SPECS, PROVIDER_IDENTIFIER } from "../../modules/dpd/lib/constants"
+import { OPTION_SPECS, POINTS_COUNTRY, PROVIDER_IDENTIFIER } from "../../modules/dpd/lib/constants"
 import { resolveOptions, type DpdPluginOptions, type ResolvedDpdOptions } from "../../modules/dpd/lib/options"
-import { fulfillmentOptions, methodDataFor, readFulfillmentData, specOf, validateMethodData, type CheckoutContext } from "../../modules/dpd/lib/option-data"
+import {
+  checkoutError,
+  fulfillmentOptions,
+  methodDataFor,
+  pudoSnapshotOf,
+  readFulfillmentData,
+  specOf,
+  validateMethodData,
+  type CheckoutContext,
+  type CheckoutErrorCode,
+} from "../../modules/dpd/lib/option-data"
+import { createPointsSource, pointProblems, type PointCheck, type PointsSource } from "../../modules/dpd/lib/points"
+import { POINTS_KEY } from "../../workflows/dpd/runtime"
 
 type Cradle = Record<string, unknown>
 
@@ -25,6 +37,13 @@ function optional<T>(cradle: Cradle, key: string): T | null {
 
 const RETURN_SPEC = OPTION_SPECS.find((s) => s.kind === "return")
 
+/** The point problems the checkout has a sentence for (MESSAGES of option-data.ts). */
+const POINT_CHECKOUT_CODES: readonly CheckoutErrorCode[] = ["pudo_not_found", "pudo_inactive", "pudo_no_delivery", "pudo_no_cod"]
+
+function pointCheckoutCode(code: string): CheckoutErrorCode | null {
+  return POINT_CHECKOUT_CODES.find((c) => c === code) ?? null
+}
+
 /**
  * THE FULFILLMENT PROVIDER of DPD by Koda Plus, for Medusa's fulfillment
  * module (identifier "dpd"; registered as `{ id: "dpd" }` it is `dpd_dpd`,
@@ -36,7 +55,14 @@ const RETURN_SPEC = OPTION_SPECS.find((s) => s.kind === "return")
  *   checkout   the country must be one of `countries`; a courier option needs
  *              a complete address; a Pickup option a point id and a phone or
  *              an e-mail of the recipient; cash on delivery a currency
- *              `codCountries` allows, at a Pickup point only in Poland
+ *              `codCountries` allows, at a Pickup point only in Poland. The
+ *              Pickup point is then checked with the points source of the
+ *              mode: a point that is not there, not active, not handing out
+ *              parcels (or without cash on delivery for a COD option) or
+ *              outside Poland is refused, a checked point gets its public
+ *              snapshot (dpd_pudo); a point that cannot be checked now is
+ *              accepted without one (FAIL OPEN, logged). Demo mode accepts a
+ *              point id outside its sample catalog without a check
  *   fulfill    RECORDS the choice and NEVER calls DPD. DPDServices cannot
  *              cancel a shipment, so a parcel created here and then rolled
  *              back by Medusa would stay in DPD without a trace: the
@@ -63,11 +89,14 @@ class DpdFulfillmentProvider extends AbstractFulfillmentProviderService {
 
   protected readonly options_: ResolvedDpdOptions
   protected readonly logger_: Pick<Logger, "info" | "warn" | "error">
+  /** The points source of the mode. The provider lives in the fulfillment module's container and never resolves the dpd module: it builds its own from the same options. */
+  protected readonly points_: PointsSource
 
   constructor(cradle: Cradle, options: DpdPluginOptions) {
     super()
     this.options_ = resolveOptions(options)
     this.logger_ = optional<Logger>(cradle, "logger") ?? console
+    this.points_ = optional<PointsSource>(cradle, POINTS_KEY) ?? createPointsSource(this.options_, { logger: this.logger_ })
   }
 
   async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
@@ -86,11 +115,61 @@ class DpdFulfillmentProvider extends AbstractFulfillmentProviderService {
     return { calculated_amount: 0, is_calculated_price_tax_inclusive: true }
   }
 
-  /** The checks at checkout. Whether a Pickup point exists is checked from stage 3 on (MyPudoAPI, failing open). */
+  /**
+   * The checks at checkout: the format (validateMethodData), then the Pickup
+   * point as the points source has it now. Only a positive answer refuses a
+   * point (found with a problem, or not found); a point that could not be
+   * checked is accepted without a snapshot (fail open). A snapshot the
+   * client sent is never kept: validateMethodData answers the keys of
+   * methodDataFor only.
+   */
   async validateFulfillmentData(optionData: Record<string, unknown>, data: Record<string, unknown>, context: Record<string, unknown>): Promise<Record<string, unknown>> {
     const result = validateMethodData(optionData, data, context as CheckoutContext, this.options_)
     if (!result.ok) throw new MedusaError(MedusaError.Types.INVALID_DATA, result.error.message)
+    const pudoId = result.data.dpd_pudo_id
+    if (result.spec.kind !== "pickup" || !pudoId) return result.data
+    const refuse = (code: CheckoutErrorCode): never => {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, checkoutError(code).message)
+    }
+    /* Stage 3 ships to Poland only (E21): a point that was not read (not in the demo catalog, or unchecked) is refused abroad by the prefix of its id. */
+    const refuseAbroad = (): void => {
+      if (pudoId.slice(0, 2) !== POINTS_COUNTRY) refuse(result.spec.cod ? "cod_pickup_abroad" : "pickup_abroad_later")
+    }
+    const check = await this.pointCheck(pudoId)
+
+    if (check.status === "ok") {
+      const first = pointProblems(check, { cod: result.spec.cod })
+        .map((p) => pointCheckoutCode(p.code))
+        .find((c): c is CheckoutErrorCode => c !== null)
+      if (first) refuse(first)
+      const country = check.point.address.country
+      if (country !== POINTS_COUNTRY) refuse(result.spec.cod ? "cod_pickup_abroad" : "pickup_abroad_later")
+      return { ...result.data, dpd_country: country, dpd_pudo: pudoSnapshotOf(check.point) }
+    }
+
+    if (check.status === "not_found") {
+      /* PLAN D8: demo mode does not check that a point exists (a demo store may use real ids, from the PudoFinder widget). */
+      if (this.options_.demo) {
+        refuseAbroad()
+        this.logger_.info(`[dpd] Demo mode: Pickup point ${pudoId} is not in the sample catalog; accepted without a check.`)
+        return result.data
+      }
+      return refuse("pudo_not_found")
+    }
+
+    /* Unchecked: fail open (spec 11, O13), in Poland only. */
+    refuseAbroad()
+    this.logger_.warn(`[dpd] Could not check Pickup point ${pudoId} (${check.reason}); accepted without a check.`)
     return result.data
+  }
+
+  /** A fresh read of a point; a source that throws is an unchecked point (network). */
+  protected async pointCheck(pudoId: string): Promise<PointCheck> {
+    try {
+      return await this.points_.details(pudoId)
+    } catch {
+      return { status: "unchecked", pudoId, reason: "network" }
+    }
   }
 
   /**

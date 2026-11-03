@@ -2,13 +2,14 @@
 
 Ship with DPD Polska from Medusa: the DPD courier and DPD Pickup points, both also with cash on delivery, on the DPD Polska web services.
 
-**Work in progress.** This version creates DPD courier shipments within Poland, with or without cash on delivery, and gets their labels. DPD Pickup shipments, the handover to the courier (protocols and courier orders), tracking, returns and shipments abroad come in the next versions; until then the plan of such a fulfillment says so and nothing is sent to DPD. The full README comes with the first npm release.
+**Work in progress.** This version creates DPD courier shipments within Poland and DPD Pickup shipments to points in Poland, with or without cash on delivery, and gets their labels. The handover to the courier (protocols and courier orders), tracking, returns and shipments abroad come in the next versions; until then the plan of such a fulfillment says so and nothing is sent to DPD. The full README comes with the first npm release.
 
 ## What it does
 
 - **Checkout**: five fulfillment options, `dpd-courier`, `dpd-courier-cod`, `dpd-pickup`, `dpd-pickup-cod` and `dpd-return` (the return option, used only for returns, claims and exchanges). A courier option needs a complete address in a country of the store; a Pickup option needs a point id of the right shape and a phone or an e-mail of the recipient; cash on delivery needs a currency the options allow for the destination.
 - **Fulfillment**: creating a fulfillment records the option and the choice of the customer, and builds its plan. With `autoCreate` and the shipment writer armed, a plan without problems is sent to DPD at once; otherwise the shipment waits for a person.
 - **Courier shipments in Poland** (`dpd-courier`, `dpd-courier-cod`): a person opens the plan of a fulfillment, reads the receiver (read from the order at that moment), the sender, the boxes, the cash on delivery and the exact request to DPD, and confirms it. One click creates the shipment in DPD (`generatePackagesNumbers`) and gets its label (`generateSpedLabels`). The create carries the hash of the plan that was read: when the order, the settings or the boxes changed since, it is refused and the new plan is shown. A plan with problems sends nothing.
+- **DPD Pickup shipments in Poland** (`dpd-pickup`, `dpd-pickup-cod`): the checkout checks the point the customer chose and keeps a public snapshot of it (name, address, kind of point) with the shipping method. The plan reads the point again, fresh, and sends it as the `PUDO` of the `DPD_PICKUP` service, with the cash on delivery next to it for `dpd-pickup-cod`; the person who collects is read from the order and needs a phone or an e-mail. DPD takes one box of at most 20 kg (20 kg itself goes). When the point was confirmed and the box has all three sides, the box is also checked against the size limits of its kind of point (a locker and a Żabka take smaller boxes). A point that is inactive, hands out no parcels, takes no cash on delivery for a `dpd-pickup-cod` shipment or lies outside Poland is a problem of the plan, and nothing is sent.
 - **Boxes**: by default one box with the weight of the variants (`weightUnit`), or `defaultBox` when the variants have no weight. The plan can set 1 to 100 boxes by hand, each with its weight and sides, and go back to the automatic ones.
 - **Cash on delivery**: the amount is what is still due (the order total minus the captured payments), sent with two decimals, in a currency `codCountries` allows. One shipment of the order carries it; further shipments of the same order go without it. An order paid online (`codPaymentProviders`) gets no cash on delivery at all.
 - **Labels**: A4 or `LBL_PRINTER`, chosen when creating the shipment (the default is `labelPage`). The label PDF is stored with the shipment and served from the database, so opening it again never asks DPD again. A shipment created without its label (a timeout, an error of DPD) keeps its waybills and the label can be asked for again. Stored labels are removed after `documentRetentionDays`.
@@ -16,6 +17,36 @@ Ship with DPD Polska from Medusa: the DPD courier and DPD Pickup points, both al
 - **The shipment pass**, every 5 minutes: removes old labels, takes back claims that ran out, looks up unclear shipments and, with `autoCreate`, creates the new shipments and asks again for labels that did not come. It never takes a backlog: only fulfillments recorded after the writer was armed and within `autoCreateMaxAgeHours`.
 - **Admin page** under DPD in the sidebar, with the shipment lists and their actions, the plan drawer, Settings and the writers, and an order card with the shipments of the order and their actions.
 - **Demo mode** (`demo: true`): the same code paths with a simulated DPD. Sample shipments are built from the store's own orders and labels are sample PDFs; nothing is sent to DPD.
+
+## DPD Pickup
+
+**Where the points come from.** Live, from DPD's MyPudo API, with `pickupLogin` and `pickupPassword` (HTTP Basic) or `pickupApiKey`; the login and password win when both are set. In the sandbox, from a small test catalog, because MyPudo has no test host: `PL14509` is the only point that passes (the DPD demo host accepts no other), and `PL0SBX01` (inactive) and `PL0SBX02` (no parcels handed out) are there to be refused. In demo mode, from a sample catalog, `PL9DEMO01` to `PL9DEMO05` (a DPD point, a locker, a Żabka, a kiosk and a shop), plus `PL9DEMO06` (inactive) and `PL9DEMO07` (send only), which the search never shows. The sandbox and demo mode never call MyPudo. The admin Settings say how points are checked; a live store without MyPudo credentials gets a note there, because every point is then accepted unchecked.
+
+**The checkout** checks the point fresh, within `pointsTimeoutMs`. A confirmed point passes with its snapshot. A point that is not there, inactive, handing out no parcels, without cash on delivery for a cash on delivery option, or outside Poland, is refused with a message for the customer. When the point cannot be checked (no MyPudo credentials, a timeout, a network error, an error status, an answer that does not parse, an error of MyPudo, a wrong key included), the checkout lets the point through without a check and logs a warning, so a MyPudo outage never stops the sales of DPD Pickup; an id outside Poland is refused even then. DPD still refuses a wrong point when the shipment is created, and the plan shows a warning for a point it could not check. In demo mode a point id of the right shape that is not in the sample catalog is accepted at the checkout without a check (a demo store may use real ids, from the PudoFinder widget); its plan then shows the point as not found, and the admin can change it.
+
+**autoCreate never sends a DPD Pickup shipment to a point nobody could check.** Such a shipment stays pending, the shipment pass tries it again within `autoCreateMaxAgeHours`, and after that it waits for a person. A person who reads the plan with its warning can still create it by hand.
+
+**Changing the point.** The plan drawer of a pending or failed Pickup shipment has a point search and changes the point. The new point is checked fresh and never accepted unchecked: when it cannot be checked, nothing changes and the admin can try again in a moment. A point that cannot take the shipment is refused with its problems; box problems are left to the plan. The change is written to the plugin's own row and history only, never to the order, the fulfillment or the customer: **tell the customer yourself** where to collect the parcel. The order card says when the point of the shipment is not the one the customer chose.
+
+**The storefront** stores the id of the chosen point as `pudo_id` in the data of the shipping method, for example `{ "pudo_id": "PL14509" }` when adding the shipping method to the cart; the checkout keeps it as `dpd_pudo_id`. Two ways to let the customer choose:
+
+- **The PudoFinder widget of DPD**: DPD's own map. It needs its own key, given by DPD's IT per domain (not the MyPudo key of the plugin), and it returns only the id of the point. The storefront then reads the point with `GET /store/dpd/points/:id` (to show its address and to know whether it takes cash on delivery) and stores its id as `pudo_id`.
+- **Your own list or map** on the store routes below.
+
+Only points in Poland in this version, in the routes and at the checkout.
+
+### Store API
+
+Both routes ask for the publishable API key, as every Medusa `/store` route does. They answer public point data only, with `Cache-Control: public, max-age=300`.
+
+- `GET /store/dpd/points`: the points a parcel can go to now (active, handing out parcels, in Poland), up to 25. Search by `zip` (a Polish postal code, `02-495` or `02495`) with an optional `city` and `address`, or by `lat` and `lng` (nearest first; MyPudo searches within 5 km), not both. `country` may only be `PL`. `cod=true` keeps the points that take cash on delivery. `limit` is 1 to 25, 10 by default. Answers `{ points, source }`, where `source` is `live`, `sandbox` or `demo`.
+- `GET /store/dpd/points/:id`: one point by its id, only when a parcel can go to it now; anything else answers 404 `point_not_found`. Answers `{ point, source }`; `point.cod` says whether it takes cash on delivery.
+
+A point has its `id`, `name`, `type` (the kind of point as MyPudo gives it), `isLocker`, `partner`, `address` (`line1`, `line2`, `zip`, `city`, `country`), `lat` and `lng`, `active`, `services`, `delivery`, `cod`, the opening `hours` per day (1 is Monday), `distance` in metres for a search by place, and the `limits` of its kind (weight and box).
+
+A wrong query answers 400 `invalid`. Searches are limited per client address (`pointsPerMinute`, then 429 `rate_limited` with `Retry-After`). Searches are cached for ten minutes and points for an hour, in the process; all the store routes of one process together call MyPudo at most 120 times a minute (then 503 `points_unavailable` with `Retry-After`). When MyPudo does not answer, the routes answer 502 `points_unavailable`, and 503 when it is not configured.
+
+**Behind a proxy or a load balancer**, set Express `trust proxy` in your Medusa server, so that the limit counts each client and not the proxy: otherwise every customer of the store shares one limit.
 
 ## Requirements
 
@@ -83,6 +114,12 @@ Connection:
 - `timeoutMs` (default `20000`, 5000 to 45000): how long one call to DPD may take. A create that runs out of time goes to `unknown` and is looked up, never sent again blindly.
 - `requestsPerMinute` (default `60`, 10 to 600): calls to DPD per minute from one process. A call that would wait more than 15 seconds for its turn is not sent and the shipment can be tried again.
 
+DPD Pickup points (live mode only; the sandbox and demo mode use their catalogs):
+
+- `pickupLogin`, `pickupPassword` (default none): the MyPudo login and password (HTTP Basic). `pickupApiKey` (default none): the MyPudo key, used when the login and password are not both set. They never leave the server and are masked everywhere.
+- `pointsTimeoutMs` (default `3000`, 1000 to 10000): how long one call to MyPudo may take. The checkout lets an unchecked point through, so this is also the longest a customer waits for the check.
+- `pointsPerMinute` (default `30`, 5 to 600): point searches per minute from one client address on the store routes.
+
 Writes:
 
 - `shipmentWriter` (default `false`; in demo mode `true`, acting on the simulation only): allows creating shipments, getting labels and looking up unclear shipments in DPD (a label and a lookup advise the parcels in DPD). It works only when a person also arms it in Settings.
@@ -97,7 +134,7 @@ Shipments:
 - `codCountries` (default `{ "PL": ["PLN"] }`): cash on delivery currencies per destination country. `codPaymentProviders` (default `["pp_system_default"]`): the payment providers that mean "pay at the door".
 - `documentRetentionDays` (default `90`): days a stored label is kept.
 
-The other options (`countries`, `orderer`, `trackingMode`, `infoLogin`, `infoPassword`, `infoChannel`, `pickupLogin`, `pickupPassword`, `pickupApiKey`, `statusMap`, `internationalReturns`, `pickupWriter`, `fulfillmentStatusWriter`) are read and checked already, and are used by the next versions.
+The other options (`countries`, `orderer`, `trackingMode`, `infoLogin`, `infoPassword`, `infoChannel`, `statusMap`, `internationalReturns`, `pickupWriter`, `fulfillmentStatusWriter`) are read and checked already, and are used by the next versions.
 
 ## Write safety
 
@@ -109,14 +146,16 @@ The other options (`countries`, `orderer`, `trackingMode`, `infoLogin`, `infoPas
 ## Security and data
 
 - **Credentials stay on the server**: masked in logs, errors and the admin, which only knows whether they are set.
-- **Personal data stays where it lives**: the receiver's name, phone, e-mail and address are read from the order when a plan is built and go only to DPD and to the plan answer (not cached). The plugin's tables keep ids, the option, the boxes, the cash on delivery amount, the reference, the waybills and the states; problems name what is wrong, never the value. Stored labels carry what DPD prints on them and are removed after `documentRetentionDays`.
+- **Personal data stays where it lives**: the receiver's name, phone, e-mail and address (and, for DPD Pickup, those of the person who collects) are read from the order when a plan is built and go only to DPD and to the plan answer (not cached). The address of a Pickup point is public data and is kept with the shipping method and the shipment. The plugin's tables keep ids, the option, the boxes, the cash on delivery amount, the reference, the waybills and the states; problems name what is wrong, never the value. Stored labels carry what DPD prints on them and are removed after `documentRetentionDays`.
 - **Admin routes** sit behind Medusa's admin authentication, and writes need a JSON body or the `x-koda-request` header.
-- **Shopper metadata is not state**: a shopper may not set `dpd_*` keys on a cart or the account through the Store API.
+- **Shopper metadata is not state**: a shopper may not set `dpd_*` keys on a cart or the account through the Store API, and the point snapshot is added only by the checkout after its check.
+- **MyPudo credentials**: the key travels in the URLs of MyPudo, so every URL, error and log line of MyPudo is masked, and no MyPudo URL is stored or answered.
 
 ## What this plugin does not do (yet)
 
-- It does not create DPD Pickup shipments: the plan of a `dpd-pickup` or `dpd-pickup-cod` fulfillment says it comes in a later version.
-- It does not send shipments abroad, and it does not create returns.
+- It does not send shipments abroad, also not to DPD Pickup points outside Poland, and it does not create returns.
+- It does not change a Pickup point by itself and does not tell the customer about a change.
+- It does not filter the points by the weight of the cart, and it does not use the holiday filter of MyPudo: a point closed for a day within two weeks may not be listed.
 - It does not hand shipments over to the courier: no protocols and no courier orders yet. Use DPD's own tools for that.
 - It does not track shipments and does not mark Medusa fulfillments shipped or delivered.
 - It does not print a label again in another format: DPD has not yet said whether that advises the parcels again.
@@ -131,6 +170,7 @@ Every route is behind Medusa's admin authentication. Creating, getting a label a
 - `POST /admin/dpd/shipments/:id/create` `{ planHash, page }`: creates the shipment from the plan that was read and gets its label.
 - `POST /admin/dpd/shipments/:id/label` `{ page }`: gets the label of a shipment created without it. `GET /admin/dpd/shipments/:id/label?download=1`: the stored label PDF.
 - `POST /admin/dpd/shipments/:id/boxes` `{ boxes }`: sets the boxes by hand, `null` goes back to the automatic ones.
+- `POST /admin/dpd/shipments/:id/point` `{ pudoId }`: changes the point of a pending or failed Pickup shipment, checked fresh; it needs no armed writer, because nothing goes to DPD. `GET /admin/dpd/points`: the point search of the admin, the same query as the store route, without its limits.
 - `POST /admin/dpd/shipments/:id/lookup`, `.../accept`, `.../skip`: look up an unclear shipment in DPD, accept DPD's waybills of a shipment that does not match, mark a shipment as handled outside the plugin.
 
 ## Trademarks
@@ -142,6 +182,10 @@ DPD and the DPD logo are trademarks of their owners, used here only to identify 
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/LICENSE).
 
 ## Changelog
+
+### 0.3.0 (unreleased)
+
+DPD Pickup shipments to points in Poland, with or without cash on delivery: the point checked at the checkout (letting it through when MyPudo cannot answer), in the plan and when a person changes it in the admin; the store routes for a point search and one point; the test catalog of the sandbox and the sample catalog of demo mode. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/CHANGELOG.md).
 
 ### 0.2.0 (unreleased)
 

@@ -2,14 +2,17 @@
  * The fulfillment provider: the five frozen option ids, the checks at
  * checkout (each option, cash on delivery per country and currency, Pickup
  * points), what a fulfillment records (never a request to DPD), the refused
- * cancel after the handover, the return that never throws.
+ * cancel after the handover, the return that never throws. Pickup points are
+ * checked in the catalog of the mode (fakes; never MyPudo) and fail open.
  */
 import { afterEach, beforeEach, test } from "node:test"
 import assert from "node:assert/strict"
-import { checkMethodData, fulfillmentOptions, pickDpdMethod, readFulfillmentData, specOf, validateMethodData, type CheckoutContext, type CheckoutRules } from "../src/modules/dpd/lib/option-data.ts"
+import { catalogPoint } from "../src/modules/dpd/lib/mypudo.ts"
+import { checkMethodData, checkoutError, fulfillmentOptions, pickDpdMethod, readFulfillmentData, specOf, validateMethodData, type CheckoutContext, type CheckoutErrorCode, type CheckoutRules } from "../src/modules/dpd/lib/option-data.ts"
 import { resolveOptions } from "../src/modules/dpd/lib/options.ts"
+import { catalogSource, SANDBOX_POINTS, type PointsSource } from "../src/modules/dpd/lib/points.ts"
 import DpdFulfillmentProvider from "../src/providers/dpd/service.ts"
-import { SANDBOX } from "./helpers.ts"
+import { countingPoints, SANDBOX } from "./helpers.ts"
 
 /* Stage 1 talks to nobody: any request fails the test. */
 const realFetch = globalThis.fetch
@@ -240,4 +243,87 @@ test("the provider is lenient with its options: broken values never stop it", as
   const p = new DpdFulfillmentProvider({}, { mode: "nonsense", countries: "XX", codCountries: "{bad" })
   assert.equal((await p.getFulfillmentOptions()).length, 5)
   assert.equal(resolveOptions({ mode: "nonsense" }).mode, "sandbox")
+})
+
+/* Stage 3: the point itself at checkout (spec 7.2). */
+
+const SANDBOX_PLUS = [
+  ...SANDBOX_POINTS,
+  catalogPoint({ id: "PL0SBX04", name: "Punkt testowy bez pobrania", type: "100", line1: "Testowa 4", zip: "02-495", city: "Warszawa", active: true, services: ["100"] }),
+  catalogPoint({ id: "DE0SBX01", name: "Testpunkt", type: "100", line1: "Teststr. 1", zip: "10115", city: "Berlin", country: "DE", active: true, services: ["100"] }),
+]
+
+function withPoints(points: PointsSource, options: Record<string, unknown> = SANDBOX) {
+  const logs: string[] = []
+  const logger = { info: (m: string) => void logs.push(`info ${m}`), warn: (m: string) => void logs.push(`warn ${m}`), error: (m: string) => void logs.push(`error ${m}`) }
+  return { p: new DpdFulfillmentProvider({ logger, dpdPointsSource: points }, options), logs }
+}
+
+async function refusedAs(work: Promise<unknown>, code: CheckoutErrorCode): Promise<void> {
+  await assert.rejects(work, (err: Error & { type?: string }) => err.type === "invalid_data" && err.message === checkoutError(code).message)
+}
+
+test("Pickup at checkout: a point of the catalog is stored as a snapshot, the refused ones are refused with their own code", async () => {
+  const points = countingPoints(catalogSource("sandbox", SANDBOX_PLUS))
+  const { p } = withPoints(points)
+  const data = await p.validateFulfillmentData({ id: "dpd-pickup-cod" }, { pudo_id: "pl14509", dpd_pudo: { name: "forged" } }, CART)
+  assert.deepEqual(data, {
+    dpd_option: "dpd-pickup-cod",
+    dpd_kind: "pickup",
+    dpd_cod: true,
+    dpd_pudo_id: "PL14509",
+    dpd_country: "PL",
+    dpd_pudo: { name: "DPD Pickup, Oddział Miejski", line1: "Skoroszewska 11", zip: "02-495", city: "Warszawa", country: "PL", type: "300", isLocker: false },
+  }, "the snapshot of the catalog, never the one the client sent; no hours, no services")
+  assert.equal(points.reads, 1, "a fresh read per check")
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL0SBX01" }, CART), "pudo_inactive")
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL0SBX02" }, CART), "pudo_no_delivery")
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup-cod" }, { pudo_id: "PL0SBX04" }, CART), "pudo_no_cod")
+  assert.equal((await p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL0SBX04" }, CART)).dpd_pudo_id, "PL0SBX04", "without COD the point is fine")
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL0SBX99" }, CART), "pudo_not_found")
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "DE0SBX01" }, DE_CART), "pickup_abroad_later")
+  const reads = points.reads
+  await p.validateFulfillmentData({ id: "dpd-courier" }, {}, CART)
+  await assert.rejects(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "14509" }, CART))
+  assert.equal(points.reads, reads, "a courier and a malformed id never ask the source")
+})
+
+test("Pickup at checkout fails open: a source that is down, slow or not configured accepts the point unchecked, with one warning and no secret", async () => {
+  const points = countingPoints(catalogSource("live", SANDBOX_POINTS))
+  const { p, logs } = withPoints(points)
+  for (const fail of ["timeout", "network", "not_configured"] as const) {
+    points.fail.details = fail
+    const data = await p.validateFulfillmentData({ id: "dpd-pickup-cod" }, { pudo_id: "PL0SBX01" }, CART)
+    assert.equal(data.dpd_pudo_id, "PL0SBX01", fail)
+    assert.equal("dpd_pudo" in data, false, "no snapshot without a check")
+  }
+  points.fail.details = undefined
+  points.fail.throws = true
+  assert.equal((await p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL14509" }, CART)).dpd_pudo_id, "PL14509")
+  const warns = logs.filter((l) => l.startsWith("warn "))
+  assert.equal(warns.length, 4, "one warning per unchecked point")
+  assert.match(warns[0] ?? "", /PL0SBX01 \(timeout\)/)
+  assert.ok(warns.every((l) => !/key=|https?:/.test(l)))
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "DE0123456" }, DE_CART), "pickup_abroad_later")
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup-cod" }, { pudo_id: "DE0123456" }, DE_CART), "cod_pickup_abroad")
+
+  /* The source of the mode itself: live without MyPudo credentials is unchecked, without a request. */
+  const live = new DpdFulfillmentProvider({ logger: silent }, { ...SANDBOX, mode: "live" })
+  assert.equal((await live.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL14509" }, CART)).dpd_pudo_id, "PL14509")
+})
+
+test("Pickup at checkout in demo: an id outside the sample catalog is accepted without a snapshot and without a warning; a refused demo point is refused", async () => {
+  const p = provider({ ...SANDBOX, demo: true })
+  const data = await p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL14509" }, CART)
+  assert.equal(data.dpd_pudo_id, "PL14509")
+  assert.equal("dpd_pudo" in data, false)
+  const logs: string[] = []
+  const quiet = new DpdFulfillmentProvider({ logger: { info: (m: string) => void logs.push(`info ${m}`), warn: (m: string) => void logs.push(`warn ${m}`), error: () => {} } }, { ...SANDBOX, demo: true })
+  await quiet.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL14509" }, CART)
+  assert.equal(logs.filter((l) => l.startsWith("warn ")).length, 0)
+  assert.equal((await p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL9DEMO01" }, CART)).dpd_pudo !== undefined, true)
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL9DEMO06" }, CART), "pudo_inactive")
+  await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "PL9DEMO07" }, CART), "pudo_no_delivery")
+  /* Demo waives the existence of a point, never the rule of stage 3: an id abroad is refused by its prefix (E21). */
+  for (const cart of [CART, DE_CART]) await refusedAs(p.validateFulfillmentData({ id: "dpd-pickup" }, { pudo_id: "DE1234567" }, cart), "pickup_abroad_later")
 })

@@ -3,7 +3,7 @@ import { parseBoxesInput, type PlanBox } from "../../../../../../modules/dpd/lib
 import type { PlanResponse } from "../../../../../../modules/dpd/lib/contract"
 import { toPlanDto, toShipmentDto } from "../../../../../../modules/dpd/lib/dto"
 import { setBoxes } from "../../../../../../workflows/dpd/plan"
-import { isArmed, settingsOf } from "../../../../../../workflows/dpd/runtime"
+import { isArmed, pointsFor, settingsOf } from "../../../../../../workflows/dpd/runtime"
 import { ActionError, actorOf, bodyOf, dpdService, noStore, sendError, shipmentIdOf } from "../../../helpers"
 
 /**
@@ -31,7 +31,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     const { row, plan } = await setBoxes(req.scope, id, boxes, actorOf(req))
     const answer: PlanResponse = {
       shipment: toShipmentDto(row),
-      plan: toPlanDto(plan),
+      plan: toPlanDto(plan, pointsFor(req.scope).kind),
       writerArmed: await isArmed(svc, "shipment"),
       mode: svc.mode(),
       labelPage: (await settingsOf(svc)).labelPage,

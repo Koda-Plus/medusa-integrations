@@ -166,11 +166,14 @@ test("several DPD methods: the one of the fulfillment's shipping option; without
 
 test("recording trusts the order, not the checkout: the courier's country from the address, the plan's problems on the row (E18)", async () => {
   const codes = (row: Row | null) => ((row?.problems as Array<{ code: string }> | null) ?? []).map((p) => p.code)
-  /* A courier order with the variant weights plans clean; a Pickup option is not sent in stage 2. */
-  const clean = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-courier", dpd_country: "PL" }, { items: [{ id: "li_1", quantity: 2, variant: { weight: 1200 } }] })])
+  /* A courier order and a Pickup order (PL14509 of the sandbox catalog) with the variant weights plan clean. */
+  const weighed = { items: [{ id: "li_1", quantity: 2, variant: { weight: 1200 } }] }
+  const clean = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-courier", dpd_country: "PL" }, weighed)])
   assert.equal((await recordFulfillment(clean.container, ORDER, FUL))?.problems, null, "a courier order that plans has no problems")
+  const pickup = setup(SANDBOX, [withFulfillment(PICKUP_DATA, weighed)])
+  assert.equal((await recordFulfillment(pickup.container, ORDER, FUL))?.problems, null, "a Pickup order that plans has no problems (stage 3)")
   const s = setup(SANDBOX, [withFulfillment(PICKUP_DATA)])
-  assert.deepEqual(codes(await recordFulfillment(s.container, ORDER, FUL)), ["option_later"], "Pickup comes in a later stage")
+  assert.deepEqual(codes(await recordFulfillment(s.container, ORDER, FUL)), ["weight_missing"], "Pickup is planned like the courier")
   const noWeight = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-courier", dpd_country: "PL" })])
   assert.deepEqual(codes(await recordFulfillment(noWeight.container, ORDER, FUL)), ["weight_missing"], "no variant weight and no default box")
 
@@ -192,10 +195,10 @@ test("recording trusts the order, not the checkout: the courier's country from t
   const currency = setup(SANDBOX, [withFulfillment({ dpd_option: "dpd-pickup-cod", dpd_pudo_id: "PL14509" }, { currency_code: "eur" })])
   const eur = await recordFulfillment(currency.container, ORDER, FUL)
   assert.equal(eur?.country_code, "PL", "a Pickup point keeps the country of its id")
-  assert.deepEqual(codes(eur), ["option_later"])
+  assert.deepEqual(codes(eur), ["weight_missing", "cod_currency_unsupported"])
   assert.match(String(currency.events.rows[0].message), /cod_currency_unsupported/, "the checks of the checkout still speak in the history")
   const noPoint = setup(SANDBOX, [withFulfillment({ ...OPTION_PICKUP }, { shipping_methods: [] })])
-  assert.deepEqual(codes(await recordFulfillment(noPoint.container, ORDER, FUL)), ["option_later"])
+  assert.deepEqual(codes(await recordFulfillment(noPoint.container, ORDER, FUL)), ["pudo_missing", "weight_missing"], "no point in the data: the plan asks for one")
 
   for (const x of [moved, outside, noAddress, currency]) {
     const stored = JSON.stringify(x.shipments.rows) + JSON.stringify(x.events.rows)
@@ -238,9 +241,9 @@ test("a canceled fulfillment cancels its row when nothing was sent; a row DPD ha
   const raced = setup(SANDBOX, [withFulfillment(PICKUP_DATA)])
   const racing = await recordFulfillment(raced.container, ORDER, FUL)
   const transition = raced.store.transition.bind(raced.store)
-  raced.store.transition = async (id, from, patch) => {
+  raced.store.transition = async (id, from, patch, expect) => {
     await transition(id, ["pending"], { state: "creating" })
-    return transition(id, from, patch)
+    return transition(id, from, patch, expect)
   }
   const lost = await onFulfillmentCanceled(raced.container, FUL)
   assert.equal(lost?.state, "creating", "the row as it is now, not as it was read")
@@ -253,9 +256,9 @@ test("a canceled fulfillment cancels its row when nothing was sent; a row DPD ha
   const twice = setup(SANDBOX, [withFulfillment(PICKUP_DATA)])
   await recordFulfillment(twice.container, ORDER, FUL)
   const first = twice.store.transition.bind(twice.store)
-  twice.store.transition = async (id, from, patch) => {
-    await first(id, from, patch)
-    return first(id, from, patch)
+  twice.store.transition = async (id, from, patch, expect) => {
+    await first(id, from, patch, expect)
+    return first(id, from, patch, expect)
   }
   assert.equal((await onFulfillmentCanceled(twice.container, FUL))?.state, "canceled")
   assert.equal(twice.events.rows.filter((e) => (e.data as Row | null)?.action === "fulfillment_canceled").length, 0, "no kept line for a row another cancel canceled")
@@ -265,11 +268,11 @@ test("a canceled fulfillment cancels its row when nothing was sent; a row DPD ha
   await recordFulfillment(back.container, ORDER, FUL)
   const plain = back.store.transition.bind(back.store)
   let raced1 = false
-  back.store.transition = async (id, from, patch) => {
-    if (raced1) return plain(id, from, patch)
+  back.store.transition = async (id, from, patch, expect) => {
+    if (raced1) return plain(id, from, patch, expect)
     raced1 = true
     await plain(id, ["pending"], { state: "creating" })
-    const lost1 = await plain(id, from, patch)
+    const lost1 = await plain(id, from, patch, expect)
     await plain(id, ["creating"], { state: "failed" })
     return lost1
   }

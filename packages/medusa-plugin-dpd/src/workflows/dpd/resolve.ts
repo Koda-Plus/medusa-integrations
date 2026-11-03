@@ -279,6 +279,8 @@ const LIST_TAKE = 200
 const AUTO_LABEL_CODES: readonly string[] = ["label_unclear", "label_lease_expired", "rate_limited"]
 /** The code of a row whose create a person asked for and the pacing held back: the pass leaves it to the person. */
 const MANUAL_DEFERRED = deferredCode("manual")
+/** The code of a Pickup row the pass did not send because its point could not be checked (DS13): retried in a batch of its own. */
+const POINT_UNCHECKED = "point_unchecked"
 
 async function purgeDocuments(scope: Scope, now: Date): Promise<number> {
   const svc = dpdService(scope)
@@ -372,9 +374,17 @@ export async function runShipmentPass(scope: Scope, now: Date = new Date()): Pro
      * back), and failed rows the pass's own claim was held back for (nothing
      * reached DPD). Every condition is in the query, so rows the pass cannot
      * act on (problems, older than the window) never fill the page; the
-     * filter after it is a second guard.
+     * filter after it is a second guard. Pickup rows whose point could not
+     * be checked (DS13) have a batch of their own: while MyPudo is down or
+     * not configured they stay in the window without being sent, and in the
+     * same batch they would take every slot from the older rows behind them.
+     * That batch goes oldest try first (each retry moves updated_at), so
+     * points that never answer take their turn and do not hold the others.
+     * A failed rate_limited row the check held back is failed with that code
+     * too: still the pass's to send.
      */
     const windowFrom = new Date(from)
+    const inWindow = (r: ShipmentRow) => (r.problems === null || r.problems === undefined) && time(r.created_at) >= from
     const fresh = (
       await listShipments(
         svc,
@@ -383,14 +393,23 @@ export async function runShipmentPass(scope: Scope, now: Date = new Date()): Pro
           kind: "outbound",
           problems: null,
           created_at: { $gte: windowFrom },
-          $or: [{ state: "pending", error_code: null }, { state: "pending", error_code: { $ne: MANUAL_DEFERRED } }, { state: "failed", error_code: "rate_limited" }],
+          $or: [{ state: "pending", error_code: null }, { state: "pending", error_code: { $nin: [MANUAL_DEFERRED, POINT_UNCHECKED] } }, { state: "failed", error_code: "rate_limited" }],
         },
         { take: LIST_TAKE, order: { created_at: "DESC" } },
       )
     )
-      .filter((r) => (r.problems === null || r.problems === undefined) && r.error_code !== MANUAL_DEFERRED && time(r.created_at) >= from)
+      .filter((r) => inWindow(r) && r.error_code !== MANUAL_DEFERRED && r.error_code !== POINT_UNCHECKED)
       .slice(0, AUTO_BATCH)
-    for (const r of fresh) {
+    const unchecked = (
+      await listShipments(
+        svc,
+        { mode, kind: "outbound", problems: null, created_at: { $gte: windowFrom }, state: ["pending", "failed"], error_code: POINT_UNCHECKED },
+        { take: AUTO_BATCH, order: { updated_at: "ASC", id: "ASC" } },
+      )
+    )
+      .filter((r) => inWindow(r) && r.error_code === POINT_UNCHECKED && (r.state === "pending" || r.state === "failed"))
+      .slice(0, AUTO_BATCH)
+    for (const r of [...fresh, ...unchecked]) {
       let sent = false
       const done = await safely(`auto create ${r.id}`, async () => {
         sent = (await createAttempt(scope, r.id, { actor: "system", trigger: "auto" })).sent

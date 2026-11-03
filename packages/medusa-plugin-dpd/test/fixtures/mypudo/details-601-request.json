@@ -1,0 +1,14 @@
+{
+  "source": "MP s.35",
+  "note": "The 601 text of MP s.35 in the shape of the error example of MP s.35 (no numeric code) [NZ, E8].",
+  "httpStatus": 400,
+  "body": {
+    "errors": [
+      {
+        "code": "REQUEST",
+        "subcode": "BAD_REQUEST",
+        "userMessage": "Nie znaleziono PUDO o identyfikatorze PL99999"
+      }
+    ]
+  }
+}

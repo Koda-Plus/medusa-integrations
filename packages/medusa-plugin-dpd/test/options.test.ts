@@ -7,7 +7,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { EU_COUNTRIES } from "../src/modules/dpd/lib/constants.ts"
-import { canCallDpd, dpdServicesHost, missingOptions, resolveOptions, secretsOf } from "../src/modules/dpd/lib/options.ts"
+import { canCallDpd, dpdServicesHost, missingOptions, pickupAuthOf, resolveOptions, secretsOf } from "../src/modules/dpd/lib/options.ts"
 import { DEMO_SEEDED_KEY, effectiveSettings, readStoredSettings, settingsKey, validateSettingsInput } from "../src/modules/dpd/lib/settings.ts"
 import { readWriterSetting, writerSettingKey, writerState } from "../src/modules/dpd/lib/writers.ts"
 import { PASSWORD, SANDBOX } from "./helpers.ts"
@@ -243,4 +243,38 @@ test("settings: per mode keys; a saved label page wins over the option", () => {
   assert.deepEqual(validateSettingsInput({ labelPage: "A6" }), { ok: false, errors: ["labelPage"] })
   assert.deepEqual(validateSettingsInput(null), { ok: false, errors: ["body"] })
   assert.deepEqual(validateSettingsInput({ labelPage: "A4" }), { ok: true, value: { labelPage: "A4" } })
+})
+
+test("stage 3: pointsTimeoutMs and pointsPerMinute, defaults, strings, out of range", () => {
+  const d = resolveOptions({})
+  assert.equal(d.pointsTimeoutMs, 3000)
+  assert.equal(d.pointsPerMinute, 30)
+  const s = resolveOptions({ pointsTimeoutMs: "5000", pointsPerMinute: " 60 " })
+  assert.equal(s.pointsTimeoutMs, 5000)
+  assert.equal(s.pointsPerMinute, 60)
+  assert.deepEqual(s.problems, [])
+  const low = resolveOptions({ pointsTimeoutMs: 10, pointsPerMinute: 1 })
+  assert.equal(low.pointsTimeoutMs, 1000, "brought into the range")
+  assert.equal(low.pointsPerMinute, 5)
+  assert.deepEqual(low.problems, ["pointsTimeoutMs (a whole number from 1000 to 10000)", "pointsPerMinute (a whole number from 5 to 600)"])
+  const high = resolveOptions({ pointsTimeoutMs: "60000", pointsPerMinute: 6000 })
+  assert.equal(high.pointsTimeoutMs, 10000, "checkout never waits longer than 10 s")
+  assert.equal(high.pointsPerMinute, 600)
+  assert.equal(high.problems.length, 2)
+  const junk = resolveOptions({ pointsTimeoutMs: "soon", pointsPerMinute: "" })
+  assert.equal(junk.pointsTimeoutMs, 3000)
+  assert.equal(junk.pointsPerMinute, 30, "an empty string is unset")
+  assert.deepEqual(junk.problems, ["pointsTimeoutMs (a whole number from 1000 to 10000)"])
+})
+
+test("pickupAuthOf: Basic when the login and the password are set (before the key), else the key, else none; all of them secrets", () => {
+  const basic = pickupAuthOf(resolveOptions({ pickupLogin: "pickup-login", pickupPassword: "pickup-pass-0000", pickupApiKey: "pickup-key-0000" }))
+  assert.deepEqual(basic, { kind: "basic", header: `Basic ${Buffer.from("pickup-login:pickup-pass-0000").toString("base64")}` })
+  assert.deepEqual(pickupAuthOf(resolveOptions({ pickupLogin: "pickup-login", pickupApiKey: " pickup-key-0000 " })), { kind: "key", key: "pickup-key-0000" }, "a login without a password is not Basic")
+  assert.deepEqual(pickupAuthOf(resolveOptions({ pickupPassword: "pickup-pass-0000" })), { kind: "none" })
+  assert.deepEqual(pickupAuthOf(resolveOptions({ pickupApiKey: "" })), { kind: "none" })
+  assert.deepEqual(pickupAuthOf(resolveOptions(undefined)), { kind: "none" })
+  const secrets = secretsOf(resolveOptions({ ...SANDBOX, pickupLogin: "pickup-login", pickupPassword: "pickup-pass-0000", pickupApiKey: "pickup-key-0000" }))
+  assert.ok(secrets.includes("pickup-pass-0000") && secrets.includes("pickup-key-0000"))
+  assert.ok(!secrets.includes("pickup-login"), "a login is an identifier")
 })

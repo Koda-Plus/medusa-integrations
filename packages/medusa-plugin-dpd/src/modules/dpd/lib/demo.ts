@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto"
 import { DEMO_ROWS, OPTION_SPECS, type DpdOptionId, type ShipmentKind, type ShipmentStage, type ShipmentState } from "./constants"
+import type { PointDto } from "./contract"
 import { toMinor } from "./money"
+import { catalogPoint, weekdayHours } from "./mypudo"
 import type { ResolvedSender } from "./sender"
 
 /**
@@ -12,7 +14,8 @@ import type { ResolvedSender } from "./sender"
  * is sent to DPD.
  *
  * Everything DPD would give is invented and looks it: the Pickup points are
- * PL9DEMO01 to PL9DEMO05 (a real id never has "DEMO" in it), the waybills
+ * PL9DEMO01 to PL9DEMO05 (a real id never has "DEMO" in it), with invented
+ * names and addresses on "Przykładowa" streets (DEMO_POINT_CATALOG), the waybills
  * start with 99 and end with "D", and no row links to the DPD tracking page.
  * No InfoServices event code is invented either: the rows carry a stage
  * (where the parcel is) and no status code.
@@ -31,6 +34,25 @@ export const DEMO_POINTS: readonly string[] = ["PL9DEMO01", "PL9DEMO02", "PL9DEM
 export function isDemoPoint(id: string | null | undefined): boolean {
   return typeof id === "string" && DEMO_POINTS.includes(id)
 }
+
+/**
+ * Full points for DEMO_POINTS, in that order (the seed rows use them by
+ * index): all active and handing out parcels; the rows with cash on delivery
+ * (indexes 0 and 3) point at points with service 101, so their plans are clean.
+ */
+export const DEMO_POINT_CATALOG: readonly PointDto[] = [
+  catalogPoint({ id: "PL9DEMO01", name: "DPD Pickup Demo, Oddział Przykładowy", type: "300", line1: "ul. Przykładowa 10", zip: "00-950", city: "Warszawa", lat: 52.2297, lng: 21.0122, active: true, services: ["100", "101", "200"], hours: weekdayHours("08:00", "18:00") }),
+  catalogPoint({ id: "PL9DEMO02", name: "Automat Demo Przykładowa 20", type: "400402", line1: "ul. Przykładowa 20", zip: "00-951", city: "Warszawa", lat: 52.2319, lng: 21.0067, active: true, services: ["100"], hours: weekdayHours("00:00", "23:59", 7) }),
+  catalogPoint({ id: "PL9DEMO03", name: "Sklep Demo przy Przykładowej", type: "500502", line1: "ul. Przykładowa 30", zip: "30-001", city: "Kraków", lat: 50.0647, lng: 19.945, active: true, services: ["100", "101"], hours: weekdayHours("06:00", "23:00") }),
+  catalogPoint({ id: "PL9DEMO04", name: "Kiosk Demo", type: "100", line1: "ul. Przykładowa 40", zip: "50-001", city: "Wrocław", lat: 51.1079, lng: 17.0385, active: true, services: ["100", "101"], hours: weekdayHours("09:00", "17:00") }),
+  catalogPoint({ id: "PL9DEMO05", name: "Market Demo", type: "500501", line1: "ul. Przykładowa 50", zip: "80-001", city: "Gdańsk", lat: 54.352, lng: 18.6466, active: true, services: ["100", "101", "200"], hours: weekdayHours("07:00", "21:00") }),
+]
+
+/** Points the plugin refuses (inactive; no service 100): for the API, the provider and the tests. The search never returns them (E15). */
+export const DEMO_REFUSED_POINTS: readonly PointDto[] = [
+  catalogPoint({ id: "PL9DEMO06", name: "Kiosk Demo nieczynny", type: "100", line1: "ul. Przykładowa 60", zip: "00-952", city: "Warszawa", lat: 52.2251, lng: 21.0035, active: false, services: ["100", "101"], hours: weekdayHours("09:00", "17:00") }),
+  catalogPoint({ id: "PL9DEMO07", name: "Punkt nadań Demo", type: "200", line1: "ul. Przykładowa 70", zip: "00-953", city: "Warszawa", lat: 52.2389, lng: 21.0158, active: true, services: ["200"], hours: weekdayHours("09:00", "17:00") }),
+]
 
 export type DemoOrder = {
   id: string

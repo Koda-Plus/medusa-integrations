@@ -1,0 +1,81 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "reference": "probe-mvzryyzy-Pa",
+          "pudoReceiver": {
+            "name": "Anna Przykładowa",
+            "countryCode": "PL",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "ref1": "9100",
+          "services": [
+            {
+              "code": "DPD_PICKUP",
+              "attributes": [
+                {
+                  "code": "PUDO",
+                  "value": "PL14509"
+                }
+              ]
+            }
+          ],
+          "parcels": [
+            {
+              "reference": "probe-mvzryyzy-Pa-1",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "sessionId": 244463286,
+      "beginTime": null,
+      "endTime": null,
+      "packages": [
+        {
+          "status": "OK",
+          "reference": "probe-mvzryyzy-Pa",
+          "validationInfo": [],
+          "parcels": [
+            {
+              "status": "OK",
+              "reference": "probe-mvzryyzy-Pa-1",
+              "waybill": "0000899060290Q",
+              "validationInfo": []
+            }
+          ]
+        }
+      ],
+      "traceId": "8930fbe9-7aaa-4ac8-a1a3-12807f784369"
+    }
+  }
+}

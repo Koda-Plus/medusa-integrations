@@ -5,14 +5,18 @@
  * stored label is served as PDF bytes with its file name (in demo mode a
  * sample is built when none is stored), the actions of each state, the
  * refusals with their codes, and the write guard of the middlewares over
- * the new routes. Fake DPDServices, memory store, no network.
+ * the new routes. Stage 3: the point search of the admin, a point of the
+ * store, the Pickup plan with its point, the point change and pickupCheck.
+ * Fake DPDServices, the catalog of the mode, memory store, no network.
  */
 import { afterEach, beforeEach, test } from "node:test"
 import assert from "node:assert/strict"
-import type { ActionResponse, ErrorResponse, PlanResponse, ShipmentResponse } from "../src/modules/dpd/lib/contract.ts"
+import type { ActionResponse, ErrorResponse, PlanResponse, PointResponse, PointsResponse, ShipmentResponse } from "../src/modules/dpd/lib/contract.ts"
 import { ACTION_ERROR_CODES } from "../src/modules/dpd/lib/contract.ts"
 import { shipmentActions } from "../src/modules/dpd/lib/dto.ts"
 import { SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
+import { resolveOptions } from "../src/modules/dpd/lib/options.ts"
+import { optionsSummary } from "../src/api/admin/dpd/helpers.ts"
 import { recordFulfillment } from "../src/workflows/dpd/shipments.ts"
 import middlewares from "../src/api/middlewares.ts"
 import { GET as getShipment } from "../src/api/admin/dpd/shipments/[id]/route.ts"
@@ -23,6 +27,9 @@ import { POST as postLookup } from "../src/api/admin/dpd/shipments/[id]/lookup/r
 import { POST as postSkip } from "../src/api/admin/dpd/shipments/[id]/skip/route.ts"
 import { POST as postAccept } from "../src/api/admin/dpd/shipments/[id]/accept/route.ts"
 import { POST as postBoxes } from "../src/api/admin/dpd/shipments/[id]/boxes/route.ts"
+import { POST as postPoint } from "../src/api/admin/dpd/shipments/[id]/point/route.ts"
+import { GET as getAdminPoints } from "../src/api/admin/dpd/points/route.ts"
+import { GET as getStorePoint } from "../src/api/store/dpd/points/[id]/route.ts"
 import { FakeDpdServices, TINY_PDF_BASE64 } from "./fake-dpdservices.ts"
 import { arm, order, SANDBOX, setup, type Row, type Setup } from "./helpers.ts"
 
@@ -275,4 +282,96 @@ test("the write guard of /admin/dpd* covers the shipment routes: a form post is 
     admin.middlewares[0]({ method: "POST", url: `/admin/dpd/shipments/dpdshp_1/${path}`, headers: { "content-type": "application/json" } } as never, res as never, () => void (ok.next = true))
     assert.equal(ok.next, true, path)
   }
+})
+
+/* Stage 3: the point routes and the Pickup plan (spec 6, 9). */
+
+const PICKUP = { dpd_option: "dpd-pickup", dpd_kind: "pickup", dpd_cod: false, dpd_pudo_id: "PL14509", dpd_country: "PL" }
+
+function pickupOrder(pudoId: string | null = "PL14509"): Row {
+  const data = { ...PICKUP, dpd_pudo_id: pudoId }
+  return order({
+    id: ORDER,
+    items: [{ id: "li_1", quantity: 1, variant: { weight: 1500 } }],
+    shipping_methods: [{ id: "sm_01", name: "DPD Pickup", shipping_option_id: "so_01", data }],
+    fulfillments: [{ id: FUL, provider_id: "dpd_dpd", data, canceled_at: null }],
+  })
+}
+
+test("GET /admin/dpd/points: the points of the mode and their source, private, no-store; a bad query 400", async () => {
+  const s = setup(SANDBOX)
+  const found = await call<PointsResponse>(getAdminPoints, s, "", { query: { zip: "02-495" } })
+  assert.equal(found.status, 200)
+  assert.equal(found.headers["cache-control"], "private, no-store")
+  assert.equal(found.body.source, "sandbox")
+  assert.deepEqual(found.body.points.map((p) => p.id), ["PL14509"], "only the points that hand out parcels")
+  const bad = await call<ErrorResponse>(getAdminPoints, s, "", { query: { zip: "02-495", lat: "52" } })
+  assert.equal(bad.status, 400)
+  assert.equal(bad.headers["cache-control"], "private, no-store")
+})
+
+test("GET /store/dpd/points/:id: a point outside the catalog is 404 point_not_found, cached like a point", async () => {
+  const s = setup(SANDBOX)
+  const hit = await call<PointResponse>(getStorePoint, s, "pl14509")
+  assert.equal(hit.status, 200)
+  assert.equal(hit.body.point.id, "PL14509")
+  const miss = await call<ErrorResponse>(getStorePoint, s, "PL0SBX99")
+  assert.equal(miss.status, 404)
+  assert.equal(miss.body.code, "point_not_found")
+  assert.equal(miss.headers["cache-control"], "public, max-age=300")
+})
+
+test("the Pickup plan carries the point with its check and the recipient of the point; a missing and a wrong id are problems", async () => {
+  const { s, id } = await ready({ ...SANDBOX, shipmentWriter: true }, [pickupOrder()])
+  const plan = await call<PlanResponse>(getPlan, s, id)
+  assert.equal(plan.status, 200)
+  assert.equal(plan.body.plan.ok, true)
+  assert.equal(plan.body.plan.point?.pudoId, "PL14509")
+  assert.equal(plan.body.plan.point?.check, "ok")
+  assert.equal(plan.body.plan.point?.point?.name, "DPD Pickup, Oddział Miejski")
+  assert.equal(plan.body.plan.point?.reason, null)
+  assert.equal(plan.body.plan.point?.source, "sandbox")
+  assert.ok(plan.body.plan.pudoReceiver, "the recipient of the point")
+  assert.equal(plan.body.plan.receiver, null, "a Pickup shipment has no courier address")
+
+  const none = await ready({ ...SANDBOX, shipmentWriter: true }, [pickupOrder(null)])
+  const missing = await call<PlanResponse>(getPlan, none.s, none.id)
+  assert.deepEqual(missing.body.plan.problems.map((p) => p.code), ["pudo_missing"])
+  assert.equal(missing.body.plan.point?.check, "missing")
+
+  const wrong = await ready({ ...SANDBOX, shipmentWriter: true }, [pickupOrder()])
+  const row = wrong.s.shipments.rows.find((r) => r.id === wrong.id)
+  assert.ok(row)
+  row.pudo_id = "14509"
+  const invalid = await call<PlanResponse>(getPlan, wrong.s, wrong.id)
+  assert.deepEqual(invalid.body.plan.problems.map((p) => p.code), ["pudo_invalid"])
+  assert.equal(invalid.body.plan.point?.check, "invalid", "a wrong id is never read")
+  assert.equal(invalid.body.plan.point?.point, null)
+})
+
+test("POST point through the route: the new plan, the write guard 415 on a form post", async () => {
+  const { s, id } = await ready({ ...SANDBOX }, [pickupOrder()])
+  const changed = await call<PlanResponse>(postPoint, s, id, { body: { pudoId: "PL14509" } })
+  assert.equal(changed.status, 200, "the same point answers the plan")
+  assert.equal(changed.body.shipment.pudoId, "PL14509")
+  const refused = await call<ErrorResponse>(postPoint, s, id, { body: { pudoId: "PL0SBX01" } })
+  assert.equal(refused.status, 422)
+  assert.equal(refused.body.code, "point_refused")
+  assert.deepEqual(refused.body.problems?.map((p) => p.code), ["pudo_inactive"])
+
+  const routes = (middlewares as unknown as { routes: Array<{ matcher: string; middlewares: Array<(req: never, res: never, next: () => void) => void> }> }).routes
+  const admin = routes.find((r) => r.matcher === "/admin/dpd*")
+  assert.ok(admin)
+  const out = { status: 0 }
+  const res = { status: (c: number) => ((out.status = c), res), json: () => res }
+  admin.middlewares[0]({ method: "POST", url: "/admin/dpd/shipments/dpdshp_1/point", headers: { "content-type": "text/plain" } } as never, res as never, () => {})
+  assert.equal(out.status, 415)
+})
+
+test("pickupCheck of the status: the catalog outside live, MyPudo with its credentials, not_configured without them", () => {
+  assert.equal(optionsSummary(resolveOptions(SANDBOX)).pickupCheck, "catalog")
+  assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, demo: true })).pickupCheck, "catalog")
+  assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, mode: "live" })).pickupCheck, "not_configured")
+  assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, mode: "live", pickupApiKey: "testkeykoda0000000000" })).pickupCheck, "mypudo")
+  assert.equal(optionsSummary(resolveOptions({ ...SANDBOX, mode: "live", pickupLogin: "test", pickupPassword: "test-password-koda-0000" })).pickupCheck, "mypudo")
 })
