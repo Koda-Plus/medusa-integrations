@@ -111,7 +111,8 @@ test("paths: cancel is DELETE /v1/shipments/:id, buy posts the offer id, labels 
   assert.equal(String(d.id), "77")
   assert.match(fake.calls.at(-1)?.url ?? "", new RegExp(`/v1/organizations/${ORG}/dispatch_orders$`))
   const found = await c.findShipments({ receiver_email: "anna.nowak@example.com", created_at_gteq: "2026-10-07T00:00:00.000Z" })
-  assert.equal(found.length, 2)
+  assert.equal(found.items.length, 2)
+  assert.equal(found.complete, true)
   assert.match(fake.calls.at(-1)?.url ?? "", /receiver_email=anna\.nowak%40example\.com/)
 })
 
