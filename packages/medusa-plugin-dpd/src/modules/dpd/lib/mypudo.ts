@@ -393,7 +393,8 @@ export function createMyPudoClient(opts: MyPudoClientOptions): MyPudoClient {
     let status: number
     let raw: string
     try {
-      const res = await doFetch(url, { method: "GET", headers, signal: ctrl.signal })
+      /* redirect "manual": a 3xx is an "http" failure, never a call to the Location. */
+      const res = await doFetch(url, { method: "GET", headers, signal: ctrl.signal, redirect: "manual" })
       status = res.status
       raw = await res.text()
     } catch (err) {

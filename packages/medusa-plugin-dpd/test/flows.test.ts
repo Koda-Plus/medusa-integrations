@@ -19,6 +19,7 @@ import { GET as getOrder } from "../src/api/admin/dpd/orders/[orderId]/route.ts"
 import { POST as postWriters } from "../src/api/admin/dpd/writers/route.ts"
 import { POST as postSeed } from "../src/api/admin/dpd/demo/seed/route.ts"
 import { POST as postReset } from "../src/api/admin/dpd/demo/reset/route.ts"
+import dpdSyncStatuses, { config as statusJobConfig } from "../src/jobs/dpd-sync-statuses.ts"
 import { order, SANDBOX, setup, type Row, type Setup } from "./helpers.ts"
 
 const realFetch = globalThis.fetch
@@ -79,7 +80,7 @@ function writesOf(s: Setup): () => string[] {
       }
     }
   }
-  wrap(s.store as unknown as Record<string, unknown>, "store", (k) => !["counts", "list", "dispatchCounts", "listDispatches"].includes(k))
+  wrap(s.store as unknown as Record<string, unknown>, "store", (k) => !["counts", "list", "dispatchCounts", "listDispatches", "statusCounts"].includes(k))
   wrap(s.container.resolve<Record<string, unknown>>("dpd"), "dpd", (k) => /^(create|update|delete)/.test(k))
   wrap(s.container.resolve<Record<string, unknown>>("event_bus"), "event_bus", () => true)
   return () => calls
@@ -442,4 +443,14 @@ test("excluded is cancelable with the fulfillment", async () => {
   await s.store.transition(String(row?.id), ["pending"], { state: "labeled", waybills: ["99000000000001D"] })
   await s.store.transition(String(row?.id), ["labeled"], { state: "excluded" }, { dispatch_id: null })
   assert.equal((await onFulfillmentCanceled(s.container, FUL))?.state, "canceled", "do not send, then canceled in Medusa: nothing is left to send")
+})
+
+test("the job dpd-sync-statuses runs every 5 minutes, 2 minutes after the shipment pass, and runs the status pass", async () => {
+  assert.equal(statusJobConfig.name, "dpd-sync-statuses")
+  assert.equal(statusJobConfig.schedule, "2-59/5 * * * *")
+  const s = setup(SANDBOX)
+  await dpdSyncStatuses(s.container as never)
+  const sync = s.settings.rows.find((r) => r.key === "sandbox:status:lastSyncAt")
+  assert.ok(sync, "runStatusPass stored its last sync")
+  assert.equal((sync.value as Row).source, "simulated")
 })

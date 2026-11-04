@@ -18,6 +18,7 @@ import type {
   OrderDpdResponse,
   PlanResponse,
   PointsResponse,
+  RetryStatusWriterResponse,
   SetPointRequest,
   ShipmentFilter,
   ShipmentResponse,
@@ -52,7 +53,9 @@ export function errorMessage(err: unknown): string {
 export const dpdKeys = {
   all: ["dpd"] as const,
   status: ["dpd", "status"] as const,
-  shipments: (filter: ShipmentFilter, q: string, offset: number, limit: number) => ["dpd", "shipments", filter, q, offset, limit] as const,
+  /** writerFailed last: callers without it get false, the same key shape for both values. */
+  shipments: (filter: ShipmentFilter, q: string, offset: number, limit: number, writerFailed = false) =>
+    ["dpd", "shipments", filter, q, offset, limit, writerFailed] as const,
   order: (id: string) => ["dpd", "order", id] as const,
   shipment: (id: string) => ["dpd", "shipment", id] as const,
   plan: (id: string) => ["dpd", "plan", id] as const,
@@ -64,6 +67,9 @@ export const dpdKeys = {
   /** ids sorted, so the same selection in another order reuses the query. */
   dispatchPlan: (ids: readonly string[]) => ["dpd", "dispatchPlan", [...ids].sort()] as const,
 }
+
+/** The order queries of the Medusa dashboard (its query key factory of "orders"): the fulfillment section of the order page shows what the status writer marks. */
+export const MEDUSA_ORDER_KEYS = ["orders"] as const
 
 /**
  * The courier hours of a handover or of a group of a plan. Outside
@@ -182,11 +188,13 @@ export function useDpdStatus() {
   })
 }
 
-export function useDpdShipments(filter: ShipmentFilter, q: string, offset: number, limit: number) {
+/** A page of the shipment list; the query string gains writer=failed when writerFailed, else the parameter is not sent at all. */
+export function useDpdShipments(filter: ShipmentFilter, q: string, offset: number, limit: number, writerFailed = false) {
   const params = new URLSearchParams({ filter, limit: String(limit), offset: String(offset) })
   if (q) params.set("q", q)
+  if (writerFailed) params.set("writer", "failed")
   return useQuery<ShipmentsResponse>({
-    queryKey: dpdKeys.shipments(filter, q, offset, limit),
+    queryKey: dpdKeys.shipments(filter, q, offset, limit, writerFailed),
     queryFn: () => dpdFetch<ShipmentsResponse>(`/admin/dpd/shipments?${params.toString()}`),
     placeholderData: (previous) => previous,
   })
@@ -223,13 +231,18 @@ function usePost<TResult>(path: string) {
 /**
  * A POST on one shipment (`/admin/dpd/shipments/:id/<action>`): the variables
  * carry the id and the body. Every answer, a refusal too (busy, wrong_state,
- * plan_changed say the row moved on), invalidates what the page shows.
+ * plan_changed say the row moved on), invalidates what the page shows; an
+ * action that can write the Medusa fulfillment (`writesOrder`) also the
+ * dashboard's own order queries.
  */
-function useAction<TBody extends object, TResult>(path: (id: string) => string) {
+function useAction<TBody extends object, TResult>(path: (id: string) => string, writesOrder = false) {
   const client = useQueryClient()
   return useMutation<TResult, unknown, { id: string } & TBody>({
     mutationFn: ({ id, ...body }) => dpdFetch<TResult>(path(id), { method: "POST", body }),
-    onSettled: () => void client.invalidateQueries({ queryKey: dpdKeys.all }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: dpdKeys.all })
+      if (writesOrder) void client.invalidateQueries({ queryKey: MEDUSA_ORDER_KEYS })
+    },
   })
 }
 
@@ -243,6 +256,10 @@ export const useDpdLookup = () => useAction<Record<never, never>, ActionResponse
 export const useDpdSkip = () => useAction<Record<never, never>, ActionResponse>((id) => shipmentPath(id, "skip"))
 /** Accept the waybills DPD gave for a shipment that does not match. */
 export const useDpdAccept = () => useAction<Record<never, never>, ActionResponse>((id) => shipmentPath(id, "accept"))
+/** Ask DPD (or the status simulator) for the status of a shipment now (DS18). */
+export const useDpdRefreshStatus = () => useAction<Record<never, never>, ActionResponse>((id) => shipmentPath(id, "refresh-status"), true)
+/** Write the DPD status of a shipment to Medusa again after a failed or interrupted write (DS18); `result` says what the writer did (E56). */
+export const useDpdRetryStatusWriter = () => useAction<Record<never, never>, RetryStatusWriterResponse>((id) => shipmentPath(id, "retry-status-writer"), true)
 
 /** Set the boxes by hand (null: back to automatic); the answer is the fresh plan, put straight into its query. */
 export function useDpdBoxes() {

@@ -1,0 +1,8 @@
+<!-- HTTP 200 -->
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+  <S:Body>
+    <ns2:markEventsAsProcessedV1Response xmlns:ns2="http://events.dpdinfoservices.dpd.com.pl/">
+      <return>true</return>
+    </ns2:markEventsAsProcessedV1Response>
+  </S:Body>
+</S:Envelope>

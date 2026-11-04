@@ -13,10 +13,10 @@ import { GuideView, usePromptSpec } from "../../lib/dpd-guide-view"
 import { DpdIcon, DpdMark } from "../../lib/dpd-icon"
 import { DispatchDrawer, DispatchesSection } from "../../lib/dpd-dispatch"
 import { KitLoading } from "../../lib/dpd-kit"
-import { dispatchFilterOf, writingWriters } from "../../lib/dpd-logic"
+import { dispatchFilterOf, writerFailedOf, writerFailedParams, writingWriters } from "../../lib/dpd-logic"
 import { DemoDetails, FILTERS, ShipmentsSection } from "../../lib/dpd-panel"
 import { AccountSection, SETTINGS_TABS, SenderSection, WritersSection, type SettingsTabId } from "../../lib/dpd-settings"
-import { GROUP_ICON, fmtNumber, modeOf, useSenderProblemText } from "../../lib/dpd-ui"
+import { GROUP_ICON, fmtDateTime, fmtNumber, modeOf, useSenderProblemText } from "../../lib/dpd-ui"
 
 /**
  * DPD by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -29,8 +29,8 @@ import { GROUP_ICON, fmtNumber, modeOf, useSenderProblemText } from "../../lib/d
  * - Settings (`?view=settings&tab=`): the DPD account as the options set it,
  *   the sender, the writers.
  *
- * Deep links from hosts and boards: `/dpd?filter=problems`, `/dpd?q=1042`;
- * the handovers: `/dpd?view=dispatches&filter=attention` (the panel, at the
+ * Deep links from hosts and boards: `/dpd?filter=problems`, `/dpd?q=1042`,
+ * `/dpd?writer=failed` (the status writes Medusa did not take); the handovers: `/dpd?view=dispatches&filter=attention` (the panel, at the
  * handover list), `/dpd?dispatch=<id>` (one handover in its drawer).
  *
  * DPD has its own sidebar entry; it is not a tab of another carrier's page.
@@ -73,6 +73,27 @@ const DpdPage = () => {
     const asked = params.get("filter")
     return !atDispatches && asked && (FILTERS as readonly string[]).includes(asked) ? (asked as ShipmentFilter) : "all"
   })
+  /* ?writer=failed: only the rows whose status Medusa did not take (the integration tile links here). Kept in the URL. */
+  const [writerFailed, setWriterFailedState] = useState(() => writerFailedOf(params.get("writer")))
+  const askedWriter = writerFailedOf(params.get("writer"))
+  useEffect(() => setWriterFailedState(askedWriter), [askedWriter])
+  /* One write of the URL per change, with the shipment filter the page shows (a reload never brings back a stale ?filter or ?q). */
+  const writeWriterFailed = (on: boolean, f: ShipmentFilter, clearSearch: boolean) => {
+    setWriterFailedState(on)
+    setParams(writerFailedParams(params, on, { atDispatches, filter: f, clearSearch }), { replace: true })
+  }
+  const setWriterFailed = (on: boolean) => writeWriterFailed(on, filter, false)
+  /*
+   * The header note counts every row whose status Medusa did not take, so its button shows all of them:
+   * the group filter and the search go, the writer filter comes on, in the page and in the URL.
+   * The filter bar button joins them instead (10.6).
+   */
+  const [searchReset, setSearchReset] = useState(0)
+  const showWriterFailed = () => {
+    setFilter("all")
+    setSearchReset((n) => n + 1)
+    writeWriterFailed(true, "all", true)
+  }
   const [dispatchFilter, setDispatchFilter] = useState<DispatchFilter>(() => (atDispatches ? dispatchFilterOf(params.get("filter")) : "open"))
   /* Each request to show the handover list scrolls to it once it is on the page, and only once: a new status (after any action, the poll) is no request. */
   const [scrollTo, setScrollTo] = useState(atDispatches ? 1 : 0)
@@ -165,7 +186,7 @@ const DpdPage = () => {
           </div>
         ) : null}
         {/* Panel only: Settings shows the same notes in its own tabs. */}
-        {s && nav.view === "panel" ? <Warnings status={s} onSettings={(tab) => nav.go("settings", tab)} /> : null}
+        {s && nav.view === "panel" ? <Warnings status={s} lang={lang} onSettings={(tab) => nav.go("settings", tab)} onWriterFailed={showWriterFailed} /> : null}
         {s && nav.view === "panel" ? (
           <StatTiles columns={7}>
             {TILES.map((g) => (
@@ -200,7 +221,10 @@ const DpdPage = () => {
           lang={lang}
           filter={filter}
           onFilter={setFilter}
+          writerFailed={writerFailed}
+          onWriterFailed={setWriterFailed}
           initialQuery={initialQuery}
+          searchReset={searchReset}
           seeding={seeding}
           seedFailed={seed.isError}
           onSettings={() => nav.go("settings", "writers")}
@@ -257,7 +281,7 @@ function Header({
   const prompt = usePrompt()
   const reset = useDpdDemoReset()
   const mode = modeOf(status)
-  /* Only the writers that write in this version: an armed later writer (pickup, statuses) writes nothing yet. */
+  /* Only the writers that write in this version (LATER_WRITERS): every armed writer writes since stage 5. */
   const armedWriters = writingWriters(status?.writers)
   const armed = armedWriters.length
   /* Still armed while the options turn it off: it does not write, but it waits to be disarmed. */
@@ -332,11 +356,15 @@ function Header({
   )
 }
 
-/** Only what needs a person now, each with the Settings tab that explains it; the demo note lives in the mode badge. */
-function Warnings({ status, onSettings }: { status: StatusResponse; onSettings: (tab: SettingsTabId) => void }) {
+/**
+ * Only what needs a person now, each with the Settings tab that explains it
+ * (the status writes Medusa did not take: the list filtered to them); the
+ * demo note lives in the mode badge, the queue mode note in Settings only.
+ */
+function Warnings({ status, lang, onSettings, onWriterFailed }: { status: StatusResponse; lang: string; onSettings: (tab: SettingsTabId) => void; onWriterFailed: () => void }) {
   const { t } = useTranslation("dpd")
   const senderText = useSenderProblemText()
-  const notes: Array<{ key: string; variant: "warning" | "error"; label: string; text: string; tab: SettingsTabId | null }> = []
+  const notes: Array<{ key: string; variant: "warning" | "error"; label: string; text: string; tab: SettingsTabId | null; open?: { label: string; run: () => void } }> = []
   if (status.mode !== "demo" && status.missing.length > 0) notes.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }), tab: "account" })
   if (status.optionProblems.length > 0) notes.push({ key: "options", variant: "warning", label: t("missing.optionsLabel"), text: t("missing.options", { list: status.optionProblems.join("; ") }), tab: "account" })
   if (status.senderProblems.length > 0) {
@@ -344,7 +372,21 @@ function Warnings({ status, onSettings }: { status: StatusResponse; onSettings: 
     const more = status.senderProblems.length - 1
     notes.push({ key: "sender", variant: "warning", label: t("missing.senderLabel"), text: more > 0 ? t("missing.senderMore", { first, count: more }) : first, tab: "sender" })
   }
+  for (const code of status.statuses.problems) {
+    if (code === "tracking_mode_queue_unsupported") continue
+    notes.push({ key: `statuses-${code}`, variant: "warning", label: t("account.statusSource"), text: t(`statusProblem.${code}`, { time: fmtDateTime(status.statuses.problemAt, lang) }), tab: "account" })
+  }
   if (status.counts.attention > 0) notes.push({ key: "attention", variant: "error", label: t("missing.attentionLabel"), text: t("missing.attention", { count: status.counts.attention }), tab: null })
+  if (status.counts.statusesAttention > 0) {
+    notes.push({
+      key: "statuses",
+      variant: "error",
+      label: t("missing.statusesLabel"),
+      text: t("missing.statuses", { count: status.counts.statusesAttention }),
+      tab: null,
+      open: { label: t("missing.statusesOpen"), run: onWriterFailed },
+    })
+  }
   if (notes.length === 0) return null
   return (
     <div className="flex flex-col gap-y-2 px-6 py-4">
@@ -356,6 +398,14 @@ function Warnings({ status, onSettings }: { status: StatusResponse; onSettings: 
               {" "}
               <button type="button" className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={() => onSettings(n.tab ?? "account")}>
                 {t("missing.open")}
+              </button>
+            </>
+          ) : null}
+          {n.open ? (
+            <>
+              {" "}
+              <button type="button" className="txt-compact-small-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover" onClick={n.open.run}>
+                {n.open.label}
               </button>
             </>
           ) : null}

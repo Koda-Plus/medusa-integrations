@@ -20,6 +20,7 @@ import {
 } from "./dpd-answers"
 import { KIT_META } from "./kit-meta"
 import { maskSecrets } from "./security"
+import { clip } from "./text"
 
 /**
  * THE DPDSERVICES CLIENT: the only code that talks to the DPDServices REST
@@ -367,7 +368,8 @@ export function createDpdServicesClient(opts: DpdServicesClientOptions): DpdServ
       const own: Record<string, string> = { ...headers }
       if (!withBody) delete own["content-type"]
       const url = `${host}${path}${query ? `?${new URLSearchParams(query).toString()}` : ""}`
-      const res = await doFetch(url, { method, headers: own, ...(withBody ? { body: JSON.stringify(body) } : {}), signal: ctrl.signal })
+      /* redirect "manual": a 3xx is an answer (byHttp: unclear), never the body sent again to the Location. */
+      const res = await doFetch(url, { method, headers: own, ...(withBody ? { body: JSON.stringify(body) } : {}), signal: ctrl.signal, redirect: "manual" })
       const raw = await res.text()
       let parsed: unknown = null
       if (raw.trim() !== "") {
@@ -379,7 +381,7 @@ export function createDpdServicesClient(opts: DpdServicesClientOptions): DpdServ
       }
       const record = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
       const traceId = typeof record?.traceId === "string" ? record.traceId : null
-      return { answer: { httpStatus: res.status, body: parsed, text: parsed === null ? raw.slice(0, TEXT_MAX) : "", traceId, ms: Date.now() - started } }
+      return { answer: { httpStatus: res.status, body: parsed, text: parsed === null ? clip(raw, TEXT_MAX) : "", traceId, ms: Date.now() - started } }
     } catch (err) {
       return { failure: { aborted: ctrl.signal.aborted || isAbort(err), detail: errorText(err) } }
     } finally {
@@ -459,7 +461,7 @@ export function createDpdServicesClient(opts: DpdServicesClientOptions): DpdServ
     else if ("failure" in sent) {
       outcome = sent.failure.aborted
         ? { kind: "unclear", code: "timeout", message: NO_ANSWER[op].replace("<ms>", String(timeoutMs)), traceId: null, httpStatus: 0 }
-        : { kind: "unclear", code: "network", message: `DPD could not be reached for ${UNREACHABLE[op]}: ${sent.failure.detail.trim() || "network error"}.`.slice(0, 1000), traceId: null, httpStatus: 0 }
+        : { kind: "unclear", code: "network", message: clip(`DPD could not be reached for ${UNREACHABLE[op]}: ${sent.failure.detail.trim() || "network error"}.`, 1000), traceId: null, httpStatus: 0 }
     } else {
       outcome = classify(sent.answer)
       http = sent.answer.httpStatus

@@ -4,7 +4,9 @@ import { integrationEn, integrationPl } from "../../modules/dpd/lib/integration-
 import { KIT_META } from "../../modules/dpd/lib/kit-meta"
 import { integrationRoutes, type MessageDraft, type SummaryDraft } from "../../modules/dpd/lib/kit-routes"
 import { pickDpdMethod } from "../../modules/dpd/lib/option-data"
-import { dpdService, listShipments, queryOf, storeFor, writerStates } from "./runtime"
+import { statusSourceOf } from "../../modules/dpd/lib/infoservices"
+import { statusSettingKey } from "../../modules/dpd/lib/tracking"
+import { dpdService, getSetting, listShipments, queryOf, storeFor, writerStates } from "./runtime"
 
 /**
  * koda.integration/1 for DPD: the manifest, one line per order and the
@@ -15,6 +17,19 @@ import { dpdService, listShipments, queryOf, storeFor, writerStates } from "./ru
  *   GET /admin/dpd/integration/summary?entity=order&id=order_...
  *   GET /admin/dpd/integration/attention?scope=orders
  */
+
+/** StatusSyncValue.at read leniently: an ISO string of a valid date, else null. */
+function isoAt(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const at = (value as { at?: unknown }).at
+  if (typeof at !== "string" || at === "") return null
+  const ms = Date.parse(at)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null
+}
+
+function problemCode(value: unknown): unknown {
+  return value && typeof value === "object" ? (value as { code?: unknown }).code : null
+}
 
 type OrderLite = {
   id: string
@@ -43,11 +58,17 @@ export const dpdIntegration = integrationRoutes({
     if (svc.isDemo()) problems.push({ key: "integration.problem.demo" })
     else if (!configured) problems.push({ key: "integration.problem.not_configured" })
     if (svc.senderProblems().length > 0) problems.push({ key: "integration.problem.sender" })
+    const mode = svc.mode()
+    const source = statusSourceOf(svc.getOptions())
+    if (source === "off") problems.push({ key: "integration.problem.statuses_not_configured" })
+    else if (source === "dpd" && problemCode((await getSetting(svc, statusSettingKey(mode, "problem")))?.value) === "statuses_auth") {
+      problems.push({ key: "integration.problem.statuses_auth" })
+    }
     return {
       mode: svc.isDemo() ? "demo" : configured ? svc.mode() : "off",
       configured,
       writers: { armed: writers.filter((w) => w.armed).length, total: writers.length },
-      lastSyncAt: null,
+      lastSyncAt: isoAt((await getSetting(svc, statusSettingKey(mode, "lastSyncAt")))?.value),
       problems,
     }
   },
@@ -83,6 +104,6 @@ export const dpdIntegration = integrationRoutes({
     const svc = dpdService(ctx.scope)
     const store = storeFor(ctx.scope)
     const mode = svc.mode()
-    return dpdCounters(countsOf(await store.counts(mode), await store.dispatchCounts(mode)))
+    return dpdCounters(countsOf(await store.counts(mode), await store.dispatchCounts(mode), await store.statusCounts(mode)))
   },
 })

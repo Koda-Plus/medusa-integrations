@@ -50,8 +50,10 @@ import type { LabelsOutcome, NumbersOutcome } from "../../modules/dpd/lib/dpd-an
 import { labelsRequest, nothingSent, type LabelSearch } from "../../modules/dpd/lib/dpdservices"
 import { waybillsOf, type ShipmentRow } from "../../modules/dpd/lib/dto"
 import type { ShipmentPatch } from "../../modules/dpd/lib/store"
+import { clip } from "../../modules/dpd/lib/text"
 import { saveLabel } from "./documents"
 import { mergeProblems, planInputsOf, planOf, samePlanInputs } from "./plan"
+import { emitCreated } from "./statuses"
 import {
   ActionError,
   annotateFulfillment,
@@ -249,7 +251,7 @@ export async function createAttempt(
     outcome = await client.generatePackagesNumbers(plan.request)
   } catch (err) {
     /* The client never throws for an answer; anything thrown here is unclear: the request may have gone out. */
-    outcome = { kind: "unclear", code: "network", message: errorText(svc, err).slice(0, 1000), traceId: null, httpStatus: 0 }
+    outcome = { kind: "unclear", code: "network", message: clip(errorText(svc, err), 1000), traceId: null, httpStatus: 0 }
   }
 
   if (nothingSent(outcome)) {
@@ -314,6 +316,7 @@ export async function createAttempt(
       mode,
     })
     await annotateFulfillment(scope, finished)
+    await emitCreated(scope, finished)
     try {
       return { row: await labelShipment(scope, row.id, { page, actor: input.actor, trigger: "chained" }), sent: true }
     } catch (err) {
@@ -329,7 +332,7 @@ export async function createAttempt(
     try {
       label = await client.generateSpedLabels(labelsRequest({ packageReference: plan.reference }, page))
     } catch (err) {
-      label = { kind: "unclear", code: "network", message: errorText(svc, err).slice(0, 1000), traceId: null, httpStatus: 0 }
+      label = { kind: "unclear", code: "network", message: clip(errorText(svc, err), 1000), traceId: null, httpStatus: 0 }
     }
     if (label.kind === "ok") {
       await saveLabel(scope, claimed, { pdfBase64: label.pdfBase64, page, documentId: label.documentId, actor: input.actor })
@@ -355,7 +358,10 @@ export async function createAttempt(
         data: { action: "adopted", outcome: matches ? "labeled" : "ambiguous", waybills: label.waybills, traceId: label.traceId },
         mode,
       })
-      if (matches) await annotateFulfillment(scope, finished)
+      if (matches) {
+        await annotateFulfillment(scope, finished)
+        await emitCreated(scope, finished)
+      }
       return { row: finished, sent: true }
     }
     const notFound = label.kind === "not_found"
@@ -472,7 +478,7 @@ export async function labelAttempt(
     try {
       outcome = await client.generateSpedLabels(labelsRequest(search, page))
     } catch (err) {
-      outcome = { kind: "unclear", code: "network", message: errorText(svc, err).slice(0, 1000), traceId: null, httpStatus: 0 }
+      outcome = { kind: "unclear", code: "network", message: clip(errorText(svc, err), 1000), traceId: null, httpStatus: 0 }
     }
   }
   const source = sourceOf(input.actor)

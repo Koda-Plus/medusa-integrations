@@ -63,13 +63,13 @@ test("page: Refresh spins for the person's own refresh only, a reset re-arms the
   assert.match(page, /seedFailed=\{seed\.isError\}/)
 })
 
-test("page: the writing badge lists only the writers that write in this version, never an armed later writer", () => {
+test("page: the writing badge lists every armed writer that writes", () => {
   const w = (key: WriterKey, armed: boolean) => ({ key, armed, allowed: armed, on: armed, updatedBy: null, updatedAt: null })
   const all = { shipment: w("shipment", true), pickup: w("pickup", true), fulfillmentStatus: w("fulfillmentStatus", true) }
-  /* The pickup writer orders couriers since stage 4; only the Medusa status writer waits. */
-  assert.deepEqual(writingWriters(all).map((x) => x.key), ["shipment", "pickup"])
-  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false), pickup: w("pickup", false) }), [], "armed later writers alone: read only")
-  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false) }).map((x) => x.key), ["pickup"])
+  /* The pickup writer orders couriers since stage 4, the Medusa status writer marks fulfillments since stage 5. */
+  assert.deepEqual(writingWriters(all).map((x) => x.key), ["shipment", "pickup", "fulfillmentStatus"])
+  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false), pickup: w("pickup", false) }).map((x) => x.key), ["fulfillmentStatus"], "the Medusa status writer armed alone")
+  assert.deepEqual(writingWriters({ ...all, shipment: w("shipment", false) }).map((x) => x.key), ["pickup", "fulfillmentStatus"])
   assert.deepEqual(writingWriters(undefined), [])
   /* The header counts and names the writers from writingWriters, not every armed writer. */
   assert.match(page, /const armedWriters = writingWriters\(status\?\.writers\)/)

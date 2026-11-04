@@ -28,10 +28,12 @@ import { labelsRequest, nothingSent } from "../../modules/dpd/lib/dpdservices"
 import { waybillsOf, type ShipmentRow } from "../../modules/dpd/lib/dto"
 import { canCallDpd } from "../../modules/dpd/lib/options"
 import type { ShipmentPatch } from "../../modules/dpd/lib/store"
+import { clip } from "../../modules/dpd/lib/text"
 import { boxesWithWaybills, createAttempt, deferredCode, labelAttempt, mustFind, sourceOf, type Trigger } from "./create"
 import { expireDispatches } from "./dispatch"
 import { latestLabel, saveLabel } from "./documents"
 import { refreshProblems } from "./plan"
+import { emitCreated } from "./statuses"
 import {
   ActionError,
   annotateFulfillment,
@@ -105,7 +107,7 @@ export async function lookupAttempt(scope: Scope, id: string, input: { actor: st
     try {
       outcome = await client.generateSpedLabels(labelsRequest({ packageReference: reference }, page))
     } catch (err) {
-      outcome = { kind: "unclear", code: "network", message: errorText(svc, err).slice(0, 1000), traceId: null, httpStatus: 0 }
+      outcome = { kind: "unclear", code: "network", message: clip(errorText(svc, err), 1000), traceId: null, httpStatus: 0 }
     }
   }
 
@@ -218,7 +220,10 @@ export async function lookupAttempt(scope: Scope, id: string, input: { actor: st
     data: { action: "lookup", outcome: result, state: finished.state, trigger: input.trigger, traceId: outcome.traceId },
     mode,
   })
-  if (finished.state === "labeled") await annotateFulfillment(scope, finished)
+  if (finished.state === "labeled") {
+    await annotateFulfillment(scope, finished)
+    await emitCreated(scope, finished)
+  }
   if (finished.state === "pending") return { row: await refreshProblems(scope, finished), checked: true }
   return { row: finished, checked: true }
 }
@@ -266,6 +271,8 @@ export async function acceptShipment(scope: Scope, id: string, actor: string | n
     mode: svc.mode(),
   })
   await annotateFulfillment(scope, moved)
+  /* A waybill_mismatch row emitted created already when it was created (O20). */
+  if (row.error_code !== "waybill_mismatch") await emitCreated(scope, moved)
   return moved
 }
 

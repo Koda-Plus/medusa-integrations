@@ -1,4 +1,5 @@
 import {
+  COD_CURRENCIES,
   COURIER_CHECKSUM_MAX,
   COURIER_CHECKSUM_MIN,
   DISPATCH_CLAIMED_STATES,
@@ -9,6 +10,7 @@ import {
   SHIPMENT_STAGES,
   SHIPMENT_STATES,
   UNKNOWN_SETTLE_MS,
+  type CodCurrency,
   type DispatchState,
   type DpdMode,
   type LabelPage,
@@ -39,13 +41,16 @@ import {
   type ShipmentActions,
   type ShipmentDto,
   type ShipmentGroup,
+  type TrackingDto,
   type WriterDto,
 } from "./contract"
 import { readStoredBoxes } from "./boxes"
 import { DISPATCH_WARNING_CODES, dispatchSenderOf, orderProblemsOf, packagesParamsFrom, type DispatchPlan } from "./dispatch"
 import type { DpdAddress, DpdPackagesParams, DpdPudoReceiver } from "./dpdservices"
+import type { DpdShipmentEvent } from "./events"
 import { formatMinor } from "./money"
 import type { Plan, PlanPoint } from "./plan"
+import { isPickedUp, returnDone, rowStatus, trackingOf, type TrackingEntry } from "./tracking"
 import type { WriterState } from "./writers"
 
 /**
@@ -96,6 +101,10 @@ export type ShipmentRow = {
   created_at?: When
   updated_at?: When
   deleted_at?: When
+  /* Stage 5 (optional: rows built by older code and test literals stay valid). */
+  tracking?: unknown
+  status_at?: When
+  status_writer_error?: string | null
 }
 
 export type EventRow = {
@@ -229,13 +238,15 @@ export function problemsOf(v: unknown): ProblemDto[] {
   return out
 }
 
-/** The Panel list of a row: the same rule as the admin (groupOf) and the SQL of the store (GROUP_SQL). */
-export function rowGroup(row: Pick<ShipmentRow, "kind" | "state" | "stage" | "handed_over_at">): ShipmentGroup {
+/** The Panel list of a row: the same rule as the admin (groupOf) and the SQL of the store (GROUP_SQL); `now` for returnDone (E61). */
+export function rowGroup(row: Pick<ShipmentRow, "kind" | "state" | "stage" | "handed_over_at" | "created_at" | "waybills"> & { tracking?: unknown }, now: Date = new Date()): ShipmentGroup {
+  const stage = shipmentStageOf(row.stage)
   return groupOf({
     kind: row.kind === "return" ? "return" : "outbound",
     state: shipmentStateOf(row.state),
-    stage: shipmentStageOf(row.stage),
+    stage,
     handedOver: Boolean(row.handed_over_at),
+    returnDone: returnDone({ ...row, stage }, now),
   })
 }
 
@@ -245,9 +256,18 @@ export function rowGroup(row: Pick<ShipmentRow, "kind" | "state" | "stage" | "ha
  * only for an unclear row without waybills (one with waybills was found
  * already, a second lookup would advise it again); accepting only with
  * waybills (without them there is nothing to accept); the stored label also
- * for a row a person still has to decide about.
+ * for a row a person still has to decide about. Exclude, withdraw and
+ * dispatch stop once DPD has the parcel (isPickedUp, DS13, E54). refreshStatus for an outbound
+ * created or labeled row with waybills, not canceled and not a sample demo
+ * row (the route refuses not_configured when the source is off);
+ * retryStatusWriter for a row with status_writer_error.
  */
-export function shipmentActions(row: Pick<ShipmentRow, "state" | "kind" | "waybills" | "dispatch_id" | "handed_over_at" | "session_type">): ShipmentActions {
+export function shipmentActions(
+  row: Pick<ShipmentRow, "state" | "kind" | "waybills" | "dispatch_id" | "handed_over_at" | "session_type" | "stage" | "shipped_marked_at" | "mode" | "fulfillment_id"> & {
+    status_writer_error?: string | null
+    tracking?: unknown
+  },
+): ShipmentActions {
   const state = shipmentStateOf(row.state)
   const outbound = row.kind !== "return"
   const open = state === "pending" || state === "failed"
@@ -256,6 +276,8 @@ export function shipmentActions(row: Pick<ShipmentRow, "state" | "kind" | "waybi
   const inDispatch = Boolean(row.dispatch_id)
   const handedOver = Boolean(row.handed_over_at)
   const domestic = !row.session_type || row.session_type === "DOMESTIC"
+  const pickedUp = isPickedUp(row)
+  const seed = row.mode === "demo" && !row.fulfillment_id
   return {
     plan: open && outbound,
     create: open && outbound,
@@ -265,10 +287,12 @@ export function shipmentActions(row: Pick<ShipmentRow, "state" | "kind" | "waybi
     lookup: unclear && !hasWaybills,
     accept: state === "ambiguous" && hasWaybills,
     skip: open || state === "ambiguous",
-    exclude: (state === "created" || state === "labeled") && outbound && !inDispatch && !handedOver,
+    exclude: (state === "created" || state === "labeled") && outbound && !inDispatch && !handedOver && !pickedUp,
     restore: state === "excluded",
-    withdraw: inDispatch,
-    dispatch: state === "labeled" && outbound && domestic && !inDispatch && !handedOver,
+    withdraw: inDispatch && !pickedUp,
+    dispatch: state === "labeled" && outbound && domestic && !inDispatch && !handedOver && !pickedUp,
+    refreshStatus: (state === "created" || state === "labeled") && outbound && hasWaybills && !seed && row.stage !== "canceled",
+    retryStatusWriter: Boolean(row.status_writer_error),
   }
 }
 
@@ -298,6 +322,7 @@ export function toShipmentDto(row: ShipmentRow): ShipmentDto {
   const mode = modeOf(row.mode)
   const minor = row.cod_minor === null || row.cod_minor === undefined ? null : Number(row.cod_minor)
   const attempts = Number(row.attempts ?? 0)
+  const tracking = trackingOf(row)
   return {
     id: row.id,
     orderId: row.order_id ?? null,
@@ -332,6 +357,63 @@ export function toShipmentDto(row: ShipmentRow): ShipmentDto {
     updatedAt: iso(row.updated_at),
     lookupAfter: lookupAfterOf(row),
     actions: shipmentActions(row),
+    tracking: tracking.map(toTrackingDto),
+    statusAt: iso(row.status_at),
+    statusDescription: rowStatus(tracking).description,
+    lastCheckedAt: iso(row.last_checked_at),
+    shippedMarkedAt: iso(row.shipped_marked_at),
+    deliveredMarkedAt: iso(row.delivered_marked_at),
+    statusWriterError: row.status_writer_error ?? null,
+  }
+}
+
+/** One waybill for the admin: the fields of TrackingDto, copied one by one so nothing else of the entry leaves. */
+function toTrackingDto(e: TrackingEntry): TrackingDto {
+  return {
+    waybill: e.waybill,
+    box: e.box,
+    role: e.role,
+    stage: e.stage,
+    code: e.code,
+    at: e.at,
+    lastCode: e.lastCode,
+    lastAt: e.lastAt,
+    description: e.description,
+    possession: e.possession,
+    supersededBy: e.supersededBy,
+    supersededAt: e.supersededAt,
+    from: e.from,
+    checkedAt: e.checkedAt,
+    done: e.done,
+  }
+}
+
+/** The payload of every dpd.shipment.* event of a row: waybillsOf, cod from cod_minor (formatMinor) and currency, stage ?? "preparing", demo = mode === "demo". */
+export function toShipmentEvent(
+  row: ShipmentRow,
+  change: { previousStatus: string | null; previousStage: ShipmentStage | null; eventId: string | null },
+): DpdShipmentEvent {
+  const minor = row.cod_minor === null || row.cod_minor === undefined ? null : Number(row.cod_minor)
+  const currency = (COD_CURRENCIES as readonly unknown[]).includes(row.currency) ? (row.currency as CodCurrency) : null
+  const mode = modeOf(row.mode)
+  return {
+    id: row.id,
+    order_id: row.order_id ?? null,
+    fulfillment_id: row.fulfillment_id ?? null,
+    return_id: row.return_id ?? null,
+    kind: row.kind === "return" ? "return" : "outbound",
+    option_id: row.option_id,
+    waybills: waybillsOf(row.waybills),
+    status: row.status ?? null,
+    previous_status: change.previousStatus,
+    stage: shipmentStageOf(row.stage) ?? "preparing",
+    pudo_id: row.pudo_id ?? null,
+    country_code: row.country_code ?? null,
+    cod: minor !== null && Number.isFinite(minor) && currency ? { amount: formatMinor(minor), currency } : null,
+    mode,
+    demo: mode === "demo",
+    previous_stage: change.previousStage,
+    event_id: change.eventId,
   }
 }
 
@@ -436,6 +518,7 @@ export function toEventDto(row: EventRow, names: Record<string, string> = {}): E
     demo: row.mode === "demo",
     dispatchId: row.dispatch_id ?? null,
     action: eventActionOf(row.data),
+    waybill: row.waybill ?? null,
   }
 }
 
@@ -463,9 +546,18 @@ function countOf(v: unknown): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
 }
 
-/** The counts of the Panel from the grouped counts of the store: every group, all, the dispatches, and the rows asking a person to act (the attention groups plus the dispatches that need a person, DS18). */
-export function countsOf(grouped: ReadonlyArray<{ group: ShipmentGroup; count: number }>, dispatches?: { open: number; attention: number }): CountsDto {
-  const counts = { all: 0, attention: 0, dispatches: 0, dispatchesAttention: 0 } as CountsDto
+/**
+ * The counts of the Panel from the grouped counts of the store: every group,
+ * all, the dispatches, and the rows asking a person to act (the attention
+ * groups plus the dispatches that need a person, DS18, plus the rows whose
+ * status write to Medusa failed, O44).
+ */
+export function countsOf(
+  grouped: ReadonlyArray<{ group: ShipmentGroup; count: number }>,
+  dispatches?: { open: number; attention: number },
+  statuses?: { writerErrors: number },
+): CountsDto {
+  const counts = { all: 0, attention: 0, dispatches: 0, dispatchesAttention: 0, statusesAttention: 0 } as CountsDto
   for (const g of SHIPMENT_GROUPS) counts[g] = 0
   for (const { group, count } of grouped) {
     if (!(SHIPMENT_GROUPS as readonly string[]).includes(group)) continue
@@ -476,6 +568,8 @@ export function countsOf(grouped: ReadonlyArray<{ group: ShipmentGroup; count: n
   counts.dispatches = countOf(dispatches?.open)
   counts.dispatchesAttention = countOf(dispatches?.attention)
   counts.attention += counts.dispatchesAttention
+  counts.statusesAttention = countOf(statuses?.writerErrors)
+  counts.attention += counts.statusesAttention
   return counts
 }
 
@@ -532,9 +626,16 @@ export function hasUsableCheckSum(row: Pick<DispatchRow, "check_sum" | "order_nu
  * also checks the writers). resolve: unknown, ordered with an error code of
  * DISPATCH_ATTENTION_CODES (O13, O17), or ordered without a usable checkSum
  * (O16; such a row is not attention, dispatchNeedsAttention is unchanged).
- * order: printed and canOrder.
+ * order: printed and canOrder. Once DPD has a parcel of the dispatch
+ * (`shipped`, O43) it cannot be canceled, and when DPD has every one no
+ * shipment is withdrawn.
  */
-export function dispatchActions(row: Pick<DispatchRow, "state" | "check_sum" | "order_number" | "protocols" | "error_code">, canOrder: boolean): DispatchActions {
+export function dispatchActions(
+  row: Pick<DispatchRow, "state" | "check_sum" | "order_number" | "protocols" | "error_code">,
+  canOrder: boolean,
+  /** Some shipment of the dispatch isPickedUp (O43): cancel false; withdraw false when every one is. */
+  shipped?: { any: boolean; all: boolean },
+): DispatchActions {
   const state = dispatchStateOf(row.state)
   const usable = hasUsableCheckSum(row)
   const attentionCode = typeof row.error_code === "string" && DISPATCH_ATTENTION_CODES.includes(row.error_code)
@@ -547,8 +648,8 @@ export function dispatchActions(row: Pick<DispatchRow, "state" | "check_sum" | "
     reschedule: ordered && usable,
     cancelCourier: ordered && usable,
     resolve: state === "unknown" || (ordered && (attentionCode || !usable)),
-    cancel: state === "pending" || state === "printed",
-    withdraw: state === "pending" || state === "printed" || (ordered && usable),
+    cancel: (state === "pending" || state === "printed") && !shipped?.any,
+    withdraw: (state === "pending" || state === "printed" || (ordered && usable)) && !shipped?.all,
   }
 }
 
@@ -565,7 +666,8 @@ function paramsDto(params: DpdPackagesParams | null, dimsKnown: boolean): Dispat
   return { count: p.count, weightKg: p.weight, maxWeightKg: p.maxWeight, maxHeightCm: p.maxHeight, maxWidthCm: p.maxWidth, maxDepthCm: p.maxDepth, dimsKnown }
 }
 
-const WARNING_CODES: readonly string[] = DISPATCH_WARNING_CODES
+/* Read at call time: lib/dispatch.ts imports tracking.ts, which imports this file, so a top level copy would meet the binding before it is set (E54). */
+const isWarningCode = (code: string): boolean => (DISPATCH_WARNING_CODES as readonly string[]).includes(code)
 
 function sameIds(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false
@@ -608,8 +710,8 @@ export function toDispatchDto(row: DispatchRow, shipments: readonly ShipmentRow[
     boxes: params?.parcel.count ?? 0,
     weightKg: params?.parcel.weight ?? 0,
     params: paramsDto(params, !stored.some((p) => p.code === "dims_unknown")),
-    problems: stored.filter((p) => !WARNING_CODES.includes(p.code)),
-    warnings: stored.filter((p) => WARNING_CODES.includes(p.code)),
+    problems: stored.filter((p) => !isWarningCode(p.code)),
+    warnings: stored.filter((p) => isWarningCode(p.code)),
     shipmentProblems: input.shipmentProblems ?? [],
     protocols,
     protocolAt: iso(row.protocol_at),
@@ -629,7 +731,7 @@ export function toDispatchDto(row: DispatchRow, shipments: readonly ShipmentRow[
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
     attention: dispatchNeedsAttention({ state, errorCode: row.error_code ?? null }),
-    actions: dispatchActions(row, input.canOrder),
+    actions: dispatchActions(row, input.canOrder, { any: shipments.some(isPickedUp), all: shipments.length > 0 && shipments.every(isPickedUp) }),
   }
 }
 

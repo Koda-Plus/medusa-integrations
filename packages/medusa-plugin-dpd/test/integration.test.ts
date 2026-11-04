@@ -47,8 +47,8 @@ function recordWrites(s: Setup): () => string[] {
   const store = s.store as unknown as Record<string, unknown>
   for (const k of Object.keys(store)) {
     const fn = store[k]
-    /* Reads only: the board counters read the shipment and dispatch counts. */
-    if (typeof fn !== "function" || k === "counts" || k === "dispatchCounts" || k === "list") continue
+    /* Reads only: the board counters read the shipment, dispatch and status counts. */
+    if (typeof fn !== "function" || k === "counts" || k === "dispatchCounts" || k === "statusCounts" || k === "list") continue
     store[k] = (...args: unknown[]) => {
       calls.push(`store.${k}`)
       return (fn as (...a: unknown[]) => unknown)(...args)
@@ -157,16 +157,24 @@ test("board counters are the Panel's counts of the current mode", async () => {
   const s = sample()
   const a = await dpdIntegration.build.attention(makeContext({ scope: s.container }), ["orders"])
   const by = Object.fromEntries(a.items.map((c) => [c.key, c.count]))
-  assert.deepEqual(by, { shipments_problems: 1, shipments_to_create: 1, shipments_labeled: 1, dispatches_attention: 0 })
-  assert.ok(a.items.every((c) => c.link.kind === "admin" && (c.link.href.startsWith("/dpd?filter=") || c.link.href.startsWith("/dpd?view="))))
+  assert.deepEqual(by, { shipments_problems: 1, shipments_to_create: 1, shipments_labeled: 1, dispatches_attention: 0, statuses_attention: 0 })
+  assert.ok(a.items.every((c) => c.link.kind === "admin" && (c.link.href.startsWith("/dpd?filter=") || c.link.href.startsWith("/dpd?view=") || c.link.href.startsWith("/dpd?writer="))))
 })
 
 test("dispatches_attention counter links to the dispatches view", () => {
-  const items = dpdCounters({ problems: 0, to_create: 0, labeled: 0, dispatchesAttention: 3 })
+  const items = dpdCounters({ problems: 0, to_create: 0, labeled: 0, dispatchesAttention: 3, statusesAttention: 0 })
   const c = items.find((i) => i.key === "dispatches_attention")
   assert.deepEqual(c, { key: "dispatches_attention", scope: "orders", count: 3, tone: "red", link: { kind: "admin", href: "/dpd?view=dispatches&filter=attention" }, entity: "order" })
-  assert.deepEqual(items.map((i) => i.key), ["shipments_problems", "shipments_to_create", "shipments_labeled", "dispatches_attention"])
+  assert.deepEqual(items.map((i) => i.key), ["shipments_problems", "shipments_to_create", "shipments_labeled", "dispatches_attention", "statuses_attention"])
   assert.ok(typeof integrationEn.attention === "object" && "dispatches_attention" in integrationEn.attention, "the counter has its words")
+})
+
+test("statuses_attention counts writer errors and links to /dpd?writer=failed", () => {
+  const items = dpdCounters({ problems: 0, to_create: 0, labeled: 0, dispatchesAttention: 0, statusesAttention: 2 })
+  const c = items.find((i) => i.key === "statuses_attention")
+  assert.deepEqual(c, { key: "statuses_attention", scope: "orders", count: 2, tone: "red", link: { kind: "admin", href: "/dpd?writer=failed" }, entity: "order" })
+  assert.equal(items[items.length - 1], c, "after dispatches_attention")
+  for (const texts of [integrationEn, integrationPl]) assert.ok(typeof texts.attention === "object" && "statuses_attention" in texts.attention, "the counter has its words")
 })
 
 test("shipmentLine for excluded and for a shipment in a dispatch", () => {

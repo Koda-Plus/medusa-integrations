@@ -24,6 +24,13 @@
  *   labeledOrder, insertLabeled  a labeled domestic shipment with its order
  *           and fulfillment (and its package in the fake, when there is one)
  *   cancelFulfillment  a fulfillment canceled in Medusa
+ *   fakeCoreFlows  the Medusa core flows of the status writer (stage 5),
+ *           createOrderShipmentWorkflow and
+ *           markOrderFulfillmentAsDeliveredWorkflow over the fake
+ *           fulfillments; setup registers one under "dpdCoreFlows"
+ *   LIVE_INFO  live options with synthetic InfoServices credentials; with
+ *           SetupExtra.info setup registers an InfoServices client over the
+ *           fake InfoServices under "dpdInfoServicesClient"
  *
  * Nothing here reaches a network: without a fake the client is the demo
  * client (demo mode) or none.
@@ -32,6 +39,7 @@ import { resolveOptions, missingOptions, secretsOf, type DpdPluginOptions, type 
 import { maskSecrets } from "../src/modules/dpd/lib/security.ts"
 import { senderProblems } from "../src/modules/dpd/lib/sender.ts"
 import { groupOf } from "../src/modules/dpd/lib/contract.ts"
+import { returnDone } from "../src/modules/dpd/lib/tracking.ts"
 import { createDpdServicesClient } from "../src/modules/dpd/lib/dpdservices.ts"
 import { createPointsSource, type PointsSource } from "../src/modules/dpd/lib/points.ts"
 import {
@@ -44,14 +52,18 @@ import {
   searchText,
   type DispatchExpect,
   type DpdStore,
+  type DueRow,
   type NewEvent,
   type NewShipment,
   type TransitionExpect,
 } from "../src/modules/dpd/lib/store.ts"
-import { DISPATCH_CLAIMED_STATES } from "../src/modules/dpd/lib/constants.ts"
+import { DISPATCH_CLAIMED_STATES, INFOSERVICES_URL, STATUS_MAX_AGE_DAYS } from "../src/modules/dpd/lib/constants.ts"
+import { createInfoServicesClient } from "../src/modules/dpd/lib/infoservices.ts"
 import { DISPATCH_ATTENTION_CODES } from "../src/modules/dpd/lib/contract.ts"
 import type { ShipmentRow } from "../src/modules/dpd/lib/dto.ts"
+import type { CoreFlows, CreateOrderShipmentInput, MarkDeliveredInput } from "../src/workflows/dpd/runtime.ts"
 import type { FakeDpdServices } from "./fake-dpdservices.ts"
+import { createFakeInfoServices, type FakeInfoAnswer, type FakeInfoRequest } from "./fake-infoservices.ts"
 
 export type Row = Record<string, unknown>
 
@@ -74,6 +86,9 @@ export const SANDBOX: DpdPluginOptions = {
     postalCode: "00-950",
   },
 }
+
+/** SANDBOX in live mode with synthetic InfoServices credentials (masked in the logs). */
+export const LIVE_INFO: DpdPluginOptions = { ...SANDBOX, mode: "live", infoLogin: "koda-info-test", infoPassword: "info-password-koda-0000", infoChannel: "1000" }
 
 /* ------------------------------------------------------------------ */
 /* Rows                                                                */
@@ -223,9 +238,12 @@ const NEW_SHIPMENT_COLUMNS: Row = {
   error: null,
   error_code: null,
   attempts: 0,
+  tracking: null,
+  status_at: null,
+  status_writer_error: null,
 }
 
-/** The Panel group of a memory row, by the rule of the admin (groupOf). */
+/** The Panel group of a memory row, by the rule of the admin (groupOf); returnDone on the clock, like now() of GROUP_SQL (E61). */
 export function groupOfRow(r: Row): string {
   const stage = typeof r.stage === "string" ? r.stage : null
   return groupOf({
@@ -233,6 +251,7 @@ export function groupOfRow(r: Row): string {
     state: r.state as never,
     stage: stage as never,
     handedOver: Boolean(r.handed_over_at),
+    returnDone: returnDone(r as never, new Date()),
   })
 }
 
@@ -244,7 +263,41 @@ function searchHit(r: Row, q: string): boolean {
   if (r.order_id === s || r.fulfillment_id === s) return true
   if (/^\d{1,9}$/.test(s) && r.display_id === Number(s)) return true
   if (has(r.pudo_id) || has(r.reference)) return true
-  return Array.isArray(r.waybills) && r.waybills.some(has)
+  if (Array.isArray(r.waybills) && r.waybills.some(has)) return true
+  /* Like the SQL store: the waybill of each tracking entry, a repinned one too, never its other fields. */
+  return Array.isArray(r.tracking) && r.tracking.some((e) => typeof e === "object" && e !== null && has((e as { waybill?: unknown }).waybill))
+}
+
+const DAY_MS = 86_400_000
+const MINUTE_MS = 60_000
+/** status_writer_error is cut to this many characters, like the SQL store. */
+const WRITER_ERROR_MAX = 500
+
+function isNullish(v: unknown): boolean {
+  return v === null || v === undefined
+}
+
+function msOrNull(v: unknown): number | null {
+  if (isNullish(v)) return null
+  const ms = time(v)
+  return Number.isFinite(ms) ? ms : null
+}
+
+/** Some tracking entry has possession, like "e"->>'possession' = 'true'. */
+function possessionIn(tracking: unknown): boolean {
+  return Array.isArray(tracking) && (tracking as Row[]).some((e) => e?.possession === true)
+}
+
+/** The order of the claim: last_checked_at ascending, nulls first, then the id. */
+function claimOrder(a: Row, b: Row): number {
+  const x = msOrNull(a.last_checked_at)
+  const y = msOrNull(b.last_checked_at)
+  if (x !== y) {
+    if (x === null) return -1
+    if (y === null) return 1
+    return x - y
+  }
+  return String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0
 }
 
 export function memoryStore(shipments: Table, events: Table, settings: Table, dispatches = new Table("dpddsp", DISPATCH_DEFAULTS)): DpdStore {
@@ -256,11 +309,14 @@ export function memoryStore(shipments: Table, events: Table, settings: Table, di
       if (column in values && values[column] !== undefined) r[column] = values[column]
     }
   }
-  /* The expect of the SQL store: the point, the boxes and the dispatch as given (null matches null), the boxes by their JSON. */
+  /* The expect of the SQL store: the point, the boxes, the dispatch, the stage, the tracking and the shipped mark as given (null matches null), the jsonb by its JSON, the time by its milliseconds. */
   const holds = (r: Row, expect: TransitionExpect | undefined) =>
     (expect?.pudo_id === undefined || (r.pudo_id ?? null) === expect.pudo_id) &&
     (expect?.boxes === undefined || JSON.stringify(r.boxes ?? null) === JSON.stringify(expect.boxes)) &&
-    (expect?.dispatch_id === undefined || (r.dispatch_id ?? null) === expect.dispatch_id)
+    (expect?.dispatch_id === undefined || (r.dispatch_id ?? null) === expect.dispatch_id) &&
+    (expect?.stage === undefined || (r.stage ?? null) === expect.stage) &&
+    (expect?.tracking === undefined || JSON.stringify(r.tracking ?? null) === JSON.stringify(expect.tracking)) &&
+    (expect?.shipped_marked_at === undefined || msOrNull(r.shipped_marked_at) === msOrNull(expect.shipped_marked_at))
   const dispatch = (id: string) => dispatches.rows.find((r) => r.id === id && !r.deleted_at)
   const claimed = (r: Row) => (DISPATCH_CLAIMED_STATES as readonly string[]).includes(String(r.state))
   /* jsonb in and out: a row never shares an object with the caller. */
@@ -375,6 +431,7 @@ export function memoryStore(shipments: Table, events: Table, settings: Table, di
         .filter((r) => !r.deleted_at && r.mode === args.mode)
         .filter((r) => args.filter === "all" || groupOfRow(r) === args.filter)
         .filter((r) => searchHit(r, String(args.q ?? "")))
+        .filter((r) => !args.writerFailed || !isNullish(r.status_writer_error))
         .sort((a, b) => time(b.created_at) - time(a.created_at) || (String(a.id) < String(b.id) ? 1 : String(a.id) > String(b.id) ? -1 : 0))
       return { rows: found.slice(args.offset, args.offset + args.limit).map((r) => ({ ...r })) as never, count: found.length }
     },
@@ -472,7 +529,9 @@ export function memoryStore(shipments: Table, events: Table, settings: Table, di
       const released: Row[] = []
       for (const r of shipments.rows) {
         if (r.deleted_at || r.dispatch_id !== dispatchId || (ids !== null && !ids.includes(String(r.id)))) continue
-        Object.assign(r, { dispatch_id: null, handed_over_at: null, updated_at: new Date() })
+        /* O41, E27: ready (and null) without a handover is preparing again. */
+        const stage = isNullish(r.stage) || r.stage === "ready" ? "preparing" : r.stage
+        Object.assign(r, { dispatch_id: null, handed_over_at: null, stage, updated_at: new Date() })
         released.push({ ...r })
       }
       return released as never
@@ -481,7 +540,9 @@ export function memoryStore(shipments: Table, events: Table, settings: Table, di
       const marked: Row[] = []
       for (const r of shipments.rows) {
         if (r.deleted_at || r.dispatch_id !== dispatchId || r.handed_over_at) continue
-        Object.assign(r, { handed_over_at: at, updated_at: new Date() })
+        /* DS12: the handover is ready; a stage DPD already reported stays. */
+        const stage = isNullish(r.stage) || r.stage === "preparing" ? "ready" : r.stage
+        Object.assign(r, { handed_over_at: at, stage, updated_at: new Date() })
         marked.push({ ...r })
       }
       return marked as never
@@ -489,6 +550,131 @@ export function memoryStore(shipments: Table, events: Table, settings: Table, di
     async dispatchCounts(mode) {
       const rows = dispatches.rows.filter((r) => !r.deleted_at && r.mode === mode)
       return { open: rows.filter((r) => r.state !== "canceled").length, attention: rows.filter(attention).length }
+    },
+    /* Stage 5 (statuses): the status statements of the SQL store (5.1.7, 14.3). */
+    async pickDueForStatus(args) {
+      /* No await from the filter to the write: two calls get disjoint rows, like for update skip locked (L7). */
+      const nowMs = args.now.getTime()
+      const oldest = nowMs - args.maxAgeDays * DAY_MS
+      const spacing = nowMs - args.spacingMin * MINUTE_MS
+      const beforeHandover = nowMs - args.spacingBeforeHandoverMin * MINUTE_MS
+      const stale = nowMs - args.markStaleMs
+      const checked = (r: Row) => msOrNull(r.last_checked_at)
+      const recent = (r: Row) => time(r.handed_over_at ?? r.created_at) > oldest
+      const spaced = (r: Row, bound: number) => {
+        const at = checked(r)
+        return at === null || at <= bound
+      }
+      const base = (r: Row) => !r.deleted_at && r.mode === args.mode && r.kind === "outbound" && (r.state === "created" || r.state === "labeled")
+      const moving = (r: Row) => Boolean(r.handed_over_at) || ["in_transit", "in_point", "problem", "returned"].includes(String(r.stage ?? ""))
+      const statusDue = shipments.rows
+        .filter(
+          (r) =>
+            base(r) &&
+            Array.isArray(r.waybills) &&
+            r.waybills.length > 0 &&
+            !["delivered", "canceled"].includes(String(r.stage ?? "")) &&
+            !(r.mode === "demo" && isNullish(r.fulfillment_id)) &&
+            recent(r) &&
+            spaced(r, moving(r) ? spacing : beforeHandover),
+        )
+        .sort(claimOrder)
+        .slice(0, args.limit)
+      const staleMark = (r: Row, col: "shipped_marked_at" | "delivered_marked_at") => {
+        const mark = msOrNull(r[col])
+        const at = checked(r)
+        return mark !== null && mark <= stale && (at === null || at < mark + args.markStaleMs)
+      }
+      const writerDue = args.writerBacklog
+        ? shipments.rows
+            .filter(
+              (r) =>
+                base(r) &&
+                r.mode !== "demo" &&
+                !isNullish(r.fulfillment_id) &&
+                !isNullish(r.order_id) &&
+                r.stage === "delivered" &&
+                recent(r) &&
+                spaced(r, spacing) &&
+                ((isNullish(r.shipped_marked_at) && possessionIn(r.tracking)) ||
+                  isNullish(r.delivered_marked_at) ||
+                  (isNullish(r.status_writer_error) && (staleMark(r, "shipped_marked_at") || staleMark(r, "delivered_marked_at")))),
+            )
+            .sort(claimOrder)
+            .slice(0, args.limit)
+        : []
+      const claimed: DueRow[] = []
+      const parts: Array<[Row, "status" | "writer"]> = [...statusDue.map((r): [Row, "status"] => [r, "status"]), ...writerDue.map((r): [Row, "writer"] => [r, "writer"])]
+      for (const [r, kind] of parts) {
+        const prev = (r.last_checked_at ?? null) as Date | string | null
+        Object.assign(r, { last_checked_at: args.now, updated_at: new Date() })
+        claimed.push({ ...r, prev_checked_at: prev, due_kind: kind } as never)
+      }
+      return claimed
+    },
+    async unclaimStatus(rows, claimedAt) {
+      let restored = 0
+      for (const row of rows) {
+        const r = live(row.id)
+        if (!r || msOrNull(r.last_checked_at) !== claimedAt.getTime()) continue
+        Object.assign(r, { last_checked_at: row.prev_checked_at ?? null, updated_at: new Date() })
+        restored += 1
+      }
+      return restored
+    },
+    async applyTracking(id, write, expect) {
+      const r = live(id)
+      if (!r) return null
+      /* coalesce with '' (E5), the time, the JSON of tracking and waybills, the handover (O17), the state (E6, O50). */
+      if (String(r.stage ?? "") !== String(expect.stage ?? "") || String(r.status ?? "") !== String(expect.status ?? "")) return null
+      if (msOrNull(r.status_at) !== msOrNull(expect.status_at)) return null
+      if (JSON.stringify(r.tracking ?? null) !== JSON.stringify(expect.tracking ?? null)) return null
+      if (JSON.stringify(r.waybills ?? null) !== JSON.stringify(expect.waybills ?? null)) return null
+      if (msOrNull(r.handed_over_at) !== msOrNull(expect.handed_over_at)) return null
+      if (r.state !== "created" && r.state !== "labeled") return null
+      Object.assign(r, { tracking: jsonCopy(write.tracking), stage: write.stage, status: write.status, status_at: write.status_at })
+      if (write.waybills !== undefined) r.waybills = jsonCopy(write.waybills)
+      if (write.boxes !== undefined) r.boxes = jsonCopy(write.boxes)
+      if (write.last_checked_at !== undefined) r.last_checked_at = write.last_checked_at
+      r.updated_at = new Date()
+      return { ...r, tracking: jsonCopy(r.tracking), waybills: jsonCopy(r.waybills), boxes: jsonCopy(r.boxes) } as never
+    },
+    async claimMark(id, column, at) {
+      const r = live(id)
+      if (!r || !isNullish(r[column])) return false
+      Object.assign(r, { [column]: at, status_writer_error: null, updated_at: new Date() })
+      return true
+    },
+    async releaseMark(id, column, error, markedAt) {
+      const r = live(id)
+      if (!r || isNullish(r[column]) || time(r[column]) !== markedAt.getTime()) return false
+      Object.assign(r, { [column]: null, status_writer_error: String(error).slice(0, WRITER_ERROR_MAX), updated_at: new Date() })
+      return true
+    },
+    async notePendingMark(id, column, error) {
+      const r = live(id)
+      if (!r || !isNullish(r[column]) || !isNullish(r.status_writer_error)) return false
+      Object.assign(r, { status_writer_error: String(error).slice(0, WRITER_ERROR_MAX), updated_at: new Date() })
+      return true
+    },
+    async pruneStatusEvents(mode, before, now) {
+      const cutoff = now.getTime() - STATUS_MAX_AGE_DAYS * DAY_MS
+      const notAsked = (r: Row) =>
+        Boolean(r.deleted_at) ||
+        r.kind !== "outbound" ||
+        (r.state !== "created" && r.state !== "labeled") ||
+        ["delivered", "canceled"].includes(String(r.stage ?? "")) ||
+        time(r.handed_over_at ?? r.created_at) <= cutoff ||
+        (r.stage === "returned" &&
+          Array.isArray(r.tracking) &&
+          (r.tracking as Row[]).some((e) => e?.role === "return" && e?.stage === "delivered" && isNullish(e?.supersededBy)))
+      const ids = new Set(shipments.rows.filter((r) => r.mode === mode && notAsked(r)).map((r) => String(r.id)))
+      const count = events.rows.length
+      events.rows = events.rows.filter((e) => !(e.kind === "status" && e.mode === mode && time(e.occurred_at) < before.getTime() && ids.has(String(e.shipment_id))))
+      return count - events.rows.length
+    },
+    async statusCounts(mode) {
+      return { writerErrors: shipments.rows.filter((r) => !r.deleted_at && r.mode === mode && !isNullish(r.status_writer_error)).length }
     },
     async listDispatches(args) {
       const found = dispatches.rows
@@ -504,8 +690,17 @@ export function memoryStore(shipments: Table, events: Table, settings: Table, di
 /* The fake Medusa container                                           */
 /* ------------------------------------------------------------------ */
 
-/** A row of the fake fulfillment module: its id, the provider data the plugin merges into, its stock location and when Medusa canceled it. */
-export type FakeFulfillment = { id: string; data: Row; location_id: string | null; canceled_at: Date | null }
+/** A row of the fake fulfillment module: its id, the provider data the plugin merges into, its stock location and when Medusa canceled it; stage 5 adds what the status writer reads, set only when the order literal has it. */
+export type FakeFulfillment = {
+  id: string
+  data: Row
+  location_id: string | null
+  canceled_at: Date | null
+  shipped_at?: Date | null
+  delivered_at?: Date | null
+  items?: Array<{ line_item_id: string; quantity: number }>
+  labels?: Array<{ id: string; tracking_number: string; tracking_url: string; label_url: string }>
+}
 
 /** Faults of the fake fulfillment module: an id in `update` throws on its write, `list` throws on every read, `beforeUpdate` runs before a write (a test cancels the fulfillment there). */
 export type FulfillmentFaults = { update: Set<string>; list: boolean; beforeUpdate?: (id: string, data: Row) => void }
@@ -557,6 +752,12 @@ export type Setup = {
   /** Every updateFulfillment, in order; `at` is the number of fake DPD calls made before it (0 without a fake). */
   fulfillmentUpdates: Array<{ id: string; data: Row; at: number }>
   fake: FakeDpdServices | null
+  /** The stand in of the Medusa core flows; setup registers it under CORE_FLOWS_KEY. */
+  coreFlows: FakeCoreFlows
+  /** The requests the InfoServices stand in saw (SetupExtra.info); [] without one. */
+  infoCalls: FakeInfoRequest[]
+  /** true: the event_bus stand in throws on emit (read on every emit, so a test can flip it). */
+  emitFails: boolean
 }
 
 export type SetupExtra = {
@@ -568,6 +769,8 @@ export type SetupExtra = {
   requestsPerMinute?: number
   /** The points source (POINTS_KEY); without one, createPointsSource of the options. */
   points?: PointsSource
+  /** Live tests: setup builds createInfoServicesClient over createFakeInfoServices and registers it under INFO_CLIENT_KEY. */
+  info?: FakeInfoAnswer | ((req: FakeInfoRequest) => FakeInfoAnswer)
 }
 
 /** Waits until the work started with setImmediate (inBackground) and its promises are done. */
@@ -633,7 +836,12 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
         return { data }
       },
     },
-    event_bus: { emit: async (e: { name: string; data: Row } | Array<{ name: string; data: Row }>) => void emitted.push(...(Array.isArray(e) ? e : [e])) },
+    event_bus: {
+      emit: async (e: { name: string; data: Row } | Array<{ name: string; data: Row }>) => {
+        if (result.emitFails) throw new Error("event bus down")
+        emitted.push(...(Array.isArray(e) ? e : [e]))
+      },
+    },
     dpdPointsSource: extra.points ?? createPointsSource(o, { logger: svc.getLogger() }),
   }
   const fulfillments = new Map<string, FakeFulfillment>()
@@ -648,11 +856,19 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
         if (!f) throw new Error(`Fulfillment with id: ${id} was not found`)
         return structuredClone(f)
       },
-      listFulfillments: async (filters: Row = {}) => {
+      /* The stage 5 fields only when `select` or `relations` asks for them, like Medusa. */
+      listFulfillments: async (filters: Row = {}, config: { select?: string[]; relations?: string[] } = {}) => {
         if (fulfillmentFaults.list) throw new Error("fulfillment module down")
         const raw = filters.id
         const ids = raw === undefined ? null : (Array.isArray(raw) ? raw : [raw]).map(String)
-        return [...fulfillments.values()].filter((f) => ids === null || ids.includes(f.id)).map((f) => structuredClone(f))
+        return [...fulfillments.values()]
+          .filter((f) => ids === null || ids.includes(f.id))
+          .map((f) => {
+            const copy = structuredClone(f)
+            for (const key of ["shipped_at", "delivered_at"] as const) if (config.select && !config.select.includes(key)) delete copy[key]
+            for (const key of ["items", "labels"] as const) if (!config.relations?.includes(key)) delete copy[key]
+            return copy
+          })
       },
       /* Like MikroORM: `data` is merged shallowly (a key set to null stays as null); `data: null` replaces it. */
       updateFulfillment: async (id: string, update: Row) => {
@@ -680,6 +896,20 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
       sleep: async () => {},
     })
   }
+  const coreFlows = fakeCoreFlows({ fulfillments })
+  registry.dpdCoreFlows = coreFlows
+  let infoCalls: FakeInfoRequest[] = []
+  if (extra.info !== undefined) {
+    const info = extra.info
+    const fakeInfo = createFakeInfoServices(typeof info === "function" ? info : () => info)
+    infoCalls = fakeInfo.calls
+    registry.dpdInfoServicesClient = createInfoServicesClient({
+      url: INFOSERVICES_URL,
+      auth: { login: o.infoLogin, password: o.infoPassword, channel: o.infoChannel },
+      fetchImpl: fakeInfo.fetchImpl,
+      requestsPerMinute: 6000,
+    })
+  }
   const container: Container = {
     resolve: <T = unknown>(key: string, opts?: { allowUnregistered?: boolean }): T => {
       if (!(key in registry)) {
@@ -689,17 +919,96 @@ export function setup(options: DpdPluginOptions, orders: Row[] = [], extra: Setu
       return registry[key] as T
     },
   }
-  return { container, options: o, shipments, documents, events, dispatches, settings, store, emitted, logs, orders: orderMap, fulfillments, fulfillmentFaults, fulfillmentUpdates, fake }
+  const result: Setup = {
+    container,
+    options: o,
+    shipments,
+    documents,
+    events,
+    dispatches,
+    settings,
+    store,
+    emitted,
+    logs,
+    orders: orderMap,
+    fulfillments,
+    fulfillmentFaults,
+    fulfillmentUpdates,
+    fake,
+    coreFlows,
+    infoCalls,
+    emitFails: false,
+  }
+  return result
+}
+
+export type FakeCoreFlowCall =
+  | { flow: "createOrderShipmentWorkflow"; input: CreateOrderShipmentInput }
+  | { flow: "markOrderFulfillmentAsDeliveredWorkflow"; input: MarkDeliveredInput }
+export type FakeCoreFlows = CoreFlows & {
+  calls: FakeCoreFlowCall[]
+  /** The next calls of this flow throw it (a Medusa-like Error); null or absent: no failure. */
+  fail: Partial<Record<FakeCoreFlowCall["flow"], Error | null>>
+  /** Runs before the flow body: a test sets shipped_at by hand here (the race of 6.4 point 6). */
+  beforeRun: ((call: FakeCoreFlowCall) => void) | null
+}
+
+/** A success sets shipped_at (and the labels of the input, H14) or delivered_at on the s.fulfillments entry. */
+export function fakeCoreFlows(s: Pick<Setup, "fulfillments">): FakeCoreFlows {
+  let labels = 0
+  const begin = (call: FakeCoreFlowCall): FakeFulfillment => {
+    flows.calls.push(structuredClone(call))
+    flows.beforeRun?.(call)
+    const failure = flows.fail[call.flow]
+    if (failure) throw failure
+    const id = call.flow === "createOrderShipmentWorkflow" ? call.input.fulfillment_id : call.input.fulfillmentId
+    const f = s.fulfillments.get(id)
+    if (!f) throw new Error(`Fulfillment with id: ${id} was not found`)
+    return f
+  }
+  const flows: FakeCoreFlows = {
+    calls: [],
+    fail: {},
+    beforeRun: null,
+    createOrderShipmentWorkflow: () => ({
+      run: async ({ input }) => {
+        const f = begin({ flow: "createOrderShipmentWorkflow", input })
+        /* validateShipmentStep of Medusa. */
+        if (f.shipped_at) throw new Error("Shipment has already been created")
+        f.shipped_at = new Date()
+        /* The whole list replaces the labels (H14): an entry with an id stays, one without gets a new id, one left out is gone. */
+        f.labels = input.labels.map((l) => ({ id: l.id ?? `flab_${++labels}`, tracking_number: l.tracking_number, tracking_url: l.tracking_url, label_url: l.label_url }))
+        return {}
+      },
+    }),
+    markOrderFulfillmentAsDeliveredWorkflow: () => ({
+      run: async ({ input }) => {
+        const f = begin({ flow: "markOrderFulfillmentAsDeliveredWorkflow", input })
+        f.delivered_at = new Date()
+        return {}
+      },
+    }),
+  }
+  return flows
 }
 
 function fakeFulfillment(f: Row): FakeFulfillment {
   const canceled = f.canceled_at
-  return {
+  const out: FakeFulfillment = {
     id: String(f.id),
     data: structuredClone((f.data as Row | null | undefined) ?? {}),
     location_id: typeof f.location_id === "string" ? f.location_id : null,
     canceled_at: canceled instanceof Date ? canceled : typeof canceled === "string" ? new Date(canceled) : null,
   }
+  if ("shipped_at" in f) out.shipped_at = dateOrNull(f.shipped_at)
+  if ("delivered_at" in f) out.delivered_at = dateOrNull(f.delivered_at)
+  if (Array.isArray(f.items)) out.items = structuredClone(f.items as NonNullable<FakeFulfillment["items"]>)
+  if (Array.isArray(f.labels)) out.labels = structuredClone(f.labels as NonNullable<FakeFulfillment["labels"]>)
+  return out
+}
+
+function dateOrNull(v: unknown): Date | null {
+  return v instanceof Date ? v : typeof v === "string" ? new Date(v) : null
 }
 
 /** Arms a writer in the settings table, as the admin route does. */

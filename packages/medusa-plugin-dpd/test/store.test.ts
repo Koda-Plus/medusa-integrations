@@ -8,7 +8,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { COURIER_LEASE_MS, PROTOCOL_LEASE_MS, SHIPMENT_STAGES, SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
+import { COURIER_LEASE_MS, PROTOCOL_LEASE_MS, SHIPMENT_STAGES, SHIPMENT_STATES, STATUS_MAX_AGE_DAYS } from "../src/modules/dpd/lib/constants.ts"
 import { DISPATCH_ATTENTION_CODES, groupOf } from "../src/modules/dpd/lib/contract.ts"
 import { countsOf, rowGroup } from "../src/modules/dpd/lib/dto.ts"
 import {
@@ -18,16 +18,19 @@ import {
   dispatchExpectClause,
   dispatchSetClause,
   GROUP_SQL,
+  RETURN_DONE_SQL,
   LABEL_LEASE_EXPIRED_ERROR,
   LEASE_EXPIRED_ERROR,
   like,
   PATCHABLE_COLUMNS,
+  expectClause,
   searchClause,
   setClause,
   type NewDispatch,
   type NewShipment,
   type SqlRunner,
 } from "../src/modules/dpd/lib/store.ts"
+import { clip, jsonText, wellFormed } from "../src/modules/dpd/lib/text.ts"
 import { DISPATCH_DEFAULTS, matches, memoryStore, Table, SHIPMENT_DEFAULTS, type Row } from "./helpers.ts"
 
 function recorder(rows: unknown[] = [{ id: "dpdshp_1" }]) {
@@ -133,14 +136,31 @@ test("counts and lists use one group expression, per mode, newest first, with an
   assert.deepEqual(calls[3].bindings, ["live", 5, 0], "all and no search: the mode only")
   assert.equal(like("50%_a\\b"), "%50\\%\\_a\\\\b%")
   assert.equal(searchClause("  "), null)
-  assert.equal(searchClause("PL14509")?.bindings.length, 5, "a text is not an order number")
+  assert.equal(searchClause("PL14509")?.bindings.length, 6, "a text is not an order number")
 })
 
-/** The CASE of GROUP_SQL, evaluated on one row: each `when` is a conjunction-free test on one column. */
-function sqlGroup(row: { kind: string; state: string; stage: string | null; handed_over_at: Date | null }): string {
+test("the search also matches the waybills of the tracking, a repinned one too, and only their waybill field", () => {
+  const clause = searchClause("0000000000201S")
+  assert.ok(clause)
+  assert.ok(clause.sql.includes(`exists (select 1 from jsonb_array_elements(case when jsonb_typeof("tracking") = 'array' then "tracking" else '[]'::jsonb end) as "e" where "e"->>'waybill' ilike ?)`))
+  assert.ok(!clause.sql.includes(`"tracking"::text`), "a description in the tracking never matches")
+  assert.equal(clause.sql.split("?").length - 1, clause.bindings.length, "one binding per placeholder")
+  assert.equal(clause.bindings[4], "%0000000000201S%")
+})
+
+/**
+ * The CASE of GROUP_SQL, evaluated on one row: each `when` is a
+ * conjunction-free test on one column, apart from the returnDone branch,
+ * whose RETURN_DONE_SQL is read as the flag `done` (E61).
+ */
+function sqlGroup(row: { kind: string; state: string; stage: string | null; handed_over_at: Date | null }, done = false): string {
   const values: Record<string, string | null> = { kind: row.kind, state: row.state, stage: row.stage, handed_over_at: row.handed_over_at ? "x" : null }
-  const branches = [...GROUP_SQL.matchAll(/when (.+?) then '([a-z_]+)'/g)]
+  const branches = [...GROUP_SQL.matchAll(/when (.+?) then '([a-z_]+)'\n/g)]
   for (const [, cond, group] of branches) {
+    if (cond === `"stage" = 'returned' and ${RETURN_DONE_SQL}`) {
+      if (values.stage === "returned" && done) return group
+      continue
+    }
     let m = cond.match(/^"(\w+)" in \((.+)\)$/)
     if (m) {
       const list = [...m[2].matchAll(/'([a-z_]+)'/g)].map((x) => x[1])
@@ -167,19 +187,36 @@ function sqlGroup(row: { kind: string; state: string; stage: string | null; hand
   return GROUP_SQL.match(/else '([a-z_]+)'/)?.[1] ?? "none"
 }
 
-test("the group in SQL is groupOf, for every kind, state, stage and handover", () => {
+test("the group in SQL is groupOf, for every kind, state, stage, handover and returnDone", () => {
   let checked = 0
+  const now = new Date("2026-11-04T12:00:00.000Z")
+  const recent = new Date("2026-11-03T12:00:00.000Z")
+  const back = [
+    { waybill: "0000000000101S", box: 0, role: "outbound", stage: "in_transit", supersededBy: "0000000000102R" },
+    { waybill: "0000000000102R", box: 0, role: "return", stage: "delivered", supersededBy: null, from: "0000000000101S" },
+  ]
   for (const kind of ["outbound", "return"])
     for (const state of SHIPMENT_STATES)
       for (const stage of [null, ...SHIPMENT_STAGES])
-        for (const handed of [null, new Date()]) {
-          const row = { kind, state, stage, handed_over_at: handed }
-          const want = groupOf({ kind: kind as "outbound" | "return", state, stage, handedOver: Boolean(handed) })
-          assert.equal(sqlGroup(row), want, JSON.stringify(row))
-          assert.equal(rowGroup(row), want)
-          checked += 1
-        }
-  assert.equal(checked, 2 * SHIPMENT_STATES.length * (SHIPMENT_STAGES.length + 1) * 2)
+        for (const handed of [null, recent])
+          for (const done of [false, true]) {
+            const row = { kind, state, stage, handed_over_at: handed, created_at: recent, waybills: [done ? "0000000000102R" : "0000000000101S"], tracking: done ? back : null }
+            const want = groupOf({ kind: kind as "outbound" | "return", state, stage, handedOver: Boolean(handed), returnDone: stage === "returned" && done })
+            assert.equal(sqlGroup(row, stage === "returned" && done), want, JSON.stringify(row))
+            assert.equal(rowGroup(row, now), want, JSON.stringify(row))
+            checked += 1
+          }
+  assert.equal(checked, 2 * SHIPMENT_STATES.length * (SHIPMENT_STAGES.length + 1) * 2 * 2)
+})
+
+test("RETURN_DONE_SQL is returnDone: the age of 6.5 and a live delivered return entry, with no placeholder (E61)", () => {
+  assert.ok(GROUP_SQL.includes(`when "stage" = 'returned' and ${RETURN_DONE_SQL} then 'returns'`))
+  assert.ok(GROUP_SQL.indexOf("then 'returns'\n  when \"stage\" in ('problem', 'returned')") > 0, "before the problems branch")
+  assert.ok(!RETURN_DONE_SQL.includes("?"), "GROUP_SQL is used with the bindings of counts and list")
+  assert.ok(RETURN_DONE_SQL.includes(`coalesce("handed_over_at", "created_at") <= now() - interval '${STATUS_MAX_AGE_DAYS} days'`))
+  for (const part of [`"r"->>'role' = 'return'`, `"r"->>'stage' = 'delivered'`, `coalesce("r"->>'supersededBy', '') = ''`, `"waybills" @> jsonb_build_array("r"->>'waybill')`]) {
+    assert.ok(RETURN_DONE_SQL.includes(part), part)
+  }
 })
 
 test("the memory store keeps the rules: one row per fulfillment, kind and mode; transitions from given states; dedupe; one setting per key", async () => {
@@ -562,7 +599,10 @@ test("listDispatches filters and newest first", async () => {
 test("releaseShipments clears dispatch_id and handed_over_at", async () => {
   const { calls, store } = recorder([{ id: "dpdshp_1" }])
   await store.releaseShipments("dpddsp_1", null)
-  assert.match(calls[0].sql, /^update "dpd_shipment" set "dispatch_id" = null, "handed_over_at" = null, "updated_at" = now\(\) where "dispatch_id" = \? and "deleted_at" is null returning \*$/)
+  assert.match(
+    calls[0].sql,
+    /^update "dpd_shipment" set "dispatch_id" = null, "handed_over_at" = null, "stage" = case when "stage" is null or "stage" = 'ready' then 'preparing' else "stage" end, "updated_at" = now\(\) where "dispatch_id" = \? and "deleted_at" is null returning \*$/,
+  )
   assert.deepEqual(calls[0].bindings, ["dpddsp_1"])
   await store.releaseShipments("dpddsp_1", ["dpdshp_1", "dpdshp_2"])
   assert.match(calls[1].sql, /where "dispatch_id" = \? and "id" in \(\?, \?\) and "deleted_at" is null/)
@@ -571,7 +611,10 @@ test("releaseShipments clears dispatch_id and handed_over_at", async () => {
   assert.equal(calls.length, 2)
   const at = new Date("2026-11-03T09:00:00Z")
   await store.markHandedOver("dpddsp_1", at)
-  assert.match(calls[2].sql, /^update "dpd_shipment" set "handed_over_at" = \?, "updated_at" = now\(\) where "dispatch_id" = \? and "handed_over_at" is null and "deleted_at" is null returning \*$/)
+  assert.match(
+    calls[2].sql,
+    /^update "dpd_shipment" set "handed_over_at" = \?, "stage" = case when "stage" is null or "stage" = 'preparing' then 'ready' else "stage" end, "updated_at" = now\(\) where "dispatch_id" = \? and "handed_over_at" is null and "deleted_at" is null returning \*$/,
+  )
   assert.deepEqual(calls[2].bindings, [at, "dpddsp_1"])
 })
 
@@ -614,4 +657,216 @@ test("the memory store keeps the dispatch rules of the SQL: expect dispatch_id, 
   dispatches.rows[0].state = "unknown"
   assert.equal((await store.dispatchCounts("sandbox")).attention, 1)
   assert.equal((await store.listDispatches({ mode: "sandbox", filter: "attention", offset: 0, limit: 10 })).count, 1)
+})
+
+/* ------------------------------------------------------------------ */
+/* Stage 5: the status statements                                      */
+/* ------------------------------------------------------------------ */
+
+const DUE = { mode: "sandbox" as const, now: new Date("2026-11-03T12:00:00.000Z"), limit: 25, maxAgeDays: 30, spacingMin: 30, spacingBeforeHandoverMin: 120, writerBacklog: true, markStaleMs: 900_000 }
+const ago = (ms: number) => new Date(DUE.now.getTime() - ms)
+
+test("pickDueForStatus: one statement with status_due and writer_due, prev_checked_at and due_kind, the 15 bindings in order", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1", prev_checked_at: null, due_kind: "status" }])
+  const rows = await store.pickDueForStatus(DUE)
+  assert.deepEqual(rows, [{ id: "dpdshp_1", prev_checked_at: null, due_kind: "status" }])
+  assert.equal(calls.length, 1)
+  const sql = calls[0].sql
+  assert.match(sql, /^with "status_due" as \( select "id", "last_checked_at" as "prev_checked_at", 'status' as "due_kind" from "dpd_shipment" where "mode" = \? and "deleted_at" is null and "kind" = 'outbound' and "state" in \('created', 'labeled'\)/)
+  assert.ok(sql.includes(`jsonb_typeof("waybills") = 'array' and jsonb_array_length("waybills") > 0`))
+  assert.ok(sql.includes(`coalesce("stage", '') not in ('delivered', 'canceled')`))
+  assert.ok(sql.includes(`and not ("mode" = 'demo' and "fulfillment_id" is null)`))
+  assert.ok(sql.includes(`when "handed_over_at" is not null or coalesce("stage", '') in ('in_transit', 'in_point', 'problem', 'returned') then ?::timestamptz else ?::timestamptz end`))
+  assert.ok(sql.includes(`"writer_due" as ( select "id", "last_checked_at" as "prev_checked_at", 'writer' as "due_kind" from "dpd_shipment" where ?::boolean and "mode" = ? and "mode" <> 'demo'`))
+  assert.ok(sql.includes(`"fulfillment_id" is not null and "order_id" is not null and "stage" = 'delivered'`))
+  assert.ok(sql.includes(`"e"->>'possession' = 'true'`))
+  assert.ok(sql.includes(`"last_checked_at" < "shipped_marked_at" + (?::int * interval '1 millisecond')`))
+  assert.ok(sql.includes(`"last_checked_at" < "delivered_marked_at" + (?::int * interval '1 millisecond')`))
+  assert.equal(sql.match(/order by "last_checked_at" asc nulls first, "id" asc limit \? for update skip locked/g)?.length, 2, "each part its own limit")
+  assert.match(sql, /update "dpd_shipment" as "s" set "last_checked_at" = \?, "updated_at" = now\(\) from \(select \* from "status_due" union all select \* from "writer_due"\) as "due" where "s"\."id" = "due"\."id" returning "s"\.\*, "due"\."prev_checked_at", "due"\."due_kind"$/)
+  const day = 86_400_000
+  assert.deepEqual(calls[0].bindings, [
+    "sandbox",
+    ago(30 * day),
+    ago(30 * 60_000),
+    ago(120 * 60_000),
+    25,
+    true,
+    "sandbox",
+    ago(30 * day),
+    ago(30 * 60_000),
+    ago(900_000),
+    900_000,
+    ago(900_000),
+    900_000,
+    25,
+    DUE.now,
+  ])
+  assert.equal((sql.match(/\?/g) ?? []).length, 15)
+  await store.pickDueForStatus({ ...DUE, writerBacklog: false })
+  assert.equal(calls[1].bindings[5], false, "writerBacklog bound as ?::boolean")
+})
+
+test("unclaimStatus gives prev_checked_at back only while last_checked_at is still the claim", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  const at = new Date("2026-11-03T12:00:00Z")
+  const prev = new Date("2026-11-03T11:00:00Z")
+  const n = await store.unclaimStatus([{ id: "dpdshp_1", prev_checked_at: prev }, { id: "dpdshp_2", prev_checked_at: null }], at)
+  assert.equal(n, 2)
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0].sql, `update "dpd_shipment" set "last_checked_at" = ?, "updated_at" = now() where "id" = ? and "last_checked_at" = ? and "deleted_at" is null returning "id"`)
+  assert.deepEqual(calls[0].bindings, [prev, "dpdshp_1", at])
+  assert.deepEqual(calls[1].bindings, [null, "dpdshp_2", at])
+  const none = recorder([])
+  assert.equal(await none.store.unclaimStatus([{ id: "dpdshp_1", prev_checked_at: null }], at), 0)
+})
+
+test("applyTracking checks waybills, the handover and state: the bindings are id, stage, status, status_at, tracking, waybills, handed_over_at", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  const statusAt = new Date("2026-11-02T14:00:00Z")
+  const prevAt = new Date("2026-11-01T14:00:00Z")
+  const tracking = [{ waybill: "0000000000101S" }]
+  const prevTracking = [{ waybill: "0000000000101S", stage: null }]
+  const handedAt = new Date("2026-11-01T10:00:00Z")
+  const row = await store.applyTracking("dpdshp_1", { tracking, stage: "in_transit", status: "170101", status_at: statusAt }, { stage: "ready", status: "040101", status_at: prevAt, tracking: prevTracking, waybills: ["0000000000101S"], handed_over_at: handedAt })
+  assert.deepEqual(row, { id: "dpdshp_1" })
+  assert.equal(
+    calls[0].sql,
+    `update "dpd_shipment" set "tracking" = ?::jsonb, "stage" = ?, "status" = ?, "status_at" = ?, "updated_at" = now() where "id" = ? and "deleted_at" is null and coalesce("stage", '') = ? and coalesce("status", '') = ? and "status_at" is not distinct from ? and "tracking" is not distinct from ?::jsonb and "waybills" is not distinct from ?::jsonb and "handed_over_at" is not distinct from ? and "state" in ('created', 'labeled') returning *`,
+  )
+  assert.deepEqual(calls[0].bindings, [JSON.stringify(tracking), "in_transit", "170101", statusAt, "dpdshp_1", "ready", "040101", prevAt, JSON.stringify(prevTracking), JSON.stringify(["0000000000101S"]), handedAt])
+  /* A repin writes waybills and boxes; a manual refresh writes last_checked_at. */
+  const checked = new Date("2026-11-03T12:00:00Z")
+  await store.applyTracking("dpdshp_1", { tracking, stage: "returned", status: "230403", status_at: statusAt, waybills: ["0000000000302R"], boxes: { edited: false, items: [] }, last_checked_at: checked }, { stage: null, status: null, status_at: null, tracking: null, waybills: ["0000000000301S"], handed_over_at: null })
+  assert.match(calls[1].sql, /^update "dpd_shipment" set "tracking" = \?::jsonb, "stage" = \?, "status" = \?, "status_at" = \?, "waybills" = \?::jsonb, "boxes" = \?::jsonb, "last_checked_at" = \?, "updated_at" = now\(\) where/)
+  assert.deepEqual(calls[1].bindings.slice(4, 7), [JSON.stringify(["0000000000302R"]), JSON.stringify({ edited: false, items: [] }), checked])
+  assert.equal(await recorder([]).store.applyTracking("dpdshp_1", { tracking, stage: null, status: null, status_at: null }, { stage: null, status: null, status_at: null, tracking: null, waybills: null, handed_over_at: null }), null, "a lost compare and set")
+})
+
+test("applyTracking binds an empty string for a null stage and status", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  await store.applyTracking("dpdshp_1", { tracking: [], stage: "preparing", status: "030103", status_at: null }, { stage: null, status: null, status_at: null, tracking: null, waybills: null, handed_over_at: null })
+  assert.deepEqual(calls[0].bindings.slice(4), ["dpdshp_1", "", "", null, null, null, null])
+})
+
+test("no lone surrogate reaches a jsonb binding or a cut text: Postgres would refuse the statement on every pass", async () => {
+  const high = "\uD83D"
+  const low = "\uDE9A"
+  const loneEscape = /\\ud[89a-f][0-9a-f]{2}/i
+  /* clip never keeps half of a pair; wellFormed replaces a lone half by U+FFFD and keeps pairs. */
+  assert.equal(clip("ab" + high + low, 3), "ab")
+  assert.equal(clip("ab" + high + low, 4), "ab" + high + low)
+  assert.equal(clip("abc", 2), "ab")
+  assert.equal(clip("abc", 0), "")
+  assert.equal(wellFormed(`a${high}b${low}c${high}${low}`), "a�b�c" + high + low)
+  assert.equal(jsonText({ a: [high, "ok"] }), JSON.stringify({ a: ["�", "ok"] }))
+  /* The tracking, the expected tracking and a patch column are written through jsonText. */
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  const tracking = [{ waybill: "0000000000101S", description: "a" + high }]
+  await store.applyTracking("dpdshp_1", { tracking, stage: "in_transit", status: "170101", status_at: null }, { stage: null, status: null, status_at: null, tracking, waybills: null, handed_over_at: null })
+  for (const b of calls[0].bindings) if (typeof b === "string") assert.doesNotMatch(b, loneEscape)
+  assert.equal(calls[0].bindings[0], JSON.stringify([{ waybill: "0000000000101S", description: "a�" }]))
+  assert.doesNotMatch(String(setClause({ tracking: [{ waybill: "0000000000101S", depotName: low }] }).bindings[0]), loneEscape)
+  /* The history: data (jsonb) made well formed, the message cut at 2000 without splitting a pair. */
+  await store.insertEvent({ shipment_id: "dpdshp_1", order_id: "order_1", kind: "status", message: "x".repeat(1999) + high + low, data: { depotName: "d" + high }, mode: "live" })
+  assert.equal(calls[1].bindings[9], "x".repeat(1999))
+  assert.equal(calls[1].bindings[10], JSON.stringify({ depotName: "d�" }))
+})
+
+test("claimMark, releaseMark and notePendingMark: one statement each, the column only from MarkColumn", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  const at = new Date("2026-11-03T12:00:00Z")
+  assert.equal(await store.claimMark("dpdshp_1", "shipped_marked_at", at), true)
+  assert.equal(calls[0].sql, `update "dpd_shipment" set "shipped_marked_at" = ?, "status_writer_error" = null, "updated_at" = now() where "id" = ? and "shipped_marked_at" is null and "deleted_at" is null returning "id"`)
+  assert.deepEqual(calls[0].bindings, [at, "dpdshp_1"])
+  const long = "x".repeat(800)
+  /* Only the mark the caller claimed or found stale: a fresh claim of another caller stays. */
+  assert.equal(await store.releaseMark("dpdshp_1", "delivered_marked_at", long, at), true)
+  assert.equal(calls[1].sql, `update "dpd_shipment" set "delivered_marked_at" = null, "status_writer_error" = ?, "updated_at" = now() where "id" = ? and "delivered_marked_at" = ? and "deleted_at" is null returning "id"`)
+  assert.deepEqual(calls[1].bindings, ["x".repeat(500), "dpdshp_1", at])
+  assert.equal(await store.notePendingMark("dpdshp_1", "delivered_marked_at", long), true)
+  assert.equal(calls[2].sql, `update "dpd_shipment" set "status_writer_error" = ?, "updated_at" = now() where "id" = ? and "delivered_marked_at" is null and "status_writer_error" is null and "deleted_at" is null returning "id"`)
+  assert.deepEqual(calls[2].bindings, ["x".repeat(500), "dpdshp_1"])
+  const lost = recorder([])
+  assert.equal(await lost.store.claimMark("dpdshp_1", "shipped_marked_at", at), false)
+  assert.equal(await lost.store.releaseMark("dpdshp_1", "shipped_marked_at", "e", at), false)
+  assert.equal(await lost.store.notePendingMark("dpdshp_1", "shipped_marked_at", "e"), false)
+  await assert.rejects(store.claimMark("dpdshp_1", `shipped_marked_at" = now(), "state` as never, at), /Unknown writer mark column/)
+  assert.equal(calls.length, 3, "an unknown column never reaches the SQL")
+})
+
+test("pruneStatusEvents deletes status events of rows no longer asked for, never action or run events", async () => {
+  const { calls, store } = recorder([{ count: 4 }])
+  const before = new Date("2026-07-06T12:00:00Z")
+  const now = new Date("2026-11-03T12:00:00Z")
+  assert.equal(await store.pruneStatusEvents("live", before, now), 4)
+  const sql = calls[0].sql
+  assert.match(sql, /^with "deleted" as \( delete from "dpd_event" where "kind" = 'status' and "mode" = \? and "occurred_at" < \? and "shipment_id" in \( select "id" from "dpd_shipment" where "mode" = \? and \(/)
+  assert.ok(sql.includes(`"deleted_at" is not null or "kind" <> 'outbound' or "state" not in ('created', 'labeled') or coalesce("stage", '') in ('delivered', 'canceled') or coalesce("handed_over_at", "created_at") <= ?`))
+  assert.ok(sql.includes(`"e"->>'role' = 'return' and "e"->>'stage' = 'delivered' and "e"->>'supersededBy' is null`))
+  assert.match(sql, /returning 1 \) select count\(\*\)::int as "count" from "deleted"$/)
+  assert.ok(!/'action'|'run'/.test(sql))
+  assert.deepEqual(calls[0].bindings, ["live", before, "live", new Date(now.getTime() - 30 * 86_400_000)])
+  assert.equal(await recorder([]).store.pruneStatusEvents("live", before, now), 0)
+})
+
+test("statusCounts counts the rows of one mode with a writer error", async () => {
+  const { calls, store } = recorder([{ count: "3" }])
+  assert.deepEqual(await store.statusCounts("sandbox"), { writerErrors: 3 })
+  assert.equal(calls[0].sql, `select count(*)::int as "count" from "dpd_shipment" where "mode" = ? and "deleted_at" is null and "status_writer_error" is not null`)
+  assert.deepEqual(calls[0].bindings, ["sandbox"])
+  assert.deepEqual(await recorder([]).store.statusCounts("live"), { writerErrors: 0 })
+})
+
+test("list with writerFailed adds the writer error condition to the group and the search", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1", count: 1 }])
+  await store.list({ mode: "live", filter: "in_transit", q: "1042", offset: 0, limit: 10, writerFailed: true })
+  assert.match(calls[0].sql, /and \("order_id" = \? .*\) and "status_writer_error" is not null order by/)
+  assert.match(calls[1].sql, /and "status_writer_error" is not null$/)
+  await store.list({ mode: "live", filter: "all", offset: 0, limit: 10 })
+  assert.ok(!calls[2].sql.includes("status_writer_error"))
+})
+
+test("expectClause with stage: is not distinct from, null included; absent is not checked", async () => {
+  assert.deepEqual(expectClause({ stage: "ready" }), { sql: ` and "stage" is not distinct from ?`, bindings: ["ready"] })
+  assert.deepEqual(expectClause({ stage: null }), { sql: ` and "stage" is not distinct from ?`, bindings: [null] })
+  assert.deepEqual(expectClause({ dispatch_id: null }), { sql: ` and "dispatch_id" is not distinct from ?`, bindings: [null] })
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  await store.transition("dpdshp_1", ["labeled"], { state: "excluded" }, { dispatch_id: null, stage: "ready" })
+  assert.match(calls[0].sql, /where "id" = \? and "state" in \(\?\) and "deleted_at" is null and "dispatch_id" is not distinct from \? and "stage" is not distinct from \? returning \*$/)
+  assert.deepEqual(calls[0].bindings.slice(-4), ["dpdshp_1", "labeled", null, "ready"])
+})
+
+test("expectClause with tracking and shipped_marked_at: jsonb and time, null included", async () => {
+  const tracking = [{ waybill: "0000000000101S", possession: false }]
+  const at = new Date("2026-11-02T10:00:00Z")
+  assert.deepEqual(expectClause({ tracking }), { sql: ` and "tracking" is not distinct from ?::jsonb`, bindings: [JSON.stringify(tracking)] })
+  assert.deepEqual(expectClause({ tracking: null }), { sql: ` and "tracking" is not distinct from ?::jsonb`, bindings: [null] })
+  assert.deepEqual(expectClause({ shipped_marked_at: null }), { sql: ` and "shipped_marked_at" is not distinct from ?::timestamptz`, bindings: [null] })
+  assert.deepEqual(expectClause({ shipped_marked_at: at }), { sql: ` and "shipped_marked_at" is not distinct from ?::timestamptz`, bindings: [at] })
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  await store.transition("dpdshp_1", ["labeled"], { state: "excluded" }, { dispatch_id: null, stage: "problem", tracking, shipped_marked_at: null })
+  assert.match(calls[0].sql, /and "stage" is not distinct from \? and "tracking" is not distinct from \?::jsonb and "shipped_marked_at" is not distinct from \?::timestamptz returning \*$/)
+  assert.deepEqual(calls[0].bindings.slice(-3), ["problem", JSON.stringify(tracking), null])
+})
+
+test("markHandedOver sets ready only from null or preparing", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  await store.markHandedOver("dpddsp_1", new Date())
+  assert.ok(calls[0].sql.includes(`"stage" = case when "stage" is null or "stage" = 'preparing' then 'ready' else "stage" end`))
+})
+
+test("releaseShipments turns ready and null back into preparing and keeps a stage past ready", async () => {
+  const { calls, store } = recorder([{ id: "dpdshp_1" }])
+  await store.releaseShipments("dpddsp_1", null)
+  assert.ok(calls[0].sql.includes(`"stage" = case when "stage" is null or "stage" = 'ready' then 'preparing' else "stage" end`))
+})
+
+test("the three status columns are patchable; tracking is jsonb", () => {
+  for (const c of ["tracking", "status_at", "status_writer_error"]) assert.ok(PATCHABLE_COLUMNS.includes(c), c)
+  const at = new Date("2026-11-03T12:00:00Z")
+  assert.deepEqual(setClause({ tracking: [{ waybill: "0000000000101S" }], status_at: at, status_writer_error: null }), {
+    sql: `"tracking" = ?::jsonb, "status_at" = ?, "status_writer_error" = ?, "updated_at" = now()`,
+    bindings: [JSON.stringify([{ waybill: "0000000000101S" }]), at, null],
+  })
 })

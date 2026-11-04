@@ -20,6 +20,11 @@ import type { ResolvedSender } from "./sender"
  * No InfoServices event code is invented either: the rows carry a stage
  * (where the parcel is) and no status code.
  *
+ * The seed rows never move: the status pass skips demo rows without a
+ * fulfillment. Shipments made in demo get their statuses from the status
+ * simulator (status-sim.ts), whose codes come from the DPD documentation or
+ * the libraries it cites, plus SIM_ codes only the built in map knows.
+ *
  * From stage 2 the seeded rows move through the same code paths as the
  * sandbox and live (create, label, lookup), with a simulated DPDServices
  * client that never calls DPD; the plan uses DEMO_SENDER when the options

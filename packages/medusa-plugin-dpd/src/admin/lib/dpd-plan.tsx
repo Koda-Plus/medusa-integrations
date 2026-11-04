@@ -1,8 +1,25 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowDownTray, ArrowRightOnRectangle, ArrowUturnLeft, CheckCircle, DocumentText, EyeSlash, HandTruck, MagnifyingGlass, MapPin, MinusCircle, PaperPlane, Plus, Trash, TruckFast } from "@medusajs/icons"
+import {
+  ArrowDownTray,
+  ArrowPath,
+  ArrowRightOnRectangle,
+  ArrowUturnLeft,
+  CheckCircle,
+  CloudArrowUp,
+  DocumentText,
+  EyeSlash,
+  HandTruck,
+  MagnifyingGlass,
+  MapPin,
+  MinusCircle,
+  PaperPlane,
+  Plus,
+  Trash,
+  TruckFast,
+} from "@medusajs/icons"
 import { Button, Drawer, IconButton, InlineTip, Input, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import type { BoxDto, DispatchDto, LabelPage, PlanAddressDto, PlanDto, PlanPudoReceiverDto, PointDto, ShipmentDto, WriterDto, WriterKey } from "../../modules/dpd/lib/contract"
+import type { BoxDto, DispatchDto, LabelPage, PlanAddressDto, PlanDto, PlanPudoReceiverDto, PointDto, ShipmentDto, StatusSource, WriterDto, WriterKey } from "../../modules/dpd/lib/contract"
 import { WRITER_OPTION } from "../../modules/dpd/lib/writers"
 import {
   DpdRequestError,
@@ -15,16 +32,19 @@ import {
   useDpdFetchLabel,
   useDpdLookup,
   useDpdPlan,
+  useDpdRefreshStatus,
   useDpdRestore,
+  useDpdRetryStatusWriter,
   useDpdSkip,
+  useDpdStatus,
   useDpdWithdraw,
 } from "./dpd-api"
 import { RowActions, ToneBadge, type RowAction } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
 import { KitLoading } from "./dpd-kit"
-import { answerProblems, boxFieldErrors, canChangePoint, changeReasonCode, dispatchActionWriter, isBoxField, writerBlock, type BoxFieldError } from "./dpd-logic"
+import { answerProblems, boxFieldErrors, canChangePoint, canRefreshStatus, canRetryStatusWriter, changeReasonCode, dispatchActionWriter, isBoxField, writerBlock, writerRetryToast, type BoxFieldError } from "./dpd-logic"
 import { PointCard, PointChangeDialog, PointPicker } from "./dpd-point"
-import { ErrorText, Fact, KindBadges, ProblemList, fmtMoney, fmtNumber } from "./dpd-ui"
+import { ErrorText, Fact, KindBadges, ProblemList, StatusLine, TrackingList, WriterErrorText, fmtDateTime, fmtMoney, fmtNumber } from "./dpd-ui"
 
 /** The label pages a person can pick for the create action. */
 const PAGES: readonly LabelPage[] = ["A4", "LBL_PRINTER"]
@@ -40,6 +60,26 @@ export function useActionErrorText(): (err: unknown) => string {
     const code = err instanceof DpdRequestError ? err.code : null
     const key = code ? `actionError.${code}` : ""
     return key && i18n.exists(key, { ns: "dpd" }) ? t(key) : nb(errorMessage(err))
+  }
+}
+
+/** The refused status actions with words of their own (statuses.actionError.*), apart from the words of a shipment action. */
+const STATUS_ACTION_ERRORS: readonly string[] = ["rate_limited", "not_configured", "wrong_state", "busy"]
+
+/**
+ * The words of a refused status action (refresh, write to Medusa again):
+ * statuses.actionError.<code> first, not_armed as the fulfillment status
+ * writer (actionError.not_armed speaks of the shipment writer), else the
+ * words of any refused action.
+ */
+export function useStatusErrorText(): (err: unknown) => string {
+  const { t } = useTranslation("dpd")
+  const actionText = useActionErrorText()
+  return (err) => {
+    const code = err instanceof DpdRequestError ? err.code : null
+    if (code && STATUS_ACTION_ERRORS.includes(code)) return t(`statuses.actionError.${code}`)
+    if (code === "not_armed") return t("writers.notArmed.fulfillmentStatus")
+    return actionText(err)
   }
 }
 
@@ -324,7 +364,20 @@ export function BoxesEditor({ shipmentId, boxes, edited, onDone }: { shipmentId:
  * point part has the change button, which opens the search in place and the
  * confirmation over it.
  */
-export function PlanBody({ plan, shipment, lang, pointChange = false }: { plan: PlanDto; shipment: ShipmentDto; lang: string; pointChange?: boolean }) {
+export function PlanBody({
+  plan,
+  shipment,
+  lang,
+  pointChange = false,
+  statusSource = null,
+}: {
+  plan: PlanDto
+  shipment: ShipmentDto
+  lang: string
+  pointChange?: boolean
+  /** Where statuses come from (StatusResponse.statuses.source); null while it loads. */
+  statusSource?: StatusSource | null
+}) {
   const { t } = useTranslation("dpd")
   const errorText = useActionErrorText()
   const [showRequest, setShowRequest] = useState(false)
@@ -337,6 +390,19 @@ export function PlanBody({ plan, shipment, lang, pointChange = false }: { plan: 
   const pickup = plan.point !== null || plan.kind === "pickup"
   return (
     <div className="flex flex-col gap-y-3">
+      {shipment.tracking.length > 0 ? (
+        <PlanPart title={t("statuses.tracking")}>
+          <StatusLine shipment={shipment} lang={lang} source={statusSource} />
+          <TrackingList shipment={shipment} lang={lang} />
+          <WriterErrorText shipment={shipment} />
+          {shipment.shippedMarkedAt || shipment.deliveredMarkedAt ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {shipment.shippedMarkedAt ? <Fact label={t("statuses.markedShipped")}>{fmtDateTime(shipment.shippedMarkedAt, lang)}</Fact> : null}
+              {shipment.deliveredMarkedAt ? <Fact label={t("statuses.markedDelivered")}>{fmtDateTime(shipment.deliveredMarkedAt, lang)}</Fact> : null}
+            </div>
+          ) : null}
+        </PlanPart>
+      ) : null}
       {plan.problems.length > 0 ? (
         <InlineTip variant="error" label={t("plan.problems")}>
           <ProblemList items={plan.problems} />
@@ -489,6 +555,8 @@ export function PlanDrawer({
 }) {
   const { t } = useTranslation("dpd")
   const q = useDpdPlan(shipmentId)
+  /* Where the statuses come from, for the status part of the plan (the query the page keeps). */
+  const status = useDpdStatus()
   const create = useDpdCreate()
   const errorText = useActionErrorText()
   const blockText = useWriterBlockText()
@@ -537,7 +605,7 @@ export function PlanDrawer({
             </InlineTip>
           ) : null}
           {/* The point change needs no writer: it writes only the plugin row (DS4). */}
-          {plan && shipment ? <PlanBody plan={plan} shipment={shipment} lang={lang} pointChange={canChangePoint(shipment, plan)} /> : null}
+          {plan && shipment ? <PlanBody plan={plan} shipment={shipment} lang={lang} pointChange={canChangePoint(shipment, plan)} statusSource={status.data?.statuses.source ?? null} /> : null}
           {block === "off" ? (
             <InlineTip variant="warning" label={blockText("off", "shipment").title}>
               {blockText("off", "shipment").hint}
@@ -586,6 +654,9 @@ export function PlanDrawer({
  * Taking a shipment out of its handover needs the writer the server asks for
  * the state of that handover (dispatchActionWriter), so it shows only where
  * the handover is known: the handover drawer and the order card (E14).
+ * Refreshing the status asks DPD only (no writer) and shows where the host
+ * knows the status source; writing the status to Medusa again needs the
+ * fulfillment status writer (DS18).
  * Named apart from the ShipmentActions type of the contract.
  */
 export function ShipmentActionBar({
@@ -597,6 +668,8 @@ export function ShipmentActionBar({
   dispatch,
   onHandover,
   onOpenDispatch,
+  statusSource = null,
+  statusWriter,
 }: {
   shipment: ShipmentDto
   writerArmed: boolean
@@ -611,6 +684,10 @@ export function ShipmentActionBar({
   onHandover?: (ids: string[]) => void
   /** Opens the handover of the shipment. */
   onOpenDispatch?: (id: string) => void
+  /** Where statuses come from; null or absent (not known here): no refresh. */
+  statusSource?: StatusSource | null
+  /** The fulfillment status writer: writing the status to Medusa again needs it armed. Absent (not known here): no retry. */
+  statusWriter?: Pick<WriterDto, "allowed" | "armed">
 }) {
   const { t, i18n } = useTranslation("dpd")
   const lang = i18n.language || "en"
@@ -624,6 +701,9 @@ export function ShipmentActionBar({
   const exclude = useDpdExclude(s.id)
   const restore = useDpdRestore(s.id)
   const withdraw = useDpdWithdraw(s.id)
+  const refreshStatus = useDpdRefreshStatus()
+  const retryStatusWriter = useDpdRetryStatusWriter()
+  const statusErrorText = useStatusErrorText()
   const now = useNow(Boolean(s.actions.lookup && s.lookupAfter))
   const tooEarly = Boolean(s.lookupAfter && Date.parse(s.lookupAfter) > now)
   const blockText = useWriterBlockText()
@@ -633,6 +713,9 @@ export function ShipmentActionBar({
   const withdrawWriter = dispatch ? dispatchActionWriter("withdraw", dispatch.state) : "shipment"
   const withdrawBlock = withdrawWriter === "pickup" ? writerBlock(pickupWriter, pickupWriter?.armed ?? false) : block
   const withdrawBlocked = withdrawBlock ? [blockText(withdrawBlock, withdrawWriter).title, blockText(withdrawBlock, withdrawWriter).hint].filter(Boolean).join(" ") : ""
+  /* Writing the status to Medusa again needs the fulfillment status writer: off in the options, or not armed. */
+  const statusBlock = writerBlock(statusWriter, statusWriter?.armed ?? false)
+  const statusBlocked = statusBlock ? [blockText(statusBlock, "fulfillmentStatus").title, blockText(statusBlock, "fulfillmentStatus").hint].filter(Boolean).join(" ") : ""
   const [labelBusy, setLabelBusy] = useState<"label" | "download" | null>(null)
 
   const run = async (fn: () => Promise<{ shipment: ShipmentDto }>, done: string) => {
@@ -696,6 +779,25 @@ export function ShipmentActionBar({
       toast.error(err instanceof DpdRequestError && err.code === "not_armed" ? blockText("not_armed", withdrawWriter).title : errorText(err))
     }
   }
+  /* The answer is the row with what DPD (or the simulator) said; a refusal changed nothing. */
+  const onRefreshStatus = async () => {
+    try {
+      await refreshStatus.mutateAsync({ id: s.id })
+      toast.success(t(statusSource === "simulated" ? "toast.statusSimulated" : "toast.statusRefreshed"))
+    } catch (err) {
+      toast.error(statusErrorText(err))
+    }
+  }
+  /* A failed write answers 200 too: the toast reads what the writer did, never the cleared error alone (E56). */
+  const onRetryStatusWriter = async () => {
+    try {
+      const res = await retryStatusWriter.mutateAsync({ id: s.id })
+      const shown = writerRetryToast(res.result)
+      toast[shown.kind](t(shown.key))
+    } catch (err) {
+      toast.error(statusErrorText(err))
+    }
+  }
   /* The label is fetched with the admin's auth and opened from memory; a refusal (no_label) is a toast. */
   const open = async (download: boolean) => {
     setLabelBusy(download ? "download" : "label")
@@ -721,6 +823,17 @@ export function ShipmentActionBar({
     },
     { key: "label", label: t("actions.label"), icon: <DocumentText />, hidden: !s.actions.label, loading: labelBusy === "label", onClick: () => void open(false) },
     { key: "download", label: t("actions.download"), icon: <ArrowDownTray />, hidden: !s.actions.label, loading: labelBusy === "download", onClick: () => void open(true) },
+    /* Never the main action: an icon beside the label. */
+    { key: "refreshStatus", label: t("actions.refreshStatus"), icon: <ArrowPath />, hidden: !canRefreshStatus(s, statusSource), loading: refreshStatus.isPending, onClick: () => void onRefreshStatus() },
+    {
+      key: "retryStatusWriter",
+      label: statusBlock ? `${t("actions.retryStatusWriter")}: ${statusBlocked}` : t("actions.retryStatusWriter"),
+      icon: <CloudArrowUp />,
+      hidden: !canRetryStatusWriter(s, statusWriter),
+      disabled: statusBlock !== null,
+      loading: retryStatusWriter.isPending,
+      onClick: () => void onRetryStatusWriter(),
+    },
     {
       key: "lookup",
       label: block ? `${t("actions.lookup")}: ${blocked}` : tooEarly && s.lookupAfter ? t("actions.lookupAfter", { time: fmtTime(s.lookupAfter, lang) }) : t("actions.lookup"),
@@ -772,10 +885,18 @@ export function ShipmentActionBar({
     },
   ]
   /* The button text of the main action: its name, without the reason it waits. */
-  const names: Record<string, string> = { plan: t("actions.plan"), fetchLabel: t("actions.fetchLabel"), label: t("actions.label"), lookup: t("actions.lookup"), accept: t("actions.accept"), restore: t("actions.restore") }
+  const names: Record<string, string> = {
+    plan: t("actions.plan"),
+    fetchLabel: t("actions.fetchLabel"),
+    retryStatusWriter: t("actions.retryStatusWriter"),
+    label: t("actions.label"),
+    lookup: t("actions.lookup"),
+    accept: t("actions.accept"),
+    restore: t("actions.restore"),
+  }
   const shown = actions.filter((a) => !a.hidden)
   /* The one a person needs next, in this order; the others stay icons beside it. A handover starts from the selection bar, never here. */
-  const main = ["plan", "fetchLabel", "label", "lookup", "accept", "restore"].map((k) => shown.find((a) => a.key === k)).find(Boolean)
+  const main = ["plan", "fetchLabel", "retryStatusWriter", "label", "lookup", "accept", "restore"].map((k) => shown.find((a) => a.key === k)).find(Boolean)
   if (shown.length === 0) return null
 
   return (

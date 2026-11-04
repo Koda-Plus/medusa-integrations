@@ -16,7 +16,15 @@ import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import en from "../src/admin/i18n/en.ts"
 import { DISPATCH_STATES, LABEL_PAGES, MODES, POINT_TYPES, SHIPMENT_STAGES, SHIPMENT_STATES, TRACKING_MODES } from "../src/modules/dpd/lib/constants.ts"
-import { ACTION_ERROR_CODES, DISPATCH_ERROR_CODES, SHIPMENT_ERROR_CODES, SHIPMENT_GROUPS } from "../src/modules/dpd/lib/contract.ts"
+import {
+  ACTION_ERROR_CODES,
+  DISPATCH_ERROR_CODES,
+  SHIPMENT_ERROR_CODES,
+  SHIPMENT_GROUPS,
+  STATUS_HISTORY_ACTIONS,
+  STATUS_PROBLEM_CODES,
+  STATUS_SOURCES,
+} from "../src/modules/dpd/lib/contract.ts"
 import { COURIER_WINDOW_CODES } from "../src/modules/dpd/lib/courier.ts"
 import { DISPATCH_ACTIONS, DISPATCH_PROBLEM_CODES, DISPATCH_WARNING_CODES } from "../src/modules/dpd/lib/dispatch.ts"
 import { DISPATCH_PROBLEM_SOURCE_CODES, DPD_PROBLEM_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
@@ -226,6 +234,11 @@ test("every string the admin asks for exists in both dictionaries: every key lit
     "dispatch.actionError.*": ["busy", "not_armed", "writer_off", "not_found", "wrong_state", "plan_changed"],
     /* Every name dispatchMainAction can give (resolve, print, order, protocol) and every action of the drawer (E25). */
     "dispatch.actions.*": ["print", "reprint", "order", "reschedule", "cancelCourier", "resolve", "cancel", "protocol"],
+    /* Statuses (stage 5): the source and problems of the statuses, the status history and the refused status actions. */
+    "statusSource.*": STATUS_SOURCES,
+    "statusProblem.*": STATUS_PROBLEM_CODES,
+    "history.status.*": STATUS_HISTORY_ACTIONS,
+    "statuses.actionError.*": ["rate_limited", "not_configured", "wrong_state", "busy"],
   }
   assert.deepEqual([...shapes.keys()].filter((k) => !(k in DYNAMIC)).map((k) => `${shapes.get(k)}: ${k}`), [], "a dynamic key without its enumeration here")
   assert.ok(modeKeys.includes("notConfigured") && problems.length > 0 && faq.length > 0, "the enumerations read from the sources")
@@ -303,7 +316,7 @@ test("a vendored copy is complete: every relative import of a copied file lands 
 
 test("own tables and a migration name unique across the packages", () => {
   const mine = readdirSync(join(root, "src/modules/dpd/migrations"))
-  assert.deepEqual(mine, ["Migration20261102120000_dpd.ts", "Migration20261103120000_dpd_dispatch.ts"])
+  assert.deepEqual(mine, ["Migration20261102120000_dpd.ts", "Migration20261103120000_dpd_dispatch.ts", "Migration20261104120000_dpd_tracking.ts"])
   const migration = readFileSync(join(root, "src/modules/dpd/migrations", mine[0]), "utf8")
   const ours = ["dpd_dispatch", "dpd_document", "dpd_event", "dpd_setting", "dpd_shipment"]
   assert.deepEqual([...migration.matchAll(/create table if not exists "([a-z_]+)"/g)].map((m) => m[1]).sort(), ours)
@@ -313,6 +326,8 @@ test("own tables and a migration name unique across the packages", () => {
   assert.match(migration, /export class Migration20261102120000_dpd extends Migration/)
   /* The second migration only alters dpd_dispatch (stage 4); its class name is its file name too. */
   assert.match(readFileSync(join(root, "src/modules/dpd/migrations", mine[1]), "utf8"), /export class Migration20261103120000_dpd_dispatch extends Migration/)
+  /* The third only adds the status columns of dpd_shipment (stage 5). */
+  assert.match(readFileSync(join(root, "src/modules/dpd/migrations", mine[2]), "utf8"), /export class Migration20261104120000_dpd_tracking extends Migration/)
   const siblings = join(root, "..")
   for (const dir of existsSync(siblings) ? readdirSync(siblings) : []) {
     if (dir === "medusa-plugin-dpd") continue

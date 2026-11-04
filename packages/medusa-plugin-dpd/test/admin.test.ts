@@ -8,6 +8,8 @@
  * reads as its card, can be changed from the plan and shows what DPD said,
  * and a handover to the courier picks its windows from the server's clock,
  * asks the writer the server asks and names its actions in both languages.
+ * The DPD statuses show the stage, the waybills with their repins, the source
+ * of the statuses and the status writes Medusa did not take.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -16,16 +18,20 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import en from "../src/admin/i18n/en.ts"
 import { POINT_TYPES } from "../src/modules/dpd/lib/constants.ts"
-import type { DispatchActions, DispatchDto, PointDto, PointLimitsDto, WriterDto, WriterKey } from "../src/modules/dpd/lib/contract.ts"
+import { WRITER_RETRY_RESULTS } from "../src/modules/dpd/lib/contract.ts"
+import type { DispatchActions, DispatchDto, PointDto, PointLimitsDto, ShipmentActions, TrackingDto, WriterDto, WriterKey } from "../src/modules/dpd/lib/contract.ts"
 import {
   BOX_FIELDS,
   DISPATCH_FILTERS,
   DpdRequestError,
   LATER_WRITERS,
   SELECTION_MAX,
+  STAGE_TONE,
   answerProblems,
   boxFieldErrors,
   canChangePoint,
+  canRefreshStatus,
+  canRetryStatusWriter,
   courierBlock,
   changeReasonCode,
   courierFormAllowed,
@@ -46,6 +52,7 @@ import {
   handoverStepOf,
   isLaterWriter,
   labelFileName,
+  lastAnsweredAt,
   latestProtocol,
   pageInRange,
   pointAddressLine,
@@ -61,8 +68,15 @@ import {
   selectionPageState,
   selectionPrune,
   selectionToggle,
+  shownStage,
+  statusSourceTone,
   stoppedRunMovedOn,
+  trackingChain,
+  trackingTone,
   writerBlock,
+  writerFailedOf,
+  writerFailedParams,
+  writerRetryToast,
 } from "../src/admin/lib/dpd-logic.ts"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -120,7 +134,7 @@ test("the label buttons never open a bare URL: the PDF is fetched with the admin
 test("a refused action refreshes what the page shows: the mutations invalidate on settle, not only on success", () => {
   for (const name of ["useAction", "usePost", "useDpdBoxes"]) {
     const fn = body(api, name)
-    assert.match(fn, /onSettled: \(\) => void client\.invalidateQueries\(\{ queryKey: dpdKeys\.all \}\)/, name)
+    assert.match(fn, /onSettled: \(\) => (\{\n\s+)?void client\.invalidateQueries\(\{ queryKey: dpdKeys\.all \}\)/, name)
     assert.ok(!/onSuccess: \(\) => void client\.invalidateQueries/.test(fn), name)
   }
 })
@@ -197,10 +211,10 @@ test("the order_paid amount reads as money of the admin's language; without it t
   assert.match(source("lib/dpd-ui.tsx"), /t\(key, \{ detail: problemDetail\(p, lang\) \}\)/)
 })
 
-test("the later note is for the writers this version does not use yet, not for the shipment writer", () => {
+test("the later note waits for a writer of a next version; none in this one", () => {
   assert.equal(isLaterWriter("shipment"), false)
   assert.equal(isLaterWriter("pickup"), false)
-  assert.equal(isLaterWriter("fulfillmentStatus"), true)
+  assert.equal(isLaterWriter("fulfillmentStatus"), false)
   assert.match(source("lib/dpd-settings.tsx"), /isLaterWriter\(writer\.key\) \? \(/)
   /* The header lists the armed writers instead of a note about one of them. */
   assert.ok(!source("routes/dpd/page.tsx").includes('t("writers.later")'))
@@ -406,7 +420,7 @@ test("the copy no longer says Pickup points come in a later version", () => {
   const pl = source("i18n/pl.ts")
   assert.ok(!/punkty Pickup[^.;"]*kolejnych wersjach/i.test(pl))
   assert.ok(!pl.includes('"Statusy i punkty"'))
-  assert.ok(!en.account.points.later.includes("points"))
+  assert.ok(!("later" in en.account.points))
 })
 
 test("a pending row the pass left to a person says why: point_unchecked and rate_limited_manual read in orange, a plain pending row shows nothing", () => {
@@ -476,10 +490,10 @@ function dispatchOf(over: Partial<DispatchDto> = {}): DispatchDto {
   }
 }
 
-test("the later note is for the Medusa status writer only: the pickup writer orders couriers now", () => {
+test("no writer is for later in this version", () => {
   assert.equal(isLaterWriter("pickup"), false)
   assert.ok(!LATER_WRITERS.includes("pickup"))
-  assert.deepEqual([...LATER_WRITERS], ["fulfillmentStatus"])
+  assert.deepEqual([...LATER_WRITERS], [])
 })
 
 test("courierWindowChoices drops a passed window today and keeps it tomorrow", () => {
@@ -879,4 +893,277 @@ test("settings: the pickup writer says when its orders are simulated", () => {
   assert.match(settings, /key === "pickup" && s\.options\.courierOrders === "simulated"/)
   assert.match(settings, /<InlineTip variant="info" label=\{t\("writers\.pickupSimulatedLabel"\)\}>/)
   assert.match(settings, /\{note \? <div className="pt-1">\{note\}<\/div> : null\}/)
+})
+
+/* ------------------------------------------------------------------ */
+/* DPD statuses (stage 5)                                              */
+/* ------------------------------------------------------------------ */
+
+/** A waybill of a shipment as the admin gets it, with no event yet unless `over` says otherwise. */
+function entry(over: Partial<TrackingDto> & Pick<TrackingDto, "waybill">): TrackingDto {
+  return {
+    box: 0,
+    role: "outbound",
+    stage: null,
+    code: null,
+    at: null,
+    lastCode: null,
+    lastAt: null,
+    description: null,
+    possession: false,
+    supersededBy: null,
+    supersededAt: null,
+    from: null,
+    checkedAt: null,
+    done: false,
+    ...over,
+  }
+}
+
+const statusSources = {
+  plan: source("lib/dpd-plan.tsx"),
+  ui: source("lib/dpd-ui.tsx"),
+  panel: source("lib/dpd-panel.tsx"),
+  page: source("routes/dpd/page.tsx"),
+  settings: source("lib/dpd-settings.tsx"),
+  widget: source("widgets/dpd-order-widget.tsx"),
+  guide: source("lib/dpd-guide-view.tsx"),
+}
+
+test("shownStage shows a labeled stage and a created row past preparing", () => {
+  assert.equal(shownStage({ state: "labeled", stage: "in_transit" }), "in_transit")
+  assert.equal(shownStage({ state: "labeled", stage: "preparing" }), "preparing")
+  assert.equal(shownStage({ state: "labeled", stage: null }), null)
+  /* A created row (waybills, the label did not come) shows where DPD has the parcel, not a stage of its own before that. */
+  assert.equal(shownStage({ state: "created", stage: "delivered" }), "delivered")
+  assert.equal(shownStage({ state: "created", stage: "preparing" }), null)
+  assert.equal(shownStage({ state: "pending", stage: "in_transit" }), null)
+  /* The badge reads the stage from shownStage and its tone from the plain logic. */
+  assert.match(body(statusSources.ui, "ShipmentStatus"), /const stage = shownStage\(shipment\)/)
+  assert.match(statusSources.ui, /import \{ STAGE_TONE,[^}]*\} from "\.\/dpd-logic"/)
+  assert.ok(!/const STAGE_TONE/.test(statusSources.ui), "STAGE_TONE lives in dpd-logic.ts")
+})
+
+test("trackingTone greys a superseded waybill", () => {
+  assert.equal(trackingTone({ stage: "delivered", supersededBy: null }), "green")
+  assert.equal(trackingTone({ stage: "delivered", supersededBy: "0000000000302R" }), "grey")
+  assert.equal(trackingTone({ stage: "returned", supersededBy: null }), "red")
+  assert.equal(trackingTone({ stage: null, supersededBy: null }), "grey")
+  assert.deepEqual(STAGE_TONE, { preparing: "blue", ready: "blue", in_transit: "blue", in_point: "blue", delivered: "green", problem: "red", returned: "red", canceled: "grey" })
+})
+
+test("trackingChain puts the current waybill first and the old ones after it", () => {
+  const entries = [
+    entry({ waybill: "0000000000101S", box: 0, stage: "delivered" }),
+    entry({ waybill: "0000000000302R", box: 1, role: "return", stage: "returned", from: "0000000000303R" }),
+    /* Superseded entries come after the live ones (readTracking order). */
+    entry({ waybill: "0000000000301S", box: 1, stage: "in_transit", supersededBy: "0000000000303R" }),
+    entry({ waybill: "0000000000303R", box: 1, stage: "in_transit", supersededBy: "0000000000302R", from: "0000000000301S" }),
+  ]
+  const chain = trackingChain(entries)
+  assert.deepEqual(
+    chain.map((g) => ({ box: g.box, current: g.current.waybill, previous: g.previous.map((e) => e.waybill) })),
+    [
+      { box: 0, current: "0000000000101S", previous: [] },
+      /* The newest replaced waybill first. */
+      { box: 1, current: "0000000000302R", previous: ["0000000000303R", "0000000000301S"] },
+    ],
+  )
+  assert.equal(chain[1].current.role, "return")
+  /* A repinned entry without its pair (no `from` leads to it) is a current of its own, in box order. */
+  const orphan = trackingChain([entry({ waybill: "0000000000202K", box: 1 }), entry({ waybill: "0000000000201S", box: 0, supersededBy: "0000000000999R" })])
+  assert.deepEqual(orphan.map((g) => g.current.waybill), ["0000000000201S", "0000000000202K"])
+  assert.deepEqual(trackingChain([]), [])
+})
+
+test("canRefreshStatus hides the action for source off and while loading", () => {
+  const row = (refreshStatus: boolean) => ({ actions: { refreshStatus } as ShipmentActions })
+  assert.equal(canRefreshStatus(row(true), "dpd"), true)
+  assert.equal(canRefreshStatus(row(true), "simulated"), true)
+  assert.equal(canRefreshStatus(row(true), "off"), false)
+  assert.equal(canRefreshStatus(row(true), null), false)
+  assert.equal(canRefreshStatus(row(false), "dpd"), false)
+  /* The retry of a status write: hidden when the host does not know the writer (the handover drawer), never read as not armed. */
+  const writer = { allowed: true, armed: false }
+  const retry = (retryStatusWriter: boolean) => ({ actions: { retryStatusWriter } as ShipmentActions })
+  assert.equal(canRetryStatusWriter(retry(true), writer), true)
+  assert.equal(canRetryStatusWriter(retry(true), undefined), false)
+  assert.equal(canRetryStatusWriter(retry(false), writer), false)
+  assert.ok(!/statusWriter=/.test(dispatchSource), "the handover drawer passes no status writer")
+  /* The bar asks it for the refresh, and the refresh is never the main action. */
+  const bar = body(statusSources.plan, "ShipmentActionBar")
+  assert.match(bar, /hidden: !canRefreshStatus\(s, statusSource\)/)
+  assert.match(bar, /hidden: !canRetryStatusWriter\(s, statusWriter\)/)
+  assert.match(bar, /\["plan", "fetchLabel", "retryStatusWriter", "label", "lookup", "accept", "restore"\]/)
+})
+
+test("writerFailedOf reads only failed", () => {
+  assert.equal(writerFailedOf("failed"), true)
+  assert.equal(writerFailedOf(null), false)
+  assert.equal(writerFailedOf(""), false)
+  assert.equal(writerFailedOf("FAILED"), false)
+  assert.equal(writerFailedOf("true"), false)
+  assert.match(statusSources.page, /writerFailedOf\(params\.get\("writer"\)\)/)
+})
+
+test("statusSourceTone", () => {
+  assert.equal(statusSourceTone("dpd"), "green")
+  assert.equal(statusSourceTone("simulated"), "blue")
+  assert.equal(statusSourceTone("off"), "orange")
+})
+
+test("the panel shows the writer failed filter only with a count or when active", () => {
+  const section = body(statusSources.panel, "ShipmentsSection")
+  assert.match(section, /\{counts\.statusesAttention > 0 \|\| writerFailed \? \(/)
+  assert.match(section, /label=\{t\("statuses\.writerFailedFilter"\)\}/)
+  assert.match(section, /count=\{counts\.statusesAttention\}/)
+  assert.match(section, /active=\{writerFailed\}/)
+  assert.match(section, /onClick=\{\(\) => onWriterFailed\?\.\(!writerFailed\)\}/)
+  /* The list asks the server with it, and a change goes back to the first page. */
+  assert.match(section, /useDpdShipments\(filter, q, page \* PAGE_SIZE, PAGE_SIZE, writerFailed\)/)
+  assert.match(section, /useEffect\(\(\) => setPage\(0\), \[filter, q, writerFailed\]\)/)
+  /* The row shows the last DPD event without the check line, and a status Medusa did not take. */
+  const cell = body(statusSources.panel, "StatusCell")
+  assert.match(cell, /<StatusLine shipment=\{s\} lang=\{lang\} compact \/>/)
+  assert.match(cell, /<WriterErrorText shipment=\{s\} \/>/)
+  /* The header note opens the same filter, and the page keeps it in the URL. */
+  assert.match(body(statusSources.page, "Warnings"), /open: \{ label: t\("missing\.statusesOpen"\), run: onWriterFailed \}/)
+  assert.match(body(statusSources.page, "Warnings"), /if \(code === "tracking_mode_queue_unsupported"\) continue/)
+  assert.match(statusSources.page, /setParams\(writerFailedParams\(params, on, \{ atDispatches, filter: f, clearSearch \}\), \{ replace: true \}\)/)
+})
+
+test("the header note shows every row whose status Medusa did not take: it drops the group filter and the search, the filter bar button joins them", () => {
+  /* The note counts all of them (counts.statusesAttention), so a tile left active would show a part of them or none. */
+  assert.match(statusSources.page, /const showWriterFailed = \(\) => \{\s+setFilter\("all"\)\s+setSearchReset\(\(n\) => n \+ 1\)\s+writeWriterFailed\(true, "all", true\)\s+\}/)
+  /* The filter bar button writes the URL with the filter the page shows and keeps the search. */
+  assert.match(statusSources.page, /const setWriterFailed = \(on: boolean\) => writeWriterFailed\(on, filter, false\)/)
+  /* One URL write per change: the page never builds the writer parameter itself (a second write from stale params kept ?filter and ?q). */
+  assert.ok(!/p\.set\("writer"/.test(statusSources.page), "the writer parameter is written by writerFailedParams only")
+  assert.match(statusSources.page, /<Warnings status=\{s\} lang=\{lang\} onSettings=\{\(tab\) => nav\.go\("settings", tab\)\} onWriterFailed=\{showWriterFailed\} \/>/)
+  assert.match(statusSources.page, /searchReset=\{searchReset\}/)
+  const section = body(statusSources.panel, "ShipmentsSection")
+  assert.match(section, /useEffect\(\(\) => \{\s+if \(searchReset > 0\) setSearch\(""\)\s+\}, \[searchReset\]\)/)
+  /* The filter bar button keeps the group filter and the search (10.6). */
+  assert.match(statusSources.page, /onWriterFailed=\{setWriterFailed\}/)
+  assert.match(section, /onClick=\{\(\) => onWriterFailed\?\.\(!writerFailed\)\}/)
+})
+
+test("writerFailedParams: the header note's URL drops the group filter and the search, so a reload shows what the note counts", () => {
+  const url = (q: string, on: boolean, opts: Parameters<typeof writerFailedParams>[2]) => writerFailedParams(new URLSearchParams(q), on, opts).toString()
+  const note = { atDispatches: false, filter: "all", clearSearch: true } as const
+  /* The board counter (shipments_problems) and the order card's More link open the page with ?filter and ?q. */
+  assert.equal(url("filter=problems", true, note), "writer=failed")
+  assert.equal(url("q=1042", true, note), "writer=failed")
+  assert.equal(url("filter=problems&q=1042&dispatch=d_1", true, note), "dispatch=d_1&writer=failed")
+  /* At the handover list ?filter is that list's and stays; the search still goes. */
+  assert.equal(url("view=dispatches&filter=attention&q=1042", true, { ...note, atDispatches: true }), "view=dispatches&filter=attention&writer=failed")
+  /* The filter bar button: the filter the page shows now (a tile clicked since the deep link), the search stays. */
+  const bar = (filter: "all" | "problems" | "in_transit") => ({ atDispatches: false, filter, clearSearch: false })
+  assert.equal(url("filter=problems&q=1042", true, bar("in_transit")), "filter=in_transit&q=1042&writer=failed")
+  assert.equal(url("filter=problems", true, bar("all")), "writer=failed")
+  assert.equal(url("filter=problems&writer=failed", false, bar("problems")), "filter=problems")
+  assert.equal(url("view=dispatches&filter=open&writer=failed", false, { ...bar("all"), atDispatches: true }), "view=dispatches&filter=open")
+  /* The params read are never changed in place. */
+  const params = new URLSearchParams("filter=problems&q=1042")
+  writerFailedParams(params, true, note)
+  assert.equal(params.toString(), "filter=problems&q=1042")
+})
+
+test("the list sends writer=failed only when asked, and its key carries the flag last", () => {
+  const list = body(api, "useDpdShipments")
+  assert.match(list, /if \(writerFailed\) params\.set\("writer", "failed"\)/)
+  assert.match(list, /queryKey: dpdKeys\.shipments\(filter, q, offset, limit, writerFailed\)/)
+  assert.match(api, /\["dpd", "shipments", filter, q, offset, limit, writerFailed\] as const/)
+  /* Both status actions go through useAction, so every answer, a refusal too, reads the page again, and the order page of Medusa too: they can mark its fulfillment. */
+  assert.match(api, /useDpdRefreshStatus = \(\) => useAction<Record<never, never>, ActionResponse>\(\(id\) => shipmentPath\(id, "refresh-status"\), true\)/)
+  assert.match(api, /useDpdRetryStatusWriter = \(\) => useAction<Record<never, never>, RetryStatusWriterResponse>\(\(id\) => shipmentPath\(id, "retry-status-writer"\), true\)/)
+  assert.match(api, /export const MEDUSA_ORDER_KEYS = \["orders"\] as const/)
+  assert.match(body(api, "useAction"), /if \(writesOrder\) void client\.invalidateQueries\(\{ queryKey: MEDUSA_ORDER_KEYS \}\)/)
+  /* No other action writes the Medusa fulfillment: only these two ask for it. */
+  assert.equal((api.match(/, true\)$/gm) ?? []).length, 2)
+})
+
+test("the settings show the status source instead of the later point", () => {
+  const account = body(statusSources.settings, "AccountSection")
+  assert.ok(!statusSources.settings.includes("account.points.later"))
+  assert.match(account, /text: t\(`statusSource\.\$\{s\.statuses\.source\}`\), tone: statusSourceTone\(s\.statuses\.source\)/)
+  assert.match(account, /<Fact label=\{t\("account\.statusSource"\)\}>/)
+  assert.match(account, /<Fact label=\{t\("statuses\.lastSync"\)\}>/)
+  assert.match(account, /variant=\{code === "tracking_mode_queue_unsupported" \? "info" : "warning"\}/)
+  /* The fulfillment status writer says what it writes in this mode; live with InfoServices needs no note. */
+  const writers = body(statusSources.settings, "WritersSection")
+  assert.match(writers, /t\("statuses\.writerDemo"\)/)
+  assert.match(writers, /t\("statuses\.writerSandbox"\)/)
+  assert.match(writers, /s\.statuses\.source === "off"/)
+  assert.match(writers, /key === "fulfillmentStatus" \? \(\s*statusNote/)
+})
+
+test("the order card reads the status source from useDpdStatus", () => {
+  const card = body(statusSources.widget, "DpdOrderCard")
+  assert.match(card, /const status = useDpdStatus\(\)/)
+  /* Before the early returns: a hook after them would change the hook order between renders. */
+  assert.ok(card.indexOf("useDpdStatus()") < card.indexOf("if (q.isLoading)"))
+  assert.match(card, /statusSource=\{status\.data\?\.statuses\.source \?\? null\}/)
+  assert.match(card, /statusWriter=\{info\.writers\.fulfillmentStatus\}/)
+  const block = body(statusSources.widget, "ShipmentBlock")
+  assert.match(block, /<StatusLine shipment=\{s\} lang=\{lang\} source=\{statusSource\} \/>/)
+  assert.match(block, /<WriterErrorText shipment=\{s\} \/>/)
+  assert.match(block, /statusSource=\{statusSource\}\s*statusWriter=\{statusWriter\}/)
+  /* The history names the status actions and marks a simulated DPD event. */
+  const history = body(statusSources.widget, "History")
+  assert.match(history, /t\(`history\.status\.\$\{e\.action\}`\)/)
+  assert.match(history, /t\("statuses\.simulated"\)/)
+})
+
+test("useStatusErrorText reads statuses.actionError first and the status writer for not_armed", () => {
+  const text = body(statusSources.plan, "useStatusErrorText")
+  assert.match(text, /t\(`statuses\.actionError\.\$\{code\}`\)/)
+  assert.match(text, /if \(code === "not_armed"\) return t\("writers\.notArmed\.fulfillmentStatus"\)/)
+  assert.match(text, /return actionText\(err\)/)
+  assert.ok(text.indexOf("statuses.actionError") < text.indexOf("actionText(err)"), "the status words first")
+  assert.match(statusSources.plan, /const STATUS_ACTION_ERRORS: readonly string\[\] = \["rate_limited", "not_configured", "wrong_state", "busy"\]/)
+  for (const code of ["rate_limited", "not_configured", "wrong_state", "busy"]) assert.equal(typeof (en.statuses.actionError as Record<string, string>)[code], "string", code)
+  /* E56: the toast reads what the writer did, never the cleared error alone. */
+  const bar = body(statusSources.plan, "ShipmentActionBar")
+  assert.match(bar, /const shown = writerRetryToast\(res\.result\)\s*toast\[shown\.kind\]\(t\(shown\.key\)\)/)
+  assert.doesNotMatch(bar, /statusWriterError === null/)
+})
+
+test("writerRetryToast tells written only when Medusa has the status (E56)", () => {
+  assert.deepEqual(writerRetryToast("written"), { kind: "success", key: "toast.statusWritten" })
+  assert.deepEqual(writerRetryToast("failed"), { kind: "warning", key: "toast.statusWriteFailed" })
+  assert.deepEqual(writerRetryToast("nothing_left"), { kind: "info", key: "toast.statusNothingLeft" })
+  assert.deepEqual(writerRetryToast("in_progress"), { kind: "info", key: "toast.statusWriteBusy" })
+  assert.deepEqual(writerRetryToast("not_written"), { kind: "warning", key: "toast.statusNotWritten" })
+  for (const result of WRITER_RETRY_RESULTS) {
+    const key = writerRetryToast(result).key.replace("toast.", "")
+    assert.equal(typeof (en.toast as Record<string, string>)[key], "string", `en ${key}`)
+    assert.match(source("i18n/pl.ts"), new RegExp(`\n {4}${key}: "`), `pl ${key}`)
+    if (result !== "written") assert.notEqual(writerRetryToast(result).kind, "success", result)
+  }
+})
+
+test("the statuses guide step is todo only in live mode", () => {
+  assert.match(statusSources.guide, /id: "statuses",[\s\S]*?state: state\([^)]*, s\.mode === "live" \? "todo" : "optional"\)/)
+  assert.match(statusSources.guide, /const statusesOk = s\.statuses\.source === "dpd" && !s\.statuses\.problems\.includes\("statuses_auth"\)/)
+  assert.match(statusSources.guide, /\{ label: t\("guide\.checklist\.statuses"\), done: live && statusesOk \}/)
+  /* After the arm step, and between armed and live on the checklist. */
+  assert.ok(statusSources.guide.indexOf('id: "arm"') < statusSources.guide.indexOf('id: "statuses"'))
+  assert.ok(statusSources.guide.indexOf("guide.checklist.armed") < statusSources.guide.indexOf("guide.checklist.statuses"))
+  assert.ok(statusSources.guide.indexOf("guide.checklist.statuses") < statusSources.guide.indexOf("guide.checklist.live"))
+})
+
+test("Checked in DPD is the last ok answer of a waybill, never the claim time of the pass (E53)", () => {
+  assert.equal(lastAnsweredAt([]), null)
+  assert.equal(lastAnsweredAt([entry({ waybill: "A" }), entry({ waybill: "B", box: 1 })]), null, "never answered: no line, whatever the claim time")
+  const answered = [
+    entry({ waybill: "A", checkedAt: "2026-11-03T09:00:00.000Z" }),
+    entry({ waybill: "B", box: 1, checkedAt: "2026-11-03T10:30:00.000Z" }),
+    entry({ waybill: "C", box: 2, checkedAt: null }),
+    entry({ waybill: "D", box: 3, checkedAt: "not a time" }),
+  ]
+  assert.equal(lastAnsweredAt(answered), "2026-11-03T10:30:00.000Z")
+  const line = body(statusSources.ui, "StatusLine")
+  assert.match(line, /const checked = compact \? null : lastAnsweredAt\(shipment\.tracking\)/)
+  assert.ok(!line.includes("lastCheckedAt"), "StatusLine never shows the claim time")
 })
