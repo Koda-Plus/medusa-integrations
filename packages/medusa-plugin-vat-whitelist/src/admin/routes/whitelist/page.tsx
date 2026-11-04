@@ -210,7 +210,8 @@ function ResultCard({ entity }: { entity: EntityDto }) {
           </Text>
           <StateBadge state={entity.state} />
           {entity.activity ? <ActivityBadge activity={entity.activity} /> : null}
-          {entity.status_vat ? <ToneBadge>{entity.status_vat}</ToneBadge> : null}
+          {/* The state badge already says Czynny or Zwolniony; VIES adds its own word (VAT-UE). */}
+          {entity.status_vat && entity.status_vat !== "Czynny" && entity.status_vat !== "Zwolniony" ? <ToneBadge>{entity.status_vat}</ToneBadge> : null}
         </div>
         {entity.registries.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
