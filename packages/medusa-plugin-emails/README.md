@@ -352,7 +352,7 @@ Every route needs an admin session or token. Writes take a JSON body or the `x-k
 - `GET /admin/emails/messages/:id`: one message; the body only in demo mode, with secrets hidden. In app mode also a history row (`noti_...`), without a body.
 - `POST /admin/emails/messages/:id/retry`: sends a failed, unknown or skipped message of a built-in event template again, from fresh data.
 - `GET /admin/emails/preview?template=&locale=&theme=&source=`: one template rendered as the provider would, on sample data or on the newest order with the person replaced. Changes nothing.
-- `POST /admin/emails/test`: `{ template, to, locale?, source? }`, one test send through the same path as every e-mail, rate limited, subject starting with `[Test]`.
+- `POST /admin/emails/send-test`: `{ template, to, locale?, source? }`, one test send through the same path as every e-mail, rate limited, subject starting with `[Test]`.
 - `POST /admin/emails/settings`: `{ brand?, templates? }`, the branding overrides and the template switches, stored with who changed them.
 - `POST /admin/emails/demo/seed`: demo mode only, fills or refreshes the simulated outbox (409 outside demo mode).
 - `GET /admin/emails/delivery?fresh=1`: the addresses Resend no longer sends to, with the reason, since when, the subject and mailing of the message that caused the block, its Resend link, a typo fix and (app mode) the last message here. `{ configured: false }` without `deliveryKey`; `fresh=1` skips the cache.
