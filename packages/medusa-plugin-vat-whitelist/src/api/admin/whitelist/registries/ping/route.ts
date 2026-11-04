@@ -6,12 +6,16 @@ import type { RegistryTestResponse } from "../../../../../modules/whitelist/lib/
 import { bodyOf, fail } from "../../../../whitelist/helpers"
 
 /**
- * POST /admin/whitelist/registries/test
+ * POST /admin/whitelist/registries/ping
  *
  * The connection test of the settings: GUS logs in with the key, reads the
  * session status and logs out (no lookup is spent), VIES reads its status
  * page, the whitelist answers its API root. Body: { registry }. Nothing is
  * saved, so the demo account may run it too.
+ *
+ * NOT `registries/test`: `medusa build` and `medusa plugin:build` skip every
+ * folder named test (with integration-tests and unit-tests), so a route
+ * there works in `medusa develop` and is missing from the production build.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const body = bodyOf(req)

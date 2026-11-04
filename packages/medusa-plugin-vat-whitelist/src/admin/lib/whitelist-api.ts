@@ -87,7 +87,7 @@ export function useCheckNip() {
 /** The connection test of one registry (settings). Saves nothing, so the status is not refetched. */
 export function useTestRegistry() {
   return useMutation<RegistryTestResponse, Error, RegistryTestResponse["registry"]>({
-    mutationFn: (registry) => whitelistFetch("/admin/whitelist/registries/test", { method: "POST", body: { registry } }),
+    mutationFn: (registry) => whitelistFetch("/admin/whitelist/registries/ping", { method: "POST", body: { registry } }),
   })
 }
 

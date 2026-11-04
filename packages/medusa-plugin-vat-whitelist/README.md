@@ -96,7 +96,7 @@ Every option has a default, so the plugin starts without any.
 - `GET /admin/whitelist` - the counterparties, the latest checks and the counters.
 - `POST /admin/whitelist/check` - checks a number (`{ nip }`), asks its registries, creates or refreshes the counterparty and appends one check per registry.
 - `POST /admin/whitelist/entities/:id/check` - re-checks a counterparty.
-- `POST /admin/whitelist/registries/test` - the connection test of one registry (`{ registry: "gus" | "whitelist" | "vies" }`). Saves nothing.
+- `POST /admin/whitelist/registries/ping` - the connection test of one registry (`{ registry: "gus" | "whitelist" | "vies" }`). Saves nothing.
 
 ## Store API
 
