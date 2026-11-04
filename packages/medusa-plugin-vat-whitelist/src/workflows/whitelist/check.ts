@@ -16,7 +16,7 @@ import type { CheckDto, EntityDto } from "../../modules/whitelist/lib/contract"
  */
 export async function runCheck(
   container: MedusaContainer,
-  input: { value: string; requestedBy: string; customerId?: string | null; force?: boolean },
+  input: { value: string; requestedBy: string; customerId?: string | null; force?: boolean; entityId?: string },
 ): Promise<{ entity: EntityDto; check: CheckDto; gus: CheckDto | null; checks: CheckDto[] }> {
   const svc = whitelistSvc(container)
   const options = svc.getOptions()
@@ -24,7 +24,8 @@ export async function runCheck(
   const parsed = parseNumber(value)
   const normalized = parsed.kind === "nip" ? parsed.nip : parsed.kind === "vat" ? parsed.vat : value.replace(/[\s.-]/g, "").toUpperCase()
 
-  const existing = await svc.listWhitelistEntities({ nip: normalized }, { take: 1 })
+  /* A re-check updates exactly that row (an old "PL..." row and a bare NIP row normalize to the same number). */
+  const existing = await svc.listWhitelistEntities(input.entityId ? { id: input.entityId } : { nip: normalized }, { take: 1 })
   /*
    * Only a seeded sample customer stays simulated: a demo row linked to a
    * customer. A demo row without a customer is a leftover of an earlier

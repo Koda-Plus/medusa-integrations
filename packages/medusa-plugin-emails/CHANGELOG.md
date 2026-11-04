@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- The test send is `POST /admin/emails/send-test` (was `/admin/emails/test`). `medusa build` and `medusa plugin:build` skip every folder named test, so the old route was missing from production builds and the Send test button answered 404.
+- The test send is `POST /admin/emails/send-sample` (was `/admin/emails/test`). `medusa build` and `medusa plugin:build` drop every file whose path contains "test", so the old route was missing from production builds and the Send test button answered 404.
 
 ### Changed
 

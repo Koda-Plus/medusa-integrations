@@ -12,7 +12,7 @@ import { sendTemplate } from "../../../../workflows/emails/send-template"
 import { actorOf, emailsService } from "../helpers"
 
 /**
- * POST /admin/emails/send-test  { template, to, locale?, source? }
+ * POST /admin/emails/send-sample  { template, to, locale?, source? }
  *
  * Sends one template to one address the admin typed, through the same path
  * as every e-mail (the notification module, the provider, the send log), so
@@ -27,9 +27,10 @@ import { actorOf, emailsService } from "../helpers"
  * At most 5 tests per person in 10 minutes and 30 per hour for the store.
  * A test goes out even when its template is turned off, to check it first.
  *
- * NOT `emails/test`: `medusa build` and `medusa plugin:build` skip every
- * folder named test, so the route worked in `medusa develop` and was missing
- * from the production build (404 on Railway until 0.3.1).
+ * NO "test" ANYWHERE IN THE PATH: `medusa build` and `medusa plugin:build`
+ * drop every file whose path contains the text "test" (a substring match,
+ * so `send-test` and `latest` go too). The route worked in `medusa develop`
+ * and was missing from the production build (404 on Railway until 0.3.1).
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = emailsService(req.scope)
