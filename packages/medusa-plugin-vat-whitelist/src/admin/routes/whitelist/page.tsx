@@ -10,7 +10,7 @@ import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, Sear
 import { GuideView, usePromptSpec } from "../../lib/whitelist-guide-view"
 import { errorMessage, useCheckNip, useRecheckEntity, useWhitelistStatus } from "../../lib/whitelist-api"
 import { WhitelistIcon } from "../../lib/whitelist-icon"
-import { OptionsTab, SETTINGS_TABS, StateBadge, type SettingsTabId } from "../../lib/whitelist-ui"
+import { ActivityBadge, OptionsTab, RegistriesTab, RegistryAnswer, SETTINGS_TABS, StateBadge, type SettingsTabId } from "../../lib/whitelist-ui"
 import type { EntityDto, StatusResponse } from "../../../modules/whitelist/lib/contract"
 
 /* The host of the koda.integration/1 cards learns about this plugin. */
@@ -30,7 +30,7 @@ const FILTERS: Filter[] = ["all", "active", "exempt", "problem", "stale"]
 function matches(e: EntityDto, f: Filter): boolean {
   if (f === "active") return e.state === "active"
   if (f === "exempt") return e.state === "exempt"
-  if (f === "problem") return e.state === "not_found" || e.state === "invalid"
+  if (f === "problem") return e.state === "not_found" || e.state === "invalid" || e.state === "inactive"
   if (f === "stale") return e.stale
   return true
 }
@@ -82,7 +82,9 @@ const WhitelistPage = () => {
           badges={
             s?.demo ? (
               <ModeBadge color="blue" label={t("mode.demo")} title={t("mode.demoTitle")}>
-                <Text size="small">{t("mode.demoText")}</Text>
+                <Text size="small">
+                  {s.registries.live.length > 0 ? t("mode.demoLiveText", { registries: s.registries.live.map((r) => t(`source.${r}`)).join(", ") }) : t("mode.demoText")}
+                </Text>
               </ModeBadge>
             ) : null
           }
@@ -134,9 +136,12 @@ const WhitelistPage = () => {
           subtitle={t("settings.subtitle")}
           value={nav.tab}
           onChange={(tab: SettingsTabId) => nav.go("settings", tab)}
-          tabs={[{ id: "options", label: t("settings.tab.options") }]}
+          tabs={[
+            { id: "registries", label: t("settings.tab.registries") },
+            { id: "options", label: t("settings.tab.options") },
+          ]}
         >
-          <OptionsTab status={s} />
+          {nav.tab === "options" ? <OptionsTab status={s} /> : <RegistriesTab status={s} />}
         </SettingsView>
       ) : null}
 
@@ -204,8 +209,16 @@ function ResultCard({ entity }: { entity: EntityDto }) {
             {entity.name || entity.nip}
           </Text>
           <StateBadge state={entity.state} />
-          <ToneBadge>{t(`source.${entity.source}`)}</ToneBadge>
+          {entity.activity ? <ActivityBadge activity={entity.activity} /> : null}
+          {entity.status_vat ? <ToneBadge>{entity.status_vat}</ToneBadge> : null}
         </div>
+        {entity.registries.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {entity.registries.map((r) => (
+              <RegistryAnswer key={r.source} source={r.source} state={r.state} reason={r.reason} />
+            ))}
+          </div>
+        ) : null}
         {entity.address ? (
           <Text size="small" className="text-ui-fg-subtle">
             {entity.address}
@@ -214,6 +227,7 @@ function ResultCard({ entity }: { entity: EntityDto }) {
         {entity.legal_form ? (
           <Text size="small" className="text-ui-fg-subtle">
             {entity.legal_form}
+            {entity.started_at ? ` / ${t("result.since", { date: entity.started_at })}` : ""}
           </Text>
         ) : null}
         {entity.krs || entity.regon ? (
@@ -337,6 +351,7 @@ function EntitiesCard({ status, filter, onFilter, q, onQ, loading }: { status: S
                 <Table.Cell>
                   <span className="flex flex-wrap items-center gap-1">
                     <StateBadge state={e.state} />
+                    {e.activity && e.activity !== "active" ? <ActivityBadge activity={e.activity} /> : null}
                     {e.stale ? (
                       <ToneBadge tone="orange" dot>
                         {t("entities.stale")}
@@ -393,7 +408,11 @@ function ChecksCard({ status }: { status: StatusResponse }) {
                 <Table.Cell className="font-mono txt-compact-xsmall">{c.nip}</Table.Cell>
                 <Table.Cell className="text-ui-fg-subtle">{t(`source.${c.source}`)}</Table.Cell>
                 <Table.Cell>
-                  <StateBadge state={c.state} />
+                  <span className="flex flex-wrap items-center gap-1" title={c.reason ? t("registries.reason", { reason: c.reason }) : undefined}>
+                    <StateBadge state={c.state} />
+                    {c.activity && c.activity !== "active" ? <ActivityBadge activity={c.activity} /> : null}
+                    {c.demo ? <ToneBadge tone="blue">{t("mode.demo")}</ToneBadge> : null}
+                  </span>
                 </Table.Cell>
               </Table.Row>
             ))}

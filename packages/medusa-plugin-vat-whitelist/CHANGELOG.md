@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0 (2026-11-04)
+
+### Added
+
+- The GUS Business Registry as a full registry: a BIR 1.1 client with WS-Addressing and MTOM parsing, the legal person and natural person reports (company name, address, REGON, KRS, legal form, start date) and whether the business runs, is suspended or has ended. The session is reused and logs in again when GUS ends it; every call has a timeout.
+- A new state, `inactive`: GUS says the business is suspended or has ended, whatever the whitelist says.
+- `plRegistries` (default `["gus", "whitelist"]`): the registries of a Polish NIP, in order. GUS gives the company card, the whitelist the VAT status and the bank accounts; `vies` adds the VAT-UE registration for sales within the EU. A number typed with the PL prefix asks VIES too.
+- `gusEnvironment` (`production` or `test`, the GUS test environment with its public key) and `timeoutMs`.
+- `live`: in demo mode, the named registries answer for real for every number outside the demo samples, so a public demo can show real company data. Seeded demo counterparties stay simulated on a re-check.
+- Settings / Registries: how each registry answers (live, simulated, no key, not used), the GUS key and environment, and a connection test per registry (`POST /admin/whitelist/registries/test`; GUS logs in and out without spending a lookup).
+- The check card shows what each registry answered, the business state and the start date; the history shows one row per registry.
+- The setup guide has a GUS step (how to get the free key) and an EU step.
+- The registration preview takes `{ vat_number, country_code }` as well as `{ nip }`, adds the country prefix to a number typed without it, checks EU numbers in VIES and caches answers for ten minutes.
+
+### Changed
+
+- Only the VIES member states pass as EU VAT numbers (EL for Greece, GR is read as EL); a VIES answer with a member state down reads unavailable.
+- A VIES answer has the status `VAT-UE` instead of `Czynny`.
+- A registry that does not answer never wipes the company data an earlier check knew.
+
 ## 0.1.1 (2026-10-18)
 
 - The panel has a setup guide.

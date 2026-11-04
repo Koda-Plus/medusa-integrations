@@ -1,12 +1,14 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { toCheck, toEntity, whitelistSvc } from "../../../modules/whitelist/lib/store"
+import { gusKey, registryMode } from "../../../modules/whitelist/lib/options"
 import type { StatusResponse } from "../../../modules/whitelist/lib/contract"
 
 /**
  * GET /admin/whitelist
  *
  * The whole status of the Whitelist page in one call: the counterparties,
- * the latest checks and the counters.
+ * the latest checks, the counters and how each registry answers. The GUS
+ * key itself never leaves the server, only whether one is set.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = whitelistSvc(req.scope)
@@ -20,11 +22,20 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   const status: StatusResponse = {
     demo: options.demo,
     staleHours: options.staleHours,
+    registries: {
+      pl: options.plRegistries,
+      gus: { mode: registryMode(options, "gus"), environment: options.gusEnvironment, key: Boolean(gusKey(options)) },
+      whitelist: { mode: registryMode(options, "whitelist"), baseUrl: options.baseUrl },
+      vies: { mode: registryMode(options, "vies") },
+      live: options.live,
+      timeoutMs: options.timeoutMs,
+    },
     counts: {
       entities: entityDtos.length,
       active: entityDtos.filter((e) => e.state === "active").length,
       exempt: entityDtos.filter((e) => e.state === "exempt").length,
-      not_found: entityDtos.filter((e) => e.state === "not_found" || e.state === "invalid").length,
+      inactive: entityDtos.filter((e) => e.state === "inactive").length,
+      not_found: entityDtos.filter((e) => e.state === "not_found" || e.state === "invalid" || e.state === "inactive").length,
       checks: checks.length,
     },
     entities: entityDtos,

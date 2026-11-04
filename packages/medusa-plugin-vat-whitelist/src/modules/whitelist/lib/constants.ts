@@ -30,13 +30,14 @@ export type CheckSource = (typeof SOURCES)[number]
 /**
  * The normalized state of a counterparty, whatever the source said:
  *
- *   active      VAT payer, on the whitelist (Czynny)
+ *   active      VAT payer, on the whitelist (Czynny), or valid in VIES
  *   exempt      VAT exempt (Zwolniony)
+ *   inactive    GUS: the business is suspended or has ended
  *   not_found   not in the register
  *   invalid     the NIP or VAT number does not validate
  *   unavailable the registry could not answer
  */
-export const STATES = ["active", "exempt", "not_found", "invalid", "unavailable"] as const
+export const STATES = ["active", "exempt", "inactive", "not_found", "invalid", "unavailable"] as const
 export type CheckState = (typeof STATES)[number]
 
 export function isState(value: unknown): value is CheckState {

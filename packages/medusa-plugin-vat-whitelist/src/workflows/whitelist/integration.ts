@@ -57,7 +57,7 @@ export const whitelistIntegration = integrationRoutes({
 
   async count(ctx) {
     const svc = whitelistSvc(ctx.scope)
-    const rows = await svc.listWhitelistEntities({ state: ["exempt", "not_found", "invalid", "unavailable"] }, { take: 10_000 })
+    const rows = await svc.listWhitelistEntities({ state: ["exempt", "inactive", "not_found", "invalid", "unavailable"] }, { take: 10_000 })
     const linked = rows.filter((r) => str(r.customer_id))
     return whitelistCounters({ unverified: linked.length })
   },

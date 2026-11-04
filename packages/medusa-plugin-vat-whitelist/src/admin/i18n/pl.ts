@@ -13,9 +13,9 @@ const pl = {
     settings: "Ustawienia",
   },
   by: "by Koda Plus",
-  subtitle: "Sprawdź polski NIP w białej liście Ministerstwa Finansów i numery VAT UE w VIES: status VAT, numery kont do podzielonej płatności i historia weryfikacji.",
+  subtitle: "Sprawdź polski NIP w rejestrze REGON GUS i białej liście Ministerstwa Finansów, a numery VAT UE w VIES: dane firmy, czy działa, status VAT, numery kont do podzielonej płatności i historia weryfikacji.",
   points: {
-    nip: "NIP: biała lista MF",
+    nip: "NIP: GUS i biała lista MF",
     vies: "VAT UE: VIES",
     accounts: "Konta do podzielonej płatności",
     fresh: "Odpowiedź ważna {{hours}} h",
@@ -25,6 +25,7 @@ const pl = {
     demo: "Demo",
     demoTitle: "Tryb demo",
     demoText: "Symulowane odpowiedzi rejestrów z flagą demo. Żaden zewnętrzny serwis nie jest odpytywany.",
+    demoLiveText: "Numery przykładowe odpowiadają symulowanymi danymi z flagą demo. Każdy inny numer pyta prawdziwe rejestry: {{registries}}.",
   },
   actions: {
     refresh: "Odśwież",
@@ -42,12 +43,12 @@ const pl = {
     exempt: "Zwolnieni",
     exemptHint: "Bez VAT na fakturze",
     notFound: "Nie znaleziono",
-    notFoundHint: "Brak w rejestrze",
+    notFoundHint: "Brak w rejestrze albo zamknięta",
   },
   check: {
     title: "Sprawdź kontrahenta",
     points: {
-      nip: "10 cyfr: biała lista",
+      nip: "10 cyfr: GUS i biała lista",
       vat: "Prefiks kraju: VIES",
       fresh: "Ważne {{hours}} h",
     },
@@ -67,7 +68,7 @@ const pl = {
       all: "Wszyscy",
       active: "Czynni",
       exempt: "Zwolnieni",
-      problem: "Brak albo błędny",
+      problem: "Brak, zamknięta albo błędny",
       stale: "Nieaktualni",
     },
     empty: "Jeszcze nic nie sprawdzono",
@@ -103,13 +104,20 @@ const pl = {
   state: {
     active: "Czynny",
     exempt: "Zwolniony",
+    inactive: "Zamknięta",
     not_found: "Nie znaleziono",
     invalid: "Błędny",
     unavailable: "Niedostępny",
   },
+  activity: {
+    active: "Działa",
+    suspended: "Zawieszona",
+    closed: "Zakończona",
+  },
   result: {
     active: "{{name}}: czynny podatnik VAT",
     exempt: "{{name}}: zwolniony z VAT",
+    inactive: "{{name}}: działalność zawieszona albo zakończona",
     not_found: "{{name}}: nie ma w rejestrze",
     invalid: "Numer nie przechodzi walidacji",
     unavailable: "Rejestr nie odpowiedział, spróbuj za chwilę",
@@ -117,11 +125,65 @@ const pl = {
     accounts: "Konta z rejestru",
     krs: "KRS",
     regon: "REGON",
+    since: "od {{date}}",
+  },
+  registries: {
+    lead: "Rejestry, w których sprawdzamy numer: GUS i biała lista MF dla polskiego NIP-u, VIES dla numerów VAT UE.",
+    points: {
+      pl: "NIP: w tej kolejności",
+      eu: "VAT UE: VIES",
+      test: "Test tylko się loguje",
+    },
+    order: "Krok {{n}} dla NIP-u",
+    reason: "Brak odpowiedzi: {{reason}}",
+    mode: {
+      live: "Na żywo",
+      demo: "Symulacja",
+      missing_key: "Brak klucza",
+      off: "Nieużywany",
+    },
+    gus: {
+      name: "Rejestr REGON GUS (BIR 1.1)",
+      gives: "Firma: pełna nazwa, adres, REGON, KRS, forma prawna, data rozpoczęcia i to, czy działalność trwa, jest zawieszona albo zakończona.",
+      when: "Pytany jako pierwszy o polski NIP. Bezpłatny, z kluczem użytkownika od GUS.",
+      missing: "Bez klucza GUS jest pomijany. Wpisz klucz w GUS_API_KEY albo zacznij od środowiska testowego GUS.",
+      keySet: "Klucz ustawiony",
+      keyMissing: "Brak klucza",
+      env: {
+        production: "Produkcja",
+        test: "Środowisko testowe",
+      },
+    },
+    whitelist: {
+      name: "Biała lista MF",
+      gives: "Status VAT (Czynny, Zwolniony), numery kont do podzielonej płatności, data rejestracji.",
+      when: "Pytana o polski NIP po GUS. Bez klucza; API MF ma dzienny limit wyszukiwań.",
+      missing: "",
+    },
+    vies: {
+      name: "VIES (Komisja Europejska)",
+      gives: "Czy numer VAT UE jest ważny, oraz nazwa i adres, jeśli państwo członkowskie je udostępnia.",
+      when: "Pytany o każdy numer z prefiksem kraju (DE, FR, NL...). O polski NIP tylko, gdy plRegistries zawiera vies albo numer ma prefiks PL.",
+      missing: "",
+    },
+    test: {
+      run: "Testuj połączenie",
+      ok: "Działa ({{ms}} ms)",
+      fail: "Nie działa",
+      messages: {
+        missing_key: "Brak klucza GUS.",
+        timeout: "Rejestr nie odpowiedział na czas.",
+        network: "Brak połączenia z rejestrem.",
+        "GUS refused the key": "GUS odrzucił klucz. Sprawdź GUS_API_KEY i środowisko (produkcja albo test).",
+        vies_down: "VIES zgłasza niedostępność.",
+      },
+    },
   },
   settings: {
     title: "Ustawienia",
     subtitle: "Opcje w użyciu, tylko do odczytu. Ustawia się je w medusa-config.ts.",
     tab: {
+      registries: "Rejestry",
       options: "Opcje",
     },
     points: {
@@ -130,7 +192,11 @@ const pl = {
     },
     staleHours: "Ważność odpowiedzi",
     hours: "{{count}} h",
-    sources: "Rejestry",
+    plRegistries: "Polski NIP",
+    euRegistry: "Numer VAT UE",
+    live: "Na żywo w trybie demo",
+    timeout: "Limit czasu rejestru",
+    seconds: "{{count}} s",
     demo: "Tryb demo",
     on: "Włączony",
     off: "Wyłączony",
@@ -142,13 +208,13 @@ const pl = {
   guide: {
     intro: {
       title: "Wdrożenie krok po kroku",
-      text: "Instalujesz wtyczkę, rejestrujesz ją, uruchamiasz migracje, otwierasz panel. Formularz rejestracji i konto klienta same sprawdzają NIP.",
+      text: "Instalujesz wtyczkę, rejestrujesz ją, uruchamiasz migracje, dodajesz klucz GUS, otwierasz panel. Formularz rejestracji i konto klienta same sprawdzają NIP.",
       time: "ok. 15 minut",
       timeLabel: "Czas",
       needsLabel: "Potrzebujesz",
       needs: {
         medusa: "Medusa 2.12 lub nowsza",
-        gus: "Klucz GUS BIR 1.1, tylko produkcja",
+        gus: "Klucz użytkownika GUS BIR 1.1 (bezpłatny, na e-mail)",
       },
     },
     stepsTitle: "Kroki",
@@ -174,6 +240,13 @@ const pl = {
         p1: "Dodaj wpis do listy plugins, nie ruszając reszty. Każda opcja ma wartość domyślną.",
         check: "Panel wczytuje się bez błędu.",
       },
+      gus: {
+        title: "Dodaj klucz GUS",
+        p1: "GUS podaje dane firmy, do której należy NIP. Klucz użytkownika usługi BIR 1.1 jest bezpłatny: poproś o niego mailem na regon_bir@stat.gov.pl, podając nazwę firmy, NIP i cel; przychodzi w kilka dni.",
+        p2: "Wpisz go w zmienne środowiskowe, nigdy w kod, i przekaż jako gusApiKey. Zanim przyjdzie, gusEnvironment: \"test\" używa środowiska testowego GUS i jego publicznego klucza.",
+        p3: "Ustawienia / Rejestry pokazują, czy klucz jest ustawiony, i testują połączenie: logowanie i wylogowanie, bez zużywania wyszukiwań.",
+        check: "Testuj połączenie przy GUS odpowiada Działa.",
+      },
       demo: {
         title: "Tryb demo (opcjonalnie)",
         p1: "Tylko po włączeniu: symulowane odpowiedzi rejestrów z flagą demo, nic nie wychodzi poza serwer.",
@@ -182,8 +255,14 @@ const pl = {
       },
       first: {
         title: "Sprawdź pierwszy NIP",
-        p1: "Wpisz NIP w Sprawdź kontrahenta. W trybie produkcyjnym podaj klucz GUS w opcjach.",
+        p1: "Wpisz NIP w Sprawdź kontrahenta. Karta pokazuje firmę z GUS, status VAT z białej listy i to, co odpowiedział każdy rejestr.",
         check: "Kontrahent pojawia się na liście.",
+      },
+      eu: {
+        title: "Sprzedaż w UE (opcjonalnie)",
+        p1: "Numery z prefiksem kraju zawsze idą do VIES. Przy polskim nabywcy w dostawie wewnątrzwspólnotowej dopisz vies do plRegistries: VIES potwierdzi wtedy rejestrację VAT-UE obok białej listy.",
+        p2: "Formularz sklepu dla danego kraju może wysłać numer bez prefiksu razem z kodem kraju; prefiks dopisze wtyczka.",
+        check: "Numer DE albo FR pokazuje VIES w historii weryfikacji.",
       },
       store: {
         title: "Podepnij sklep",
@@ -197,13 +276,17 @@ const pl = {
       preview: "Rejestracja podgląda firmę przed akceptacją",
       status: "Status VAT widoczny przy kontrahencie",
       stale: "Stare sprawdzenia odświeżane po staleHours",
-      gus: "Klucz GUS BIR 1.1 ustawiony na produkcji",
+      gus: "Klucz GUS ustawiony, środowisko produkcyjne działa",
     },
     faq: {
       title: "Pytania",
+      gus: {
+        q: "Dlaczego GUS przed białą listą?",
+        a: "GUS zna każdą firmę, płatnika VAT czy nie, z formą prawną i informacją, czy jeszcze działa. Biała lista zna tylko podatników VAT i ma dzienny limit wyszukiwań. Razem: firma z GUS, status VAT i konta z białej listy. Działalność zawieszona albo zakończona dostaje status Zamknięta, cokolwiek mówi biała lista.",
+      },
       eu: {
         q: "Czy weryfikacja działa też dla firm z UE?",
-        a: "Tak. Numery z prefiksem kraju sprawdza VIES, polskie biała lista MF, dane rejestrowe GUS. Każda odpowiedź zostaje w historii.",
+        a: "Tak. Numery z prefiksem kraju sprawdza VIES. Część państw (Niemcy, Hiszpania) potwierdza tylko ważność numeru, bez nazwy firmy. Każda odpowiedź zostaje w historii.",
       },
       often: {
         q: "Jak często wtyczka pyta rejestry?",
@@ -211,7 +294,7 @@ const pl = {
       },
       demo: {
         q: "Czy tryb demo coś wysyła na zewnątrz?",
-        a: "Nie. Demo to wyłącznie symulowane odpowiedzi w bazie.",
+        a: "Domyślnie nie: demo to symulowane odpowiedzi w bazie. Z opcją live wskazane rejestry odpowiadają naprawdę dla każdego numeru spoza przykładów, więc publiczne demo może pokazać prawdziwe dane firm.",
       },
     },
   },
