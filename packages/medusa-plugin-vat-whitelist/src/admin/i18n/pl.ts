@@ -43,7 +43,7 @@ const pl = {
     exempt: "Zwolnieni",
     exemptHint: "Bez VAT na fakturze",
     notFound: "Nie znaleziono",
-    notFoundHint: "Brak w rejestrze albo zamknięta",
+    notFoundHint: "Brak w rejestrze albo nieaktywna",
   },
   check: {
     title: "Sprawdź kontrahenta",
@@ -68,7 +68,7 @@ const pl = {
       all: "Wszyscy",
       active: "Czynni",
       exempt: "Zwolnieni",
-      problem: "Brak, zamknięta albo błędny",
+      problem: "Brak, nieaktywna albo błędny",
       stale: "Nieaktualni",
     },
     empty: "Jeszcze nic nie sprawdzono",
@@ -104,7 +104,7 @@ const pl = {
   state: {
     active: "Czynny",
     exempt: "Zwolniony",
-    inactive: "Zamknięta",
+    inactive: "Nieaktywna",
     not_found: "Nie znaleziono",
     invalid: "Błędny",
     unavailable: "Niedostępny",
@@ -135,6 +135,7 @@ const pl = {
       test: "Test tylko się loguje",
     },
     order: "Krok {{n}} dla NIP-u",
+    found: "Znaleziono",
     reason: "Brak odpowiedzi: {{reason}}",
     mode: {
       live: "Na żywo",
@@ -282,7 +283,7 @@ const pl = {
       title: "Pytania",
       gus: {
         q: "Dlaczego GUS przed białą listą?",
-        a: "GUS zna każdą firmę, płatnika VAT czy nie, z formą prawną i informacją, czy jeszcze działa. Biała lista zna tylko podatników VAT i ma dzienny limit wyszukiwań. Razem: firma z GUS, status VAT i konta z białej listy. Działalność zawieszona albo zakończona dostaje status Zamknięta, cokolwiek mówi biała lista.",
+        a: "GUS zna każdą firmę, płatnika VAT czy nie, z formą prawną i informacją, czy jeszcze działa. Biała lista zna tylko podatników VAT i ma dzienny limit wyszukiwań. Razem: firma z GUS, status VAT i konta z białej listy. Działalność zawieszona albo zakończona dostaje status Nieaktywna, cokolwiek mówi biała lista.",
       },
       eu: {
         q: "Czy weryfikacja działa też dla firm z UE?",

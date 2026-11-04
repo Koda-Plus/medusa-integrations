@@ -34,12 +34,13 @@ export function ActivityBadge({ activity }: { activity: Activity }) {
   return <ToneBadge tone={ACTIVITY_TONE[activity]}>{t(`activity.${activity}`)}</ToneBadge>
 }
 
-/** One registry's answer in a check: its name and what it said. */
+/** One registry's answer in a check: its name and what it said. GUS knows companies, not VAT: "found", not "active". */
 export function RegistryAnswer({ source, state, reason }: { source: CheckSource; state: CheckState; reason?: string | null }) {
   const { t } = useTranslation("whitelist")
+  const label = source === "gus" && state === "active" ? t("registries.found") : t(`state.${state}`)
   return (
     <ToneBadge tone={STATE_TONE[state] ?? "grey"} dot title={reason ? t("registries.reason", { reason }) : undefined}>
-      {t(`source.${source}`)}: {t(`state.${state}`)}
+      {t(`source.${source}`)}: {label}
     </ToneBadge>
   )
 }

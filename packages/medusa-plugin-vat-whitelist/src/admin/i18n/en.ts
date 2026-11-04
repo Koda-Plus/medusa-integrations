@@ -40,7 +40,7 @@ const en = {
     exempt: "VAT exempt",
     exemptHint: "No VAT on the invoice",
     notFound: "Not found",
-    notFoundHint: "Not in the registry or closed",
+    notFoundHint: "Not in the registry or inactive",
   },
   check: {
     title: "Check a counterparty",
@@ -65,7 +65,7 @@ const en = {
       all: "All",
       active: "Active",
       exempt: "Exempt",
-      problem: "Not found, closed or invalid",
+      problem: "Not found, inactive or invalid",
       stale: "Stale",
     },
     empty: "Nothing checked yet",
@@ -101,7 +101,7 @@ const en = {
   state: {
     active: "Active",
     exempt: "Exempt",
-    inactive: "Closed",
+    inactive: "Inactive",
     not_found: "Not found",
     invalid: "Invalid",
     unavailable: "Unavailable",
@@ -132,6 +132,7 @@ const en = {
       test: "Test logs in only",
     },
     order: "Step {{n}} for a NIP",
+    found: "Found",
     reason: "No answer: {{reason}}",
     mode: {
       live: "Live",
@@ -279,7 +280,7 @@ const en = {
       title: "Questions",
       gus: {
         q: "Why GUS before the whitelist?",
-        a: "GUS knows every business, VAT payer or not, with its legal form and whether it still runs. The whitelist knows VAT payers only, and limits searches per day. Together: the company from GUS, the VAT status and the accounts from the whitelist. A closed or suspended business reads Closed whatever the whitelist says.",
+        a: "GUS knows every business, VAT payer or not, with its legal form and whether it still runs. The whitelist knows VAT payers only, and limits searches per day. Together: the company from GUS, the VAT status and the accounts from the whitelist. A closed or suspended business reads Inactive whatever the whitelist says.",
       },
       eu: {
         q: "Does the check work for EU companies too?",
