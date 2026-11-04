@@ -19,6 +19,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     fail(res, 404, "not_found", "No such counterparty.")
     return
   }
-  const result = await runCheck(req.scope, { value: String(entity.nip ?? ""), requestedBy: "admin", customerId: typeof entity.customer_id === "string" ? entity.customer_id : null, force: true })
+  const result = await runCheck(req.scope, { value: String(entity.nip ?? ""), requestedBy: "admin", customerId: typeof entity.customer_id === "string" ? entity.customer_id : null, force: true, entityId: id })
   res.json(result)
 }
