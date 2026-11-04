@@ -96,6 +96,19 @@ test("the request goes to host plus path, nowhere else", async () => {
   assert.deepEqual(urls, [`${DPDSERVICES_HOSTS.sandbox}${DPDSERVICES_PATHS.numbers}`, `${DPDSERVICES_HOSTS.sandbox}${DPDSERVICES_PATHS.labels}`])
 })
 
+test("a redirect is not followed: one call, HTTP 307 is unclear and the body goes nowhere else", async () => {
+  const seen: Array<RequestInit | undefined> = []
+  const redirecting: typeof fetch = async (_input, init) => {
+    seen.push(init)
+    return new Response("", { status: 307, headers: { location: "https://elsewhere.invalid/" } })
+  }
+  const { c } = client(new FakeDpdServices(), { fetchImpl: redirecting })
+  const r = await c.generatePackagesNumbers(request())
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0]?.redirect, "manual")
+  assert.deepEqual(r.kind === "unclear" && [r.code, r.httpStatus], ["bad_answer", 307])
+})
+
 test("labels: the PDF by the package reference; the body keeps the output fields at the top level (S9)", async () => {
   const fake = new FakeDpdServices()
   const waybills = fake.seedPackage("ful_02", 2)

@@ -509,3 +509,51 @@ test("autoCreate never sends to a point nobody could check (DS13): pending with 
   const { plan } = await planForShipment(byHand.s.container, byHand.id)
   assert.equal((await createShipment(byHand.s.container, byHand.id, manual(plan.hash))).state, "labeled", "by hand it goes, DPD checks the point")
 })
+
+/* Stage 5: dpd.shipment.created (DS11, 6.14). */
+
+const createdEvents = (s: Setup) => s.emitted.filter((e) => e.name === "dpd.shipment.created")
+
+test("dpd.shipment.created once per row: a lost finish and a second adoption emit nothing", async () => {
+  const { s, id, hash } = await ready()
+  const row = await createShipment(s.container, id, manual(hash))
+  assert.equal(row.state, "labeled")
+  const [created] = createdEvents(s)
+  assert.ok(created)
+  assert.equal(created.data.id, id)
+  assert.equal(created.data.stage, "preparing")
+  assert.equal(created.data.previous_stage, null)
+  assert.equal(created.data.event_id, null)
+  assert.deepEqual(created.data.waybills, row.waybills)
+  await refusedWith(createShipment(s.container, id, manual(hash)), 409, "wrong_state")
+  assert.equal(createdEvents(s).length, 1)
+
+  /* The finish loses its claim (another process took the row): nothing emitted. */
+  const lost = await ready()
+  const finish = lost.s.store.finish
+  lost.s.store.finish = async (...args) => {
+    rowOf(lost.s, lost.id).claim_token = "token_of_another_process"
+    return finish.apply(lost.s.store, args)
+  }
+  const after = await createShipment(lost.s.container, lost.id, manual(lost.hash))
+  assert.notEqual(after.state, "labeled")
+  assert.equal(createdEvents(lost.s).length, 0)
+
+  /* An adopted duplicate emits once; the next create is refused and emits nothing. */
+  const same = new FakeDpdServices()
+  same.seedPackage(FUL, 1)
+  const one = await ready({ fake: same })
+  assert.equal((await createShipment(one.s.container, one.id, manual(one.hash))).error_code, "adopted")
+  await refusedWith(createShipment(one.s.container, one.id, manual(one.hash)), 409, "wrong_state")
+  assert.equal(createdEvents(one.s).length, 1)
+
+  /* An ambiguous takeover emits nothing until a person accepts it. */
+  const more = new FakeDpdServices()
+  more.seedPackage(FUL, 2)
+  const two = await ready({ fake: more })
+  assert.equal((await createShipment(two.s.container, two.id, manual(two.hash))).state, "ambiguous")
+  assert.equal(createdEvents(two.s).length, 0)
+  await acceptShipment(two.s.container, two.id, ADMIN)
+  await refusedWith(acceptShipment(two.s.container, two.id, ADMIN), 409, "wrong_state")
+  assert.equal(createdEvents(two.s).length, 1)
+})

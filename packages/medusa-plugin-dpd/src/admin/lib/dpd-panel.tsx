@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { CursorArrowRays, LockClosedSolid, MapPin, TruckFast } from "@medusajs/icons"
+import { CursorArrowRays, ExclamationCircle, LockClosedSolid, MapPin, TruckFast } from "@medusajs/icons"
 import { Checkbox, Table, Text } from "@medusajs/ui"
 import { ATTENTION_GROUPS, type CountsDto, type ShipmentDto, type ShipmentFilter, type StatusResponse } from "../../modules/dpd/lib/contract"
 import { useDpdShipments } from "./dpd-api"
@@ -9,7 +9,7 @@ import { DispatchActionBar, DispatchDrawer } from "./dpd-dispatch"
 import { KitFetchingBar, KitSkeletonRows } from "./dpd-kit"
 import { SELECTION_MAX, pageInRange, selectionPageState, selectionPrune, selectionToggle } from "./dpd-logic"
 import { PlanDrawer, ShipmentActionBar } from "./dpd-plan"
-import { Destination, ErrorText, GROUP_ICON, KindBadges, MedusaMark, OrderCell, ProblemList, ShipmentStatus, WaybillCell, fmtDateTime, fmtMoney } from "./dpd-ui"
+import { Destination, ErrorText, GROUP_ICON, KindBadges, MedusaMark, OrderCell, ProblemList, ShipmentStatus, StatusLine, WaybillCell, WriterErrorText, fmtDateTime, fmtMoney } from "./dpd-ui"
 
 const PAGE_SIZE = 15
 
@@ -35,12 +35,18 @@ export function DemoDetails({ status }: { status: StatusResponse }) {
   )
 }
 
-/** The status column: the badge, then what a person should know (the handover it is in, the error, the problems). */
+/**
+ * The status column: the badge, the last DPD event in words (its description
+ * and time, no check line in a list row), then what a person should know (the
+ * handover it is in, a status Medusa did not take, the error, the problems).
+ */
 function StatusCell({ shipment: s, lang }: { shipment: ShipmentDto; lang: string }) {
   const { t } = useTranslation("dpd")
   return (
     <div className="flex max-w-[280px] flex-col items-start gap-y-1">
       <ShipmentStatus shipment={s} />
+      <StatusLine shipment={s} lang={lang} compact />
+      <WriterErrorText shipment={s} />
       {s.dispatchId ? <ToneBadge tone="blue">{t("shipments.inDispatch")}</ToneBadge> : null}
       <ErrorText shipment={s} />
       {s.problems.length > 0 ? <ProblemList items={s.problems} /> : null}
@@ -58,7 +64,10 @@ export function ShipmentsSection({
   lang,
   filter,
   onFilter,
+  writerFailed = false,
+  onWriterFailed,
   initialQuery = "",
+  searchReset = 0,
   seeding = false,
   seedFailed = false,
   onSettings,
@@ -68,8 +77,13 @@ export function ShipmentsSection({
   lang: string
   filter: ShipmentFilter
   onFilter: (f: ShipmentFilter) => void
+  /** Only the rows whose status Medusa did not take (?writer=failed); joins the filter and the search. */
+  writerFailed?: boolean
+  onWriterFailed?: (on: boolean) => void
   /** From the page URL (?q=), e.g. the order number a host links to. */
   initialQuery?: string
+  /** Each new value empties the search (the header note shows every row whose status Medusa did not take). */
+  searchReset?: number
   /** Demo mode: the sample shipments are being built right now. */
   seeding?: boolean
   /** Demo mode: building the sample shipments failed; the page shows the error with Retry above. */
@@ -81,6 +95,9 @@ export function ShipmentsSection({
 }) {
   const { t } = useTranslation("dpd")
   const [search, setSearch] = useState(initialQuery)
+  useEffect(() => {
+    if (searchReset > 0) setSearch("")
+  }, [searchReset])
   const q = useDebouncedValue(search.trim())
   const [page, setPage] = useState(0)
   /* The shipment whose plan is open in the drawer. */
@@ -90,8 +107,8 @@ export function ShipmentsSection({
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
   /* The shipments of the handover drawer while it is open. */
   const [handover, setHandover] = useState<string[] | null>(null)
-  useEffect(() => setPage(0), [filter, q])
-  const list = useDpdShipments(filter, q, page * PAGE_SIZE, PAGE_SIZE)
+  useEffect(() => setPage(0), [filter, q, writerFailed])
+  const list = useDpdShipments(filter, q, page * PAGE_SIZE, PAGE_SIZE, writerFailed)
   /* After an action shrank the list below this page, the last page that has rows. */
   const total = list.data?.count
   useEffect(() => {
@@ -108,7 +125,7 @@ export function ShipmentsSection({
   const pageCount = Math.max(1, Math.ceil(count / PAGE_SIZE))
   /* A second click on the active filter clears it. */
   const pick = (f: ShipmentFilter) => onFilter(filter === f ? "all" : f)
-  const fresh = filter === "all" && !q
+  const fresh = filter === "all" && !q && !writerFailed
   const demo = status.mode === "demo"
   /* Demo with no rows: being built, or not yet (no orders, a failed seed, a reset); real data: none yet. */
   const emptyTitle = demo ? (seeding ? "shipments.seeding" : "shipments.emptyDemo") : "shipments.emptyAll"
@@ -152,6 +169,20 @@ export function ShipmentsSection({
             ))}
           </span>
         ))}
+        {/* Status writes Medusa did not take: shown while there are some, or while the filter is on (to turn it off). */}
+        {counts.statusesAttention > 0 || writerFailed ? (
+          <>
+            <FilterDivider />
+            <FilterButton
+              icon={<ExclamationCircle />}
+              label={t("statuses.writerFailedFilter")}
+              count={counts.statusesAttention}
+              active={writerFailed}
+              attention
+              onClick={() => onWriterFailed?.(!writerFailed)}
+            />
+          </>
+        ) : null}
       </FilterBar>
       <KitFetchingBar active={list.isFetching && !list.isLoading} />
       <div className="overflow-x-auto">
@@ -234,6 +265,8 @@ export function ShipmentsSection({
                     onPlan={() => setPlanFor(s.id)}
                     onHandover={(ids) => setHandover(ids)}
                     onOpenDispatch={onOpenDispatch}
+                    statusSource={status.statuses.source}
+                    statusWriter={status.writers.fulfillmentStatus}
                   />
                 </Table.Cell>
               </Table.Row>

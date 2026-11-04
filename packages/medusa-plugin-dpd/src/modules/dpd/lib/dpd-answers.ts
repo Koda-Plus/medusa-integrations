@@ -1,6 +1,7 @@
 import type { CourierRangeDto, ProblemDto } from "./contract"
 import type { DpdHttpAnswer, GeneratePackagesNumbersRequest, GenerateProtocolRequest } from "./dpdservices"
 import { courierRangesOf } from "./courier"
+import { clip } from "./text"
 
 /**
  * WHAT A DPDSERVICES ANSWER MEANS. Pure functions over the raw answer (HTTP
@@ -214,7 +215,7 @@ function idOf(v: unknown): string | null {
 }
 
 function cut(s: string, max = MESSAGE_MAX): string {
-  return s.length > max ? `${s.slice(0, max - 3)}...` : s
+  return s.length > max ? `${clip(s, max - 3)}...` : s
 }
 
 /**

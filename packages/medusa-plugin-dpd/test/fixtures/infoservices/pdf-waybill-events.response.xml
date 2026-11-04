@@ -1,0 +1,27 @@
+<!-- HTTP 200 -->
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+  <S:Body>
+    <ns2:getEventsForWaybillV1Response xmlns:ns2="http://events.dpdinfoservices.dpd.com.pl/">
+      <return>
+        <confirmId>0</confirmId>
+        <eventsList>
+          <businessCode>190101</businessCode>
+          <country>PL</country>
+          <depot>1305</depot>
+          <depotName>Warszawa</depotName>
+          <description>Przesyłka doręczona</description>
+          <eventDataList>
+            <code>03</code>
+            <description>Odbiorca</description>
+            <value>parcel_x</value>
+          </eventDataList>
+          <eventTime>2018-02-15T15:52:29.886</eventTime>
+          <objectId>9000000000000000001</objectId>
+          <packageReference/>
+          <parcelReference/>
+          <waybill>0000000000101S</waybill>
+        </eventsList>
+      </return>
+    </ns2:getEventsForWaybillV1Response>
+  </S:Body>
+</S:Envelope>

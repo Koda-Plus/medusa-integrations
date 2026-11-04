@@ -710,3 +710,22 @@ test("the pass never prints or orders by itself", async () => {
   assert.equal(fake.count("availability"), 0)
   assert.equal(fake.count("pickupCreate"), 0)
 })
+
+test("dpd.shipment.created once per row: a lookup that adopts emits once, a second lookup and a lost finish emit nothing", async () => {
+  const created = (s: Setup) => s.emitted.filter((e) => e.name === "dpd.shipment.created")
+  const { s, id } = await unknownRow("lose_answer")
+  assert.equal((await lookupShipment(s.container, id, { actor: ADMIN, trigger: "manual", now: LATER() })).state, "labeled")
+  assert.deepEqual(created(s).map((e) => e.data.id), [id])
+  await refusedWith(lookupShipment(s.container, id, { actor: ADMIN, trigger: "manual", now: LATER() }), 409, "wrong_state")
+  assert.equal(created(s).length, 1)
+
+  const lost = await unknownRow("lose_answer")
+  const finish = lost.s.store.finish
+  lost.s.store.finish = async (...args) => {
+    rowOf(lost.s, lost.id).claim_token = "token_of_another_process"
+    return finish.apply(lost.s.store, args)
+  }
+  const after = await lookupShipment(lost.s.container, lost.id, { actor: ADMIN, trigger: "manual", now: LATER() })
+  assert.notEqual(after.state, "labeled")
+  assert.equal(created(lost.s).length, 0)
+})

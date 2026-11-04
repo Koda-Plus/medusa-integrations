@@ -64,11 +64,24 @@
  *                         claimed row
  *   expireDispatchLeases  a claim past its lease goes back to where it is
  *                         safe (DS8)
+ *
+ * The statuses (stage 5) claim the same way, by last_checked_at:
+ *
+ *   pickDueForStatus  rows due for a question to DPD and the writer backlog
+ *                     in one statement (for update skip locked), with the
+ *                     last_checked_at from before the claim (E3)
+ *   unclaimStatus     that value back on the rows a pass did not reach,
+ *                     only while the claim is still theirs
+ *   applyTracking     the fold, only while the row holds what it read (6.6)
+ *   claimMark         the writer marks: only the first caller sets one; a
+ *   releaseMark       failed write clears it with its error; a write left
+ *   notePendingMark   pending leaves a note
  */
 
 import { DISPATCH_ATTENTION_CODES, SHIPMENT_GROUPS, type DispatchFilter, type ShipmentFilter, type ShipmentGroup } from "./contract"
-import { DISPATCH_CLAIMED_STATES, type DispatchState, type DpdMode } from "./constants"
+import { DISPATCH_CLAIMED_STATES, STATUS_MAX_AGE_DAYS, type DispatchState, type DpdMode } from "./constants"
 import type { DispatchRow, EventRow, SettingRow, ShipmentRow } from "./dto"
+import { clip, jsonText } from "./text"
 
 export type ShipmentPatch = Partial<
   Pick<
@@ -97,6 +110,9 @@ export type ShipmentPatch = Partial<
     | "last_checked_at"
     | "error"
     | "error_code"
+    | "tracking"
+    | "status_at"
+    | "status_writer_error"
   >
 >
 
@@ -145,6 +161,8 @@ export type ListArgs = {
   q?: string | null
   offset: number
   limit: number
+  /** Only rows with status_writer_error set (GET /admin/dpd/shipments?writer=failed). */
+  writerFailed?: boolean
 }
 
 export type ClaimArgs = {
@@ -168,7 +186,51 @@ export type TransitionExpect = {
   boxes?: unknown
   /** Compared with "is not distinct from" (null matches a free row). */
   dispatch_id?: string | null
+  /** Compared with "is not distinct from"; absent: not checked (R14: excludeShipment passes the stage it read, so a pass that moved the stage in between wins). */
+  stage?: string | null
+  /** Compared as jsonb, null matches null. excludeShipment passes the tracking it read: a pass may add possession and keep the stage (problem, rule 2), and isPickedUp reads the tracking. */
+  tracking?: unknown
+  /** Compared with "is not distinct from" (null matches an unmarked row): the other input of isPickedUp. */
+  shipped_marked_at?: Date | string | null
 }
+
+/** pickDueForStatus (DS6). `now` is the claim time written to last_checked_at. */
+export type DueArgs = {
+  mode: DpdMode
+  now: Date
+  /** The row limit of each part of the claim (status rows, writer backlog rows). */
+  limit: number
+  maxAgeDays: number
+  spacingMin: number
+  spacingBeforeHandoverMin: number
+  /** The fulfillmentStatus writer is armed in this mode and the mode is not demo: also claim writer backlog rows (E4, E24, 6.19). */
+  writerBacklog: boolean
+  /** WRITER_MARK_STALE_MS: a writer mark older than this may be stale (path c of 6.19). */
+  markStaleMs: number
+}
+
+/**
+ * A claimed row with its last_checked_at from before the claim (E3): the pass
+ * works in this order and gives it back to the rows it did not reach.
+ * due_kind "status": due by DS6 (ask DPD); "writer": a writer backlog row
+ * (stage delivered, 6.19), only runStatusWriter, no DPD call.
+ */
+export type DueRow = ShipmentRow & { prev_checked_at: Date | string | null; due_kind: "status" | "writer" }
+
+/** What applyTracking writes (6.6). waybills and boxes only on a repin; last_checked_at only from a manual refresh. */
+export type TrackingWrite = {
+  tracking: unknown
+  stage: string | null
+  status: string | null
+  status_at: Date | null
+  waybills?: string[]
+  boxes?: unknown
+  last_checked_at?: Date
+}
+/** The values the fold read; the write lands only while all six still hold and the row is still created or labeled (E6). handed_over_at because rowStage reads it (O17): a withdrawal or a handover after the read makes the fold stale. */
+export type TrackingExpect = { stage: string | null; status: string | null; status_at: Date | string | null; tracking: unknown; waybills: unknown; handed_over_at: Date | string | null }
+
+export type MarkColumn = "shipped_marked_at" | "delivered_marked_at"
 
 /** How a claim ends besides its patch. */
 export type FinishOptions = {
@@ -281,6 +343,23 @@ export type DpdStore = {
   dispatchCounts(mode: DpdMode): Promise<{ open: number; attention: number }>
   /** One page, newest first, and the count of the whole list. */
   listDispatches(args: DispatchListArgs): Promise<{ rows: DispatchRow[]; count: number }>
+  // stage 5: statuses
+  /** Claims due rows: last_checked_at = now on up to `limit` status rows and, with writerBacklog, up to `limit` writer backlog rows (for update skip locked), returning them with the value before the claim and due_kind. */
+  pickDueForStatus(args: DueArgs): Promise<DueRow[]>
+  /** Rows of a claim the pass did not reach get prev_checked_at back, only while last_checked_at still equals claimedAt (E3); the number restored. */
+  unclaimStatus(rows: ReadonlyArray<Pick<DueRow, "id" | "prev_checked_at">>, claimedAt: Date): Promise<number>
+  /** Compare and set of 6.6; null when the row changed since the fold read it. */
+  applyTracking(id: string, write: TrackingWrite, expect: TrackingExpect): Promise<ShipmentRow | null>
+  /** col = at, status_writer_error = null where col is null; true for the winner. */
+  claimMark(id: string, column: MarkColumn, at: Date): Promise<boolean>
+  /** col = null, status_writer_error = error where col still equals markedAt (the claim of the caller, or the mark it found stale); true when it released. A fresh claim of another caller is never released. */
+  releaseMark(id: string, column: MarkColumn, error: string, markedAt: Date): Promise<boolean>
+  /** status_writer_error = error where col is null and status_writer_error is null (a write left pending on a row no longer due, E24); true when it wrote. */
+  notePendingMark(id: string, column: MarkColumn, error: string): Promise<boolean>
+  /** Deletes status events older than `before` of rows no longer asked for (DS17); the number deleted. */
+  pruneStatusEvents(mode: DpdMode, before: Date, now: Date): Promise<number>
+  /** Rows of one mode with status_writer_error set. */
+  statusCounts(mode: DpdMode): Promise<{ writerErrors: number }>
 }
 
 /** The smallest piece of Knex the store needs. */
@@ -319,9 +398,12 @@ export const PATCHABLE_COLUMNS: readonly string[] = [
   "last_checked_at",
   "error",
   "error_code",
+  "tracking",
+  "status_at",
+  "status_writer_error",
 ]
 
-const JSON_COLUMNS: ReadonlySet<string> = new Set(["references", "boxes", "waybills", "problems"])
+const JSON_COLUMNS: ReadonlySet<string> = new Set(["references", "boxes", "waybills", "problems", "tracking"])
 
 /** Columns a dispatch patch may set. Only these names ever reach the SQL text. */
 export const DISPATCH_PATCHABLE_COLUMNS: readonly string[] = [
@@ -350,6 +432,14 @@ export const DISPATCH_PATCHABLE_COLUMNS: readonly string[] = [
 export const DISPATCH_JSON_COLUMNS: readonly string[] = ["sender", "params", "problems", "shipment_ids", "protocols"]
 
 /**
+ * returnDone of tracking.ts in SQL (E61): STATUS_MAX_AGE_DAYS since the
+ * handover (or the row), or a live return entry of the tracking (no
+ * supersededBy, its waybill in waybills) delivered. No placeholder, so it
+ * goes into GROUP_SQL as it is.
+ */
+export const RETURN_DONE_SQL = `(coalesce("handed_over_at", "created_at") <= now() - interval '${STATUS_MAX_AGE_DAYS} days' or exists (select 1 from jsonb_array_elements(case when jsonb_typeof("tracking") = 'array' then "tracking" else '[]'::jsonb end) as "r" where "r"->>'role' = 'return' and "r"->>'stage' = 'delivered' and coalesce("r"->>'supersededBy', '') = '' and jsonb_typeof("waybills") = 'array' and "waybills" @> jsonb_build_array("r"->>'waybill')))`
+
+/**
  * The Panel group of a row in SQL, branch for branch the rule of groupOf in
  * contract.ts (the admin and the memory store use groupOf itself):
  * canceled, skipped or excluded first, then returns, then the refusals and unclear
@@ -359,6 +449,7 @@ export const GROUP_SQL = `case
   when "state" in ('canceled', 'skipped', 'excluded') then 'canceled'
   when "kind" = 'return' then 'returns'
   when "state" in ('failed', 'unknown', 'ambiguous', 'abandoned_unknown') then 'problems'
+  when "stage" = 'returned' and ${RETURN_DONE_SQL} then 'returns'
   when "stage" in ('problem', 'returned') then 'problems'
   when "stage" = 'canceled' then 'canceled'
   when "stage" = 'delivered' then 'delivered'
@@ -378,7 +469,7 @@ export function setClause(patch: ShipmentPatch, updatedAt?: Date | null): { sql:
     const v = values[column]
     if (JSON_COLUMNS.has(column)) {
       parts.push(`"${column}" = ?::jsonb`)
-      bindings.push(v === null ? null : JSON.stringify(v))
+      bindings.push(v === null ? null : jsonText(v))
     } else {
       parts.push(`"${column}" = ?`)
       bindings.push(v)
@@ -403,11 +494,23 @@ export function expectClause(expect?: TransitionExpect): { sql: string; bindings
   }
   if (expect && "boxes" in expect && expect.boxes !== undefined) {
     parts.push(` and "boxes" is not distinct from ?::jsonb`)
-    bindings.push(expect.boxes === null ? null : JSON.stringify(expect.boxes))
+    bindings.push(expect.boxes === null ? null : jsonText(expect.boxes))
   }
   if (expect && "dispatch_id" in expect && expect.dispatch_id !== undefined) {
     parts.push(` and "dispatch_id" is not distinct from ?`)
     bindings.push(expect.dispatch_id)
+  }
+  if (expect && "stage" in expect && expect.stage !== undefined) {
+    parts.push(` and "stage" is not distinct from ?`)
+    bindings.push(expect.stage)
+  }
+  if (expect && "tracking" in expect && expect.tracking !== undefined) {
+    parts.push(` and "tracking" is not distinct from ?::jsonb`)
+    bindings.push(expect.tracking === null ? null : jsonText(expect.tracking))
+  }
+  if (expect && "shipped_marked_at" in expect && expect.shipped_marked_at !== undefined) {
+    parts.push(` and "shipped_marked_at" is not distinct from ?::timestamptz`)
+    bindings.push(expect.shipped_marked_at)
   }
   return { sql: parts.join(""), bindings }
 }
@@ -426,7 +529,7 @@ export function dispatchSetClause(patch: DispatchPatch, updatedAt?: Date | null)
     const v = values[column]
     if (DISPATCH_JSON_COLUMNS.includes(column)) {
       parts.push(`"${column}" = ?::jsonb`)
-      bindings.push(v === null ? null : JSON.stringify(v))
+      bindings.push(v === null ? null : jsonText(v))
     } else {
       parts.push(`"${column}" = ?`)
       bindings.push(v)
@@ -491,12 +594,19 @@ export function searchText(q: string | null | undefined): string {
   return String(q ?? "").trim().replace(/^#/, "").slice(0, 100)
 }
 
+/**
+ * Every waybill the tracking ever held, the repinned ones too: a repin swaps the number in waybills
+ * in place (O8), the label and the handover protocol still carry the old one. Only the waybill field,
+ * so no description matches; a tracking that is no array matches nothing.
+ */
+const TRACKING_WAYBILL_SQL = `exists (select 1 from jsonb_array_elements(case when jsonb_typeof("tracking") = 'array' then "tracking" else '[]'::jsonb end) as "e" where "e"->>'waybill' ilike ?)`
+
 /** The search condition and its bindings, or null for an empty search. */
 export function searchClause(q: string | null | undefined): { sql: string; bindings: unknown[] } | null {
   const s = searchText(q)
   if (!s) return null
-  const parts = [`"order_id" = ?`, `"fulfillment_id" = ?`, `"pudo_id" ilike ?`, `"waybills"::text ilike ?`, `"reference" ilike ?`]
-  const bindings: unknown[] = [s, s, like(s), like(s), like(s)]
+  const parts = [`"order_id" = ?`, `"fulfillment_id" = ?`, `"pudo_id" ilike ?`, `"waybills"::text ilike ?`, TRACKING_WAYBILL_SQL, `"reference" ilike ?`]
+  const bindings: unknown[] = [s, s, like(s), like(s), like(s), like(s)]
   if (/^\d{1,9}$/.test(s)) {
     parts.push(`"display_id" = ?`)
     bindings.push(Number(s))
@@ -509,7 +619,18 @@ function rowsOf<T>(result: unknown): T[] {
   return Array.isArray(rows) ? (rows as T[]) : []
 }
 
-const json = (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v))
+const json = (v: unknown) => (v === null || v === undefined ? null : jsonText(v))
+
+const MINUTE_MS = 60_000
+const DAY_MS = 86_400_000
+/** The longest status_writer_error kept. */
+const WRITER_ERROR_MAX = 500
+
+/** A writer mark column for the SQL text: only the two names of MarkColumn ever reach it. */
+function markColumn(column: MarkColumn): MarkColumn {
+  if (column !== "shipped_marked_at" && column !== "delivered_marked_at") throw new Error("Unknown writer mark column.")
+  return column
+}
 
 export function isGroup(v: unknown): v is ShipmentGroup {
   return typeof v === "string" && (SHIPMENT_GROUPS as readonly string[]).includes(v)
@@ -624,7 +745,7 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
           event.status ?? null,
           event.previous_status ?? null,
           event.source ?? null,
-          event.message ? event.message.slice(0, 2000) : null,
+          event.message ? clip(event.message, 2000) : null,
           json(event.data),
           event.actor ?? null,
           event.dedupe_key ?? null,
@@ -686,6 +807,7 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
         where.push(search.sql)
         bindings.push(...search.bindings)
       }
+      if (args.writerFailed) where.push(`"status_writer_error" is not null`)
       const condition = where.join(" and ")
       const rows = await sql.raw(
         `select * from "${SHIPMENT_TABLE}" where ${condition}
@@ -738,7 +860,7 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
           json(row.params),
           json(row.problems),
           row.plan_hash,
-          JSON.stringify(ids),
+          jsonText(ids),
           row.order_type,
           row.created_by,
           ids.length,
@@ -839,10 +961,12 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
     },
 
     async releaseShipments(dispatchId, ids) {
+      /* ready without a handover would lie in the Panel and rowStage never moves a stage back, so ready (and null, E27) becomes preparing (O41). */
       if (ids !== null && ids.length === 0) return []
       const only = ids === null ? "" : ` and "id" in (${ids.map(() => "?").join(", ")})`
       const result = await sql.raw(
-        `update "${SHIPMENT_TABLE}" set "dispatch_id" = null, "handed_over_at" = null, "updated_at" = now()
+        `update "${SHIPMENT_TABLE}" set "dispatch_id" = null, "handed_over_at" = null,
+           "stage" = case when "stage" is null or "stage" = 'ready' then 'preparing' else "stage" end, "updated_at" = now()
          where "dispatch_id" = ?${only} and "deleted_at" is null
          returning *`,
         [dispatchId, ...(ids ?? [])],
@@ -851,8 +975,10 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
     },
 
     async markHandedOver(dispatchId, at) {
+      /* The handover is the ready stage (DS12); a stage DPD already reported stays. */
       const result = await sql.raw(
-        `update "${SHIPMENT_TABLE}" set "handed_over_at" = ?, "updated_at" = now()
+        `update "${SHIPMENT_TABLE}" set "handed_over_at" = ?,
+           "stage" = case when "stage" is null or "stage" = 'preparing' then 'ready' else "stage" end, "updated_at" = now()
          where "dispatch_id" = ? and "handed_over_at" is null and "deleted_at" is null
          returning *`,
         [at, dispatchId],
@@ -892,6 +1018,198 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       const total = await sql.raw(`select count(*)::int as "count" from "${DISPATCH_TABLE}" where ${condition}`, bindings)
       const count = Number(rowsOf<{ count: number | string }>(total)[0]?.count ?? 0) || 0
       return { rows: rowsOf<DispatchRow>(rows), count }
+    },
+    // stage 5 (core): the status statements
+    async pickDueForStatus(args) {
+      const at = (ms: number) => new Date(args.now.getTime() - ms)
+      const oldest = at(args.maxAgeDays * DAY_MS)
+      const spacing = at(args.spacingMin * MINUTE_MS)
+      const stale = at(args.markStaleMs)
+      /*
+       * One claim, two parts (E4, E24, O49): rows to ask DPD about, and the
+       * writer backlog of delivered rows. The parts never overlap (the stage
+       * tells them apart) and each has its own limit, so the backlog never
+       * pushes the questions to DPD out. The CTEs read the rows before the
+       * update, so prev_checked_at is the value before the claim (E3).
+       */
+      const result = await sql.raw(
+        `with "status_due" as (
+           select "id", "last_checked_at" as "prev_checked_at", 'status' as "due_kind" from "${SHIPMENT_TABLE}"
+           where "mode" = ? and "deleted_at" is null and "kind" = 'outbound'
+             and "state" in ('created', 'labeled')
+             and jsonb_typeof("waybills") = 'array' and jsonb_array_length("waybills") > 0
+             and coalesce("stage", '') not in ('delivered', 'canceled')
+             and not ("mode" = 'demo' and "fulfillment_id" is null)
+             and coalesce("handed_over_at", "created_at") > ?
+             and ("last_checked_at" is null or "last_checked_at" <= case
+                   when "handed_over_at" is not null or coalesce("stage", '') in ('in_transit', 'in_point', 'problem', 'returned') then ?::timestamptz
+                   else ?::timestamptz end)
+           order by "last_checked_at" asc nulls first, "id" asc
+           limit ?
+           for update skip locked
+         ), "writer_due" as (
+           select "id", "last_checked_at" as "prev_checked_at", 'writer' as "due_kind" from "${SHIPMENT_TABLE}"
+           where ?::boolean and "mode" = ? and "mode" <> 'demo' and "deleted_at" is null and "kind" = 'outbound'
+             and "state" in ('created', 'labeled')
+             and "fulfillment_id" is not null and "order_id" is not null
+             and "stage" = 'delivered'
+             and coalesce("handed_over_at", "created_at") > ?
+             and ("last_checked_at" is null or "last_checked_at" <= ?::timestamptz)
+             and (
+               ("shipped_marked_at" is null and exists (select 1 from jsonb_array_elements(case when jsonb_typeof("tracking") = 'array' then "tracking" else '[]'::jsonb end) "e" where "e"->>'possession' = 'true'))
+               or "delivered_marked_at" is null
+               or ("status_writer_error" is null and (
+                     ("shipped_marked_at" <= ?::timestamptz and ("last_checked_at" is null or "last_checked_at" < "shipped_marked_at" + (?::int * interval '1 millisecond')))
+                  or ("delivered_marked_at" <= ?::timestamptz and ("last_checked_at" is null or "last_checked_at" < "delivered_marked_at" + (?::int * interval '1 millisecond')))))
+             )
+           order by "last_checked_at" asc nulls first, "id" asc
+           limit ?
+           for update skip locked
+         )
+         update "${SHIPMENT_TABLE}" as "s" set "last_checked_at" = ?, "updated_at" = now()
+         from (select * from "status_due" union all select * from "writer_due") as "due"
+         where "s"."id" = "due"."id"
+         returning "s".*, "due"."prev_checked_at", "due"."due_kind"`,
+        [
+          args.mode,
+          oldest,
+          spacing,
+          at(args.spacingBeforeHandoverMin * MINUTE_MS),
+          args.limit,
+          args.writerBacklog,
+          args.mode,
+          oldest,
+          spacing,
+          stale,
+          args.markStaleMs,
+          stale,
+          args.markStaleMs,
+          args.limit,
+          args.now,
+        ],
+      )
+      return rowsOf<DueRow>(result)
+    },
+
+    async unclaimStatus(rows, claimedAt) {
+      /* One row at a time: only while last_checked_at is still the claim, so a later write (a manual refresh, 6.12) stays. */
+      let restored = 0
+      for (const row of rows) {
+        const result = await sql.raw(
+          `update "${SHIPMENT_TABLE}" set "last_checked_at" = ?, "updated_at" = now()
+           where "id" = ? and "last_checked_at" = ? and "deleted_at" is null
+           returning "id"`,
+          [row.prev_checked_at ?? null, row.id, claimedAt],
+        )
+        restored += rowsOf(result).length
+      }
+      return restored
+    },
+
+    async applyTracking(id, write, expect) {
+      const parts = [`"tracking" = ?::jsonb`, `"stage" = ?`, `"status" = ?`, `"status_at" = ?`]
+      const bindings: unknown[] = [json(write.tracking), write.stage, write.status, write.status_at]
+      if (write.waybills !== undefined) {
+        parts.push(`"waybills" = ?::jsonb`)
+        bindings.push(json(write.waybills))
+      }
+      if (write.boxes !== undefined) {
+        parts.push(`"boxes" = ?::jsonb`)
+        bindings.push(json(write.boxes))
+      }
+      if (write.last_checked_at !== undefined) {
+        parts.push(`"last_checked_at" = ?`)
+        bindings.push(write.last_checked_at)
+      }
+      /*
+       * Compare and set (6.6): the write lands only while the row holds what
+       * the fold read. coalesce with '' because the read carries null for a
+       * row without a stage or status, and '' = NULL is never true (E5); the
+       * waybills and the state keep an old pass off new waybills (E6, O50);
+       * handed_over_at keeps a fold that read the row before a withdrawal or
+       * a handover from writing ready or preparing on it (O17, E27).
+       */
+      const result = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set ${parts.join(", ")}, "updated_at" = now()
+         where "id" = ? and "deleted_at" is null
+           and coalesce("stage", '') = ? and coalesce("status", '') = ?
+           and "status_at" is not distinct from ?
+           and "tracking" is not distinct from ?::jsonb
+           and "waybills" is not distinct from ?::jsonb
+           and "handed_over_at" is not distinct from ?
+           and "state" in ('created', 'labeled')
+         returning *`,
+        [...bindings, id, expect.stage ?? "", expect.status ?? "", expect.status_at, json(expect.tracking), json(expect.waybills), expect.handed_over_at],
+      )
+      return rowsOf<ShipmentRow>(result)[0] ?? null
+    },
+
+    async claimMark(id, column, at) {
+      const col = markColumn(column)
+      const result = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set "${col}" = ?, "status_writer_error" = null, "updated_at" = now()
+         where "id" = ? and "${col}" is null and "deleted_at" is null
+         returning "id"`,
+        [at, id],
+      )
+      return rowsOf(result).length > 0
+    },
+
+    async releaseMark(id, column, error, markedAt) {
+      const col = markColumn(column)
+      const result = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set "${col}" = null, "status_writer_error" = ?, "updated_at" = now()
+         where "id" = ? and "${col}" = ? and "deleted_at" is null
+         returning "id"`,
+        [clip(String(error), WRITER_ERROR_MAX), id, markedAt],
+      )
+      return rowsOf(result).length > 0
+    },
+
+    async notePendingMark(id, column, error) {
+      /* Never over a workflow error (releaseMark) nor a mark of another process; a won claimMark clears the note like any error. */
+      const col = markColumn(column)
+      const result = await sql.raw(
+        `update "${SHIPMENT_TABLE}" set "status_writer_error" = ?, "updated_at" = now()
+         where "id" = ? and "${col}" is null and "status_writer_error" is null and "deleted_at" is null
+         returning "id"`,
+        [clip(String(error), WRITER_ERROR_MAX), id],
+      )
+      return rowsOf(result).length > 0
+    },
+
+    async pruneStatusEvents(mode, before, now) {
+      /* Status events only, of rows no longer asked for (DS6 and 6.5, DS17); action and run events stay. */
+      const result = await sql.raw(
+        `with "deleted" as (
+           delete from "${EVENT_TABLE}"
+           where "kind" = 'status' and "mode" = ? and "occurred_at" < ?
+             and "shipment_id" in (
+               select "id" from "${SHIPMENT_TABLE}"
+               where "mode" = ? and (
+                 "deleted_at" is not null or "kind" <> 'outbound' or "state" not in ('created', 'labeled')
+                 or coalesce("stage", '') in ('delivered', 'canceled')
+                 or coalesce("handed_over_at", "created_at") <= ?
+                 or ("stage" = 'returned' and exists (
+                   select 1 from jsonb_array_elements(case when jsonb_typeof("tracking") = 'array' then "tracking" else '[]'::jsonb end) "e"
+                   where "e"->>'role' = 'return' and "e"->>'stage' = 'delivered' and "e"->>'supersededBy' is null))
+               )
+             )
+           returning 1
+         )
+         select count(*)::int as "count" from "deleted"`,
+        [mode, before, mode, new Date(now.getTime() - STATUS_MAX_AGE_DAYS * DAY_MS)],
+      )
+      return Number(rowsOf<{ count: number | string }>(result)[0]?.count ?? 0) || 0
+    },
+
+    async statusCounts(mode) {
+      const result = await sql.raw(
+        `select count(*)::int as "count" from "${SHIPMENT_TABLE}"
+         where "mode" = ? and "deleted_at" is null and "status_writer_error" is not null`,
+        [mode],
+      )
+      return { writerErrors: Number(rowsOf<{ count: number | string }>(result)[0]?.count ?? 0) || 0 }
     },
   }
 }

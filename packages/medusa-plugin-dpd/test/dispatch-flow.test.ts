@@ -160,6 +160,21 @@ test("createDispatch needs the shipment writer and the plan hash", async () => {
   assert.equal(race.s.dispatches.rows.length, 0)
 })
 
+test("a shipment DPD already has never goes in a new handover (DS13, E54)", async () => {
+  /* The plan passed, then the shop dropped the parcel at a DPD point: the pass stored a possession code, no dispatch, no handover. */
+  const w = world(1)
+  const { plan } = await planDispatch(w.s.container, w.ids)
+  assert.ok(plan.ok)
+  shipment(w.s, w.ids[0]).stage = "in_transit"
+  const { plan: again } = await planDispatch(w.s.container, w.ids)
+  assert.equal(again.ok, false)
+  assert.deepEqual(again.problems.map((p) => p.code), ["shipment_picked_up"])
+  await refusedWith(createDispatch(w.s.container, { shipmentIds: w.ids, planHash: plan.hash }, { actor: ADMIN }), 422, "plan_problems")
+  assert.equal(w.s.dispatches.rows.length, 0)
+  assert.equal(shipment(w.s, w.ids[0]).dispatch_id, null)
+  assert.equal(w.fake.calls.length, 0, "no protocol and no courier asked of DPD")
+})
+
 test("first print writes the markers before generateProtocol", async () => {
   const w = world(2)
   const view = await printed(w)
@@ -882,4 +897,101 @@ test("a database error after DPD confirmed a PATCH or DELETE: the order number r
   assert.equal(last.length, 1)
   assert.equal(last[0].orderNumber, dv.dispatch.order_number)
   noCheckSumAnywhere(wd)
+})
+
+/* ------------------------------------------------------------------ */
+/* Stage 5: the stage of the handover and the pickup (DS12, DS13)      */
+/* ------------------------------------------------------------------ */
+
+/** One tracking entry of a waybill (6.2): the stage, the code that set it and possession. */
+function tracked(waybill: string, code: string, stage: string, possession: boolean): Row[] {
+  const at = "2026-11-03T08:00:00.000Z"
+  return [{ waybill, box: 0, role: "outbound", stage, code, at, possession, lastCode: code, lastAt: at, description: null, supersededBy: null, supersededAt: null, from: null, checkedAt: at, done: false }]
+}
+
+function moved(s: Setup, id: string, code: string, stage: string, possession: boolean): void {
+  const row = shipment(s, id)
+  Object.assign(row, { stage, tracking: tracked(String((row.waybills as string[])[0]), code, stage, possession) })
+}
+
+test("printing the protocol sets ready without an event; a withdraw sets preparing again", async () => {
+  const w = world(2)
+  await printed(w)
+  for (const id of w.ids) assert.equal(shipment(w.s, id).stage, "ready")
+  assert.deepEqual(w.s.emitted.filter((e) => e.name !== "dpd.shipment.created").map((e) => e.name), [], "the handover is not a DPD event (O18)")
+  await withdrawShipment(w.s.container, w.ids[0], { actor: ADMIN })
+  assert.equal(shipment(w.s, w.ids[0]).stage, "preparing")
+  assert.equal(shipment(w.s, w.ids[1]).stage, "ready")
+})
+
+test("withdraw, exclude and dispatch cancel answer already_shipped after the pickup", async () => {
+  const w = world(2)
+  const view = await printed(w)
+  moved(w.s, w.ids[0], "040101", "in_transit", true)
+  await refusedWith(withdrawShipment(w.s.container, w.ids[0], { actor: ADMIN }), 409, "already_shipped")
+  await refusedWith(cancelDispatch(w.s.container, view.dispatch.id, { actor: ADMIN }), 409, "already_shipped")
+  assert.equal(dispatchRow(w.s, view.dispatch.id).state, "printed")
+  assert.equal(shipment(w.s, w.ids[0]).dispatch_id, view.dispatch.id, "nothing released")
+  assert.equal(hasMarker(dataOf(w.s, w.fulfillments[1])), true, "no marker cleared")
+
+  const marked = insertLabeled(w.s, labeledOrder(3), { shipped_marked_at: new Date() })
+  await refusedWith(excludeShipment(w.s.container, String(marked.id), { actor: ADMIN }), 409, "already_shipped")
+  const ahead = insertLabeled(w.s, labeledOrder(4), { stage: "delivered" })
+  await refusedWith(excludeShipment(w.s.container, String(ahead.id), { actor: ADMIN }), 409, "already_shipped")
+  assert.equal(shipment(w.s, String(marked.id)).state, "labeled")
+  assert.equal(w.fake.calls.filter((c) => c.op !== "protocol").length, 0)
+})
+
+test("040201 without possession allows withdraw; a problem with possession does not", async () => {
+  const w = world(2)
+  await printed(w)
+  moved(w.s, w.ids[0], "040201", "problem", false)
+  moved(w.s, w.ids[1], "160102", "problem", true)
+  assert.equal((await withdrawShipment(w.s.container, w.ids[0], { actor: ADMIN })).withdrawn, true, "a failed pickup is not a pickup (E25)")
+  await refusedWith(withdrawShipment(w.s.container, w.ids[1], { actor: ADMIN }), 409, "already_shipped")
+})
+
+test("exclude loses to a stage moved past ready after its read", async () => {
+  const w = world(0)
+  const row = insertLabeled(w.s, labeledOrder(1))
+  const id = String(row.id)
+  const transition = w.s.store.transition
+  /* A status pass writes in_transit between the read of excludeShipment and its claim (R14). */
+  w.s.store.transition = async (...args) => {
+    Object.assign(shipment(w.s, id), { stage: "in_transit" })
+    return transition.apply(w.s.store, args)
+  }
+  await refusedWith(excludeShipment(w.s.container, id, { actor: ADMIN }), 409, "not_candidate")
+  assert.equal(shipment(w.s, id).state, "labeled")
+  assert.equal(shipment(w.s, id).stage, "in_transit")
+})
+
+test("exclude loses to possession added under the same problem stage after its read", async () => {
+  const w = world(0)
+  const row = insertLabeled(w.s, labeledOrder(1))
+  const id = String(row.id)
+  /* A failed pickup: problem without possession, so the read finds nothing picked up (E25). */
+  moved(w.s, id, "040201", "problem", false)
+  const transition = w.s.store.transition
+  /* The pass folds a problem code with possession: the stage stays problem, the tracking gains possession. */
+  w.s.store.transition = async (...args) => {
+    moved(w.s, id, "160102", "problem", true)
+    return transition.apply(w.s.store, args)
+  }
+  await refusedWith(excludeShipment(w.s.container, id, { actor: ADMIN }), 409, "not_candidate")
+  assert.equal(shipment(w.s, id).state, "labeled")
+  assert.equal(shipment(w.s, id).stage, "problem")
+})
+
+test("exclude loses to a shipped mark claimed after its read", async () => {
+  const w = world(0)
+  const row = insertLabeled(w.s, labeledOrder(1))
+  const id = String(row.id)
+  const transition = w.s.store.transition
+  w.s.store.transition = async (...args) => {
+    Object.assign(shipment(w.s, id), { shipped_marked_at: new Date() })
+    return transition.apply(w.s.store, args)
+  }
+  await refusedWith(excludeShipment(w.s.container, id, { actor: ADMIN }), 409, "not_candidate")
+  assert.equal(shipment(w.s, id).state, "labeled")
 })

@@ -8,7 +8,7 @@ import { WRITERS, WRITER_OPTION } from "../../modules/dpd/lib/writers"
 import { errorMessage, useDpdWriter } from "./dpd-api"
 import { EmptyState, Section, ToneBadge } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
-import { isLaterWriter } from "./dpd-logic"
+import { isLaterWriter, statusSourceTone } from "./dpd-logic"
 import { Fact, fmtDateTime, modeOf, useSenderProblemText } from "./dpd-ui"
 
 /** The tabs of Settings, in the URL as `?view=settings&tab=`. */
@@ -26,7 +26,8 @@ function Secret({ state }: { state: SecretState }) {
 /* ------------------------------------------------------------------ */
 
 export function AccountSection({ status: s }: { status: StatusResponse }) {
-  const { t } = useTranslation("dpd")
+  const { t, i18n } = useTranslation("dpd")
+  const lang = i18n.language || "en"
   const demo = s.mode === "demo"
   const mode = modeOf(s)
   const o = s.options
@@ -112,9 +113,11 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
         icon={<CheckCircle />}
         title={t("account.services")}
         pointsLabel={t("account.servicesSubtitle")}
-        points={[{ icon: <Eye />, text: t("account.points.later") }]}
+        points={[{ icon: <Eye />, text: t(`statusSource.${s.statuses.source}`), tone: statusSourceTone(s.statuses.source) }]}
       >
         <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Fact label={t("account.statusSource")}>{t(`statusSource.${s.statuses.source}`)}</Fact>
+          <Fact label={t("statuses.lastSync")}>{s.statuses.lastSyncAt ? fmtDateTime(s.statuses.lastSyncAt, lang) : t("statuses.never")}</Fact>
           <Fact label={t("account.infoLogin")}>
             <Secret state={o.credentials.infoLogin} />
           </Fact>
@@ -135,6 +138,16 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
             <Secret state={o.credentials.pickupApiKey} />
           </Fact>
         </div>
+        {/* The problems of the statuses (DS15, DS7): the queue mode warns here only, never in the page header. */}
+        {s.statuses.problems.length > 0 ? (
+          <div className="flex flex-col gap-y-2 px-6 py-4">
+            {s.statuses.problems.map((code) => (
+              <InlineTip key={code} variant={code === "tracking_mode_queue_unsupported" ? "info" : "warning"} label={t("account.statusSource")}>
+                {t(`statusProblem.${code}`, { time: fmtDateTime(s.statuses.problemAt, lang) })}
+              </InlineTip>
+            ))}
+          </div>
+        ) : null}
       </Section>
 
       <Section icon={<ShieldCheck />} title={t("account.shipping")} pointsLabel={t("account.shippingSubtitle")} points={[{ icon: <LockClosedSolid />, text: t("account.points.env"), tone: "green" }]}>
@@ -245,7 +258,7 @@ function WriterRow({ writer, lang, busy, onFlip, note }: { writer: WriterDto; la
                 ? t(writer.on ? "writers.onBy" : "writers.offBy", { who: writer.updatedBy ?? "-", time: fmtDateTime(writer.updatedAt, lang) })
                 : t("writers.never")}
         </Text>
-        {/* Only the writers this version does not use yet; the shipment and pickup writers write now. */}
+        {/* Only a writer a later version uses (LATER_WRITERS); every writer writes in this one. */}
         {isLaterWriter(writer.key) ? (
           <Text size="xsmall" className={writer.armed ? "text-ui-tag-orange-text" : "text-ui-fg-muted"}>
             {t("writers.later")}
@@ -278,6 +291,23 @@ export function WritersSection({ status: s, lang }: { status: StatusResponse; la
       toast.error(errorMessage(err))
     }
   }
+  /* What the fulfillment status writer writes in this mode (table 12): the history only in demo, the
+     fulfillments of this store in the sandbox (simulated statuses, real writes), nothing new in live
+     without InfoServices. Live with InfoServices needs no note. */
+  const statusNote =
+    s.mode === "demo" ? (
+      <InlineTip variant="info" label={t("demo.badge")}>
+        {t("statuses.writerDemo")}
+      </InlineTip>
+    ) : s.mode === "sandbox" ? (
+      <InlineTip variant="warning" label={t("mode.sandbox")}>
+        {t("statuses.writerSandbox")}
+      </InlineTip>
+    ) : s.statuses.source === "off" ? (
+      <InlineTip variant="info" label={t("statuses.writerNoSourceLabel")}>
+        {t("statuses.writerNoSource")}
+      </InlineTip>
+    ) : undefined
   return (
     <Section
       icon={<ShieldCheck />}
@@ -303,6 +333,8 @@ export function WritersSection({ status: s, lang }: { status: StatusResponse; la
               <InlineTip variant="info" label={t("writers.pickupSimulatedLabel")}>
                 {t("writers.pickupSimulated")}
               </InlineTip>
+            ) : key === "fulfillmentStatus" ? (
+              statusNote
             ) : undefined
           }
         />

@@ -59,11 +59,14 @@ export const integrationEn = {
     shipments_to_create: "To ship with DPD",
     shipments_labeled: "To hand to the DPD courier",
     dispatches_attention: "Handovers to the courier that need a person",
+    statuses_attention: "Status writes to Medusa failed",
   },
   problem: {
     not_configured: "No DPD login, password or master FID: nothing goes to DPD",
     demo: "Demo mode: sample shipments, nothing goes to DPD",
     sender: "The sender needs fixing before shipping",
+    statuses_not_configured: "No InfoServices login, password or channel: no DPD statuses",
+    statuses_auth: "InfoServices refused the login: no DPD statuses",
   },
 }
 
@@ -118,11 +121,14 @@ export const integrationPl = {
     shipments_to_create: "Do nadania w DPD",
     shipments_labeled: "Do przekazania kurierowi DPD",
     dispatches_attention: "Przekazania kurierowi wymagające działania",
+    statuses_attention: "Nieudane zapisy statusu w Medusie",
   },
   problem: {
     not_configured: "Brak loginu, hasła albo master FID DPD: nic nie idzie do DPD",
     demo: "Tryb demo: przykładowe przesyłki, nic nie idzie do DPD",
     sender: "Nadawca wymaga poprawy przed nadaniem",
+    statuses_not_configured: "Brak loginu, hasła albo kanału InfoServices: brak statusów DPD",
+    statuses_auth: "InfoServices odrzuciło logowanie: brak statusów DPD",
   },
 }
 

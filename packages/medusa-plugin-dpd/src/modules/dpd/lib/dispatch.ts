@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { COURIER_ORDER_MAX_KG, COURIER_ORDER_TYPE, COURIER_UPDATE_MODE, DEMO_PAYER_FID, DIMS_UNKNOWN_CM, DISPATCH_MAX_SHIPMENTS, PROTOCOL_OUTPUT } from "./constants"
 import { readStoredBoxes, roundKg } from "./boxes"
 import { DEMO_SENDER } from "./demo"
+import { isPickedUp } from "./tracking"
 import { canonicalJson, senderOf } from "./plan"
 import { hasSender, isPolishPostalCode, resolveOrderer, senderFor, validateOrderer } from "./sender"
 import type { ProblemDto } from "./contract"
@@ -34,6 +35,7 @@ export const DISPATCH_PROBLEM_CODES = [
   "no_shipments", "too_many_shipments", "shipment_not_found", "shipment_not_labeled", "shipment_dispatched",
   "shipment_excluded", "shipment_canceled", "shipment_not_domestic", "shipment_not_outbound",
   "shipment_no_reference", "shipment_boxes_missing", "mixed_senders", "sender_not_pl", "orderer_invalid",
+  "shipment_picked_up",
 ] as const
 export type DispatchProblemCode = (typeof DISPATCH_PROBLEM_CODES)[number]
 /* Reused plan codes: sender_missing, sender_invalid, payer_fid_missing (step 1 and 2), courier_over_50kg (step 2 only). */
@@ -220,7 +222,7 @@ function resolvedSenderOf(o: ResolvedDpdOptions, locationId: string | null, demo
   return !hasSender(s) && demo ? DEMO_SENDER : s
 }
 
-/** DS5 for one shipment: [] when it is a candidate. */
+/** DS5 for one shipment: [] when it is a candidate. A shipment DPD already has (isPickedUp, DS13) is not one (E54). */
 export function candidateProblems(input: DispatchShipmentInput, mode: DpdMode, demo: boolean): ProblemDto[] {
   const row = input.row
   const field = SHIPMENT_FIELD(row.id)
@@ -232,6 +234,8 @@ export function candidateProblems(input: DispatchShipmentInput, mode: DpdMode, d
   else if (row.state !== "labeled") out.push({ code: "shipment_not_labeled", field, detail: row.state })
   if (row.session_type && row.session_type !== "DOMESTIC") out.push({ code: "shipment_not_domestic", field, detail: row.session_type })
   if (row.dispatch_id !== null || present(row.handed_over_at)) out.push({ code: "shipment_dispatched", field, detail: row.dispatch_id ?? "handed_over" })
+  /* DS13, E54: DPD has the parcel already (dropped at a point, taken by a courier outside the plugin): no protocol, no courier for it. */
+  else if (isPickedUp(row)) out.push({ code: "shipment_picked_up", field })
   if (input.fulfillment === null) {
     if (!demo) out.push({ code: "shipment_canceled", field, detail: "fulfillment_missing" })
   } else if (present(input.fulfillment.canceled_at)) out.push({ code: "shipment_canceled", field, detail: "fulfillment_canceled" })

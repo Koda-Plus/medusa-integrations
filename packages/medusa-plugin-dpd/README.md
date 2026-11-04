@@ -2,7 +2,7 @@
 
 Ship with DPD Polska from Medusa: the DPD courier and DPD Pickup points, both also with cash on delivery, on the DPD Polska web services.
 
-**Work in progress.** This version creates DPD courier shipments within Poland and DPD Pickup shipments to points in Poland, with or without cash on delivery, gets their labels, and hands them over to the DPD courier (the protocol and the courier order, within Poland only). Tracking, marking fulfillments shipped and delivered, returns and shipments abroad come in the next versions; until then the plan of such a fulfillment says so and nothing is sent to DPD. The full README comes with the first npm release.
+**Work in progress.** This version creates DPD courier shipments within Poland and DPD Pickup shipments to points in Poland, with or without cash on delivery, gets their labels, and hands them over to the DPD courier (the protocol and the courier order, within Poland only). It also follows the statuses of the shipments in the DPD InfoServices and, with the `fulfillmentStatus` writer, marks the fulfillments shipped and delivered in Medusa. Returns, shipments abroad, the queue mode of the DPD InfoServices and the DPD tracking link in the Medusa label come in the next versions; until then the plan of a return or of a shipment abroad says so and nothing is sent to DPD. The full README comes with the first npm release.
 
 ## What it does
 
@@ -15,9 +15,11 @@ Ship with DPD Polska from Medusa: the DPD courier and DPD Pickup points, both al
 - **Labels**: A4 or `LBL_PRINTER`, chosen when creating the shipment (the default is `labelPage`). The label PDF is stored with the shipment and served from the database, so opening it again never asks DPD again. A shipment created without its label (a timeout, an error of DPD) keeps its waybills and the label can be asked for again. Stored labels are removed after `documentRetentionDays`.
 - **Unclear answers**: a create that gets no clear answer from DPD (a timeout, a network error, a 5xx, an answer that does not parse) is never sent again blindly. The shipment goes to `unknown`, and two minutes later it is looked up in DPD by its reference, either by the shipment pass or by the Check in DPD button. Found, its waybills and label are taken over; not found, it goes back to waiting and can be created again with the same reference. When what DPD has does not match what was sent (another number of waybills), the shipment is `ambiguous` and a person accepts DPD's waybills or marks it as handled outside the plugin.
 - **Handover to the courier**: a person selects labeled shipments of one sender and gets one DPD protocol for them; then, optionally, orders the DPD courier for that handover. See Handover to the courier below.
-- **The shipment pass**, every 5 minutes: removes old labels, takes back claims that ran out, looks up unclear shipments and, with `autoCreate`, creates the new shipments and asks again for labels that did not come. It never takes a backlog: only fulfillments recorded after the writer was armed and within `autoCreateMaxAgeHours`. It also takes back the claims of handovers that ran out, but it never prints a protocol and never orders a courier.
-- **Admin page** under DPD in the sidebar, with the shipment lists and their actions, the plan drawer, Settings and the writers, and an order card with the shipments of the order and their actions.
-- **Demo mode** (`demo: true`): the same code paths with a simulated DPD. Sample shipments are built from the store's own orders, labels and protocols are sample PDFs and the courier order is simulated; nothing is sent to DPD.
+- **Statuses**: a job of its own asks the DPD InfoServices every 5 minutes about each waybill of a shipment after the handover (less often before it). The admin shows the stage of the shipment, the last DPD description and the waybills with their stages; see Statuses below.
+- **Medusa follows DPD** (optional, the `fulfillmentStatus` writer): the fulfillment is marked shipped when DPD has the parcel in its hands, and delivered when every waybill is delivered. The waybill goes into the labels of the fulfillment.
+- **The shipment pass**, every 5 minutes: removes old labels, takes back claims that ran out, looks up unclear shipments and, with `autoCreate`, creates the new shipments and asks again for labels that did not come. It never takes a backlog: only fulfillments recorded after the writer was armed and within `autoCreateMaxAgeHours`. It also takes back the claims of handovers that ran out, but it never prints a protocol and never orders a courier. Statuses run in their own job, so missing DPDServices credentials or a `shipment` writer that is not armed never stop them.
+- **Admin page** under DPD in the sidebar, with the shipment lists and their actions, the plan drawer, Settings and the writers, and an order card with the shipments of the order and their actions. Each shipment shows its stage, the DPD description and its waybills with their stages, with "Refresh the status" and "Write the status to Medusa again".
+- **Demo mode** (`demo: true`): the same code paths with a simulated DPD. Sample shipments are built from the store's own orders, labels and protocols are sample PDFs, the courier order and the statuses are simulated, and the status writer writes only the history; nothing is sent to DPD.
 
 ## DPD Pickup
 
@@ -71,10 +73,75 @@ A wrong query answers 400 `invalid`. Searches are limited per client address (`p
 
 **Nothing automatic.** `autoCreate` and the shipment pass never create a handover, never print a protocol and never order a courier.
 
+## Statuses
+
+**Where statuses come from.** Live, from the DPD InfoServices: `getEventsForWaybillV1`, one call per waybill, always the whole history (`ALL`), with the descriptions in Polish. It needs `infoLogin`, `infoPassword` and `infoChannel`; without one of them live mode asks nothing, and Settings and the integration summary say "statuses not configured". The sandbox and demo mode never ask the DPD InfoServices: their statuses are simulated in the process, because DPD has no test host with events. Settings show the source of the statuses (`simulated`, `dpd` or `off`).
+
+**The status job.** `dpd-sync-statuses` runs every 5 minutes, two minutes after the shipment pass. It takes outbound shipments with waybills, `created` or `labeled`, not delivered and not canceled, up to 30 days after the handover (or after their creation): after the handover each one at most every 30 minutes, before it every 2 hours. The ones asked least recently go first, up to 50 calls and 2 minutes per pass; the rest wait for the next one. Writes to Medusa left over from earlier passes need no DPD call: they get the last 20 seconds of the pass, and at least 5 of them run in every pass however slow DPD answers. Several server instances never take the same shipment (a claim in the database). A shipment that is delivered, back at the shop, canceled, marked "do not send" or older than 30 days is no longer asked about. A wrong InfoServices login stops the pass and shows in Settings until the next answered call.
+
+**Stages.** `preparing`, `ready` (set by the handover, without a DPD event), `in_transit`, `in_point`, `delivered`, `problem` and `returned`. A shipment with several boxes is `returned` when a waybill is, then `problem`, then `delivered` only when every waybill is delivered, otherwise the lowest stage of its waybills. A waybill without any event counts as `preparing` (`ready` after the handover), so one delivered box never makes the whole shipment delivered. `delivered` and `returned` of a waybill stay after a later event. DPD notifications (the codes starting with 1703, apart from 170302) never change the stage. A code the plugin does not know never writes to Medusa and never replaces a stage set by a known code: a waybill gets `in_transit` from it only while none of its events has a known code. DPD histories nearly always start with a known code (030103, the shipment registered), so a later unknown code usually leaves the waybill `preparing` (`ready` after the handover) and shows only as its newest status, with the DPD description; give such a code a stage with `statusMap`. In live mode `in_point` comes only from a `statusMap` entry: DPD has not confirmed the code of the arrival at a Pickup point, so the built in map gives `in_point` only to the simulator's `SIM_IN_POINT` in the sandbox and demo mode, and without such an entry a parcel waiting at the point stays `in_transit` until it is collected (`delivered`). The meaning of most codes comes from the DPD documentation and from open libraries, not from a confirmation by DPD; `statusMap` changes the stage of a code.
+
+**Shipped and delivered in Medusa.** The `fulfillmentStatus` writer, off by default, has two switches like the other writers. "Shipped" (`createOrderShipmentWorkflow`) comes only from an event that means DPD has the parcel in its hands; never from the handover alone, from a courier window that has passed or from the time that went by, because Medusa cannot take a shipment back. "Delivered" (`markOrderFulfillmentAsDeliveredWorkflow`) comes when every waybill is delivered; for DPD Pickup that is the collection from the point, not the arrival at the point (a code not confirmed by DPD). The labels of the fulfillment get the waybill without a link; the labels already there stay. Each mark is claimed on the plugin's row before Medusa's flow runs; a fulfillment someone already marked by hand is only noted. A failed flow releases the claim, keeps its message with the shipment and lights a tile; the status pass tries again every 30 minutes for 30 days after the handover (also after the delivery, without asking DPD), and "Write the status to Medusa again" does it at once. A writer armed later marks the shipments that DPD had in its hands, or delivered, in the last 30 days. A claim left by a process that stopped (older than 15 minutes, while Medusa has no shipped or delivered date) is released with an entry in the history and written again.
+
+**New waybill numbers.** A redirect (230402) and a return to the sender (230403, 230408) move the parcel to a new waybill when the event carries exactly one number shaped like a DPD waybill. The plugin swaps the waybill in its place, asks the old one once more and updates `dpd_waybills` in the data of the fulfillment. A redirected parcel stays at least `in_transit`: the first events DPD reports for the new number (the data registered) never take it back to `ready`. A parcel on its way back is `returned` and waits in Problems; its delivery means it is back at the shop and never gives "delivered" in Medusa. Once it is back, or 30 days after the handover, it moves to Returns and no longer counts as a matter waiting for a person. An event that moves the parcel without one clear number stays in the history as unclear.
+
+**Sandbox and demo.** The simulator gives events from the moment of the handover, with the codes of the DPD documentation and of the libraries, plus `SIM_IN_POINT` for the arrival at a Pickup point; some shipments get a failed delivery attempt or a return with a new waybill. It keeps no state, so a restart loses nothing. In the sandbox an armed `fulfillmentStatus` writer writes to the real development store (the only way to try it before production) and the history says "simulated"; a sandbox run on a copy of production orders marks them for real. A simulated status never mails a customer: the writer passes `no_notification` to Medusa, so its "shipped" and "delivered" notifications stay silent. In demo mode the writer writes only the history, and the sample rows of the seed never move.
+
+**The queue mode is not there yet.** `trackingMode: "queue"` gives a warning in Settings and the statuses still go per waybill. The queue of the DPD InfoServices is shared by the channel, and confirming its events would take them away from the other systems of the shop; it needs a channel for Medusa alone.
+
+**Refresh.** "Refresh the status" asks DPD about one shipment at once, outside the job. Reading needs no writer.
+
+## Events
+
+Three events carry `DpdShipmentEvent`. The shape is a contract: fields and events may be added, never changed.
+
+- `dpd.shipment.created`: once per shipment, when DPD gives its waybills, or when the plugin adopts a shipment it found after an unclear answer.
+- `dpd.shipment.status_changed`: once per change of the stage, from the status job or a refresh, with `previous_stage` and `event_id` (the id of the DPD event in the plugin's history; a subscriber drops repeats by it).
+- `dpd.shipment.delivered`: once, right after its `status_changed`, when every waybill is delivered.
+
+```ts
+type DpdShipmentEvent = {
+  id: string                       // the plugin's row (dpdshp_...)
+  order_id: string | null          // null only for a return not yet tied to its order
+  fulfillment_id: string | null
+  return_id: string | null
+  kind: "outbound" | "return"
+  option_id: string                // "dpd-courier", "dpd-pickup", ...
+  waybills: string[]               // the waybill of every box, in box order
+  status: string | null            // the newest DPD event code that is not a notification, like "190101"
+  previous_status: string | null
+  stage: "preparing" | "ready" | "in_transit" | "in_point" | "delivered" | "problem" | "returned" | "canceled"
+  pudo_id: string | null           // the public Pickup point id, like "PL14509"
+  country_code: string | null      // the destination country
+  cod: { amount: string; currency: string } | null   // exact, like "199.99"
+  mode: "live" | "sandbox" | "demo"
+  demo: boolean                    // a simulated shipment of demo mode
+  previous_stage: string | null    // the stage before this change; null for created and a first stage
+  event_id: string | null          // the history id of the DPD event that changed the stage
+}
+```
+
+The receiver's name, phone, e-mail and address are never in an event. A subscriber that writes to the outside world should skip `demo: true`. The example below runs in live mode only with a `statusMap` entry that gives the arrival at a Pickup point the stage `in_point` (see Stages); in the sandbox and demo mode the simulator gives it:
+
+```ts
+import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
+import type { DpdShipmentEvent } from "@koda-plus/medusa-plugin-dpd/modules/dpd"
+
+export default async function parcelInPoint({ event, container }: SubscriberArgs<DpdShipmentEvent>) {
+  const shipment = event.data
+  if (shipment.demo || shipment.stage !== "in_point") return
+  // "Your parcel is waiting at the DPD Pickup point " + shipment.pudo_id
+}
+
+export const config: SubscriberConfig = { event: "dpd.shipment.status_changed" }
+```
+
+Each event is emitted at most once, after the change is saved; a failed emit is logged, not repeated. `dpd.return.created` comes with the returns; there are no events of the handover in this version.
+
 ## Requirements
 
 - Medusa 2.12 or newer and Node.js 20+.
-- A DPD Polska business account with access to the DPD web services (login, password and the FID of the account). Demo mode runs without it.
+- A DPD Polska business account with access to the DPD web services (login, password and the FID of the account). Demo mode runs without it. Statuses in live mode also need access to the DPD InfoServices (a login, a password and a channel from DPD).
 
 ## Installation
 
@@ -96,6 +163,8 @@ const dpd = {
   sender: process.env.DPD_SENDER, // JSON, see below
   // mode: "live",          // sandbox by default
   // shipmentWriter: true,  // allows creating shipments; arm it in Settings
+  // infoLogin, infoPassword, infoChannel: DPD InfoServices, statuses in live mode
+  // fulfillmentStatusWriter: true, // marks Medusa fulfillments shipped and delivered; arm it in Settings
   // demo: true,            // sample shipments from your orders, nothing sent to DPD
 }
 
@@ -143,10 +212,17 @@ DPD Pickup points (live mode only; the sandbox and demo mode use their catalogs)
 - `pointsTimeoutMs` (default `3000`, 1000 to 10000): how long one call to MyPudo may take. The checkout lets an unchecked point through, so this is also the longest a customer waits for the check.
 - `pointsPerMinute` (default `30`, 5 to 600): point searches per minute from one client address on the store routes.
 
+Statuses (live mode only; the sandbox and demo mode simulate them):
+
+- `infoLogin`, `infoPassword`, `infoChannel` (default none): the DPD InfoServices login, password and channel. The password is masked everywhere; the admin only sees whether each one is set.
+- `trackingMode` (default `"waybill"`): `"queue"` does not work yet and gives a warning; statuses then still go per waybill.
+- `statusMap` (default none): `{ "<code>": "<stage>" }` changes the stage of a DPD event code. A code outside the built in map with the stage `in_transit`, `in_point` or `delivered` also counts as "DPD has the parcel"; for a code the built in map knows, also by its prefix, only the stage changes. The stage `canceled` is ignored. In live mode it is the only source of the stage `in_point`.
+
 Writes:
 
 - `shipmentWriter` (default `false`; in demo mode `true`, acting on the simulation only): allows creating shipments, getting labels, looking up unclear shipments in DPD (a label and a lookup advise the parcels in DPD), the protocols of the handover and "do not send". It works only when a person also arms it in Settings.
 - `pickupWriter` (default `false`; in demo mode `true`, acting on the simulation only): allows ordering, changing and canceling the courier, and resolving `unknown` courier orders, orders that need a person and orders without a `checkSum`. It works only when a person also arms it in Settings. In the sandbox the courier order is simulated also with this writer armed.
+- `fulfillmentStatusWriter` (default `false`; in demo mode `true`, writing only the history): marks Medusa fulfillments shipped and delivered from the DPD statuses. It works only when a person also arms it in Settings. In the sandbox it writes to this Medusa store.
 - `autoCreate` (default `false`): with the shipment writer armed, create the shipment as soon as its fulfillment is created, from a plan without problems, and let the shipment pass create the ones it missed. Plans with problems wait for a person either way.
 - `autoCreateMaxAgeHours` (default `24`, 1 to 720): the shipment pass creates only fulfillments recorded after the shipment writer was armed and within these hours.
 
@@ -159,20 +235,23 @@ Shipments:
 - `codCountries` (default `{ "PL": ["PLN"] }`): cash on delivery currencies per destination country. `codPaymentProviders` (default `["pp_system_default"]`): the payment providers that mean "pay at the door".
 - `documentRetentionDays` (default `90`): days a stored label or protocol is kept.
 
-The other options (`countries`, `trackingMode`, `infoLogin`, `infoPassword`, `infoChannel`, `statusMap`, `internationalReturns`, `fulfillmentStatusWriter`) are read and checked already, and are used by the next versions.
+The other options (`countries`, `internationalReturns`) are read and checked already, and are used by the next versions.
 
 ## Write safety
 
-- **Two switches per writer.** The option (`shipmentWriter`, `pickupWriter`) is the hard one: `false` wins and the admin cannot override it. The switch in Settings is the runtime one, stored with who flipped it and when.
+- **Two switches per writer.** The option (`shipmentWriter`, `pickupWriter`, `fulfillmentStatusWriter`) is the hard one: `false` wins and the admin cannot override it. The switch in Settings is the runtime one, stored with who flipped it and when.
 - **One shipment per fulfillment**: one row per fulfillment before anything goes out, an atomic claim with a lease, and a reference that never changes (the fulfillment id). DPD refuses a second shipment with the same reference, and the plugin reads that refusal as "it exists" and takes the shipment over.
 - **Plan first**: a person confirms the plan of this moment (its hash); a plan with problems sends nothing.
 - **One courier per handover, never sent twice**: DPD has no idempotency key for a courier order, so an unclear answer gives `unknown`, nothing is sent again, and a person says whether the courier was ordered.
 - **The handover marker**: written into the fulfillment data before DPD is asked for the protocol and cleared when DPD refuses it; while it is there, Medusa may not cancel the fulfillment.
+- **Medusa marks once**: each shipped or delivered mark is claimed on the plugin's row before Medusa's flow runs, and released with the error when the flow fails. A fulfillment marked by hand is only noted. An unknown code never marks anything.
+- **No way back after the pickup**: once DPD has the parcel (an event that means it, a stage past `ready` other than `problem`, or the plugin's own shipped mark in Medusa), withdrawing it from a handover, "do not send", canceling the handover and putting it in a new handover are refused. A fulfillment marked shipped by hand in Medusa does not count: the plugin reads only what DPD told it. A failed pickup at the sender (the codes 0402xx to 0406xx) does not block them.
 - **Nothing that cannot be undone is pretended**: DPD's web services cannot cancel a shipment. When a fulfillment is canceled after its shipment was created, the row stays as it is and the history says so; an unclear one is looked up to tell whether DPD has it.
 
 ## Security and data
 
-- **Credentials stay on the server**: masked in logs, errors and the admin, which only knows whether they are set.
+- **Credentials stay on the server**: masked in logs, errors and the admin, which only knows whether they are set. The InfoServices password is masked; the admin sees the InfoServices login and channel only as set or missing. The SOAP envelope never goes to the logs, the history or an answer.
+- **No receiver data from the DPD events**: the additional data of a DPD event (`eventDataList`, which may hold the name of the receiver) is never stored or logged; the plugin reads from it only the new waybill of a repin. The history keeps the code, the time, the depot and the DPD description. The status events of shipments no longer followed are removed after 120 days.
 - **Personal data stays where it lives**: the receiver's name, phone, e-mail and address (and, for DPD Pickup, those of the person who collects) are read from the order when a plan is built and go only to DPD and to the plan answer (not cached). The address of a Pickup point is public data and is kept with the shipping method and the shipment. The plugin's tables keep ids, the option, the boxes, the cash on delivery amount, the reference, the waybills and the states; problems name what is wrong, never the value. Stored labels carry what DPD prints on them and are removed after `documentRetentionDays`. Protocols carry the company and the address of the receivers (not the name of a person); they are stored like labels, served only to the admin and without a cache, and removed after `documentRetentionDays`.
 - **The `checkSum` of a courier order** (it allows changing and canceling the order) never goes to the logs, the history or an answer; the admin sees only the order number.
 - **Admin routes** sit behind Medusa's admin authentication, and writes need a JSON body or the `x-koda-request` header.
@@ -185,17 +264,19 @@ The other options (`countries`, `trackingMode`, `infoLogin`, `infoPassword`, `in
 - It does not change a Pickup point by itself and does not tell the customer about a change.
 - It does not filter the points by the weight of the cart, and it does not use the holiday filter of MyPudo: a point closed for a day within two weeks may not be listed.
 - It does not hand over shipments abroad and does not order a courier abroad.
-- It does not mark fulfillments shipped after the handover (the next version).
 - It does not take a protocol back in DPD, does not order pallets or envelopes, and gives the protocol only as a PDF.
-- It does not track shipments and does not mark Medusa fulfillments shipped or delivered.
+- It does not read the queue of the DPD InfoServices (`trackingMode: "queue"`).
+- It does not add the DPD tracking link to the Medusa label, only the waybill.
+- It does not track the return shipments of the shop (the next version) and emits no events of the handover.
+- It does not tell the customer by itself: Medusa's `shipment.created` and the events of the plugin let a mail plugin do it.
 - It does not print a label again in another format: DPD has not yet said whether that advises the parcels again.
 - It does not calculate shipping prices from DPD's price list: the shipping options' own prices apply.
 
 ## Admin API
 
-Every route is behind Medusa's admin authentication. Creating, getting a label and looking up answer 409 while the shipment writer is not allowed and armed. The same goes for printing a protocol, canceling a handover, "do not send" and restoring. Ordering the courier, a new date, canceling the courier, resolving and withdrawing a shipment from an ordered courier answer 409 while the pickup writer is not allowed and armed. The availability needs a configured client, no writer.
+Every route is behind Medusa's admin authentication. Creating, getting a label and looking up answer 409 while the shipment writer is not allowed and armed. The same goes for printing a protocol, canceling a handover, "do not send" and restoring. Ordering the courier, a new date, canceling the courier, resolving and withdrawing a shipment from an ordered courier answer 409 while the pickup writer is not allowed and armed. The availability needs a configured client, no writer. "Write the status to Medusa again" answers 409 while the `fulfillmentStatus` writer is not allowed and armed. "Refresh the status" needs no writer, but answers 409 when the statuses are not configured, and 502 when DPD refuses the login or gives no clear answer.
 
-- `GET /admin/dpd/shipments/:id`: a shipment with its stored documents (never their bytes) and its history.
+- `GET /admin/dpd/shipments/:id`: a shipment with its stored documents (never their bytes) and its history. The shipment also carries its waybills with their stages (`tracking`) and the marks of the writes to Medusa.
 - `GET /admin/dpd/shipments/:id/plan`: its plan with the hash, for a shipment not created yet.
 - `POST /admin/dpd/shipments/:id/create` `{ planHash, page }`: creates the shipment from the plan that was read and gets its label.
 - `POST /admin/dpd/shipments/:id/label` `{ page }`: gets the label of a shipment created without it. `GET /admin/dpd/shipments/:id/label?download=1`: the stored label PDF.
@@ -211,6 +292,8 @@ Every route is behind Medusa's admin authentication. Creating, getting a label a
 - `POST /admin/dpd/dispatches/:id/order` and `.../reschedule` `{ pickupDate, pickupTimeFrom, pickupTimeTo }`: orders the courier, or gives the order a new date or window.
 - `POST /admin/dpd/dispatches/:id/cancel-courier`, `.../resolve` `{ outcome, orderNumber }`, `.../cancel`: cancels the courier order, resolves an order that needs a person, cancels the handover.
 - `POST /admin/dpd/shipments/:id/exclude`, `.../restore`, `.../withdraw`: "do not send", its restore, and withdrawing a shipment from its handover.
+- `POST /admin/dpd/shipments/:id/refresh-status`: asks DPD about the status of one shipment now.
+- `POST /admin/dpd/shipments/:id/retry-status-writer`: writes the shipped or delivered mark of one shipment to Medusa again.
 
 ## Trademarks
 
@@ -221,6 +304,10 @@ DPD and the DPD logo are trademarks of their owners, used here only to identify 
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/LICENSE).
 
 ## Changelog
+
+### 0.5.0 (unreleased)
+
+Statuses from the DPD InfoServices in their own job, the stages of a shipment and of each waybill, new waybill numbers after a redirect or a return, the `fulfillmentStatus` writer that marks fulfillments shipped and delivered in Medusa, the events `dpd.shipment.created`, `status_changed` and `delivered`, and the simulated statuses of the sandbox and demo mode. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/CHANGELOG.md).
 
 ### 0.4.0 (unreleased)
 

@@ -4,6 +4,7 @@ import { DISPATCH_MAX_SHIPMENTS, LABEL_PAGES, PROTOCOL_MAX_PACKAGES, type LabelP
 import { courierOrdersOf, type CourierWindow } from "../../../modules/dpd/lib/courier"
 import {
   SHIPMENT_GROUPS,
+  STATUS_PROBLEM_CODES,
   type ActionResponse,
   type DispatchDto,
   type DispatchResponse,
@@ -13,7 +14,9 @@ import {
   type OptionsSummaryDto,
   type ProblemDto,
   type ShipmentFilter,
+  type StatusProblemCode,
   type StatusResponse,
+  type StatusesDto,
   type WriterDto,
   type WriterKey,
 } from "../../../modules/dpd/lib/contract"
@@ -27,10 +30,13 @@ import {
   toWriterDto,
   type DispatchRow,
   type EventRow,
+  type SettingRow,
   type ShipmentRow,
 } from "../../../modules/dpd/lib/dto"
+import { statusOptionProblems, statusSourceOf } from "../../../modules/dpd/lib/infoservices"
 import { pickupAuthOf, type ResolvedDpdOptions } from "../../../modules/dpd/lib/options"
 import { secretState } from "../../../modules/dpd/lib/security"
+import { statusSettingKey } from "../../../modules/dpd/lib/tracking"
 import { DEMO_SEEDED_KEY } from "../../../modules/dpd/lib/settings"
 import { WRITERS } from "../../../modules/dpd/lib/writers"
 import { KIT_META } from "../../../modules/dpd/lib/kit-meta"
@@ -85,6 +91,18 @@ export async function respondShipment(req: MedusaRequest, res: MedusaResponse, w
   try {
     const row = await work()
     const body: ActionResponse = { shipment: toShipmentDto(row) }
+    res.json(body)
+  } catch (err) {
+    sendError(req.scope, res, err)
+  }
+}
+
+/** respondShipment for a flow that answers more than the row (retry-status-writer, E56): `{ shipment, ...extra }`. */
+export async function respondShipmentWith<E extends Record<string, unknown>>(req: MedusaRequest, res: MedusaResponse, work: () => Promise<{ row: ShipmentRow; extra: E }>): Promise<void> {
+  noStore(res)
+  try {
+    const { row, extra } = await work()
+    const body: ActionResponse & E = { ...extra, shipment: toShipmentDto(row) }
     res.json(body)
   } catch (err) {
     sendError(req.scope, res, err)
@@ -191,6 +209,37 @@ export function optionsSummary(o: ResolvedDpdOptions): OptionsSummaryDto {
     senderLocations: Object.keys(o.senders),
     pickupCheck: o.mode !== "live" ? "catalog" : pickupAuthOf(o).kind !== "none" ? "mypudo" : "not_configured",
     courierOrders: courierOrdersOf(o),
+    statusSource: statusSourceOf(o),
+  }
+}
+
+/** A stored `at` read leniently: an ISO string of a valid date, else null. */
+function storedAt(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const at = (value as { at?: unknown }).at
+  if (typeof at !== "string" || at === "") return null
+  const ms = Date.parse(at)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null
+}
+
+/** StatusResponse.statuses: source, statusOptionProblems(o) plus statuses_auth from the setting, lastSyncAt and problemAt from the settings. */
+export async function statusesDto(scope: Scope): Promise<StatusesDto> {
+  const svc = dpdService(scope)
+  const o = svc.getOptions()
+  const mode = svc.mode()
+  const source = statusSourceOf(o)
+  const keys = [statusSettingKey(mode, "lastSyncAt"), statusSettingKey(mode, "problem")]
+  const rows = (await svc.listDpdSettings({ key: keys } as never, { take: keys.length } as never)) as unknown as SettingRow[]
+  const valueOf = (key: string): unknown => rows.find((r) => r.key === key)?.value ?? null
+  const problem = valueOf(keys[1])
+  const auth = source === "dpd" && problem !== null && typeof problem === "object" && (problem as { code?: unknown }).code === "statuses_auth"
+  const found = new Set<StatusProblemCode>(statusOptionProblems(o))
+  if (auth) found.add("statuses_auth")
+  return {
+    source,
+    problems: STATUS_PROBLEM_CODES.filter((c) => found.has(c)),
+    lastSyncAt: storedAt(valueOf(keys[0])),
+    problemAt: auth ? storedAt(problem) : null,
   }
 }
 
@@ -204,7 +253,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
   const o = svc.getOptions()
   const mode = svc.mode()
   const store = storeFor(scope)
-  const counts = countsOf(await store.counts(mode), await store.dispatchCounts(mode))
+  const counts = countsOf(await store.counts(mode), await store.dispatchCounts(mode), await store.statusCounts(mode))
   const settings = await settingsOf(svc)
   const seeded = o.demo ? Boolean(await getSetting(svc, DEMO_SEEDED_KEY)) : false
   return {
@@ -219,6 +268,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     settings: { labelPage: settings.labelPage, source: { labelPage: settings.source.labelPage } },
     options: optionsSummary(o),
     demoSeeded: seeded,
+    statuses: await statusesDto(scope),
     version: KIT_META.version,
   }
 }

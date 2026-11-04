@@ -66,6 +66,12 @@ const DpdShipment = model
     error: model.text().nullable(),
     error_code: model.text().nullable(),
     attempts: model.number().default(0),
+    /** Stage 5: one TrackingEntry per waybill (DS4, 6.2). */
+    tracking: model.json().nullable(),
+    /** eventTime (UTC) of the event that set `status`. */
+    status_at: model.dateTime().nullable(),
+    /** The last failure of the fulfillmentStatus writer; cleared by a won claim (6.4). */
+    status_writer_error: model.text().nullable(),
   })
   .indexes([
     { on: ["fulfillment_id", "kind", "mode"], unique: true, where: "fulfillment_id IS NOT NULL AND deleted_at IS NULL" },

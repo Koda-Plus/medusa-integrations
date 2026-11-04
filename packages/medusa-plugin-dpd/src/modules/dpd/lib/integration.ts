@@ -186,11 +186,12 @@ export function orderSummary(rows: ShipmentRow[], chosen: ChosenDpd | null, ctx:
 }
 
 /** Board counters from the counts of the current mode (the same counts as the Panel's filter buttons). */
-export function dpdCounters(counts: Pick<CountsDto, "problems" | "to_create" | "labeled" | "dispatchesAttention">): CounterDraft[] {
+export function dpdCounters(counts: Pick<CountsDto, "problems" | "to_create" | "labeled" | "dispatchesAttention" | "statusesAttention">): CounterDraft[] {
   return [
     { key: "shipments_problems", scope: "orders", count: counts.problems, tone: "red", link: { kind: "admin", href: "/dpd?filter=problems" }, entity: "order" },
     { key: "shipments_to_create", scope: "orders", count: counts.to_create, tone: "orange", link: { kind: "admin", href: "/dpd?filter=to_create" }, entity: "order" },
     { key: "shipments_labeled", scope: "orders", count: counts.labeled, tone: "blue", link: { kind: "admin", href: "/dpd?filter=labeled" }, entity: "order" },
     { key: "dispatches_attention", scope: "orders", count: counts.dispatchesAttention, tone: "red", link: { kind: "admin", href: "/dpd?view=dispatches&filter=attention" }, entity: "order" },
+    { key: "statuses_attention", scope: "orders", count: counts.statusesAttention, tone: "red", link: { kind: "admin", href: "/dpd?writer=failed" }, entity: "order" },
   ]
 }

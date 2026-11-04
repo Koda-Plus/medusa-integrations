@@ -7,6 +7,7 @@
  * sample catalog and is created by the simulated DPD. Nothing is sent
  * anywhere.
  */
+import { readFileSync } from "node:fs"
 import { afterEach, beforeEach, test } from "node:test"
 import assert from "node:assert/strict"
 import { PUDO_ID_PATTERN, SHIPMENT_STAGES, SHIPMENT_STATES } from "../src/modules/dpd/lib/constants.ts"
@@ -285,4 +286,24 @@ test("demo never writes or clears the handover marker, also on a real fulfillmen
   assert.deepEqual(markerWrites(s.fulfillmentUpdates), [], "no marker write and no marker clearing in demo")
   const provider = new DpdFulfillmentProvider({ logger: { info: () => {}, warn: () => {}, error: () => {} } }, { demo: true })
   for (const f of fulfillments) assert.deepEqual(await provider.cancelFulfillment(s.fulfillments.get(f)?.data ?? {}), {})
+})
+
+/* Stage 5: statuses in demo (DS8, O4). */
+
+test("resetDemo removes demo:status keys and keeps those of the other modes", async () => {
+  const s = setup({ demo: true }, orders(2))
+  await ensureDemoSeed(s.container)
+  for (const name of ["lastSyncAt", "problem", "prunedAt"]) {
+    s.settings.insert({ key: `demo:status:${name}`, value: { at: "2026-11-03T10:00:00.000Z" }, updated_by: null })
+    s.settings.insert({ key: `live:status:${name}`, value: { at: "2026-11-03T10:00:00.000Z" }, updated_by: null })
+  }
+  const removed = await resetDemo(s.container)
+  assert.equal(removed.settings, 4, "demo:seeded and the three demo:status keys")
+  assert.deepEqual(s.settings.rows.map((r) => r.key).sort(), ["live:status:lastSyncAt", "live:status:problem", "live:status:prunedAt"])
+})
+
+test("the header of demo.ts keeps the seed rule and says where the statuses of demo come from (O4)", () => {
+  const text = readFileSync(new URL("../src/modules/dpd/lib/demo.ts", import.meta.url), "utf8")
+  assert.match(text, /No InfoServices event code is invented either: the rows carry a stage\n \* \(where the parcel is\) and no status code\./)
+  assert.match(text, /The seed rows never move: the status pass skips demo rows without a\n \* fulfillment\. Shipments made in demo get their statuses from the status\n \* simulator \(status-sim\.ts\), whose codes come from the DPD documentation or\n \* the libraries it cites, plus SIM_ codes only the built in map knows\./)
 })

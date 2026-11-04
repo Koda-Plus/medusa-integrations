@@ -89,6 +89,8 @@ const ADDED_PROBLEMS = [
   "no_shipments", "too_many_shipments", "shipment_not_found", "shipment_not_labeled", "shipment_dispatched",
   "shipment_excluded", "shipment_canceled", "shipment_not_domestic", "shipment_not_outbound",
   "shipment_no_reference", "shipment_boxes_missing", "mixed_senders", "sender_not_pl", "orderer_invalid",
+  /* Stage 5: a shipment DPD already has is not a candidate (DS13, E54). */
+  "shipment_picked_up",
   "date_invalid", "date_past", "date_too_far", "time_invalid", "time_order", "window_outside", "no_ranges",
   "dpd_courier", "dpd_protocol_not_found",
 ] as const
@@ -109,6 +111,17 @@ test("the added problem codes have their words in both dictionaries", async () =
   assert.deepEqual(ADDED_PROBLEMS.slice(1), [...DISPATCH_PROBLEM_CODES, ...COURIER_WINDOW_CODES, ...DISPATCH_PROBLEM_SOURCE_CODES])
   for (const c of ADDED_ACTION_ERRORS) assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(c), `ACTION_ERROR_CODES: ${c}`)
   for (const c of ADDED_WARNINGS) assert.ok((DISPATCH_WARNING_CODES as readonly string[]).includes(c), `DISPATCH_WARNING_CODES: ${c}`)
+})
+
+/* Stage 5: the codes of a refused status action and of a withdrawal after the pickup (DS13, DS18). */
+const STATUS_ACTION_ERRORS = ["already_shipped", "statuses_auth", "status_unavailable"] as const
+
+test("the stage 5 action codes have their words in both dictionaries and are codes of the server", async () => {
+  const pl = await loadPl()
+  for (const [lang, tree] of [["en", en as unknown as Tree], ["pl", pl]] as const) {
+    assert.deepEqual(missing(tree, "actionError", STATUS_ACTION_ERRORS), [], `${lang} actionError`)
+  }
+  for (const c of STATUS_ACTION_ERRORS) assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(c), `ACTION_ERROR_CODES: ${c}`)
 })
 
 /* Row error codes the server adds next to SHIPMENT_ERROR_CODES (the pacing of a click, which a person retries by hand); their words exist before the server writes them. */

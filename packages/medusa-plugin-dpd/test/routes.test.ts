@@ -248,29 +248,68 @@ test("POST lookup, skip and accept answer the row or their refusal; the writer r
   const refused = await call<ErrorResponse>(postCreate, off.s, off.id, { body: { planHash: offPlan.plan.hash } })
   assert.equal(refused.status, 409)
   assert.equal(refused.body.code, "writer_off")
-  for (const code of ["writer_off", "not_armed", "not_configured", "plan_hash_missing", "plan_changed", "plan_problems", "too_early", "wrong_state", "no_label", "busy"]) {
+  for (const code of ["writer_off", "not_armed", "not_configured", "plan_hash_missing", "plan_changed", "plan_problems", "too_early", "wrong_state", "no_label", "busy", "already_shipped", "statuses_auth", "status_unavailable"]) {
     assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(code), code)
   }
 })
 
 test("the actions of every state: what the buttons of the admin may offer", () => {
   const W = ["0000899000001Q"]
-  type Extra = { dispatch_id?: string | null; handed_over_at?: Date | null; session_type?: string | null }
+  type Extra = {
+    dispatch_id?: string | null
+    handed_over_at?: Date | null
+    session_type?: string | null
+    stage?: string | null
+    shipped_marked_at?: Date | null
+    mode?: string
+    fulfillment_id?: string | null
+    status_writer_error?: string | null
+    tracking?: unknown
+  }
   const on = (state: string, waybills: string[] | null = null, kind = "outbound", extra: Extra = {}) =>
-    Object.entries(shipmentActions({ state: state as never, kind: kind as never, waybills, dispatch_id: null, handed_over_at: null, session_type: null, ...extra }))
+    Object.entries(
+      shipmentActions({
+        state: state as never,
+        kind: kind as never,
+        waybills,
+        dispatch_id: null,
+        handed_over_at: null,
+        session_type: null,
+        stage: null,
+        shipped_marked_at: null,
+        mode: "sandbox",
+        fulfillment_id: "ful_1",
+        ...extra,
+      }),
+    )
       .filter(([, v]) => v)
       .map(([k]) => k)
       .sort()
   assert.deepEqual(on("pending"), ["boxes", "create", "plan", "skip"])
   assert.deepEqual(on("failed"), ["boxes", "create", "plan", "skip"])
   assert.deepEqual(on("pending", null, "return"), ["boxes", "skip"])
-  assert.deepEqual(on("created", W), ["exclude", "fetchLabel"])
-  assert.deepEqual(on("labeled", W), ["dispatch", "exclude", "label"])
+  assert.deepEqual(on("created", W), ["exclude", "fetchLabel", "refreshStatus"])
+  assert.deepEqual(on("labeled", W), ["dispatch", "exclude", "label", "refreshStatus"])
   assert.deepEqual(on("excluded"), ["restore"])
-  assert.deepEqual(on("labeled", W, "outbound", { dispatch_id: "dpddsp_01" }), ["label", "withdraw"], "in a dispatch: withdraw, never exclude or dispatch")
-  assert.deepEqual(on("labeled", W, "outbound", { handed_over_at: new Date() }), ["label"], "handed over without a dispatch: neither exclude nor dispatch")
+  assert.deepEqual(on("labeled", W, "outbound", { dispatch_id: "dpddsp_01" }), ["label", "refreshStatus", "withdraw"], "in a dispatch: withdraw, never exclude or dispatch")
+  assert.deepEqual(on("labeled", W, "outbound", { handed_over_at: new Date() }), ["label", "refreshStatus"], "handed over without a dispatch: neither exclude nor dispatch")
   assert.deepEqual(on("labeled", W, "return"), ["label"], "a return is never excluded or dispatched")
-  assert.deepEqual(on("labeled", W, "outbound", { session_type: "INTERNATIONAL" }), ["exclude", "label"], "an international shipment is not a candidate")
+  assert.deepEqual(on("labeled", W, "outbound", { session_type: "INTERNATIONAL" }), ["exclude", "label", "refreshStatus"], "an international shipment is not a candidate")
+  /* Stage 5: statuses, and nothing withdrawn once DPD has the parcel (DS13, E25, E28). */
+  assert.deepEqual(on("labeled", W, "outbound", { status_writer_error: "boom" }), ["dispatch", "exclude", "label", "refreshStatus", "retryStatusWriter"])
+  assert.deepEqual(on("labeled", W, "outbound", { stage: "in_transit" }), ["label", "refreshStatus"], "in transit: no exclude, no new handover (E54)")
+  assert.deepEqual(on("labeled", W, "outbound", { stage: "in_transit", dispatch_id: "dpddsp_01" }), ["label", "refreshStatus"], "in transit: no withdraw")
+  const before = [{ waybill: W[0], box: 0, role: "outbound", stage: "problem", code: "040201", at: null, possession: false, lastCode: "040201", lastAt: null, description: null, supersededBy: null, supersededAt: null, from: null, checkedAt: null, done: false }]
+  assert.deepEqual(on("labeled", W, "outbound", { stage: "problem", dispatch_id: "dpddsp_01", tracking: before }), ["label", "refreshStatus", "withdraw"], "a failed pickup without possession still withdraws")
+  assert.deepEqual(on("labeled", W, "outbound", { stage: "problem", tracking: before }), ["dispatch", "exclude", "label", "refreshStatus"], "a failed pickup without possession still excludes")
+  const held = [{ ...before[0], code: "160102", lastCode: "160102", possession: true }]
+  assert.deepEqual(on("labeled", W, "outbound", { stage: "problem", dispatch_id: "dpddsp_01", tracking: held }), ["label", "refreshStatus"], "a problem with possession: no withdraw")
+  assert.deepEqual(on("labeled", W, "outbound", { stage: "problem", tracking: held }), ["label", "refreshStatus"], "a problem with possession: no exclude, no new handover")
+  assert.deepEqual(on("labeled", W, "outbound", { stage: null, tracking: held }), ["label", "refreshStatus"], "possession before any stage: no new handover")
+  assert.deepEqual(on("labeled", W, "outbound", { shipped_marked_at: new Date() }), ["label", "refreshStatus"], "marked shipped by the plugin: no new handover")
+  for (const stage of ["in_point", "delivered", "returned"]) assert.ok(!on("labeled", W, "outbound", { stage }).includes("dispatch"), stage)
+  assert.deepEqual(on("labeled", W, "outbound", { mode: "demo", fulfillment_id: null }), ["dispatch", "exclude", "label"], "a sample demo row never refreshes")
+  assert.deepEqual(on("labeled", W, "outbound", { stage: "canceled" }), ["dispatch", "exclude", "label"], "a canceled stage never refreshes")
   assert.deepEqual(on("unknown"), ["lookup"])
   assert.deepEqual(on("abandoned_unknown"), ["lookup"])
   assert.deepEqual(on("abandoned_unknown", W), ["label"])

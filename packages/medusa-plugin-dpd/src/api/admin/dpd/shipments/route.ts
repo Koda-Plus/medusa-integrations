@@ -5,13 +5,14 @@ import { storeFor } from "../../../../workflows/dpd/runtime"
 import { dpdService, intParam, isFilter, refuse, sendError, strParam } from "../helpers"
 
 /**
- * GET /admin/dpd/shipments?filter=to_create&q=&limit=20&offset=0  ->  ShipmentsResponse
+ * GET /admin/dpd/shipments?filter=to_create&q=&limit=20&offset=0&writer=failed  ->  ShipmentsResponse
  *
  * One page of a Panel list of the current mode (to_create, labeled,
  * handed_over, in_transit, delivered, problems, canceled, returns, all),
  * newest first, with a search over the order number, the order and
  * fulfillment ids, the waybills, the Pickup point and the reference, and the
- * counts for the filter buttons. Reads only.
+ * counts for the filter buttons. writer=failed: only the rows whose status
+ * write to Medusa failed (statusWriterError). Reads only.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   try {
@@ -21,12 +22,18 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       return
     }
     const filter = isFilter(raw) ? raw : "all"
+    const writer = strParam(req.query.writer)
+    if (writer && writer !== "failed") {
+      refuse(res, 400, "invalid", "writer is failed or absent.")
+      return
+    }
     const limit = intParam(req.query.limit, 20, 1, 100)
     const offset = intParam(req.query.offset, 0, 0, 100_000)
     const mode = dpdService(req.scope).mode()
     const store = storeFor(req.scope)
-    const { rows, count } = await store.list({ mode, filter, q: strParam(req.query.q), offset, limit })
-    const body: ShipmentsResponse = { shipments: rows.map((r) => toShipmentDto(r)), count, offset, limit, counts: countsOf(await store.counts(mode), await store.dispatchCounts(mode)) }
+    const { rows, count } = await store.list({ mode, filter, q: strParam(req.query.q), offset, limit, ...(writer === "failed" ? { writerFailed: true } : {}) })
+    const counts = countsOf(await store.counts(mode), await store.dispatchCounts(mode), await store.statusCounts(mode))
+    const body: ShipmentsResponse = { shipments: rows.map((r) => toShipmentDto(r)), count, offset, limit, counts }
     res.json(body)
   } catch (err) {
     sendError(req.scope, res, err)

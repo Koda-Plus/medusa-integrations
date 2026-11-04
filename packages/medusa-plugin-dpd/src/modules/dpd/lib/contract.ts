@@ -61,6 +61,11 @@
  *   POST /admin/dpd/shipments/:id/restore          {}                        -> ActionResponse
  *   POST /admin/dpd/shipments/:id/withdraw         {}                        -> WithdrawResponse
  *
+ * Routes of stage 5, statuses (every answer is private, no-store):
+ *
+ *   POST /admin/dpd/shipments/:id/refresh-status       {}  -> ActionResponse
+ *   POST /admin/dpd/shipments/:id/retry-status-writer  {}  -> RetryStatusWriterResponse
+ *
  * An error of any route is an ErrorResponse with an HTTP status.
  */
 
@@ -108,9 +113,10 @@ export type SecretState = "set" | "missing"
  *   in_transit   on the way or waiting at a Pickup point
  *   delivered    delivered (to the address, or collected from the point)
  *   problems     a DPD refusal, an unclear answer, a problem status, a
- *                parcel sent back to the store
+ *                parcel on its way back to the store
  *   canceled     canceled, shipped outside Medusa or marked not to be sent
- *   returns      the return shipments, whatever their state
+ *   returns      the return shipments, whatever their state, and the
+ *                parcels whose way back is over (returnDone, E61)
  */
 export const SHIPMENT_GROUPS = ["to_create", "labeled", "handed_over", "in_transit", "delivered", "problems", "canceled", "returns"] as const
 export type ShipmentGroup = (typeof SHIPMENT_GROUPS)[number]
@@ -120,11 +126,16 @@ export type ShipmentFilter = "all" | ShipmentGroup
 /** The groups that ask a person to act (the attention counter of the contract). */
 export const ATTENTION_GROUPS: readonly ShipmentGroup[] = ["to_create", "problems"]
 
-/** The group of a row, the same on the server (counts, filters) and in the admin. */
-export function groupOf(row: { kind: ShipmentKind; state: ShipmentState; stage: ShipmentStage | null; handedOver: boolean }): ShipmentGroup {
+/**
+ * The group of a row, the same on the server (counts, filters) and in the
+ * admin. `returnDone` (returnDone in tracking.ts, E61): the stage is
+ * returned and the way back is over, so the row leaves the attention groups.
+ */
+export function groupOf(row: { kind: ShipmentKind; state: ShipmentState; stage: ShipmentStage | null; handedOver: boolean; returnDone?: boolean }): ShipmentGroup {
   if (row.state === "canceled" || row.state === "skipped" || row.state === "excluded") return "canceled"
   if (row.kind === "return") return "returns"
   if (row.state === "failed" || row.state === "unknown" || row.state === "ambiguous" || row.state === "abandoned_unknown") return "problems"
+  if (row.stage === "returned" && row.returnDone === true) return "returns"
   if (row.stage === "problem" || row.stage === "returned") return "problems"
   if (row.stage === "canceled") return "canceled"
   if (row.stage === "delivered") return "delivered"
@@ -173,12 +184,14 @@ export type WriterDto = {
 /** The number of rows per group of the current mode, plus all, the rows needing attention and the dispatches. */
 export type CountsDto = Record<ShipmentGroup, number> & {
   all: number
-  /** to_create + problems + dispatchesAttention. */
+  /** to_create + problems + dispatchesAttention + statusesAttention (O44). */
   attention: number
   /** Dispatches not canceled. */
   dispatches: number
   /** Dispatches that need a person (DS18). */
   dispatchesAttention: number
+  /** Rows with statusWriterError (the integration group "statuses"). */
+  statusesAttention: number
 }
 
 /** The settings a person changes in the admin, and where each comes from. */
@@ -217,6 +230,8 @@ export type OptionsSummaryDto = {
   pickupCheck: "catalog" | "mypudo" | "not_configured"
   /** How courier orders run: demo (simulated, demo mode), simulated (sandbox, DS4), dpd (live). */
   courierOrders: "demo" | "simulated" | "dpd"
+  /** Where statuses come from (DS15). */
+  statusSource: StatusSource
 }
 
 /** GET /admin/dpd: the state of the plugin for the page header, Settings and the guide. */
@@ -238,6 +253,7 @@ export type StatusResponse = {
   demoSeeded: boolean
   /** The package version (KIT_META.version). */
   version: string
+  statuses: StatusesDto
 }
 
 /** One row of the Panel (a shipment or a return). */
@@ -287,6 +303,19 @@ export type ShipmentDto = {
   actions: ShipmentActions
   /** The dispatch the shipment is in; null when free. */
   dispatchId: string | null
+  /** One entry per waybill, box order, then the repinned old waybills. Empty without waybills. */
+  tracking: TrackingDto[]
+  /** When the event that set `status` happened (ISO). */
+  statusAt: string | null
+  /** The DPD description of `status`. */
+  statusDescription: string | null
+  /** The last claim of the status pass (also without asking DPD or without a clear answer) or the last refresh with an ok answer (ISO). When DPD last answered: the newest tracking[].checkedAt (E53). */
+  lastCheckedAt: string | null
+  /** When the fulfillment was marked shipped in Medusa by the writer (ISO); null before. */
+  shippedMarkedAt: string | null
+  deliveredMarkedAt: string | null
+  /** The last failure of the Medusa status writer; null when none. */
+  statusWriterError: string | null
 }
 
 /** GET /admin/dpd/shipments query: filter, search (order number, waybill, Pickup point), paging. */
@@ -295,6 +324,8 @@ export type ShipmentsQuery = {
   q?: string
   offset?: number
   limit?: number
+  /** "failed": only rows with statusWriterError. */
+  writer?: "failed"
 }
 
 /** GET /admin/dpd/shipments: one page of rows of the current mode, and the counts for the filter buttons. */
@@ -322,6 +353,8 @@ export type EventDto = {
   dispatchId: string | null
   /** dpd_event.data.action when it is a string (DISPATCH_ACTIONS for dispatch rows), else null; the admin history reads dispatch.history.<action>. */
   action: string | null
+  /** The waybill of a status event (and of a repin); null for the rest. */
+  waybill: string | null
 }
 
 /** GET /admin/dpd/orders/:orderId: the order widget card. */
@@ -396,14 +429,18 @@ export type ShipmentActions = {
   accept: boolean
   /** pending | failed | ambiguous: mark as shipped outside Medusa. */
   skip: boolean
-  /** created | labeled, outbound, no dispatch, handed_over_at null (demo seed rows with handedOver are not candidates, 6.12 point 2, E23): mark "do not send" (DS15). */
+  /** created | labeled, outbound, no dispatch, handed_over_at null (demo seed rows with handedOver are not candidates, 6.12 point 2, E23), not picked up (DS13: shipped mark, possession or a stage of STAGES_AFTER_READY, E25): mark "do not send" (DS15). */
   exclude: boolean
   /** excluded: back to labeled (stored label) or created. */
   restore: boolean
-  /** in a dispatch (dispatchId set): withdraw; the server checks the dispatch state (DS12). */
+  /** in a dispatch (dispatchId set), not picked up (DS13, E25): withdraw; the server checks the dispatch state (DS12). */
   withdraw: boolean
   /** a candidate (DS5 on the row alone): can be picked for a dispatch. */
   dispatch: boolean
+  /** outbound, created | labeled with waybills, not a demo seed row, stage not canceled: ask DPD now (DS18; the route refuses not_configured when the source is off, the admin hides the action then). */
+  refreshStatus: boolean
+  /** statusWriterError set: write the status to Medusa again (writer fulfillmentStatus, DS18). A stale mark alone has no button (the DTO does not read the fulfillment); the status pass releases it (6.19). */
+  retryStatusWriter: boolean
 }
 
 /** A stored document of a shipment, without its bytes. */
@@ -479,15 +516,30 @@ export type BoxesRequest = {
 export type SetPointRequest = { pudoId: string }
 /** The answer of every action route (create, label POST, lookup, skip, accept). */
 export type ActionResponse = { shipment: ShipmentDto }
+/**
+ * What a retry of the status writer did (6.13 point 9, E56): written,
+ * Medusa has every status due (marked now, already there, or simulated in
+ * demo); failed, Medusa refused and statusWriterError says why; nothing_left,
+ * nothing is due any more (the fulfillment canceled or gone, the marks set,
+ * the row no longer outbound) and the old error is cleared, but nothing was
+ * written; in_progress, another process holds the write claim; not_written,
+ * nothing was tried (the fulfillment could not be read, or the writer was
+ * disarmed meanwhile) and the old error stays.
+ */
+export const WRITER_RETRY_RESULTS = ["written", "failed", "nothing_left", "in_progress", "not_written"] as const
+export type WriterRetryResult = (typeof WRITER_RETRY_RESULTS)[number]
+/** POST /admin/dpd/shipments/:id/retry-status-writer: the row and what the writer did (E56); a failed write is 200 too. */
+export type RetryStatusWriterResponse = ActionResponse & { result: WriterRetryResult }
 /** GET /admin/dpd/shipments/:id */
 export type ShipmentResponse = { shipment: ShipmentDto; documents: DocumentDto[]; events: EventDto[]; writerArmed: boolean; labelPage: LabelPage }
 
-/** ErrorResponse.code values of the actions (stage 2), of the Pickup point routes (stage 3) and of the handover (stage 4). */
+/** ErrorResponse.code values of the actions (stage 2), of the Pickup point routes (stage 3), of the handover (stage 4) and of the statuses (stage 5). */
 export const ACTION_ERROR_CODES = [
   "writer_off", "writer_unknown", "not_armed", "not_configured", "not_demo", "not_found", "invalid",
   "plan_problems", "plan_hash_missing", "plan_changed", "busy", "wrong_state", "too_early", "no_label",
   "not_pickup", "point_refused", "points_unavailable", "rate_limited", "point_not_found",
   "availability_unavailable", "availability_refused", "courier_window", "no_check_sum", "marker_failed", "not_candidate",
+  "already_shipped", "statuses_auth", "status_unavailable",
 ] as const
 export type ActionErrorCode = (typeof ACTION_ERROR_CODES)[number]
 
@@ -533,6 +585,9 @@ export type ShipmentErrorCode = (typeof SHIPMENT_ERROR_CODES)[number]
  *   no_check_sum              the courier order has no checkSum: change or cancel it at DPD (409)
  *   marker_failed             the handover marker could not be written to the fulfillment: nothing sent (503)
  *   not_candidate             the shipment cannot be excluded, restored or withdrawn in its state (409)
+ *   already_shipped     DPD has the parcel (possession, a stage past ready, or the plugin marked it shipped; a mark by hand in Medusa does not count): no withdrawal, no "do not send", no dispatch cancel (409)
+ *   statuses_auth       InfoServices refused the login on a refresh (502)
+ *   status_unavailable  no clear answer from InfoServices for any waybill of a refresh (502)
  *
  * `problems` also comes with plan_problems (the problems of a dispatch plan
  * or its orderProblems) and courier_window (the problems of the window);
@@ -541,6 +596,13 @@ export type ShipmentErrorCode = (typeof SHIPMENT_ERROR_CODES)[number]
  * field: "shipmentIds" }). plan_problems, plan_hash_missing, plan_changed,
  * busy, wrong_state, not_found and invalid mean in the routes of the
  * handover what they mean for a shipment.
+ *
+ * writer_off and not_armed also come from retry-status-writer (writer
+ * fulfillmentStatus); wrong_state from it when the row has neither an error
+ * nor a stale writer mark; not_configured from refresh-status when the
+ * status source is off; wrong_state from both when the row is not a
+ * candidate; rate_limited (429) from refresh-status when pacing would wait
+ * too long.
  */
 export type ErrorResponse = {
   code: ActionErrorCode | string
@@ -807,3 +869,70 @@ export const DISPATCH_ERROR_CODES = [
   "protocol_unclear", "order_unclear", "update_unclear", "cancel_unclear", "marker_failed", "plan_changed",
 ] as const
 export type DispatchErrorCode = (typeof DISPATCH_ERROR_CODES)[number]
+
+/* ------------------------------------------------------------------ */
+/* Stage 5: statuses                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Where statuses come from (DS15): simulated (demo, sandbox), dpd (live with InfoServices), off (live without). */
+export const STATUS_SOURCES = ["simulated", "dpd", "off"] as const
+export type StatusSource = (typeof STATUS_SOURCES)[number]
+
+/**
+ * The problems of the statuses:
+ *
+ *   statuses_not_configured          live without infoLogin, infoPassword or infoChannel: no statuses
+ *   tracking_mode_queue_unsupported  trackingMode queue: statuses still go per waybill (DS7)
+ *   statuses_auth                    InfoServices refused the login; kept until the next answered call
+ */
+export const STATUS_PROBLEM_CODES = ["statuses_not_configured", "tracking_mode_queue_unsupported", "statuses_auth"] as const
+export type StatusProblemCode = (typeof STATUS_PROBLEM_CODES)[number]
+
+/** StatusResponse.statuses */
+export type StatusesDto = {
+  source: StatusSource
+  problems: StatusProblemCode[]
+  /** The end of the last status pass of this mode (dpd_setting <mode>:status:lastSyncAt). */
+  lastSyncAt: string | null
+  /** When statuses_auth was recorded; null without it. */
+  problemAt: string | null
+}
+
+/** One waybill of a shipment as the admin sees it (TrackingEntry without internals). */
+export type TrackingDto = {
+  waybill: string
+  /** 0-based box position. */
+  box: number
+  role: "outbound" | "return"
+  stage: ShipmentStage | null
+  /** The code and time (ISO) that set the stage. */
+  code: string | null
+  at: string | null
+  /** The newest DPD event of this waybill (code, ISO time, Polish description). */
+  lastCode: string | null
+  lastAt: string | null
+  description: string | null
+  possession: boolean
+  supersededBy: string | null
+  supersededAt: string | null
+  from: string | null
+  checkedAt: string | null
+  done: boolean
+}
+
+/** dpd_event.data.action of the status history (EventDto.action); the admin reads history.status.<action>. */
+export const STATUS_HISTORY_ACTIONS = [
+  "status_refresh",            // a person asked DPD now
+  "repin",                     // the waybill moved to a new one (data.from, data.to)
+  "repin_unclear",             // a repin code without one new waybill (DS3)
+  "writer_shipped",            // createOrderShipmentWorkflow ran
+  "writer_delivered",          // markOrderFulfillmentAsDeliveredWorkflow ran
+  "writer_already_shipped",    // Medusa had shipped_at already
+  "writer_already_delivered",  // Medusa had delivered_at already
+  "writer_demo_shipped",       // demo: would be marked shipped (no Medusa call)
+  "writer_demo_delivered",     // demo: would be marked delivered
+  "writer_failed",             // the workflow failed; data.column, data.code "writer_failed"
+  "writer_interrupted",        // a mark left by a stopped process was released (E4, 6.19); data.column, data.code "writer_interrupted"
+  "writer_retry",              // a person asked to write again
+] as const
+export type StatusHistoryAction = (typeof STATUS_HISTORY_ACTIONS)[number]

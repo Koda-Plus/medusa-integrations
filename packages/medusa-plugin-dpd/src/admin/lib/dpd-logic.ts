@@ -12,15 +12,21 @@ import type {
   PointLimitsDto,
   ProblemDto,
   ShipmentDto,
+  ShipmentFilter,
+  ShipmentStage,
+  StatusSource,
+  TrackingDto,
   WriterDto,
   WriterKey,
+  WriterRetryResult,
 } from "../../modules/dpd/lib/contract"
+import type { Tone } from "./dpd-blocks"
 
 /**
  * The plain logic of the admin: no React, no kit, no DOM, so `node --test`
  * loads it (the .tsx files around it it cannot). Errors of the admin API,
  * money, the refused fields of the boxes, the writers, the label file, the
- * DPD Pickup points and the handovers to the courier.
+ * DPD Pickup points, the handovers to the courier and the DPD statuses.
  */
 
 export class DpdRequestError extends Error {
@@ -175,8 +181,8 @@ export function isBoxField(field: string): field is BoxField {
 /* Writers                                                             */
 /* ------------------------------------------------------------------ */
 
-/** The writers that write nothing yet in this version; the shipment writer creates shipments, the pickup writer orders couriers. */
-export const LATER_WRITERS: readonly WriterKey[] = ["fulfillmentStatus"]
+/** No writer waits for a later version in stage 5. Kept, so the next later writer is one line. */
+export const LATER_WRITERS: readonly WriterKey[] = []
 
 export function isLaterWriter(key: WriterKey): boolean {
   return LATER_WRITERS.includes(key)
@@ -624,4 +630,144 @@ export function printToastKind(d: Pick<DispatchDto, "state" | "errorCode" | "att
   if ((d.state === "printed" || d.state === "ordered") && d.protocols.length > protocolsBefore) return "printed"
   if (d.attention) return "failed"
   return d.errorCode === "protocol_unclear" ? "unclear" : "refused"
+}
+
+/* ------------------------------------------------------------------ */
+/* DPD statuses                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Blue while the parcel is on its way, green delivered, red a problem or a return, grey canceled. */
+export const STAGE_TONE: Readonly<Record<ShipmentStage, Tone>> = {
+  preparing: "blue",
+  ready: "blue",
+  in_transit: "blue",
+  in_point: "blue",
+  delivered: "green",
+  problem: "red",
+  returned: "red",
+  canceled: "grey",
+}
+
+/** The stage the badge shows: a labeled row always, a created row (waybills, no label yet) once DPD moved it past preparing. */
+export function shownStage(s: Pick<ShipmentDto, "state" | "stage">): ShipmentStage | null {
+  if (!s.stage) return null
+  if (s.state === "labeled") return s.stage
+  if (s.state === "created" && s.stage !== "preparing") return s.stage
+  return null
+}
+
+/**
+ * When DPD last answered for the row: the newest checkedAt of its waybills,
+ * which only an ok answer sets (6.1); null before any (E53). Not
+ * lastCheckedAt: the status pass claims a row with the time even when it
+ * does not ask DPD (a write to Medusa still due, polling done) or DPD gives
+ * no clear answer (a timeout, HTTP 503, a refused login).
+ */
+export function lastAnsweredAt(tracking: ReadonlyArray<Pick<TrackingDto, "checkedAt">>): string | null {
+  let newest: string | null = null
+  let newestMs = -Infinity
+  for (const e of tracking) {
+    const ms = e.checkedAt ? Date.parse(e.checkedAt) : Number.NaN
+    if (Number.isFinite(ms) && ms > newestMs) {
+      newest = e.checkedAt
+      newestMs = ms
+    }
+  }
+  return newest
+}
+
+/** Tone of one waybill: grey once superseded, else the tone of its stage; no stage yet: grey. */
+export function trackingTone(e: Pick<TrackingDto, "stage" | "supersededBy">): Tone {
+  if (e.supersededBy || !e.stage) return "grey"
+  return STAGE_TONE[e.stage]
+}
+
+/**
+ * Waybills grouped by box, the current waybill first, then the old ones it
+ * replaced (newest first), each with its role. The current one of a box is
+ * its entry without supersededBy; the previous ones follow `from` up to an
+ * entry without one. An entry no chain reaches (a repin stored without
+ * `from`) becomes a current of its own. Groups in box order.
+ */
+export function trackingChain(entries: readonly TrackingDto[]): Array<{ box: number; current: TrackingDto; previous: TrackingDto[] }> {
+  const byWaybill = new Map<string, TrackingDto>()
+  for (const e of entries) if (!byWaybill.has(e.waybill)) byWaybill.set(e.waybill, e)
+  const used = new Set<TrackingDto>()
+  const groups: Array<{ box: number; current: TrackingDto; previous: TrackingDto[] }> = []
+  const chainOf = (current: TrackingDto) => {
+    used.add(current)
+    const previous: TrackingDto[] = []
+    let from = current.from
+    while (from) {
+      const prev = byWaybill.get(from)
+      if (!prev || used.has(prev)) break
+      used.add(prev)
+      previous.push(prev)
+      from = prev.from
+    }
+    groups.push({ box: current.box, current, previous })
+  }
+  for (const e of entries) if (!e.supersededBy && !used.has(e)) chainOf(e)
+  for (const e of entries) if (!used.has(e)) chainOf(e)
+  /* sort is stable: groups of one box keep the order they were found in. */
+  return groups.sort((a, b) => a.box - b.box)
+}
+
+/** Green for dpd, blue for simulated, orange for off (never purple, so it also fits a key point). */
+export function statusSourceTone(source: StatusSource): Exclude<Tone, "purple"> {
+  if (source === "dpd") return "green"
+  return source === "simulated" ? "blue" : "orange"
+}
+
+/** "?writer=failed" read leniently: anything else is false. */
+export function writerFailedOf(v: string | null): boolean {
+  return v === "failed"
+}
+
+/**
+ * The page URL after a change of the writer filter. The shipment filter on the page is plain state, so the URL is
+ * written with it here: a reload or a shared link then shows the list the page showed, never the filter it was
+ * opened with. At the handover list ?filter is that list's and stays. `clearSearch` drops ?q= (the header note
+ * shows every row whose status Medusa did not take; the filter bar button joins the search instead).
+ */
+export function writerFailedParams(
+  params: URLSearchParams,
+  on: boolean,
+  opts: { atDispatches: boolean; filter: ShipmentFilter; clearSearch: boolean },
+): URLSearchParams {
+  const p = new URLSearchParams(params)
+  if (on) p.set("writer", "failed")
+  else p.delete("writer")
+  if (!opts.atDispatches) {
+    if (opts.filter === "all") p.delete("filter")
+    else p.set("filter", opts.filter)
+  }
+  if (opts.clearSearch) p.delete("q")
+  return p
+}
+
+/** The refresh button: the row allows it and statuses have a source (off: hidden, the route would answer 409). Source unknown (still loading): hidden. */
+export function canRefreshStatus(s: Pick<ShipmentDto, "actions">, source: StatusSource | null): boolean {
+  return s.actions.refreshStatus && (source === "dpd" || source === "simulated")
+}
+
+/** The toast after a retry of the status writer (E56): success only when Medusa has the status; nothing written is never told as written. */
+export function writerRetryToast(result: WriterRetryResult): { kind: "success" | "info" | "warning"; key: string } {
+  switch (result) {
+    case "written":
+      return { kind: "success", key: "toast.statusWritten" }
+    case "failed":
+      return { kind: "warning", key: "toast.statusWriteFailed" }
+    case "nothing_left":
+      return { kind: "info", key: "toast.statusNothingLeft" }
+    case "in_progress":
+      return { kind: "info", key: "toast.statusWriteBusy" }
+    case "not_written":
+      return { kind: "warning", key: "toast.statusNotWritten" }
+  }
+}
+
+/** The retry of a status write: the row allows it and the host knows the fulfillment status writer. Unknown there (the handover drawer): hidden, never read as not armed. */
+export function canRetryStatusWriter(s: Pick<ShipmentDto, "actions">, statusWriter: Pick<WriterDto, "allowed" | "armed"> | undefined): boolean {
+  return s.actions.retryStatusWriter && statusWriter !== undefined
 }

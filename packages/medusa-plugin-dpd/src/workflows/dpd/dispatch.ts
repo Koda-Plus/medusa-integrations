@@ -48,7 +48,9 @@ import type { DispatchUnclear, PickupCallChangeOutcome } from "../../modules/dpd
 import { nothingSent, type AnyOutcome, type DpdAddress, type DpdPackagesParams, type DpdServicesClient } from "../../modules/dpd/lib/dpdservices"
 import { dispatchShipmentIdsOf, dispatchStateOf, hasUsableCheckSum, modeOf, problemsOf, storedProtocolsOf, waybillsOf, type DispatchRow, type ShipmentRow } from "../../modules/dpd/lib/dto"
 import { canonicalJson } from "../../modules/dpd/lib/plan"
+import { isPickedUp } from "../../modules/dpd/lib/tracking"
 import type { DispatchPatch, DpdStore } from "../../modules/dpd/lib/store"
+import { clip } from "../../modules/dpd/lib/text"
 import type DpdModuleService from "../../modules/dpd/service"
 import { mustFind, sourceOf } from "./create"
 import { latestLabel, saveProtocol } from "./documents"
@@ -80,6 +82,8 @@ const CANCEL_LEASE_ERROR = "No answer from DPD to the cancellation of the courie
 
 const PROTOCOL_UNSAVED_ERROR = "The protocol came, but it could not be saved; print it again."
 const ORDER_CLOSED_ERROR = "The courier is on the way or the order is closed; call DPD."
+/** DS13: DPD has the parcel (isPickedUp), so it stays handed over. */
+const ALREADY_SHIPPED = "DPD already has this parcel: it cannot be withdrawn, marked do not send or released from the handover."
 const MESSAGE_MAX = 1000
 
 const CLAIMED: readonly string[] = DISPATCH_CLAIMED_STATES
@@ -222,7 +226,7 @@ function problemsWithDpd(row: DispatchRow, dpd: readonly ProblemDto[]): ProblemD
 }
 
 function masked(svc: DpdModuleService, message: string): string {
-  return svc.mask(message).slice(0, MESSAGE_MAX)
+  return clip(svc.mask(message), MESSAGE_MAX)
 }
 
 /** P7: one call; a throw (never from the client, so a bug) reads as an unclear network answer. */
@@ -230,7 +234,7 @@ async function callDpd<T extends AnyOutcome>(svc: DpdModuleService, work: () => 
   try {
     return await work()
   } catch (err) {
-    return { kind: "unclear", code: "network", message: errorText(svc, err).slice(0, MESSAGE_MAX), traceId: null, httpStatus: 0 }
+    return { kind: "unclear", code: "network", message: clip(errorText(svc, err), MESSAGE_MAX), traceId: null, httpStatus: 0 }
   }
 }
 
@@ -1016,6 +1020,10 @@ export async function cancelDispatch(scope: Scope, id: string, input: DispatchIn
       : "Call the courier off at DPD, then resolve the order as not ordered: the plugin has no checkSum to cancel it.",
   })
   await requireArmed(scope, "shipment")
+  /* DS13, O43: a parcel DPD already has keeps its dispatch. */
+  if ((await shipmentsOf(svc, row)).some(isPickedUp)) {
+    throw new ActionError(409, "already_shipped", "DPD already has a parcel of this dispatch: the dispatch cannot be canceled.")
+  }
   const moved = await store.transitionDispatch(row.id, [state], { state: "canceled", error: null, error_code: null, updated_by: input.actor })
   if (!moved) throw busyError()
   const released = await store.releaseShipments(row.id, null)
@@ -1083,6 +1091,8 @@ export async function withdrawShipment(scope: Scope, shipmentId: string, input: 
     return { shipment: await currentShipment(svc, s), dispatch: await currentDispatch(svc, row), withdrawn: true, warnings: [] }
   }
 
+  /* DS13: after the pickup nothing is withdrawn; the two repairs above only finish a decision already stored (O19). */
+  if (isPickedUp(s)) throw new ActionError(409, "already_shipped", ALREADY_SHIPPED)
   if (state === "ordered" && !hasUsableCheckSum(row)) {
     throw new ActionError(409, "no_check_sum", "This courier order has no checkSum: call the courier off at DPD, resolve the order as not ordered, then withdraw the shipment.")
   }
@@ -1219,14 +1229,25 @@ export async function withdrawShipment(scope: Scope, shipmentId: string, input: 
 /* Do not send (6.12)                                                  */
 /* ------------------------------------------------------------------ */
 
-/** DS15: created | labeled, outbound, dispatch_id null, handed_over_at null -> excluded (expect dispatch_id null, E20, E23). Writer shipment. */
+/** DS15: created | labeled, outbound, dispatch_id null, handed_over_at null, not picked up (DS13) -> excluded (expect dispatch_id null and the stage, tracking and shipped mark read, E20, E23, R14). Writer shipment. */
 export async function excludeShipment(scope: Scope, shipmentId: string, input: DispatchInput): Promise<ShipmentRow> {
   const row = await mustFind(scope, shipmentId)
   await requireArmed(scope, "shipment")
+  if (isPickedUp(row)) throw new ActionError(409, "already_shipped", ALREADY_SHIPPED)
   if (row.kind !== "outbound" || (row.state !== "created" && row.state !== "labeled") || row.dispatch_id !== null || Boolean(row.handed_over_at)) {
     throw new ActionError(409, "not_candidate", "Only a created or labeled outbound shipment outside a dispatch, not handed over, can be marked do not send.")
   }
-  const moved = await storeFor(scope).transition(row.id, [row.state], { state: "excluded" }, { dispatch_id: null })
+  /*
+   * What isPickedUp read: a status pass that wrote the row in between wins
+   * (R14), also one that added possession under the same stage (a problem
+   * box keeps the row at problem, rule 2).
+   */
+  const moved = await storeFor(scope).transition(
+    row.id,
+    [row.state],
+    { state: "excluded" },
+    { dispatch_id: null, stage: row.stage ?? null, tracking: row.tracking ?? null, shipped_marked_at: row.shipped_marked_at ?? null },
+  )
   if (!moved) throw new ActionError(409, "not_candidate", "The shipment changed a moment ago; read it again.")
   const cod = row.cod_minor !== null && row.cod_minor !== undefined && Number(row.cod_minor) > 0
   await recordEvent(scope, {

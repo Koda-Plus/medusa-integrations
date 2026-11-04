@@ -18,22 +18,33 @@
  * The points source is the one door to DPD Pickup points: a source
  * registered under POINTS_KEY (tests, custom code), else the source of the
  * mode (lib/points.ts: MyPudo live, the catalogs of sandbox and demo).
+ *
+ * The status reader is the one door to InfoServices (stage 5): the status
+ * simulator in demo and sandbox, else a client registered under
+ * INFO_CLIENT_KEY (tests), else the real client of live mode; live without
+ * infoLogin, infoPassword or infoChannel reads nothing. The status writer
+ * runs the Medusa core flows registered under CORE_FLOWS_KEY, else those of
+ * @medusajs/medusa/core-flows.
  */
 
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, Modules, generateEntityId } from "@medusajs/framework/utils"
 import type DpdModuleService from "../../modules/dpd/service"
-import { DPD_MODULE } from "../../modules/dpd/lib/constants"
+import { DPD_MODULE, INFOSERVICES_URL } from "../../modules/dpd/lib/constants"
 import type { FieldErrorDto, ProblemDto } from "../../modules/dpd/lib/contract"
 import { createCourierSimulator, withSimulatedCourier } from "../../modules/dpd/lib/courier-sim"
 import { clearedMarkerData } from "../../modules/dpd/lib/dispatch"
 import { createDpdServicesClient, type DpdServicesClient } from "../../modules/dpd/lib/dpdservices"
 import { waybillsOf, type DispatchRow, type EventRow, type SettingRow, type ShipmentRow } from "../../modules/dpd/lib/dto"
+import type { DpdEventName, DpdShipmentEvent } from "../../modules/dpd/lib/events"
+import { createInfoServicesClient, statusSourceOf, type InfoServicesClient, type WaybillEventsOutcome } from "../../modules/dpd/lib/infoservices"
 import { canCallDpd, dpdServicesHost, type ResolvedDpdOptions } from "../../modules/dpd/lib/options"
 import { PLAN_ORDER_FIELDS, type PlanOrder } from "../../modules/dpd/lib/plan"
 import { createPointsSource, type PointsSource } from "../../modules/dpd/lib/points"
 import { effectiveSettings, readStoredSettings, settingsKey, type EffectiveSettings } from "../../modules/dpd/lib/settings"
+import { simulatedAnswer } from "../../modules/dpd/lib/status-sim"
 import { createSqlStore, type DpdStore, type NewEvent, type SqlRunner } from "../../modules/dpd/lib/store"
+import { clip } from "../../modules/dpd/lib/text"
 import { readWriterSetting, WRITER_OPTION, WRITERS, writerSettingKey, writerState, type WriterKey, type WriterState } from "../../modules/dpd/lib/writers"
 import { createDemoDpdServicesClient } from "./demo-client"
 
@@ -321,8 +332,19 @@ type FulfillmentModuleLike = {
   updateFulfillment(id: string, data: Record<string, unknown>): Promise<unknown>
   listFulfillments(
     filters: { id: string[] },
-    config?: { select?: string[]; take?: number },
-  ): Promise<Array<{ id: string; location_id?: string | null; canceled_at?: string | Date | null; data?: Record<string, unknown> | null }>>
+    config?: { select?: string[]; take?: number; relations?: string[] },
+  ): Promise<
+    Array<{
+      id: string
+      location_id?: string | null
+      canceled_at?: string | Date | null
+      data?: Record<string, unknown> | null
+      shipped_at?: string | Date | null
+      delivered_at?: string | Date | null
+      items?: Array<{ line_item_id: string; quantity: unknown }> | null
+      labels?: Array<{ id: string; tracking_number?: string | null; tracking_url?: string | null; label_url?: string | null }> | null
+    }>
+  >
 }
 
 /** A fulfillment as the handover reads it now (DS6). */
@@ -382,7 +404,7 @@ export async function markFulfillments(scope: Scope, fulfillmentIds: readonly st
       result.written.push(id)
     } catch (err) {
       if (isNotFound(err)) result.missing.push(id)
-      else result.failed.push({ fulfillmentId: id, message: errorText(svc, err).slice(0, 300) })
+      else result.failed.push({ fulfillmentId: id, message: clip(errorText(svc, err), 300) })
     }
   }
   return result
@@ -397,7 +419,7 @@ export async function clearFulfillmentMarkers(scope: Scope, fulfillmentIds: read
     return result
   } catch (err) {
     svc.getLogger().warn(`[dpd] Could not clear the handover markers: ${errorText(svc, err)}`)
-    return { written: [], missing: [], failed: fulfillmentIds.map((fulfillmentId) => ({ fulfillmentId, message: errorText(svc, err).slice(0, 300) })) }
+    return { written: [], missing: [], failed: fulfillmentIds.map((fulfillmentId) => ({ fulfillmentId, message: clip(errorText(svc, err), 300) })) }
   }
 }
 
@@ -519,4 +541,125 @@ export function inBackground(scope: Scope, label: string, work: () => Promise<un
         }
       })
   })
+}
+
+/* ------------------------------------------------------------------ */
+/* Stage 5: statuses (the InfoServices reader, the Medusa core flows)  */
+/* ------------------------------------------------------------------ */
+
+/** Medusa core flows the writer runs, from the container (tests register stand ins), else await import("@medusajs/medusa/core-flows"). */
+export const CORE_FLOWS_KEY = "dpdCoreFlows"
+
+export type CreateOrderShipmentInput = {
+  order_id: string
+  fulfillment_id: string
+  /** Fulfillment items folded by line_item_id. */
+  items: Array<{ id: string; quantity: number }>
+  /** The WHOLE label list (H14): existing labels with their id, plus new ones (DS10). */
+  labels: Array<{ id?: string; tracking_number: string; tracking_url: string; label_url: string }>
+  /** True for a simulated status (sandbox): Medusa's own subscribers send no "shipped" e-mail to a customer. */
+  no_notification?: boolean
+}
+export type MarkDeliveredInput = { orderId: string; fulfillmentId: string; no_notification?: boolean }
+export type WorkflowLike<I> = (scope: Scope) => { run(args: { input: I }): Promise<unknown> }
+export type CoreFlows = {
+  createOrderShipmentWorkflow: WorkflowLike<CreateOrderShipmentInput>
+  markOrderFulfillmentAsDeliveredWorkflow: WorkflowLike<MarkDeliveredInput>
+}
+export async function coreFlowsFor(scope: Scope): Promise<CoreFlows> {
+  const registered = resolveOptional<CoreFlows>(scope, CORE_FLOWS_KEY)
+  if (registered) return registered
+  /* Loaded only here, after a won claim (E10): the plugin runs inside Medusa, which ships the core flows. */
+  const flows = await import("@medusajs/medusa/core-flows")
+  return {
+    createOrderShipmentWorkflow: (s) => flows.createOrderShipmentWorkflow(s as MedusaContainer),
+    markOrderFulfillmentAsDeliveredWorkflow: (s) => flows.markOrderFulfillmentAsDeliveredWorkflow(s as MedusaContainer),
+  }
+}
+
+/** A registered InfoServices client (tests, live only); else one real client per service instance. */
+export const INFO_CLIENT_KEY = "dpdInfoServicesClient"
+
+/** How the pass reads the events of one waybill in this mode. */
+export type StatusReader = {
+  source: "simulated" | "dpd"
+  events(row: ShipmentRow, waybill: string, now: Date): Promise<WaybillEventsOutcome>
+}
+/** simulated: simulatedAnswer (demo, sandbox); dpd: the client (INFO_CLIENT_KEY, else createInfoServicesClient with INFOSERVICES_URL, timeoutMs, requestsPerMinute, a masking logger); off: null. */
+export function statusReaderFor(scope: Scope): StatusReader | null {
+  const svc = dpdService(scope)
+  const o = svc.getOptions()
+  const source = statusSourceOf(o)
+  if (source === "off") return null
+  if (source === "simulated") return { source: "simulated", events: async (row, waybill, now) => simulatedAnswer(row, waybill, now) }
+  const client = resolveOptional<InfoServicesClient>(scope, INFO_CLIENT_KEY) ?? infoClientOf(svc)
+  return { source: "dpd", events: (_row, waybill) => client.getEventsForWaybill(waybill) }
+}
+
+const infoClients = new WeakMap<object, InfoServicesClient>()
+
+/** The real InfoServices client of live mode, one per service instance; the production host only (demo and sandbox never get here). */
+function infoClientOf(svc: DpdModuleService): InfoServicesClient {
+  const known = infoClients.get(svc)
+  if (known) return known
+  const o = svc.getOptions()
+  const logger = svc.getLogger()
+  const client = createInfoServicesClient({
+    url: INFOSERVICES_URL,
+    auth: { login: o.infoLogin, password: o.infoPassword, channel: o.infoChannel },
+    timeoutMs: o.timeoutMs,
+    requestsPerMinute: o.requestsPerMinute,
+    logger: { info: (m) => logger.info(svc.mask(m)), warn: (m) => logger.warn(svc.mask(m)), error: (m) => logger.error(svc.mask(m)) },
+  })
+  infoClients.set(svc, client)
+  return client
+}
+
+/** A fulfillment as the status writer reads it right before a write (6.4 point 5). */
+export type FulfillmentStatusState = {
+  id: string
+  canceled_at: string | Date | null
+  shipped_at: string | Date | null
+  delivered_at: string | Date | null
+  items: Array<{ line_item_id: string; quantity: unknown }>
+  labels: Array<{ id: string; tracking_number: string | null; tracking_url: string | null; label_url: string | null }>
+}
+/** listFulfillments({ id: [id] }, { select: [id, canceled_at, shipped_at, delivered_at], relations: [items, labels] }); null when gone or no module. Throws on a module error. */
+export async function readFulfillmentForStatus(scope: Scope, id: string): Promise<FulfillmentStatusState | null> {
+  const fulfillment = resolveOptional<FulfillmentModuleLike>(scope, Modules.FULFILLMENT)
+  if (!fulfillment || !id) return null
+  const rows = await fulfillment.listFulfillments(
+    { id: [id] },
+    { select: ["id", "canceled_at", "shipped_at", "delivered_at"], relations: ["items", "labels"], take: 1 },
+  )
+  const f = (rows ?? []).find((x) => x?.id === id)
+  if (!f) return null
+  return {
+    id: f.id,
+    canceled_at: f.canceled_at ?? null,
+    shipped_at: f.shipped_at ?? null,
+    delivered_at: f.delivered_at ?? null,
+    items: (f.items ?? []).filter((i) => typeof i?.line_item_id === "string").map((i) => ({ line_item_id: i.line_item_id, quantity: i.quantity })),
+    labels: (f.labels ?? [])
+      .filter((l) => typeof l?.id === "string")
+      .map((l) => ({ id: l.id, tracking_number: l.tracking_number ?? null, tracking_url: l.tracking_url ?? null, label_url: l.label_url ?? null })),
+  }
+}
+
+/** Modules.EVENT_BUS emit({ name, data }); a failure is logged ("[dpd] event <name> <id>: ..."), never thrown; false then. */
+export async function emitShipmentEvent(scope: Scope, name: DpdEventName, data: DpdShipmentEvent): Promise<boolean> {
+  const svc = dpdService(scope)
+  const logger = svc.getLogger()
+  const bus = resolveOptional<{ emit(message: { name: string; data: unknown }): Promise<unknown> }>(scope, Modules.EVENT_BUS)
+  if (!bus) {
+    logger.warn(`[dpd] event ${name} ${data.id}: no event bus`)
+    return false
+  }
+  try {
+    await bus.emit({ name, data })
+    return true
+  } catch (err) {
+    logger.warn(svc.mask(`[dpd] event ${name} ${data.id}: ${errorText(svc, err)}`))
+    return false
+  }
 }

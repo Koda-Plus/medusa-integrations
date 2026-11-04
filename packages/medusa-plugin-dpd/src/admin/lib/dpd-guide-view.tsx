@@ -99,6 +99,8 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
   /* Rows outside demo mode come from real fulfillments of the provider: the provider and its options work. */
   const realRows = live && s.counts.all > 0
   const senderOk = live && s.senderProblems.length === 0
+  /* InfoServices is set and did not refuse the login. */
+  const statusesOk = s.statuses.source === "dpd" && !s.statuses.problems.includes("statuses_auth")
 
   const steps: GuideStep[] = [
     {
@@ -203,6 +205,19 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
       ),
       check: t("guide.step.arm.check"),
     },
+    {
+      id: "statuses",
+      title: t("guide.step.statuses.title"),
+      /* Source dpd exists only in live mode (DS15): optional in demo and the sandbox, to do in live until InfoServices answers (E21). */
+      state: state(statusesOk, s.mode === "live" ? "todo" : "optional"),
+      body: (
+        <>
+          {p("guide.step.statuses.body1")}
+          {p("guide.step.statuses.body2")}
+        </>
+      ),
+      check: t("guide.step.statuses.check"),
+    },
   ]
 
   const checklist = [
@@ -211,6 +226,7 @@ export function GuideView({ status: s }: { status: StatusResponse }) {
     { label: t("guide.checklist.sender"), done: senderOk },
     { label: t("guide.checklist.shipping"), done: realRows },
     { label: t("guide.checklist.armed"), done: live && s.writers.shipment.armed },
+    { label: t("guide.checklist.statuses"), done: live && statusesOk },
     { label: t("guide.checklist.live"), done: s.mode === "live" && s.configured, hint: t("guide.checklist.liveHint") },
   ]
 

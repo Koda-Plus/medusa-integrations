@@ -342,3 +342,35 @@ test("the write guard of /admin/dpd* covers the dispatch routes: a form post is 
     assert.equal(out.status, 415, path)
   }
 })
+
+test("stage 5: withdraw, exclude and cancel answer 409 already_shipped after the pickup; 040201 without possession still withdraws", async () => {
+  const w = world(3)
+  const made = await createdVia(w, true)
+  const at = "2026-11-03T08:00:00.000Z"
+  const entry = (waybill: string, code: string, stage: string, possession: boolean) => [
+    { waybill, box: 0, role: "outbound", stage, code, at, possession, lastCode: code, lastAt: at, description: null, supersededBy: null, supersededAt: null, from: null, checkedAt: at, done: false },
+  ]
+  const set = (id: string, code: string, stage: string, possession: boolean) => {
+    const row = w.s.shipments.rows.find((r) => r.id === id)
+    assert.ok(row)
+    Object.assign(row, { stage, tracking: entry(String((row.waybills as string[])[0]), code, stage, possession) })
+  }
+  set(w.ids[0], "040101", "in_transit", true)
+  set(w.ids[1], "040201", "problem", false)
+  for (const [handler, params] of [
+    [postWithdraw, { id: w.ids[0] }],
+    [postCancel, { id: made.dispatch.id }],
+  ] as const) {
+    const refused = await call<ErrorResponse>(handler, w.s, { params })
+    assert.equal(refused.status, 409)
+    assert.equal(refused.body.code, "already_shipped")
+    noStore(refused)
+  }
+  const out = await call<WithdrawResponse>(postWithdraw, w.s, { params: { id: w.ids[1] } })
+  assert.equal(out.status, 200, JSON.stringify(out.body))
+  assert.equal(out.body.withdrawn, true)
+  const lone = insertLabeled(w.s, labeledOrder(9), { shipped_marked_at: new Date() })
+  const excluded = await call<ErrorResponse>(postExclude, w.s, { params: { id: String(lone.id) } })
+  assert.equal(excluded.status, 409)
+  assert.equal(excluded.body.code, "already_shipped")
+})

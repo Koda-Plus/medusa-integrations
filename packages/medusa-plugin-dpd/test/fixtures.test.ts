@@ -165,3 +165,116 @@ test("MyPudo fixtures: each names its source in the PDF, no key other than ***, 
     assert.ok(!/@[A-Za-z0-9-]+\.[A-Za-z]/.test(text), `${file}: an e-mail`)
   }
 })
+
+/* ------------------------------------------------------------------ */
+/* InfoServices (stage 5, spec 14.2)                                   */
+/* ------------------------------------------------------------------ */
+
+const INFO_DIR = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "infoservices")
+const INFO_FILES = [
+  "13b-waybill-empty.response.xml",
+  "13b-waybill.request.xml",
+  "13d-waybill-unknown.response.xml",
+  "13e-waybill-only-last.response.xml",
+  "13f-wrong-password.response.xml",
+  "13g-no-auth.response.xml",
+  "pdf-cdata-eventdata.response.xml",
+  "pdf-confirm.response.xml",
+  "pdf-customer-v4.response.xml",
+  "pdf-fault-access-denied.response.xml",
+  "pdf-repin-230403.response.xml",
+  "pdf-waybill-events.response.xml",
+]
+/** Every waybill in the InfoServices fixtures is one of these: made up, each matching WAYBILL_PATTERN. */
+const INFO_FIXTURE_WAYBILLS = ["0000000000001Q", "0000000000002Q", "0000000000101S", "0000000000201S", "0000000000202K", "0000000000301S", "0000000000302R"]
+const infoText = (name: string) => readFileSync(join(INFO_DIR, name), "utf8")
+
+test("infoservices: the twelve expected files and nothing else", () => {
+  assert.deepEqual(readdirSync(INFO_DIR).sort(), [...INFO_FILES].sort())
+})
+
+test("infoservices: every response starts with exactly the HTTP status line and parses as XML after it", () => {
+  for (const name of INFO_FILES) {
+    const text = infoText(name)
+    if (name.endsWith(".request.xml")) {
+      assert.ok(!text.startsWith("<!--"), `${name}: a request has no status line`)
+      assert.match(text, /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<soapenv:Envelope /, name)
+      continue
+    }
+    const m = /^<!-- HTTP (\d{3}) -->\r?\n/.exec(text)
+    assert.ok(m, `${name}: the first line`)
+    const body = text.slice(m[0].length)
+    assert.match(body.trimStart(), /^(<!--[^>]*-->\s*)?<(S|soap):Envelope /, name)
+    assert.ok(/<\/(S|soap):Envelope>\s*$/.test(body), `${name}: a whole envelope`)
+    for (const bad of ['"ms"', '"date"', "set-cookie"]) assert.ok(!text.toLowerCase().includes(bad), `${name}: ${bad}`)
+  }
+  assert.deepEqual(INFO_FILES.filter((n) => n.endsWith(".response.xml")).map((n) => [n, /^<!-- HTTP (\d{3}) -->/.exec(infoText(n))?.[1]]), [
+    ["13b-waybill-empty.response.xml", "200"],
+    ["13d-waybill-unknown.response.xml", "200"],
+    ["13e-waybill-only-last.response.xml", "200"],
+    ["13f-wrong-password.response.xml", "500"],
+    ["13g-no-auth.response.xml", "500"],
+    ["pdf-cdata-eventdata.response.xml", "200"],
+    ["pdf-confirm.response.xml", "200"],
+    ["pdf-customer-v4.response.xml", "200"],
+    ["pdf-fault-access-denied.response.xml", "500"],
+    ["pdf-repin-230403.response.xml", "200"],
+    ["pdf-waybill-events.response.xml", "200"],
+  ])
+})
+
+test("infoservices: no en dash, em dash or middle dot", () => {
+  const forbidden = new RegExp(`[${String.fromCharCode(0x2013, 0x2014, 0xb7)}]`)
+  for (const name of INFO_FILES) assert.ok(!forbidden.test(infoText(name)), name)
+})
+
+test("infoservices: no secret shapes", () => {
+  for (const name of INFO_FILES) {
+    const text = infoText(name)
+    assert.ok(!/Basic |Bearer /.test(text), name)
+    assert.ok(!/[A-Za-z0-9+/=_-]{40,}/.test(text), `${name}: a long secret-like run`)
+  }
+})
+
+test("infoservices: login, password and channel are masked", () => {
+  let seen = 0
+  for (const name of INFO_FILES) {
+    for (const m of infoText(name).matchAll(/<(login|password|channel)>([^<]*)<\/\1>/g)) {
+      assert.equal(m[2], "***", `${name}: ${m[1]}`)
+      seen++
+    }
+  }
+  assert.equal(seen, 3, "the request carries the three, masked")
+})
+
+test("infoservices: every waybill is a synthetic one", () => {
+  for (const name of INFO_FILES) {
+    const text = infoText(name)
+    for (const m of text.matchAll(/\b[0-9]{13}[0-9A-Z]\b/g)) assert.ok(INFO_FIXTURE_WAYBILLS.includes(m[0]), `${name}: ${m[0]}`)
+    for (const real of ["0000899044445Q", "0000001094090S", "21112014111444", "2111201411127K", "7305000000269747964"]) assert.ok(!text.includes(real), `${name}: ${real}`)
+  }
+})
+
+test("infoservices: no receiver data; the receiver value of the PDF answer is parcel_x and every other eventDataList value is a placeholder or a fixture waybill", () => {
+  const unwrap = (v: string) => {
+    const decoded = v.trim().replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    const m = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(decoded)
+    return (m ? m[1] : decoded).trim()
+  }
+  for (const name of INFO_FILES) {
+    const text = infoText(name)
+    assert.ok(!text.includes(">test<"), name)
+    assert.ok(!text.includes("@"), name)
+    assert.ok(!/masterFid/i.test(text), name)
+    const values = [...text.matchAll(/<eventDataList>([\s\S]*?)<\/eventDataList>/g)].map((m) => ({
+      code: /<code>([^<]*)<\/code>/.exec(m[1])?.[1] ?? "",
+      description: /<description>([^<]*)<\/description>/.exec(m[1])?.[1] ?? null,
+      value: unwrap(/<value>([^<]*)<\/value>/.exec(m[1])?.[1] ?? ""),
+    }))
+    if (name === "pdf-waybill-events.response.xml") {
+      assert.deepEqual(values, [{ code: "03", description: "Odbiorca", value: "parcel_x" }])
+      continue
+    }
+    for (const v of values) assert.ok(["parcel_x", "parcel_1", "parcel_3"].includes(v.value) || INFO_FIXTURE_WAYBILLS.includes(v.value), `${name}: ${v.value}`)
+  }
+})

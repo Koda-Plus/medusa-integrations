@@ -242,7 +242,7 @@ export const REQUESTS_PER_MINUTE_MIN = 10
 export const REQUESTS_PER_MINUTE_MAX = 600
 export const DEFAULT_AUTO_CREATE_MAX_AGE_HOURS = 24
 export const AUTO_CREATE_MAX_AGE_HOURS_MAX = 720
-/** The shipment pass: expire leases, look up unclear rows, auto create. Stage 5 adds statuses to the same job. */
+/** The shipment pass (create, label, lookup, handover leases). Statuses run in their own job (dpd-sync-statuses, STATUS_SCHEDULE). */
 export const SYNC_SCHEDULE = "*/5 * * * *"
 export const LOOKUP_BATCH = 20
 export const AUTO_BATCH = 10
@@ -356,3 +356,55 @@ export const PROTOCOL_OUTPUT = { outputDocFormat: "PDF", policy: "STOP_ON_FIRST_
 export const SANDBOX_ORDER_PREFIX = "SBX"
 /** A side sent when no box of the dispatch has a known side (DS10) [NZ]. */
 export const DIMS_UNKNOWN_CM = 1
+
+/* ------------------------------------------------------------------ */
+/* Stage 5: statuses from InfoServices                                 */
+/* ------------------------------------------------------------------ */
+
+/** The status job (DS6): every 5 minutes, 2 minutes after the shipment pass. */
+export const STATUS_SCHEDULE = "2-59/5 * * * *"
+/** A shipment is asked for at most this long after its handover (or creation). */
+export const STATUS_MAX_AGE_DAYS = 30
+/** The gap between two asks of one shipment after the handover, or once its stage is past ready. */
+export const STATUS_SPACING_MIN = 30
+/** The gap before the handover (a label alone rarely moves). */
+export const STATUS_SPACING_BEFORE_HANDOVER_MIN = 120
+/** Calls to InfoServices in one pass (one call per waybill), also the row limit of each part of one claim (status rows, writer backlog rows). */
+export const STATUS_BATCH_WAYBILLS = 50
+/** A writer mark (shipped_marked_at, delivered_marked_at) older than this, with no status_writer_error and no shipped_at (delivered_at) in Medusa, was left by a stopped process: the pass releases it (E4, 6.19). */
+export const WRITER_MARK_STALE_MS = 900_000
+/** The time one pass may take; the rest of the claim waits for the next pass. */
+export const STATUS_PASS_BUDGET_MS = 120_000
+/** The end of STATUS_PASS_BUDGET_MS kept for the writer backlog: with backlog rows claimed, the status rows stop asking DPD this much earlier (slow or paced calls never use up the whole pass). */
+export const STATUS_WRITER_RESERVE_MS = 20_000
+/** Writer backlog rows run in every pass before the budget applies to them: they make no DPD call, so slow DPD calls never starve them. */
+export const STATUS_WRITER_MIN_ROWS = 5
+/** Status events of rows no longer asked for are deleted after this many days (DS17). */
+export const STATUS_EVENT_RETENTION_DAYS = 120
+/** How often the retention runs, per mode (dpd_setting <mode>:status:prunedAt). */
+export const STATUS_PRUNE_EVERY_MS = 86_400_000
+/** A DPD waybill: 13 digits and a digit or a capital letter (DS3). The only shape a repinned waybill may take. */
+export const WAYBILL_PATTERN = /^[0-9]{13}[0-9A-Z]$/
+/** The namespace of the InfoServices operations; children of the operation are unqualified. */
+export const INFOSERVICES_NAMESPACE = "http://events.dpdinfoservices.dpd.com.pl/"
+/** The operations the client knows. Error messages name the operation, never the URL (section 0, H18). */
+export const INFOSERVICES_OPERATIONS = {
+  waybill: "getEventsForWaybillV1",
+  customer: "getEventsForCustomerV4",
+  confirm: "markEventsAsProcessedV1",
+} as const
+export type InfoServicesOperation = (typeof INFOSERVICES_OPERATIONS)[keyof typeof INFOSERVICES_OPERATIONS]
+/** DS14: always the whole history, always in Polish. */
+export const INFOSERVICES_EVENTS_SELECT = "ALL"
+export const INFOSERVICES_LANGUAGE = "PL"
+/** getEventsForCustomerV4 limit (built, never called in stage 5, DS7) [NZ]. */
+export const INFOSERVICES_QUEUE_LIMIT = 100
+/** eventTime carries no zone: Warsaw wall time [NZ] (H9). */
+export const EVENT_TIME_ZONE = "Europe/Warsaw"
+/** Codes the simulator makes up where no source names one (DS8); only the built in map knows them. */
+export const SIM_CODE_PREFIX = "SIM_"
+export const SIM_IN_POINT = "SIM_IN_POINT"
+export const SIM_DEPOT = "1305"
+export const SIM_COUNTRY = "PL"
+/** The stages that mean DPD has the parcel or is done with it: no withdrawal, no "do not send" (DS13). Not problem: a failed pickup at the sender (0402xx to 0406xx) has no possession; problem blocks only through possession (isPickedUp, E25). */
+export const STAGES_AFTER_READY = ["in_transit", "in_point", "delivered", "returned"] as const

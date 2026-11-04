@@ -106,6 +106,10 @@ test("groups of the Panel: one group per row, the same on the server and in the 
   assert.equal(row("labeled", "delivered", true), "delivered")
   assert.equal(row("labeled", "problem", true), "problems")
   assert.equal(row("labeled", "returned", true), "problems")
+  /* E61: a return that is over (back at the shop, or no longer followed) leaves the attention groups. */
+  assert.equal(groupOf({ kind: "outbound", state: "labeled", stage: "returned", handedOver: true, returnDone: true }), "returns")
+  assert.equal(groupOf({ kind: "outbound", state: "labeled", stage: "problem", handedOver: true, returnDone: true }), "problems", "only a returned stage")
+  assert.equal(groupOf({ kind: "outbound", state: "failed", stage: "returned", handedOver: true, returnDone: true }), "problems", "a refusal still waits for a person")
   for (const s of ["failed", "unknown", "ambiguous", "abandoned_unknown"] as const) assert.equal(row(s), "problems", s)
   assert.equal(row("canceled"), "canceled")
   assert.equal(row("skipped"), "canceled")
@@ -128,18 +132,24 @@ test("tables: every model column is in the migrations, with the table names of t
   const second = readFileSync(join(PKG, "src/modules/dpd/migrations/Migration20261103120000_dpd_dispatch.ts"), "utf8")
   const added = [...second.matchAll(/add column if not exists "(\w+)"/g)].map((m) => m[1])
   assert.deepEqual(added, ["location_id", "sender", "params", "problems", "plan_hash", "attempts", "protocol_at", "ordered_at", "updated_by"])
+  /* Stage 5 adds the status columns to dpd_shipment in a third migration (alter table only). */
+  const third = readFileSync(join(PKG, "src/modules/dpd/migrations/Migration20261104120000_dpd_tracking.ts"), "utf8")
+  const tracking = [...third.matchAll(/add column if not exists "(\w+)"/g)].map((m) => m[1])
+  assert.deepEqual(tracking, ["tracking", "status_at", "status_writer_error"])
   const tables = ["dpd_shipment", "dpd_document", "dpd_event", "dpd_dispatch", "dpd_setting"]
   for (const table of tables) {
     const file = join(PKG, "src/modules/dpd/models", `${table.replace("_", "-")}.ts`)
     assert.match(readFileSync(file, "utf8"), new RegExp(`model\\s*\\.define\\("${table}"`), table)
     const block = migration.split(`create table if not exists "${table}" (`)[1]?.split(");")[0] ?? ""
     assert.ok(block, `the migration creates ${table}`)
-    const columns = new Set([...[...block.matchAll(/"(\w+)" /g)].map((m) => m[1]), ...(table === "dpd_dispatch" ? added : [])])
+    const columns = new Set([...[...block.matchAll(/"(\w+)" /g)].map((m) => m[1]), ...(table === "dpd_dispatch" ? added : []), ...(table === "dpd_shipment" ? tracking : [])])
     for (const column of modelColumns(file)) assert.ok(columns.has(column), `${table}.${column}`)
   }
   /* Never @mikro-orm/migrations directly: the package has no @mikro-orm dependency nor peer (E11). */
-  assert.match(second, /^import \{ Migration \} from "@medusajs\/framework\/mikro-orm\/migrations"$/m)
-  assert.ok(!second.includes('"@mikro-orm/'), "no direct @mikro-orm import")
+  for (const later of [second, third]) {
+    assert.match(later, /^import \{ Migration \} from "@medusajs\/framework\/mikro-orm\/migrations"$/m)
+    assert.ok(!later.includes('"@mikro-orm/'), "no direct @mikro-orm import")
+  }
   assert.match(migration, /"IDX_dpd_shipment_fulfillment_id_kind_mode_unique" on "dpd_shipment" \("fulfillment_id", "kind", "mode"\)/)
   assert.match(migration, /create unique index if not exists "IDX_dpd_event_dedupe_key_unique"/)
   assert.match(migration, /create unique index if not exists "IDX_dpd_setting_key_unique" on "dpd_setting" \("key"\) where "deleted_at" is null;/)
@@ -170,6 +180,22 @@ test("the second migration drops only its own columns", () => {
   const own = new Set([...block.matchAll(/"(\w+)" /g)].map((m) => m[1]))
   for (const column of dropped) assert.ok(!own.has(column), `${column} belongs to the first migration`)
   assert.match(second, /export class Migration20261103120000_dpd_dispatch extends Migration/)
+})
+
+test("the third migration down drops the three columns", () => {
+  const third = readFileSync(join(PKG, "src/modules/dpd/migrations/Migration20261104120000_dpd_tracking.ts"), "utf8")
+  const [up, down] = third.split(/async down\(\)/)
+  assert.ok(up && down, "an up and a down")
+  const added = [...up.matchAll(/add column if not exists "(\w+)"/g)].map((m) => m[1])
+  const dropped = [...down.matchAll(/drop column if exists "(\w+)"/g)].map((m) => m[1])
+  assert.deepEqual(added, ["tracking", "status_at", "status_writer_error"])
+  assert.deepEqual(dropped, added, "down drops exactly what up added")
+  assert.ok(!/drop (table|index)|create table|create index|truncate|delete from|rename/i.test(third), "alter table only, no index")
+  assert.equal([...third.matchAll(/alter table if exists "(\w+)"/g)].map((m) => m[1]).join(","), "dpd_shipment,dpd_shipment")
+  assert.match(up, /"tracking" jsonb null/)
+  assert.match(up, /"status_at" timestamptz null/)
+  assert.match(up, /"status_writer_error" text null/)
+  assert.match(third, /export class Migration20261104120000_dpd_tracking extends Migration/)
 })
 
 test("the migration name is unique across every package of the repository", () => {

@@ -109,6 +109,15 @@ test("candidates: labeled, outbound, domestic, not in a dispatch, not excluded",
   assert.deepEqual(codes(input("a", { session_type: null })), [], "a row without a session type is domestic")
   assert.deepEqual(candidateProblems(input("a", { dispatch_id: "dpddsp_1" }), "sandbox", false), [{ code: "shipment_dispatched", field: "shipments.a", detail: "dpddsp_1" }])
   assert.deepEqual(candidateProblems(input("a", { handed_over_at: new Date() }), "sandbox", false)[0]?.detail, "handed_over")
+  /* DS13, E54: DPD has the parcel (dropped at a point, a courier outside the plugin), so no protocol and no courier for it. */
+  assert.deepEqual(candidateProblems(input("a", { stage: "in_transit" }), "sandbox", false), [{ code: "shipment_picked_up", field: "shipments.a" }])
+  for (const stage of ["in_point", "delivered", "returned"] as const) assert.deepEqual(codes(input("a", { stage })), ["shipment_picked_up"], stage)
+  assert.deepEqual(codes(input("a", { shipped_marked_at: new Date() })), ["shipment_picked_up"], "the plugin marked it shipped")
+  const held = [{ waybill: "Wa", box: 0, role: "outbound", stage: "problem", code: "160102", at: null, possession: true, lastCode: "160102", lastAt: null, description: null, supersededBy: null, supersededAt: null, from: null, checkedAt: null, done: false }]
+  assert.deepEqual(codes(input("a", { stage: "problem", tracking: held })), ["shipment_picked_up"], "a problem with possession")
+  const failedPickup = [{ ...held[0], code: "040201", lastCode: "040201", possession: false }]
+  assert.deepEqual(codes(input("a", { stage: "problem", tracking: failedPickup })), [], "a failed pickup at the sender stays a candidate (E25)")
+  assert.deepEqual(codes(input("a", { stage: "ready" })), [], "ready without possession is a candidate")
   assert.deepEqual(codes({ row: row("a"), fulfillment: null }), ["shipment_canceled"], "no fulfillment outside demo")
   assert.deepEqual(codes({ row: row("a"), fulfillment: null }, true), [], "tolerated in demo (DS6)")
   assert.deepEqual(codes(input("a", {}, "sloc_1", new Date())), ["shipment_canceled"])

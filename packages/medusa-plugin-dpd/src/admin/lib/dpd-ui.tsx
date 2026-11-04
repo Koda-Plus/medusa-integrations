@@ -16,10 +16,10 @@ import {
   XCircle,
 } from "@medusajs/icons"
 import { Copy, Text, clx } from "@medusajs/ui"
-import type { ProblemDto, SenderProblemDto, ShipmentDto, ShipmentFilter, ShipmentStage, ShipmentState, StatusResponse } from "../../modules/dpd/lib/contract"
+import type { ProblemDto, SenderProblemDto, ShipmentDto, ShipmentFilter, ShipmentState, StatusResponse, StatusSource, TrackingDto } from "../../modules/dpd/lib/contract"
 import { ToneBadge, type Tone } from "./dpd-blocks"
 import { nb } from "./dpd-guide"
-import { errorTone, fmtMoney, problemDetail } from "./dpd-logic"
+import { STAGE_TONE, errorTone, fmtMoney, lastAnsweredAt, problemDetail, shownStage, trackingChain, trackingTone } from "./dpd-logic"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -83,28 +83,144 @@ const STATE_TONE: Record<ShipmentState, Tone> = {
   excluded: "grey",
 }
 
-const STAGE_TONE: Record<ShipmentStage, Tone> = {
-  preparing: "blue",
-  ready: "blue",
-  in_transit: "blue",
-  in_point: "blue",
-  delivered: "green",
-  problem: "red",
-  returned: "red",
-  canceled: "grey",
-}
+/* The stage tones live with the plain logic (STAGE_TONE of dpd-logic.ts), so the tone of a waybill is tested there. */
 
-/** One badge for a row: the state of the row until DPD reports the parcel, then where the parcel is. */
-export function ShipmentStatus({ shipment }: { shipment: Pick<ShipmentDto, "state" | "stage" | "status"> }) {
+/**
+ * One badge for a row: the state of the row until DPD reports the parcel,
+ * then where the parcel is (shownStage). The tooltip is the last DPD code
+ * and its description.
+ */
+export function ShipmentStatus({ shipment }: { shipment: Pick<ShipmentDto, "state" | "stage" | "status" | "statusDescription"> }) {
   const { t } = useTranslation("dpd")
-  if (shipment.state === "labeled" && shipment.stage) {
+  const stage = shownStage(shipment)
+  if (stage) {
+    const title = [shipment.status, shipment.statusDescription].filter((p): p is string => Boolean(p)).join(" ")
     return (
-      <ToneBadge tone={STAGE_TONE[shipment.stage]} title={shipment.status ?? undefined}>
-        {t(`stage.${shipment.stage}`)}
+      <ToneBadge tone={STAGE_TONE[stage]} title={title || undefined}>
+        {t(`stage.${stage}`)}
       </ToneBadge>
     )
   }
   return <ToneBadge tone={STATE_TONE[shipment.state]}>{t(`state.${shipment.state}`)}</ToneBadge>
+}
+
+/**
+ * The last DPD status of a row in words: the DPD description (Polish, as DPD
+ * sends it, O14) with the time of the event, and the time DPD last answered
+ * for a waybill of the row (lastAnsweredAt, simulated in demo and the
+ * sandbox; never lastCheckedAt, the claim time of the pass, E53). `compact`
+ * (a list row) shows the description and its time only. Nothing to show: null.
+ */
+export function StatusLine({
+  shipment,
+  lang,
+  source,
+  compact = false,
+}: {
+  shipment: Pick<ShipmentDto, "status" | "statusDescription" | "statusAt" | "tracking">
+  lang: string
+  source?: StatusSource | null
+  compact?: boolean
+}) {
+  const { t } = useTranslation("dpd")
+  const checked = compact ? null : lastAnsweredAt(shipment.tracking)
+  if (!shipment.statusDescription && !checked) return null
+  const time = fmtDateTime(shipment.statusAt, lang)
+  return (
+    <span className="flex flex-col">
+      {shipment.statusDescription ? (
+        <>
+          <Text size="small" className="text-ui-fg-base" title={shipment.status ?? undefined}>
+            {nb(shipment.statusDescription)}
+          </Text>
+          {time ? (
+            <Text size="xsmall" className="text-ui-fg-muted">
+              {time}
+            </Text>
+          ) : null}
+        </>
+      ) : (
+        <Text size="small" className="text-ui-fg-subtle">
+          {t("statuses.noEvents")}
+        </Text>
+      )}
+      {checked ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t(source === "simulated" ? "statuses.checkedSimulated" : "statuses.checkedAt", { time: fmtDateTime(checked, lang) })}
+        </Text>
+      ) : null}
+    </span>
+  )
+}
+
+/** One waybill of TrackingList: the number to copy, its stage, its role and its last DPD event. */
+function TrackingRow({ entry: e, demo, lang }: { entry: TrackingDto; demo: boolean; lang: string }) {
+  const { t } = useTranslation("dpd")
+  const old = Boolean(e.supersededBy)
+  const time = fmtDateTime(e.lastAt, lang)
+  return (
+    <span className={clx("flex flex-col gap-y-0.5", old && "opacity-70")}>
+      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <span className={clx("txt-compact-small font-mono", old ? "text-ui-fg-muted line-through" : "text-ui-fg-subtle")} title={demo ? t("shipments.sampleWaybill") : undefined}>
+          {e.waybill}
+        </span>
+        <Copy content={e.waybill} className="text-ui-fg-muted" />
+        <ToneBadge tone={trackingTone(e)}>{e.stage ? t(`stage.${e.stage}`) : t("statuses.noEvents")}</ToneBadge>
+        {e.role === "return" ? <ToneBadge tone="orange">{t("statuses.returnRole")}</ToneBadge> : null}
+      </span>
+      {e.description || time ? (
+        <Text size="xsmall" className="text-ui-fg-muted" title={e.lastCode ?? undefined}>
+          {[e.description ? nb(e.description) : "", time].filter(Boolean).join(", ")}
+        </Text>
+      ) : null}
+      {e.supersededBy ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("statuses.repinnedTo", { waybill: e.supersededBy })}
+        </Text>
+      ) : null}
+      {e.from ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("statuses.repinnedFrom", { waybill: e.from })}
+        </Text>
+      ) : null}
+    </span>
+  )
+}
+
+/**
+ * Every waybill of a shipment with its stage, grouped by box: the current
+ * waybill first, then the ones DPD moved the parcel from (trackingChain).
+ * Empty: null.
+ */
+export function TrackingList({ shipment, lang }: { shipment: Pick<ShipmentDto, "tracking" | "demo">; lang: string }) {
+  if (shipment.tracking.length === 0) return null
+  return (
+    <ul className="flex flex-col gap-y-2">
+      {trackingChain(shipment.tracking).map((g) => (
+        <li key={`${g.box}-${g.current.waybill}`} className="flex flex-col gap-y-1">
+          <TrackingRow entry={g.current} demo={shipment.demo} lang={lang} />
+          {g.previous.length > 0 ? (
+            <span className="flex flex-col gap-y-1 border-l border-ui-border-base pl-3">
+              {g.previous.map((e) => (
+                <TrackingRow key={e.waybill} entry={e} demo={shipment.demo} lang={lang} />
+              ))}
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Why Medusa did not take the status of a row (the server's masked message, cut to 500 characters); none: null. */
+export function WriterErrorText({ shipment }: { shipment: Pick<ShipmentDto, "statusWriterError"> }) {
+  const { t } = useTranslation("dpd")
+  if (!shipment.statusWriterError) return null
+  return (
+    <Text size="xsmall" className="text-ui-fg-error">
+      {t("statuses.writerError", { message: nb(shipment.statusWriterError) })}
+    </Text>
+  )
 }
 
 /** Courier, Pickup point or return, and cash on delivery. */

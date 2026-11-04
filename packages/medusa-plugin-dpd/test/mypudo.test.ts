@@ -118,6 +118,22 @@ test("Basic auth: the authorization header and no key in the URL; myPudoUrl adds
   assert.match(own.calls[0].params.requestID, /^kp[a-z0-9]{1,28}$/)
 })
 
+test("a redirect is not followed: one GET, HTTP 302 is an http failure", async () => {
+  const seen: Array<RequestInit | undefined> = []
+  const r = await createMyPudoClient({
+    auth: KEY_AUTH,
+    timeoutMs: 3000,
+    secrets: [KEY],
+    fetchImpl: async (_input, init) => {
+      seen.push(init)
+      return new Response("", { status: 302, headers: { location: "https://elsewhere.invalid/" } })
+    },
+  }).details("PL14509")
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0]?.redirect, "manual")
+  assert.deepEqual(r.ok === false && r.reason, "http")
+})
+
 test("the byaddress example (MP s.18): a PointDto with the zip as NN-NNN, the country alpha-2, numbers from strings", async () => {
   const { c, lines } = client(rawPointsOf("byaddress-ok"))
   const r = await c.search({ by: "address", country: "PL", zip: "01390", limit: 25 })
