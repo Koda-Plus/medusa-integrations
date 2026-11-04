@@ -19,6 +19,8 @@
 - Only the VIES member states pass as EU VAT numbers (EL for Greece, GR is read as EL); a VIES answer with a member state down reads unavailable.
 - A VIES answer has the status `VAT-UE` instead of `Czynny`.
 - A registry that does not answer never wipes the company data an earlier check knew.
+- A busy VIES member state (`MS_MAX_CONCURRENT_REQ` and the like) is asked once more after a pause; the preview never caches an answer with a registry that did not answer.
+- `POST /admin/whitelist/check` answers 400 for a number that does not validate and saves nothing (it used to keep an `invalid` counterparty).
 
 ## 0.1.1 (2026-10-18)
 

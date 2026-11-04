@@ -79,7 +79,17 @@ async function checkWhitelist(options: ResolvedWhitelistOptions, nip: string): P
   }
 }
 
+/* VIES answers a busy member state with these codes: worth one more try after a pause. */
+const VIES_BUSY = new Set(["MS_MAX_CONCURRENT_REQ", "GLOBAL_MAX_CONCURRENT_REQ", "MS_MAX_CONCURRENT_REQ_TIME", "GLOBAL_MAX_CONCURRENT_REQ_TIME", "SERVICE_UNAVAILABLE", "TIMEOUT"])
+
 async function checkVies(options: ResolvedWhitelistOptions, vat: string): Promise<CheckAnswer> {
+  const first = await askVies(options, vat)
+  if (first.state !== "unavailable" || !VIES_BUSY.has(first.details?.reason ?? "")) return first
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  return askVies(options, vat)
+}
+
+async function askVies(options: ResolvedWhitelistOptions, vat: string): Promise<CheckAnswer> {
   const country = vat.slice(0, 2)
   const number = vat.slice(2)
   try {
@@ -325,7 +335,8 @@ export async function checkRegistries(value: string, options: ResolvedWhitelistO
 
   const answers = await Promise.all(tasks)
   const result = { card: mergeAnswers(answers), answers }
-  if (run.cacheMs) {
+  /* A registry that did not answer is asked again next time, not served from the cache. */
+  if (run.cacheMs && answers.every((x) => x.state !== "unavailable")) {
     if (cache.size > 5000) cache.clear()
     cache.set(key, { at: Date.now(), result })
   }

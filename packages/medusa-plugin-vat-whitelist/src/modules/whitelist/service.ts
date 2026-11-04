@@ -31,7 +31,15 @@ class WhitelistModuleService extends MedusaService({
     this.logger_ = deps.logger
     this.options_ = resolveOptions(options)
     if (this.options_.demo) {
-      this.logger_.info("[whitelist] Demo mode: checks answer with simulated registry data.")
+      const live = this.options_.live
+      this.logger_.info(
+        live.length > 0
+          ? `[whitelist] Demo mode: the sample numbers answer with simulated data, every other number asks the live registries (${live.join(", ")}).`
+          : "[whitelist] Demo mode: checks answer with simulated registry data.",
+      )
+    }
+    if (!this.options_.gusApiKey && this.options_.gusEnvironment === "production" && this.options_.plRegistries.includes("gus") && (!this.options_.demo || this.options_.live.includes("gus"))) {
+      this.logger_.info("[whitelist] No GUS key (gusApiKey): GUS is skipped, a NIP asks the whitelist only.")
     }
   }
 
