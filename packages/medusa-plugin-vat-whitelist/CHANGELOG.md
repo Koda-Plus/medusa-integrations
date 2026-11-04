@@ -8,7 +8,7 @@
 - A new state, `inactive`: GUS says the business is suspended or has ended, whatever the whitelist says.
 - `plRegistries` (default `["gus", "whitelist"]`): the registries of a Polish NIP, in order. GUS gives the company card, the whitelist the VAT status and the bank accounts; `vies` adds the VAT-UE registration for sales within the EU. A number typed with the PL prefix asks VIES too.
 - `gusEnvironment` (`production` or `test`, the GUS test environment with its public key) and `timeoutMs`.
-- `live`: in demo mode, the named registries answer for real for every number outside the demo samples, so a public demo can show real company data. Seeded demo counterparties stay simulated on a re-check.
+- `live`: in demo mode, the named registries answer for real for every number outside the demo samples, so a public demo can show real company data. Seeded demo counterparties (demo rows linked to a customer) stay simulated on a re-check; a demo row without a customer, left by an earlier simulated check, gets the real answer.
 - Settings / Registries: how each registry answers (live, simulated, no key, not used), the GUS key and environment, and a connection test per registry (`POST /admin/whitelist/registries/ping`; GUS logs in and out without spending a lookup).
 - The check card shows what each registry answered, the business state and the start date; the history shows one row per registry.
 - The setup guide has a GUS step (how to get the free key) and an EU step.

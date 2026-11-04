@@ -137,7 +137,7 @@ export function useEmailsPreview(template: string | null, locale: string, theme:
 export function useEmailsTest() {
   const client = useQueryClient()
   return useMutation<TestResponse, Error, TestRequest>({
-    mutationFn: (body) => emailsFetch<TestResponse>("/admin/emails/test", { method: "POST", body }),
+    mutationFn: (body) => emailsFetch<TestResponse>("/admin/emails/send-test", { method: "POST", body }),
     onSuccess: () => client.invalidateQueries({ queryKey: emailsKeys.all, predicate: (q) => q.queryKey[1] !== "preview" }),
   })
 }

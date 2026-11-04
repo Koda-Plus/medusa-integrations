@@ -2,6 +2,10 @@
 
 ## 0.3.1 (unreleased)
 
+### Fixed
+
+- The test send is `POST /admin/emails/send-test` (was `/admin/emails/test`). `medusa build` and `medusa plugin:build` skip every folder named test, so the old route was missing from production builds and the Send test button answered 404.
+
 ### Changed
 
 - The header and the intros of Sent e-mails and By template say it in short phrases with icons (sent through Resend, English and Polish, address masked, kept N days) instead of long sentences.

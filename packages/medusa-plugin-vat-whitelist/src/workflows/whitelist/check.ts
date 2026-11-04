@@ -10,9 +10,9 @@ import type { CheckDto, EntityDto } from "../../modules/whitelist/lib/contract"
  * merged card and every registry answer is appended to the audit trail.
  * Used by the admin and the store routes.
  *
- * In demo mode a counterparty that is itself demo data (the seeded sample
- * customers) answers from the simulation even when registries are `live`,
- * so a re-check never turns a sample company into "not found".
+ * In demo mode a counterparty that is itself demo data of a customer (the
+ * seeded sample customers) answers from the simulation even when registries
+ * are `live`, so a re-check never turns a sample company into "not found".
  */
 export async function runCheck(
   container: MedusaContainer,
@@ -25,7 +25,13 @@ export async function runCheck(
   const normalized = parsed.kind === "nip" ? parsed.nip : parsed.kind === "vat" ? parsed.vat : value.replace(/[\s.-]/g, "").toUpperCase()
 
   const existing = await svc.listWhitelistEntities({ nip: normalized }, { take: 1 })
-  const simulate = options.demo && existing[0]?.demo === true
+  /*
+   * Only a seeded sample customer stays simulated: a demo row linked to a
+   * customer. A demo row without a customer is a leftover of an earlier
+   * simulated check from the panel (a real NIP that got an invented card),
+   * and with `live` it gets the real registry answer on the next check.
+   */
+  const simulate = options.demo && existing[0]?.demo === true && Boolean(existing[0]?.customer_id)
   const { card, answers } = await checkRegistries(value, options, { simulate })
 
   const now = new Date()
