@@ -10,9 +10,9 @@ const en = {
     settings: "Settings",
   },
   by: "by Koda Plus",
-  subtitle: "Verify a Polish NIP against the Ministry of Finance whitelist and EU VAT numbers against VIES: the VAT status, the bank accounts for split payment, and the check history.",
+  subtitle: "Verify a Polish NIP in the GUS Business Registry and the Ministry of Finance whitelist, and EU VAT numbers in VIES: the company data, whether it still runs, the VAT status, the bank accounts for split payment and the check history.",
   points: {
-    nip: "NIP: MF whitelist",
+    nip: "NIP: GUS and MF whitelist",
     vies: "EU VAT: VIES",
     accounts: "Accounts for split payment",
     fresh: "Answer valid {{hours}} h",
@@ -22,6 +22,7 @@ const en = {
     demo: "Demo",
     demoTitle: "Demo mode",
     demoText: "Simulated registry answers flagged demo. No outside service is asked.",
+    demoLiveText: "The sample numbers answer with simulated data flagged demo. Every other number asks the live registries: {{registries}}.",
   },
   actions: {
     refresh: "Refresh",
@@ -39,12 +40,12 @@ const en = {
     exempt: "VAT exempt",
     exemptHint: "No VAT on the invoice",
     notFound: "Not found",
-    notFoundHint: "Not in the registry",
+    notFoundHint: "Not in the registry or closed",
   },
   check: {
     title: "Check a counterparty",
     points: {
-      nip: "10 digits: whitelist",
+      nip: "10 digits: GUS and whitelist",
       vat: "Country prefix: VIES",
       fresh: "Valid {{hours}} h",
     },
@@ -64,7 +65,7 @@ const en = {
       all: "All",
       active: "Active",
       exempt: "Exempt",
-      problem: "Not found or invalid",
+      problem: "Not found, closed or invalid",
       stale: "Stale",
     },
     empty: "Nothing checked yet",
@@ -100,13 +101,20 @@ const en = {
   state: {
     active: "Active",
     exempt: "Exempt",
+    inactive: "Closed",
     not_found: "Not found",
     invalid: "Invalid",
     unavailable: "Unavailable",
   },
+  activity: {
+    active: "Running",
+    suspended: "Suspended",
+    closed: "Closed",
+  },
   result: {
     active: "{{name}}: active VAT payer",
     exempt: "{{name}}: VAT exempt",
+    inactive: "{{name}}: the business is suspended or closed",
     not_found: "{{name}}: not in the registry",
     invalid: "The number does not validate",
     unavailable: "The registry could not answer, try again later",
@@ -114,11 +122,65 @@ const en = {
     accounts: "Registry accounts",
     krs: "KRS",
     regon: "REGON",
+    since: "since {{date}}",
+  },
+  registries: {
+    lead: "The registries a number is checked in: GUS and the MF whitelist for a Polish NIP, VIES for EU VAT numbers.",
+    points: {
+      pl: "NIP: in this order",
+      eu: "EU VAT: VIES",
+      test: "Test logs in only",
+    },
+    order: "Step {{n}} for a NIP",
+    reason: "No answer: {{reason}}",
+    mode: {
+      live: "Live",
+      demo: "Simulated",
+      missing_key: "No key",
+      off: "Not used",
+    },
+    gus: {
+      name: "GUS Business Registry (BIR 1.1)",
+      gives: "The company: full name, address, REGON, KRS, legal form, start date, and whether the business runs, is suspended or has ended.",
+      when: "Asked first for a Polish NIP. Free, with a user key from GUS.",
+      missing: "Without a key GUS is skipped. Put the key in GUS_API_KEY, or try the GUS test environment first.",
+      keySet: "Key set",
+      keyMissing: "No key",
+      env: {
+        production: "Production",
+        test: "Test environment",
+      },
+    },
+    whitelist: {
+      name: "MF whitelist",
+      gives: "The VAT status (Czynny, Zwolniony), the bank accounts for split payment, the registration date.",
+      when: "Asked for a Polish NIP after GUS. No key; the MF API limits searches per day.",
+      missing: "",
+    },
+    vies: {
+      name: "VIES (European Commission)",
+      gives: "Whether an EU VAT number is valid, and the name and address where the member state shares them.",
+      when: "Asked for every number with a country prefix (DE, FR, NL...). For a Polish NIP only when plRegistries lists vies or the number has the PL prefix.",
+      missing: "",
+    },
+    test: {
+      run: "Test connection",
+      ok: "Works ({{ms}} ms)",
+      fail: "Does not work",
+      messages: {
+        missing_key: "No GUS key set.",
+        timeout: "The registry did not answer in time.",
+        network: "No connection to the registry.",
+        "GUS refused the key": "GUS refused the key. Check GUS_API_KEY and the environment (production or test).",
+        vies_down: "VIES reports it is down.",
+      },
+    },
   },
   settings: {
     title: "Settings",
     subtitle: "The options in use, read only. They are set in medusa-config.ts.",
     tab: {
+      registries: "Registries",
       options: "Options",
     },
     points: {
@@ -127,7 +189,11 @@ const en = {
     },
     staleHours: "Answer valid for",
     hours: "{{count}} h",
-    sources: "Registries",
+    plRegistries: "Polish NIP",
+    euRegistry: "EU VAT number",
+    live: "Live in demo mode",
+    timeout: "Registry timeout",
+    seconds: "{{count}} s",
     demo: "Demo mode",
     on: "On",
     off: "Off",
@@ -139,13 +205,13 @@ const en = {
   guide: {
     intro: {
       title: "Setup step by step",
-      text: "Install the plugin, register it, run the migrations, open the panel. The registration form and the customer account check the NIP on their own.",
+      text: "Install the plugin, register it, run the migrations, add the GUS key, open the panel. The registration form and the customer account check the NIP on their own.",
       time: "about 15 minutes",
       timeLabel: "Time",
       needsLabel: "You need",
       needs: {
         medusa: "Medusa 2.12 or newer",
-        gus: "GUS BIR 1.1 key, production only",
+        gus: "A GUS BIR 1.1 user key (free, by e-mail)",
       },
     },
     stepsTitle: "Steps",
@@ -171,6 +237,13 @@ const en = {
         p1: "Add an entry to the plugins list without touching what is there. Every option has a default.",
         check: "The panel loads without an error.",
       },
+      gus: {
+        title: "Add the GUS key",
+        p1: "GUS gives the company data a NIP stands for. The user key of the BIR 1.1 service is free: ask for it by e-mail at regon_bir@stat.gov.pl with the company name, NIP and what the data is for; it arrives in a few days.",
+        p2: "Put it in the environment, never in the code, and pass it as gusApiKey. Until it arrives, gusEnvironment: \"test\" uses the GUS test environment and its public key.",
+        p3: "Settings / Registries shows whether the key is set and tests the connection: a login and a logout, no lookup spent.",
+        check: "Test connection at GUS answers Works.",
+      },
       demo: {
         title: "Demo mode (optional)",
         p1: "Only when switched on: simulated registry answers flagged demo, nothing leaves the server.",
@@ -179,8 +252,14 @@ const en = {
       },
       first: {
         title: "Check the first NIP",
-        p1: "Type a NIP in Check a counterparty. In production mode put the GUS key in the options.",
+        p1: "Type a NIP in Check a counterparty. The card shows the company from GUS, the VAT status from the whitelist and what each registry answered.",
         check: "The counterparty shows in the list.",
+      },
+      eu: {
+        title: "Sales within the EU (optional)",
+        p1: "Numbers with a country prefix always go to VIES. For a Polish buyer of an intra-EU supply, add vies to plRegistries: VIES then confirms the VAT-UE registration next to the whitelist.",
+        p2: "A store form per country can send the number without its prefix together with the country code; the plugin adds the prefix.",
+        check: "A DE or FR number shows VIES in the check history.",
       },
       store: {
         title: "Wire the storefront",
@@ -194,13 +273,17 @@ const en = {
       preview: "Registration previews the company before approval",
       status: "VAT status visible with the counterparty",
       stale: "Old checks refresh after staleHours",
-      gus: "GUS BIR 1.1 key set in production",
+      gus: "GUS key set and the production environment live",
     },
     faq: {
       title: "Questions",
+      gus: {
+        q: "Why GUS before the whitelist?",
+        a: "GUS knows every business, VAT payer or not, with its legal form and whether it still runs. The whitelist knows VAT payers only, and limits searches per day. Together: the company from GUS, the VAT status and the accounts from the whitelist. A closed or suspended business reads Closed whatever the whitelist says.",
+      },
       eu: {
         q: "Does the check work for EU companies too?",
-        a: "Yes. Numbers with a country prefix go to VIES, Polish ones to the MF whitelist, the registry data to GUS. Every answer is kept in the history.",
+        a: "Yes. Numbers with a country prefix go to VIES. Some member states (Germany, Spain) confirm only that the number is valid, without the name. Every answer is kept in the history.",
       },
       often: {
         q: "How often does the plugin ask the registries?",
@@ -208,7 +291,7 @@ const en = {
       },
       demo: {
         q: "Does demo mode call anything outside?",
-        a: "No. Demo mode is only simulated answers in the database.",
+        a: "Not by default: demo mode is simulated answers in the database. With live, the named registries answer for real for every number outside the demo samples, so a public demo can show real company data.",
       },
     },
   },

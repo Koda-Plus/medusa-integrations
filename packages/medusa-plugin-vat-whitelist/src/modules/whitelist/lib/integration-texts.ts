@@ -10,6 +10,7 @@ export const integrationEn = {
   customer: {
     active: "VAT verified: {{name}}",
     exempt: "VAT exempt: {{name}}",
+    inactive: "Business suspended or closed: {{name}}",
     failed: "Not on the whitelist: {{name}}",
     unavailable: "Registry unavailable: {{name}}",
   },
@@ -23,6 +24,7 @@ export const integrationPl = {
   customer: {
     active: "VAT zweryfikowany: {{name}}",
     exempt: "Zwolniony z VAT: {{name}}",
+    inactive: "Działalność zawieszona lub zakończona: {{name}}",
     failed: "Nie ma na białej liście: {{name}}",
     unavailable: "Rejestr niedostępny: {{name}}",
   },

@@ -20,6 +20,8 @@ const CONFIG = `module.exports = defineConfig({
       resolve: "@koda-plus/medusa-plugin-vat-whitelist",
       options: {
         // Everything is optional.
+        gusApiKey: process.env.GUS_API_KEY,
+        plRegistries: ["gus", "whitelist"],
         staleHours: 24,
         demo: process.env.WHITELIST_DEMO === "true",
       },
@@ -27,9 +29,21 @@ const CONFIG = `module.exports = defineConfig({
   ],
 })`
 
+const GUS_ENV = `# .env (never in the repository)
+GUS_API_KEY=your-bir-key
+
+# Before the key arrives: the GUS test environment and its public key
+# options: { gusEnvironment: "test" }`
+
+const EU = `options: {
+  // A Polish NIP: GUS for the company, the whitelist for VAT,
+  // VIES for the VAT-UE registration of intra-EU sales.
+  plRegistries: ["gus", "whitelist", "vies"],
+}`
+
 const NEEDS = ["medusa", "gus"] as const
 const CHECKS = ["preview", "status", "stale", "gus"] as const
-const FAQ = ["eu", "often", "demo"] as const
+const FAQ = ["gus", "eu", "often", "demo"] as const
 
 /** The same setup as this guide, for "Copy prompt" in the page header. */
 export function usePromptSpec(): SetupPromptSpec {
@@ -62,12 +76,16 @@ export function GuideView({ status }: { status?: StatusResponse }) {
   })
   const loaded = Boolean(status)
   const checked = (status?.counts.checks ?? 0) > 0
+  const gus = status?.registries.gus
+  const gusLive = gus?.mode === "live"
 
   const steps: GuideStep[] = [
     step("install", state(loaded), ["p1", "p2"], INSTALL),
     step("config", state(loaded), ["p1"], CONFIG),
+    step("gus", state(gusLive || gus?.mode === "demo"), ["p1", "p2", "p3"], GUS_ENV),
     step("demo", state(Boolean(status?.demo), "optional"), ["p1", "p2"]),
     step("first", state(checked), ["p1"]),
+    step("eu", state(Boolean(status?.registries.pl.includes("vies")), "optional"), ["p1", "p2"], EU),
     step("store", "later", ["p1"]),
   ]
 
@@ -75,7 +93,7 @@ export function GuideView({ status }: { status?: StatusResponse }) {
     preview: (status?.checks ?? []).some((c) => c.requested_by === "store"),
     status: (status?.entities ?? []).some((e) => Boolean(e.customer_id)),
     stale: checked,
-    gus: false,
+    gus: gusLive && gus?.environment === "production",
   }
   const checklist = CHECKS.map((k) => ({ label: t(`guide.checklist.${k}`), done: done[k] }))
 

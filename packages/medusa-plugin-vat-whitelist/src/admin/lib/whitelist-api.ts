@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { CheckDto, EntityDto, StatusResponse } from "../../modules/whitelist/lib/contract"
+import type { CheckDto, EntityDto, RegistryTestResponse, StatusResponse } from "../../modules/whitelist/lib/contract"
 
 declare const __BACKEND_URL__: string | undefined
 
@@ -72,6 +72,8 @@ function useRefresh() {
 export interface CheckResult {
   entity: EntityDto
   check: CheckDto
+  /** One row per registry asked. */
+  checks?: CheckDto[]
 }
 
 export function useCheckNip() {
@@ -79,6 +81,13 @@ export function useCheckNip() {
   return useMutation<CheckResult, Error, string>({
     mutationFn: (nip) => whitelistFetch("/admin/whitelist/check", { method: "POST", body: { nip } }),
     onSuccess: refresh,
+  })
+}
+
+/** The connection test of one registry (settings). Saves nothing, so the status is not refetched. */
+export function useTestRegistry() {
+  return useMutation<RegistryTestResponse, Error, RegistryTestResponse["registry"]>({
+    mutationFn: (registry) => whitelistFetch("/admin/whitelist/registries/test", { method: "POST", body: { registry } }),
   })
 }
 

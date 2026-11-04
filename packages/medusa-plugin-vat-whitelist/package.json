@@ -1,7 +1,7 @@
 {
   "name": "@koda-plus/medusa-plugin-vat-whitelist",
-  "version": "0.1.1",
-  "description": "VAT Whitelist by Koda Plus: verify a Polish NIP against the Ministry of Finance whitelist (the biala lista) and EU VAT numbers against VIES. VAT status, bank accounts for split payment, a counterparty list with re-checks, a check history, demo mode with simulated answers.",
+  "version": "0.2.0",
+  "description": "VAT Whitelist by Koda Plus: verify a Polish NIP in the GUS Business Registry (BIR 1.1) and the Ministry of Finance whitelist (the biala lista), and EU VAT numbers in VIES. Company data, business state, VAT status, bank accounts for split payment, a counterparty list with re-checks, a check history, demo mode with simulated answers.",
   "author": {
     "name": "Koda Plus",
     "email": "kontakt@koda.plus",
@@ -27,6 +27,8 @@
     "whitelist",
     "biala-lista",
     "nip",
+    "gus",
+    "regon",
     "vies",
     "b2b",
     "split-payment",

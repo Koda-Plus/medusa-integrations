@@ -1,6 +1,6 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { WHITELIST_MODULE, isState, type CheckSource, type CheckState } from "./constants"
-import type { CheckDto, EntityDto } from "./contract"
+import type { Activity, CheckDto, EntityDto, RegistryAnswerDto } from "./contract"
 import type { ResolvedWhitelistOptions } from "./options"
 
 /**
@@ -41,7 +41,23 @@ function stateOf(v: unknown): CheckState {
 }
 
 function sourceOf(v: unknown): CheckSource {
-  return v === "vies" ? "vies" : "whitelist"
+  return v === "vies" || v === "gus" ? v : "whitelist"
+}
+
+function activityOf(v: unknown): Activity | null {
+  return v === "active" || v === "suspended" || v === "closed" ? v : null
+}
+
+function metaOf(row: Row): Record<string, unknown> {
+  return row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? (row.metadata as Record<string, unknown>) : {}
+}
+
+/** The registries of the latest check, from the entity metadata. */
+function registriesOf(meta: Record<string, unknown>): RegistryAnswerDto[] {
+  const list = Array.isArray(meta.registries) ? meta.registries : []
+  return list
+    .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === "object")
+    .map((r) => ({ source: sourceOf(r.source), state: stateOf(r.state), reason: str(r.reason) }))
 }
 
 export function toIso(v: unknown): string {
@@ -53,6 +69,7 @@ export function toIso(v: unknown): string {
 export function toEntity(row: Row, staleHours: number): EntityDto {
   const checkedAt = toIso(row.checked_at)
   const stale = new Date(checkedAt).getTime() + staleHours * 60 * 60 * 1000 < Date.now()
+  const meta = metaOf(row)
   return {
     id: row.id,
     nip: str(row.nip) ?? "",
@@ -66,6 +83,9 @@ export function toEntity(row: Row, staleHours: number): EntityDto {
     regon: str(row.regon),
     krs: str(row.krs),
     legal_form: str(row.legal_form),
+    activity: activityOf(meta.activity),
+    started_at: str(meta.started_at),
+    registries: registriesOf(meta),
     customer_id: str(row.customer_id),
     checked_at: checkedAt,
     stale,
@@ -74,6 +94,7 @@ export function toEntity(row: Row, staleHours: number): EntityDto {
 }
 
 export function toCheck(row: Row): CheckDto {
+  const meta = metaOf(row)
   return {
     id: row.id,
     entity_id: str(row.entity_id),
@@ -87,6 +108,8 @@ export function toCheck(row: Row): CheckDto {
     regon: str(row.regon),
     krs: str(row.krs),
     legal_form: str(row.legal_form),
+    activity: activityOf(meta.activity),
+    reason: str(meta.reason),
     requested_by: str(row.requested_by) ?? "",
     customer_id: str(row.customer_id),
     demo: row.demo === true,

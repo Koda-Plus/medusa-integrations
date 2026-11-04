@@ -25,6 +25,8 @@ export function customerSummary(id: string, entity: EntityRow | undefined): Summ
       return { state: "ok", title: { key: "integration.customer.active", params: { name } }, links }
     case "exempt":
       return { state: "attention", title: { key: "integration.customer.exempt", params: { name } }, links }
+    case "inactive":
+      return { state: "failed", title: { key: "integration.customer.inactive", params: { name } }, links }
     case "not_found":
     case "invalid":
       return { state: "failed", title: { key: "integration.customer.failed", params: { name } }, links }
