@@ -332,7 +332,8 @@ function EntitiesCard({ status, filter, onFilter, q, onQ, loading }: { status: S
                     <span className="font-mono txt-compact-xsmall">{e.nip}</span>
                   )}
                 </Table.Cell>
-                <Table.Cell>
+                {/* Up to four lines (name, address, legal form, KRS/REGON): the cell needs its own padding, Medusa's is py-0. */}
+                <Table.Cell className="py-3">
                   <span className="flex flex-col gap-y-0.5">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="txt-compact-small-plus text-ui-fg-base">{e.name ?? "-"}</span>
