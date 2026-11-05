@@ -265,7 +265,7 @@ const CouponsPage = () => {
                       {c.createdAt ? (
                         <span className="txt-compact-xsmall text-ui-fg-muted" title={t("list.createdTitle")}>
                           {fmt.date(c.createdAt)}
-                          {c.createdBy ? ` · ${c.createdBy}` : ""}
+                          {c.createdBy ? `, ${c.createdBy}` : ""}
                         </span>
                       ) : null}
                     </div>
