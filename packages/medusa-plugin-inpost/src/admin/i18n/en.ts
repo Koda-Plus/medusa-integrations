@@ -375,6 +375,7 @@ const en = {
       requesting: "Being ordered",
       requested: "Ordered (dispatch order {{id}})",
       failed: "Failed",
+      unknown: "Unclear: check InPost Manager",
     },
   },
   lockers: {

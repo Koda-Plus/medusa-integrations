@@ -125,7 +125,7 @@ export interface ParcelStore {
   /** Records a read that found no change (the status pass moves on to other rows). */
   touch(id: string, at: Date): Promise<void>
   claimBuy(id: string, now: Date): Promise<ParcelRow | null>
-  claimDispatch(ids: readonly string[], now: Date): Promise<string[]>
+  claimDispatch(ids: readonly string[], now: Date, includeUnknown?: boolean): Promise<string[]>
   claimMark(id: string, field: "shipped_marked_at" | "delivered_marked_at", now: Date): Promise<boolean>
   releaseMark(id: string, field: "shipped_marked_at" | "delivered_marked_at", error: string | null): Promise<void>
   expireLeases(now: Date, demo: boolean): Promise<number>
@@ -318,13 +318,13 @@ export function createSqlStore(deps: { sql: SqlRunner; newId: (prefix: string) =
       return rowsOf<ParcelRow>(result)[0] ?? null
     },
 
-    async claimDispatch(ids, now) {
+    async claimDispatch(ids, now, includeUnknown = false) {
       if (ids.length === 0) return []
       const placeholders = ids.map(() => "?").join(", ")
       const result = await sql.raw(
         `update "${PARCEL_TABLE}" set "dispatch_state" = 'requesting', "dispatch_at" = ?, "dispatch_error" = null, "updated_at" = now()
          where "id" in (${placeholders}) and "deleted_at" is null and "status" = 'confirmed'
-           and ("dispatch_state" is null or "dispatch_state" = 'failed')
+           and ("dispatch_state" is null or "dispatch_state" = 'failed'${includeUnknown ? ` or "dispatch_state" = 'unknown'` : ""})
          returning "id"`,
         [now, ...ids],
       )
