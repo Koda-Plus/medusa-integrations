@@ -262,6 +262,12 @@ const CouponsPage = () => {
                         <StatusBadge status={c.status} />
                         {c.automatic ? <ToneBadge tone="blue">{t("list.automatic")}</ToneBadge> : null}
                       </span>
+                      {c.createdAt ? (
+                        <span className="txt-compact-xsmall text-ui-fg-muted" title={t("list.createdTitle")}>
+                          {fmt.date(c.createdAt)}
+                          {c.createdBy ? ` · ${c.createdBy}` : ""}
+                        </span>
+                      ) : null}
                     </div>
                   </Table.Cell>
                   <Table.Cell className="max-w-[34rem] whitespace-normal">

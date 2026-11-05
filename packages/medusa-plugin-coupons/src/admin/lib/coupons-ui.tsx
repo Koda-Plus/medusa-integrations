@@ -98,7 +98,7 @@ export function UsageCell({ c, nobody }: { c: CouponDto; nobody: string | null |
   const { t } = useTranslation("coupons")
   const w = usageWords(c, nobody, t)
   return (
-    <div className="flex flex-col gap-y-0.5" title={t("usage.hint")}>
+    <div className="flex flex-col items-start gap-y-0.5" title={t("usage.hint")}>
       {c.automatic && !c.limit ? (
         <ToneBadge tone="blue" title={t("list.automaticUsesHint")}>
           {t("list.automaticUses")}

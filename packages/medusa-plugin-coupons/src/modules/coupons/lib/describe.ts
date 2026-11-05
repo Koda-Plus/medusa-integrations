@@ -193,6 +193,7 @@ export function toCouponDto(p: PromotionLike, stats: CouponStats | undefined, no
     campaign: p.campaign?.id ? { id: p.campaign.id, name: p.campaign.name ?? "" } : null,
     stats: stats ?? NO_STATS,
     createdAt: iso(p.created_at),
+    createdBy: creatorOf(p.metadata),
     terms,
     codeSent: codeSentOf(p.metadata),
   }
@@ -245,4 +246,12 @@ export function couponCodesOf(coupons: ReadonlyArray<{ code: string; status?: st
     out[code] = { shipping: isShippingKind(c.shape.kind), live: c.status !== "expired" && c.status !== "used_up" }
   }
   return out
+}
+
+/** Who made the coupon: `created_by_label` (the panel user) first, then a store's own `created_by` text. */
+export function creatorOf(metadata: Record<string, unknown> | null | undefined): string | null {
+  const pick = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)
+  const raw = pick(metadata?.created_by_label) ?? pick(metadata?.created_by)
+  if (!raw) return null
+  return raw.charAt(0).toUpperCase() + raw.slice(1)
 }

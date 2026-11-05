@@ -49,6 +49,7 @@ const pl: typeof en = {
     emptyAll: "Nie ma jeszcze kuponów",
     clear: "Pokaż wszystkie",
     automatic: "automatyczny",
+    createdTitle: "Utworzony: data i kto",
     noCode: "bez kodu",
     uses: "Użycia",
     discount: "Rabat",

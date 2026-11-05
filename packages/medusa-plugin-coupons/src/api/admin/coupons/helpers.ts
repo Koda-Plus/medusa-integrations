@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { CouponInputError } from "../../../workflows/coupons/errors"
 import { couponsService } from "../../../workflows/coupons/runtime"
+import { Modules } from "@medusajs/framework/utils"
 
 /* Only files named `route.ts` register routes; this one is a helper. */
 
@@ -27,4 +28,31 @@ export function fail(req: MedusaRequest, res: MedusaResponse, err: unknown, publ
     /* no logger in tests */
   }
   res.status(500).json({ code: "coupons_unavailable", message: publicMessage })
+}
+
+/**
+ * The panel user who made a coupon (create, copy), kept in the promotion's
+ * metadata `created_by_label` (name, else e-mail) for the list. Never throws:
+ * a coupon without it simply shows no author.
+ */
+export async function stampCreator(req: MedusaRequest, promotionId: string): Promise<string | null> {
+  try {
+    const actor = (req as MedusaRequest & { auth_context?: { actor_id?: string } }).auth_context?.actor_id
+    if (!actor || !promotionId) return null
+    const users = req.scope.resolve(Modules.USER) as unknown as { retrieveUser(id: string): Promise<{ email?: string | null; first_name?: string | null; last_name?: string | null }> }
+    const u = await users.retrieveUser(actor)
+    const name = [u.first_name, u.last_name].filter((x) => typeof x === "string" && x.trim()).join(" ").trim()
+    const label = name || u.email || null
+    if (!label) return null
+    const promotions = req.scope.resolve(Modules.PROMOTION) as unknown as {
+      listPromotions(f: Record<string, unknown>, c?: Record<string, unknown>): Promise<Array<{ id: string; metadata?: Record<string, unknown> | null }>>
+      updatePromotions(d: Record<string, unknown>): Promise<unknown>
+    }
+    const [p] = await promotions.listPromotions({ id: promotionId }, { select: ["id", "metadata"], take: 1 })
+    if (!p) return null
+    await promotions.updatePromotions({ id: promotionId, metadata: { ...(p.metadata ?? {}), created_by_label: label } })
+    return label
+  } catch {
+    return null
+  }
 }

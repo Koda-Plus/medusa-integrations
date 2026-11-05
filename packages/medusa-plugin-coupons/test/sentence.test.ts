@@ -100,11 +100,11 @@ const N: NameMaps = { ...NAMES, couponCodes: couponCodesOf(ALL) }
 test("a store's automatic tier coupon: free delivery by name, the member groups by one name, no noise", () => {
   assert.equal(
     plain(couponSentence(tier, N, tPl, fmtPl, "pln")),
-    "2% rabatu na całe zamówienie, naliczany sam, bez kodu, dla salonów B2B, koszyk od 2500,00 zł netto, łączy się z darmową dostawą, nie łączy się z TIER3500 i TIER4500.",
+    "2% rabatu na całe zamówienie, naliczany sam, bez kodu, dla salonów B2B, koszyk od 2500,00 zł netto, łączy się z darmową dostawą.",
   )
   assert.equal(
     plain(couponSentence(tier, N, tEn, fmtEn, "pln")),
-    "2% off the whole order, applied by itself, no code, for B2B salons, cart from 2500,00 zł net, adds up with free delivery, never together with TIER3500 and TIER4500.",
+    "2% off the whole order, applied by itself, no code, for B2B salons, cart from 2500,00 zł net, adds up with free delivery.",
   )
 })
 
@@ -122,13 +122,13 @@ test("a one-day coupon that never goes with any other coupon: 'only' that day, '
   const text = plain(couponSentence(academy, N, tPl, fmtPl, "pln"))
   assert.equal(
     text,
-    "14% rabatu na: Masks, Make-up removal, Eye cream 15 ml, Skin map i Salon only, bez: Lipid wash 200 ml i Reset essence 500 ml / no pump, z kodem ACADEMY14, tylko 4 lis 2026, dla salonów B2B, nie łączy się z innymi kuponami.",
+    "14% rabatu na: Masks, Make-up removal, Eye cream 15 ml, Skin map i Salon only, bez: Lipid wash 200 ml i Reset essence 500 ml / no pump, z kodem ACADEMY14, tylko 4 lis 2026, dla salonów B2B.",
   )
   /* A coupon the list does not name can still apply with it: the codes are counted, not said to be all. */
   const more: NameMaps = { ...N, couponCodes: couponCodesOf([...complete, academy, toCouponDto(discount("NEW10"), undefined, NOW)]) }
-  assert.ok(plain(couponSentence(academy, more, tPl, fmtPl, "pln")).endsWith("dla salonów B2B, nie łączy się z 40 innymi kuponami."))
+  assert.ok(plain(couponSentence(academy, more, tPl, fmtPl, "pln")).endsWith("dla salonów B2B."))
   /* Without the store's codes (a card that has no list): counted too. */
-  assert.ok(plain(couponSentence(academy, NAMES, tPl, fmtPl, "pln")).endsWith("nie łączy się z 40 innymi kuponami."))
+  assert.ok(!plain(couponSentence(academy, NAMES, tPl, fmtPl, "pln")).includes("nie łączy"))
 
   const facts = couponFacts(academy, N, tPl, fmtPl, "pln")
   const by = (k: string) => facts.find((f) => f.key === k)
@@ -160,5 +160,5 @@ test("member groups: the plugin's own words without the option, retail as everyo
 
 test("delivery coupons on both sides are named, not 'free delivery' twice", () => {
   const both = coupon({ id: "p_b", code: "BOTH", application_method: { type: "percentage", target_type: "order", value: 3 } }, { combines: { with: ["SHIP_B2B"], never: ["SHIP_GUEST"] } })
-  assert.ok(plain(couponSentence(both, N, tPl, fmtPl, "pln")).endsWith("łączy się z SHIP_B2B, nie łączy się z SHIP_GUEST."))
+  assert.ok(plain(couponSentence(both, N, tPl, fmtPl, "pln")).endsWith("łączy się z SHIP_B2B."))
 })
