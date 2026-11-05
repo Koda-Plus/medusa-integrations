@@ -2,6 +2,8 @@
 
 ## 0.5.0 (unreleased)
 
+- The icon is DPD's cube in white on DPD red, a rounded tile like the other Koda Plus integrations (was a generic truck), in the sidebar, the page header and the order card. The admin page has `rank: 100`, so DPD comes last among the extensions.
+
 - Statuses from the DPD InfoServices (`getEventsForWaybillV1`, one call per waybill, the whole history, Polish descriptions) in their own job, `dpd-sync-statuses`, every 5 minutes: claimed rows (several server instances never take the same shipment), at most every 30 minutes after the handover and every 2 hours before it, up to 50 calls and 2 minutes per pass, for 30 days. The job runs without the DPDServices credentials and without the shipment writer.
 - A built in map of DPD event codes to stages, `statusMap` on top of it; notifications never change the stage; an unknown code never writes to Medusa and gives "in transit" only to a waybill without a known code, never replacing a stage a known code set (after 030103 it stays preparing until `statusMap` maps it). The `ready` stage is set by the handover. In live mode `in_point` comes only from `statusMap` (DPD has not confirmed the code of the arrival at a Pickup point); the simulator gives it in the sandbox and demo mode.
 - The stage of a shipment with several boxes: returned, then problem, then delivered only when every waybill is delivered, else the lowest stage; a waybill with no event yet counts as preparing (ready after the handover). Delivered and returned of a waybill stay after a later event. Each waybill keeps its own stage, last event and DPD description (`tracking`).

@@ -417,7 +417,7 @@ function Warnings({ status, lang, onSettings, onWriterFailed }: { status: Status
 
 export const config = defineRouteConfig({
   label: "DPD",
-  rank: 4,
+  rank: 100,
   icon: DpdIcon,
 })
 
