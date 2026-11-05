@@ -317,6 +317,40 @@ test("automatic mode: armed + autoCreate creates on the fulfillment; the status 
   assert.equal(again.parcels, 0, "a shipment is never in two pickups")
 })
 
+test("a pickup without a clear answer is unknown: the schedule never orders it again, a person naming the shipment may", async () => {
+  const sender = { companyName: "Koda Supply", email: "sklep@example.com", phone: "000000002", street: "ul. Magazynowa", buildingNumber: "1", city: "Warszawa", postCode: "00-001" }
+  const s = setup({ ...LIVE, autoCreate: true, sendingMethod: { courier: "dispatch_order" }, sender }, [withFulfillment(order(), { inpost_option: "inpost-kurier", type: "kurier", cod: false }, FUL)])
+  await arm(s, "shipment")
+  await recorded(s)
+  await settle()
+  const row = s.parcels.rows[0]
+  s.fake.set(String(row.shipment_id), "confirmed", { tracking_number: "8".repeat(24) })
+  s.fake.loseDispatchAnswer = true
+  await runSync(s.container, "manual")
+  assert.equal(s.parcels.rows[0].dispatch_state, "unknown")
+  await runSync(s.container, "schedule")
+  assert.equal((await requestPickup(s.container, null, "user_1")).parcels, 0, "no ids: an unclear pickup is left alone")
+  const dispatches = () => s.fake.calls.filter((c) => c.method === "POST" && /dispatch_orders$/.test(c.url)).length
+  assert.equal(dispatches(), 1, "ordered once, never again by the plugin")
+  const retried = await requestPickup(s.container, [row.id], "user_1")
+  assert.equal(retried.parcels, 1)
+  assert.equal(s.parcels.rows[0].dispatch_state, "requested")
+  assert.equal(dispatches(), 2)
+})
+
+test("an unclear create is never called not created when ShipX lists more shipments than the lookup reads", async () => {
+  const s = setup(LIVE, [lockerOrder()])
+  const row = await recorded(s)
+  await arm(s, "shipment")
+  s.fake.failCreate = "timeout"
+  await createShipment(s.container, row.id, { actor: "system", trigger: "auto" })
+  s.fake.noise = 400
+  s.parcels.rows[0].claimed_at = new Date(Date.now() - 20 * 60 * 1000)
+  const after = await lookupUnknown(s.container, row.id)
+  assert.equal(after.state, "unknown")
+  assert.equal(after.error_code, "lookup_incomplete")
+})
+
 test("the status pass skips everything while InPost is not configured, and records its run", async () => {
   const s = setup({ demo: false }, [])
   const stats = await runSync(s.container, "schedule")

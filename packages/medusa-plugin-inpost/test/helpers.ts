@@ -205,11 +205,11 @@ export function memoryStore(parcels: Table, events: Table, settings: Table): Par
       r.buy_requested_at = now
       return { ...r }
     },
-    async claimDispatch(ids, now) {
+    async claimDispatch(ids, now, includeUnknown = false) {
       const out: string[] = []
       for (const id of ids) {
         const r = live(id)
-        if (r && r.status === "confirmed" && (r.dispatch_state === null || r.dispatch_state === "failed")) {
+        if (r && r.status === "confirmed" && (r.dispatch_state === null || r.dispatch_state === "failed" || (includeUnknown && r.dispatch_state === "unknown"))) {
           r.dispatch_state = "requesting"
           r.dispatch_at = now
           out.push(id)
@@ -296,6 +296,10 @@ export class FakeShipx {
   failCreate: null | { status: number; body?: Row } | "timeout" = null
   /** The next create reaches ShipX but its answer is lost (the shipment exists). */
   loseCreateAnswer = false
+  /** The next dispatch order reaches ShipX but its answer is lost. */
+  loseDispatchAnswer = false
+  /** Other shipments of the same receiver ShipX lists (to fill pages). */
+  noise = 0
   /** Answer of DELETE: ShipX refuses with invalid_action after confirmation. */
   points: Row[] = []
 
@@ -339,13 +343,24 @@ export class FakeShipx {
     }
     if (m && method === "GET") {
       const email = u.searchParams.get("receiver_email")
-      const items = [...this.shipments.values()].filter((s) => !email || s.receiver?.email === email)
-      return json(200, { items, count: items.length })
+      const noise = Array.from({ length: this.noise }, (_, i) => ({ id: 900000 + i, status: "delivered", reference: `other-${i}`, receiver: { email } }))
+      const all = [...noise, ...[...this.shipments.values()].filter((s) => !email || s.receiver?.email === email)]
+      const perPage = Number(u.searchParams.get("per_page") ?? 25)
+      const page = Number(u.searchParams.get("page") ?? 1)
+      return json(200, { items: all.slice((page - 1) * perPage, page * perPage), count: all.length, page, per_page: perPage })
     }
     m = path.match(/^\/v1\/organizations\/(\d+)$/)
     if (m && method === "GET") return json(200, { id: Number(m[1]), name: "Koda Supply", status: "active", services: ["inpost_locker_standard", "inpost_courier_standard"] })
     m = path.match(/^\/v1\/organizations\/(\d+)\/dispatch_orders$/)
-    if (m && method === "POST") return json(201, { id: 77, status: "new" })
+    if (m && method === "POST") {
+      if (this.loseDispatchAnswer) {
+        this.loseDispatchAnswer = false
+        const err = new Error("aborted")
+        err.name = "AbortError"
+        throw err
+      }
+      return json(201, { id: 77, status: "new" })
+    }
     m = path.match(/^\/v1\/shipments\/(\d+)\/label$/)
     if (m) {
       const s = this.shipments.get(m[1])

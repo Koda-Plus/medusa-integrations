@@ -543,7 +543,8 @@ export async function lookupUnknown(scope: Scope, id: string): Promise<ParcelRow
   const claimedAt = row.claimed_at ? new Date(row.claimed_at) : new Date(row.updated_at ?? Date.now())
   const since = new Date(claimedAt.getTime() - 10 * 60 * 1000).toISOString()
   const filters: Record<string, string> = email ? { receiver_email: email, created_at_gteq: since } : phone ? { receiver_phone: phone, created_at_gteq: since } : { created_at_gteq: since }
-  const found = (await clientFor(scope).findShipments(filters)).filter((s) => String(s.reference ?? "") === reference)
+  const result = await clientFor(scope).findShipments(filters)
+  const found = result.items.filter((s) => String(s.reference ?? "") === reference)
   if (found.length === 1) {
     const s = found[0]
     const adopted = await store.transition(row.id, ["unknown"], {
@@ -570,6 +571,11 @@ export async function lookupUnknown(scope: Scope, id: string): Promise<ParcelRow
   }
   if (Date.now() - claimedAt.getTime() < UNKNOWN_SETTLE_MS) {
     await store.touch(row.id, now())
+    return (await getParcel(svc, row.id)) ?? row
+  }
+  /* Not found in a list that was cut short: the shipment may sit on an unread page, so it is never called "not created". */
+  if (!result.complete) {
+    await store.transition(row.id, ["unknown"], { error: "ShipX lists too many shipments for this receiver to check them all. Look for this reference in InPost Manager and link the shipment, or try again if it is not there.", error_code: "lookup_incomplete", last_checked_at: now() })
     return (await getParcel(svc, row.id)) ?? row
   }
   const failed = await store.transition(row.id, ["unknown"], {
@@ -664,12 +670,14 @@ export async function requestPickup(scope: Scope, ids: string[] | null, actor: s
   const s = settings.sender
   const name = s.companyName || [s.firstName, s.lastName].filter(Boolean).join(" ")
   if (!settings.senderAddress || !s.phone || !name) throw new ActionError(422, "pickup_sender_missing", "A courier pickup needs the sender's name, phone and full address in Settings.")
+  /* A pickup that may have been ordered ("unknown") is ordered again only by a person who names the shipments after checking InPost Manager. */
+  const retryUnclear = trigger === "manual" && Boolean(ids && ids.length > 0)
   const candidates = (await listParcels(svc, { demo: svc.isDemo(), state: "created", status: "confirmed", sending_method: "dispatch_order", ...(ids ? { id: ids } : {}) }, { take: 100 })).filter(
-    (r) => !r.external && r.shipment_id && (r.dispatch_state === null || r.dispatch_state === "failed"),
+    (r) => !r.external && r.shipment_id && (r.dispatch_state === null || r.dispatch_state === "failed" || (retryUnclear && r.dispatch_state === "unknown")),
   )
   if (candidates.length === 0) return { dispatchOrderId: null, parcels: 0 }
   const store = storeFor(scope)
-  const claimed = await store.claimDispatch(candidates.map((r) => r.id), now())
+  const claimed = await store.claimDispatch(candidates.map((r) => r.id), now(), retryUnclear)
   const rows = candidates.filter((r) => claimed.includes(r.id))
   if (rows.length === 0) return { dispatchOrderId: null, parcels: 0 }
   let dispatchOrderId: string
@@ -688,6 +696,14 @@ export async function requestPickup(scope: Scope, ids: string[] | null, actor: s
       dispatchOrderId = String(order.id)
     } catch (err) {
       const d = describeError(err)
+      if (d.unclear) {
+        const message = "No clear answer from ShipX: the pickup may have been ordered. Check InPost Manager before ordering it again."
+        for (const r of rows) {
+          await store.transition(r.id, ["created"], { dispatch_state: "unknown", dispatch_error: svc.mask(`${message} (${d.code})`) })
+          await recordEvent(scope, { parcel_id: r.id, order_id: r.order_id, shipment_id: r.shipment_id, kind: "action", source: trigger === "manual" ? "admin" : "system", actor, message, data: { action: "pickup", outcome: "unknown", code: d.code }, demo: false })
+        }
+        throw new ActionError(502, d.code, message)
+      }
       for (const r of rows) await store.transition(r.id, ["created"], { dispatch_state: "failed", dispatch_error: svc.mask(d.message) })
       throw new ActionError(502, d.code, svc.mask(d.message))
     }
