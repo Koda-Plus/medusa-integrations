@@ -9,7 +9,11 @@ import type { DeliveryType } from "./constants"
  *              decimals with two places, without delivery), currency (only
  *              PLN), basket_expiration_date, payment_type ([] from the merchant)
  *   delivery   one entry per delivery type the store offers: delivery_type
- *              (APM, COURIER, DIGITAL), delivery_date, delivery_price
+ *              (APM, COURIER, DIGITAL), delivery_date, delivery_price and,
+ *              when the cart can ship it cash on delivery, delivery_options
+ *              [{ delivery_code_value: "COD" }] priced as the difference to
+ *              the COD option ("Basket update": the app offers
+ *              CASH_ON_DELIVERY only then)
  *   products   one per line item
  *   promo_codes the codes on the cart
  *
@@ -61,6 +65,17 @@ export interface OfferedDelivery {
   type: DeliveryType
   /** The gross price of the shipping option for this cart, major units. */
   gross: number
+  /** The gross price of its cash on delivery twin, when the cart can use one. */
+  codGross?: number | null
+}
+
+/**
+ * The gross price of a shipping option for a cart. Medusa prices an option
+ * net when its price is not tax inclusive (the default of a region without a
+ * price preference); the app shows gross, so the shipping VAT rate is added.
+ */
+export function optionGross(o: { amount: number; tax_inclusive?: boolean }, vatRatePercent: number): number {
+  return o.tax_inclusive === false ? round2(o.amount * (1 + vatRatePercent / 100)) : round2(o.amount)
 }
 
 const n = (v: unknown): number => {
@@ -115,6 +130,9 @@ export function basketPayload(
       delivery_type: d.type,
       delivery_date: ctx.deliveryDate.toISOString(),
       delivery_price: priceFromRate(d.gross, ctx.shippingVatRate),
+      ...(typeof d.codGross === "number"
+        ? { delivery_options: [{ delivery_name: "Płatność przy odbiorze", delivery_code_value: "COD", delivery_option_price: priceFromRate(Math.max(0, d.codGross - d.gross), ctx.shippingVatRate) }] }
+        : {}),
     })),
     products: items.map((it) => {
       const qty = Math.max(1, Math.round(n(it.quantity)))

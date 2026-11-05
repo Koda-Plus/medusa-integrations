@@ -15,6 +15,7 @@ import { proofSecret, sessionProof } from "../../modules/inpostpay/lib/proof"
 import { readSettings, withEvent } from "../../modules/inpostpay/lib/store"
 import { basketRow, updateRow } from "./baskets"
 import { loadCart, shippingOptionsFor } from "./carts"
+import { annotatePayments } from "./payments"
 import { InpostPayFlowError, loggerOf, optionsOf, withBasketLock } from "./runtime"
 
 /**
@@ -44,7 +45,7 @@ export interface Buyer {
 export interface PlaceInput {
   basketId: string
   buyer: Buyer
-  delivery: { type: DeliveryType; point: string | null }
+  delivery: { type: DeliveryType; point: string | null; cod?: boolean }
   /** InPost's payment status at the time of the order (live), or the demo one. */
   payment: { status: string | null; type: string | null }
   /** The gross basket price InPost charged (live): must match the cart total. */
@@ -105,13 +106,13 @@ export async function placeOrder(scope: MedusaContainer, input: PlaceInput): Pro
 
       const available = await shippingOptionsFor(scope, cartId)
       const settings = await readSettings(scope)
-      const pick = pickShippingOption({ type: input.delivery.type, mapping: settings.delivery, available, demo: o.demo })
+      const pick = pickShippingOption({ type: input.delivery.type, mapping: settings.delivery, available, demo: o.demo, cod: input.delivery.cod === true })
       if (!pick.ok) throw new InpostPayFlowError(422, pick.code, pick.message)
       await addShippingMethodToCartWorkflow(scope).run({ input: { cart_id: cartId, options: [{ id: pick.id, data: shippingMethodData(input.delivery.type, input.delivery.point) }] } })
 
       cart = (await loadCart(scope, cartId))!
       const amountMinor = cartTotalMinor(cart)
-      /* Whether InPost's basket_price includes the delivery is not said in the readable docs: either total passes. */
+      /* basket_price includes the delivery ("Creating an order"); the total without shipping is still accepted, as before. */
       const withoutShipping = amountMinor - Math.round(Number((Number((cart as { shipping_total?: unknown }).shipping_total ?? 0) * 100).toFixed(4)))
       if (typeof input.expectedTotalMinor === "number" && Math.abs(input.expectedTotalMinor - amountMinor) > 1 && Math.abs(input.expectedTotalMinor - withoutShipping) > 1) {
         throw new InpostPayFlowError(409, "BASKET_PRICE_CHANGED", `InPost charged ${input.expectedTotalMinor / 100}, the cart now costs ${amountMinor / 100}`)
@@ -138,6 +139,10 @@ export async function placeOrder(scope: MedusaContainer, input: PlaceInput): Pro
 
       const { result } = await completeCartWorkflow(scope).run({ input: { id: cartId } })
       const orderId = (result as { id: string }).id
+      /* A refund finds the InPost transaction by this id; without it the order still stands. */
+      await annotatePayments(scope, orderId, { order_id: orderId }).catch((e: unknown) =>
+        loggerOf(scope).warn(`[inpostpay] The payment of ${orderId} did not get its order id: ${(e as Error)?.message ?? e}`),
+      )
       await updateRow(scope, row.id, {
         status: "ordered",
         order_id: orderId,

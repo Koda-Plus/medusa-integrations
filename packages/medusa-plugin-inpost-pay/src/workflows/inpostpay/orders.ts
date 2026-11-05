@@ -7,7 +7,8 @@ import { parseInpostOrder } from "../../modules/inpostpay/lib/order-input"
 import { inpostPaySvc, withEvent } from "../../modules/inpostpay/lib/store"
 import { basketRow, updateRow } from "./baskets"
 import { placeOrder, type PlaceResult } from "./checkout"
-import { clientOf, loggerOf, optionsOf } from "./runtime"
+import { annotatePayments, capturePaid, eventIsNew } from "./payments"
+import { clientOf, loggerOf, optionsOf, withBasketLock } from "./runtime"
 
 export { parseInpostOrder }
 
@@ -69,18 +70,65 @@ export async function basketOfOrder(scope: MedusaContainer, orderId: string): Pr
   return rows[0] ?? null
 }
 
-/** POST /v1/izi/order/{id}/event from InPost: the payment or order status changed in the app. */
+/**
+ * POST /v1/izi/order/{id}/event from InPost: the payment or order status
+ * changed in the app. A repeated event (same `event_id`) or one older than
+ * the newest applied (`event_data_time`) is noted and changes nothing. The
+ * status and InPost's payment reference also go into the Medusa payment's
+ * data (a refund finds the transaction by them); AUTHORIZED captures the
+ * payment (`autoCapture`). A failed capture is noted, the event still stands.
+ * One event of a basket at a time, on the row as it is then: a resent copy
+ * waits and is seen as repeated, so the payment is captured once.
+ */
 export async function applyInpostOrderEvent(scope: MedusaContainer, row: Record<string, any>, body: Record<string, any>): Promise<Record<string, any>> {
+  return withBasketLock(String(row.id), async () => applyEvent(scope, (await basketRow(scope, String(row.id))) ?? row, body))
+}
+
+async function applyEvent(scope: MedusaContainer, row: Record<string, any>, body: Record<string, any>): Promise<Record<string, any>> {
   const data = body.event_data ?? {}
   const payment = (PAYMENT_STATUSES as readonly string[]).includes(data.payment_status) ? String(data.payment_status) : null
   const order = data.order_status === "ORDER_REJECTED" || data.order_status === "ORDER_COMPLETED" || data.order_status === "ORDER_PROCESSING" ? String(data.order_status) : null
   const type = (PAYMENT_TYPES as readonly string[]).includes(data.payment_type) ? String(data.payment_type) : null
   const parts = [payment ? `payment ${payment}` : "", order ? `order ${order}` : "", type ? `by ${type}` : ""].filter(Boolean)
+  const eventId = text(body.event_id, 80)
+  const parsedTime = Date.parse(text(body.event_data_time, 40))
+  const eventTime = Number.isFinite(parsedTime) ? parsedTime : null
+  const reference = text(data.payment_reference, 120)
+
+  const fresh = eventIsNew(row.events, eventId, eventTime)
+  if (!fresh.ok) {
+    const why = fresh.reason === "duplicate" ? "a repeated event" : "older than the last one applied"
+    return updateRow(scope, row.id, { events: withEvent(row.events, { kind: "note", message: `InPost: ${parts.join(", ") || "an event"} ignored (${why})`, data: { event_id: eventId } }) })
+  }
+
+  let events = withEvent(row.events, {
+    kind: "payment",
+    message: `InPost: ${parts.join(", ") || "an event without a status"}`,
+    data: { event_id: eventId, event_time: eventTime !== null ? new Date(eventTime).toISOString() : undefined, payment_reference: reference || undefined },
+  })
+  const orderId = typeof row.order_id === "string" ? row.order_id : ""
+  if (orderId && (payment || type || reference)) {
+    const patch: Record<string, unknown> = { order_id: orderId }
+    if (payment) patch.inpost_payment_status = payment
+    if (type) patch.inpost_payment_type = type
+    if (reference) patch.payment_reference = reference
+    await annotatePayments(scope, orderId, patch).catch((e: unknown) => loggerOf(scope).warn(`[inpostpay] The payment of ${orderId} was not updated: ${(e as Error)?.message ?? e}`))
+  }
+  if (orderId && payment === "AUTHORIZED" && optionsOf(scope).autoCapture) {
+    try {
+      const n = await capturePaid(scope, orderId)
+      if (n > 0) events = withEvent(events, { kind: "note", message: "Payment captured in Medusa (InPost reported AUTHORIZED)" })
+    } catch (e) {
+      const message = String((e as Error)?.message ?? e).slice(0, 200)
+      loggerOf(scope).warn(`[inpostpay] Capturing the payment of ${orderId} failed: ${message}`)
+      events = withEvent(events, { kind: "failed", message: `The payment was not captured in Medusa: ${message}. Capture it on the order.` })
+    }
+  }
   return updateRow(scope, row.id, {
     ...(payment ? { payment_status: payment } : {}),
     ...(order ? { order_status: order } : {}),
     ...(type ? { payment_type: type } : {}),
-    events: withEvent(row.events, { kind: "payment", message: `InPost: ${parts.join(", ") || "an event without a status"}`, data: { event_id: text(body.event_id, 80), payment_reference: text(data.payment_reference, 120) || undefined } }),
+    events,
   })
 }
 
