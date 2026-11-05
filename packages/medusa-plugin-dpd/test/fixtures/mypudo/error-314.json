@@ -1,0 +1,9 @@
+{
+  "source": "MP s.5",
+  "note": "The HTTP status is not documented.",
+  "httpStatus": 401,
+  "body": {
+    "code": "314",
+    "message": "Niepoprawny klucz lub token autoryzacyjny"
+  }
+}

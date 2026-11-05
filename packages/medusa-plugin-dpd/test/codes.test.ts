@@ -1,0 +1,255 @@
+/**
+ * Every code the server can hand the admin has its words in both
+ * dictionaries: the problems of a plan and of a DPD answer, the warnings of a
+ * plan, the error codes kept on a row or a handover and the codes of a
+ * refused action. A missing key would show the bare code to a warehouse.
+ */
+import { test } from "node:test"
+import assert from "node:assert/strict"
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { dirname, join, relative } from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
+import en from "../src/admin/i18n/en.ts"
+import { ACTION_ERROR_CODES, DISPATCH_ERROR_CODES, SHIPMENT_ERROR_CODES } from "../src/modules/dpd/lib/contract.ts"
+import { COURIER_WINDOW_CODES } from "../src/modules/dpd/lib/courier.ts"
+import { DISPATCH_PROBLEM_CODES, DISPATCH_WARNING_CODES } from "../src/modules/dpd/lib/dispatch.ts"
+import { DISPATCH_PROBLEM_SOURCE_CODES, DPD_ERROR_CODES, DPD_PROBLEM_CODES, PICKUP_ANSWER_CODES } from "../src/modules/dpd/lib/dpd-answers.ts"
+import { PLAN_PROBLEM_CODES, PLAN_WARNING_CODES } from "../src/modules/dpd/lib/plan.ts"
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..")
+
+type Tree = { [key: string]: string | Tree }
+
+/**
+ * The Polish dictionary without the typesetting (the kit is a .tsx file,
+ * which `node --test` cannot load): the same object, read from a copy with
+ * the typeset import and call taken out and the other imports made absolute.
+ */
+async function loadPl(): Promise<Tree> {
+  const dir = join(root, "src/admin/i18n")
+  const text = readFileSync(join(dir, "pl.ts"), "utf8")
+    .replace(/^import \{ typeset \} from .*$/m, "")
+    .replace(/from "(\.\.?\/[^"]+)"/g, (_m: string, spec: string) => {
+      if (spec === "./en") return `from "${spec}"`
+      const base = join(dir, spec)
+      return `from "${pathToFileURL(base.endsWith(".ts") ? base : `${base}.ts`).href}"`
+    })
+    .replace(/export default typeset\(pl\)\s*$/, "export default pl\n")
+  const tmp = mkdtempSync(join(tmpdir(), "dpd-codes-"))
+  const file = join(tmp, "pl.ts")
+  writeFileSync(file, text)
+  try {
+    return ((await import(pathToFileURL(file).href)) as { default: Tree }).default
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+function section(tree: Tree, name: string): Record<string, string | Tree> {
+  const value = tree[name]
+  assert.ok(value && typeof value === "object", `the dictionary has the section ${name}`)
+  return value
+}
+
+/** The codes of `codes` that have no non empty string under `section` in `tree`. */
+function missing(tree: Tree, name: string, codes: readonly string[]): string[] {
+  const s = section(tree, name)
+  return codes.filter((c) => typeof s[c] !== "string" || (s[c] as string).trim() === "")
+}
+
+const CASES: ReadonlyArray<readonly [string, string, readonly string[]]> = [
+  ["plan problems", "problem", PLAN_PROBLEM_CODES],
+  ["DPD answer problems", "problem", DPD_PROBLEM_CODES],
+  ["plan warnings", "warning", PLAN_WARNING_CODES],
+  ["row error codes", "errorCode", SHIPMENT_ERROR_CODES],
+  ["action error codes", "actionError", ACTION_ERROR_CODES],
+  /* Stage 4, the handover to the courier. */
+  ["handover problems", "problem", DISPATCH_PROBLEM_CODES],
+  ["courier window problems", "problem", COURIER_WINDOW_CODES],
+  ["courier and protocol answer problems", "problem", DISPATCH_PROBLEM_SOURCE_CODES],
+  ["handover warnings", "warning", DISPATCH_WARNING_CODES],
+  ["handover error codes", "errorCode", DISPATCH_ERROR_CODES],
+]
+
+test("every plan problem, DPD problem, warning, row error code and action error code has an English text", () => {
+  const tree = en as unknown as Tree
+  for (const [what, name, codes] of CASES) assert.deepEqual(missing(tree, name, codes), [], `en ${what}`)
+})
+
+test("every plan problem, DPD problem, warning, row error code and action error code has a Polish text", async () => {
+  const tree = await loadPl()
+  for (const [what, name, codes] of CASES) assert.deepEqual(missing(tree, name, codes), [], `pl ${what}`)
+})
+
+/* Codes the server adds next to the lists above; listed here so their words exist before any list carries them. */
+const ADDED_PROBLEMS = [
+  "payer_fid_missing",
+  /* Stage 4: the handover (23). */
+  "no_shipments", "too_many_shipments", "shipment_not_found", "shipment_not_labeled", "shipment_dispatched",
+  "shipment_excluded", "shipment_canceled", "shipment_not_domestic", "shipment_not_outbound",
+  "shipment_no_reference", "shipment_boxes_missing", "mixed_senders", "sender_not_pl", "orderer_invalid",
+  /* Stage 5: a shipment DPD already has is not a candidate (DS13, E54). */
+  "shipment_picked_up",
+  "date_invalid", "date_past", "date_too_far", "time_invalid", "time_order", "window_outside", "no_ranges",
+  "dpd_courier", "dpd_protocol_not_found",
+] as const
+
+/* Stage 4: the warnings of a handover (sample_sender is a plan warning already) and the codes of a refused handover action. */
+const ADDED_WARNINGS = ["dims_unknown", "protocol_stale"] as const
+const ADDED_ACTION_ERRORS = ["availability_unavailable", "availability_refused", "courier_window", "no_check_sum", "marker_failed", "not_candidate"] as const
+
+test("the added problem codes have their words in both dictionaries", async () => {
+  const pl = await loadPl()
+  for (const [lang, tree] of [["en", en as unknown as Tree], ["pl", pl]] as const) {
+    assert.deepEqual(missing(tree, "problem", ADDED_PROBLEMS), [], `${lang} problem`)
+    assert.deepEqual(missing(tree, "warning", ADDED_WARNINGS), [], `${lang} warning`)
+    assert.deepEqual(missing(tree, "errorCode", ADDED_ERROR_CODES), [], `${lang} errorCode`)
+    assert.deepEqual(missing(tree, "actionError", ADDED_ACTION_ERRORS), [], `${lang} actionError`)
+  }
+  /* The stage 4 codes are the ones of the server lists, so a code dropped there is dropped here too. */
+  assert.deepEqual(ADDED_PROBLEMS.slice(1), [...DISPATCH_PROBLEM_CODES, ...COURIER_WINDOW_CODES, ...DISPATCH_PROBLEM_SOURCE_CODES])
+  for (const c of ADDED_ACTION_ERRORS) assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(c), `ACTION_ERROR_CODES: ${c}`)
+  for (const c of ADDED_WARNINGS) assert.ok((DISPATCH_WARNING_CODES as readonly string[]).includes(c), `DISPATCH_WARNING_CODES: ${c}`)
+})
+
+/* Stage 5: the codes of a refused status action and of a withdrawal after the pickup (DS13, DS18). */
+const STATUS_ACTION_ERRORS = ["already_shipped", "statuses_auth", "status_unavailable"] as const
+
+test("the stage 5 action codes have their words in both dictionaries and are codes of the server", async () => {
+  const pl = await loadPl()
+  for (const [lang, tree] of [["en", en as unknown as Tree], ["pl", pl]] as const) {
+    assert.deepEqual(missing(tree, "actionError", STATUS_ACTION_ERRORS), [], `${lang} actionError`)
+  }
+  for (const c of STATUS_ACTION_ERRORS) assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(c), `ACTION_ERROR_CODES: ${c}`)
+})
+
+/* Row error codes the server adds next to SHIPMENT_ERROR_CODES (the pacing of a click, which a person retries by hand); their words exist before the server writes them. */
+const ADDED_ERROR_CODES = [
+  "rate_limited", "rate_limited_manual",
+  /* Stage 4: the codes a handover keeps beyond the DPD codes of a shipment row (23). */
+  "protocol_not_found", "session_type", "pickup_fid", "pickup_address", "parcel_limit",
+  "postal_code_not_found", "range_not_found", "postal_pattern", "country_not_found",
+  "order_closed", "checksum", "pickup_time", "order_not_found", "order_number", "order_status",
+  "service_unavailable", "no_order_number",
+  "protocol_unclear", "order_unclear", "update_unclear", "cancel_unclear", "marker_failed", "plan_changed",
+] as const
+
+/** Every .ts file of the server: src without the admin. */
+function serverFiles(dir = join(root, "src"), out: string[] = []): string[] {
+  if (!existsSync(dir)) return out
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) {
+      if (full !== join(root, "src", "admin")) serverFiles(full, out)
+    } else if (name.endsWith(".ts")) out.push(full)
+  }
+  return out
+}
+
+/** The code literals of an expression: every quoted snake case word that is not the right side of a comparison. */
+function literals(expr: string): string[] {
+  return [...expr.matchAll(/(?<![=!]=\s*)["']([a-z][a-z0-9_]*)["']/g)].map((m) => m[1])
+}
+
+/**
+ * Every error code the server writes on a row, read from the sources: each
+ * `error_code: ...` of an object, each `"error_code" = '...'` of the SQL,
+ * the variable an `error_code: code` takes its value from, and the error of
+ * a demo sample. A code written there without its words fails the test
+ * below, even before it joins SHIPMENT_ERROR_CODES.
+ */
+function writtenErrorCodes(): Map<string, string> {
+  const found = new Map<string, string>()
+  for (const file of serverFiles()) {
+    const text = readFileSync(file, "utf8")
+    const where = relative(root, file)
+    const add = (codes: string[]) => {
+      for (const c of codes) if (!found.has(c)) found.set(c, where)
+    }
+    for (const m of text.matchAll(/\berror_code"?\s*(?::|=(?!=))\s*([^,}\n]+)/g)) {
+      const expr = m[1].trim()
+      add(literals(expr))
+      /* error_code: code, where code is a const of the same file, maybe the answer of a function of the same file. */
+      if (/^[A-Za-z_]\w*$/.test(expr) && expr !== "null") {
+        for (const decl of text.matchAll(new RegExp(String.raw`\bconst ${expr}\b[^=\n]*=\s*([^\n]+)`, "g"))) {
+          add(literals(decl[1]))
+          for (const call of decl[1].matchAll(/\b([A-Za-z_]\w*)\(/g)) {
+            const fn = text.match(new RegExp(String.raw`\bfunction ${call[1]}\b[^\n]*\)\s*:\s*([^\n{]+)\{([\s\S]*?)\n\}`))
+            if (!fn) continue
+            add(literals(fn[1]))
+            for (const ret of fn[2].matchAll(/\breturn ([^\n]+)/g)) add(literals(ret[1]))
+          }
+        }
+      }
+    }
+    for (const m of text.matchAll(/\berror: \{ code: "([a-z][a-z0-9_]*)"/g)) add([m[1]])
+  }
+  return found
+}
+
+test("every error code the server writes on a row, read from the sources, has its words in both dictionaries", async () => {
+  const written = writtenErrorCodes()
+  /* The scan reads the sources it should: a code of each kind of writer. */
+  for (const code of ["rate_limited", "adopted", "waybill_count_mismatch", "duplicate_not_found", "label_unclear", "label_not_found", "lease_expired", "label_lease_expired", "abandoned_found", "timeout"]) {
+    assert.ok(written.has(code), `read from the sources: ${code}`)
+  }
+  /* dpd_dispatch.error_code too: every code it can hold is in DISPATCH_ERROR_CODES. */
+  const all = [...new Set([...SHIPMENT_ERROR_CODES, ...DPD_ERROR_CODES, ...DISPATCH_ERROR_CODES, ...ADDED_ERROR_CODES, ...written.keys()])]
+  const where = (c: string) => (written.has(c) ? `${c} (${written.get(c)})` : c)
+  assert.deepEqual(missing(en as unknown as Tree, "errorCode", all).map(where), [], "en")
+  assert.deepEqual(missing(await loadPl(), "errorCode", all).map(where), [], "pl")
+})
+
+test("the pacing codes read as DPD being busy, the one a person retries by hand with a minute to wait", async () => {
+  const pl = await loadPl()
+  const enCodes = section(en as unknown as Tree, "errorCode")
+  const plCodes = section(pl, "errorCode")
+  assert.equal(enCodes.rate_limited_manual, "DPD is busy: try again in a minute.")
+  assert.equal(plCodes.rate_limited_manual, "DPD jest zajęty: spróbuj ponownie za minutę.")
+  assert.equal(typeof enCodes.rate_limited, "string")
+  assert.equal(typeof plCodes.rate_limited, "string")
+})
+
+test("every DPD error code is a value a row can keep", () => {
+  const kept = new Set<string>(SHIPMENT_ERROR_CODES)
+  assert.deepEqual(DPD_ERROR_CODES.filter((c) => !kept.has(c)), [])
+})
+
+test("the code lists have no duplicates", () => {
+  for (const [what, , codes] of CASES) assert.equal(new Set(codes).size, codes.length, what)
+})
+
+/* The codes of stage 3, DPD Pickup: the refused point actions and searches, the row autoCreate did not send. */
+const PICKUP_ACTION_ERRORS = ["not_pickup", "point_refused", "points_unavailable", "rate_limited", "point_not_found"] as const
+const PICKUP_ROW_ERRORS = ["point_unchecked"] as const
+const PICKUP_PROBLEMS = ["pudo_not_found", "pudo_inactive", "pudo_no_delivery", "pudo_no_cod", "pickup_abroad_later"] as const
+
+test("the Pickup codes are in the lists the server sends and have their words in both dictionaries", async () => {
+  for (const c of PICKUP_ACTION_ERRORS) assert.ok((ACTION_ERROR_CODES as readonly string[]).includes(c), `ACTION_ERROR_CODES: ${c}`)
+  for (const c of PICKUP_ROW_ERRORS) assert.ok((SHIPMENT_ERROR_CODES as readonly string[]).includes(c), `SHIPMENT_ERROR_CODES: ${c}`)
+  assert.ok((PLAN_WARNING_CODES as readonly string[]).includes("pudo_unchecked"))
+  const pl = await loadPl()
+  for (const [lang, tree] of [["en", en as unknown as Tree], ["pl", pl]] as const) {
+    assert.deepEqual(missing(tree, "actionError", PICKUP_ACTION_ERRORS), [], `${lang} actionError`)
+    assert.deepEqual(missing(tree, "errorCode", PICKUP_ROW_ERRORS), [], `${lang} errorCode`)
+    assert.deepEqual(missing(tree, "problem", PICKUP_PROBLEMS), [], `${lang} problem`)
+    assert.deepEqual(missing(tree, "warning", ["pudo_unchecked"]), [], `${lang} warning`)
+    assert.equal(typeof section(tree, "account").pickupNotConfigured, "string", `${lang} account.pickupNotConfigured`)
+  }
+  /* The point id goes in {{detail}} (classifyNumbersAnswer puts the sent PUDO there), in both languages. */
+  assert.match(String(section(en as unknown as Tree, "problem").pudo_not_found), /{{detail}}/)
+  assert.match(String(section(pl, "problem").pudo_not_found), /{{detail}}/)
+})
+
+test("every problem a DPD answer gives for a Pickup package is a plan problem code, so it has the plan's words", () => {
+  const plan = new Set<string>(PLAN_PROBLEM_CODES)
+  assert.deepEqual(PICKUP_ANSWER_CODES.filter((c) => !plan.has(c)), [])
+  assert.ok(PICKUP_ANSWER_CODES.length > 0)
+})
+
+test("the action errors live apart from the page error string, which stays a plain text", () => {
+  const tree = en as unknown as Tree
+  assert.equal(typeof tree.error, "string")
+  assert.equal(typeof tree.actionError, "object")
+})

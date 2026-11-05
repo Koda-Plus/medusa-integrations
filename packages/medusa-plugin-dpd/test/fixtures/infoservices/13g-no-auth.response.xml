@@ -1,0 +1,2 @@
+<!-- HTTP 500 -->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><faultcode>soap:Server</faultcode><faultstring>AuthData is null</faultstring><detail><ns1:Exception xmlns:ns1="http://events.dpdinfoservices.dpd.com.pl/"/></detail></soap:Fault></soap:Body></soap:Envelope>

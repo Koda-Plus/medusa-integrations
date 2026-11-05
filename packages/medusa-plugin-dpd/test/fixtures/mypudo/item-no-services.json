@@ -1,0 +1,54 @@
+{
+  "source": "MP s.18",
+  "note": "The byaddress example as printed: no servicePudo field (E17: dropped, never a point without services).",
+  "httpStatus": 200,
+  "body": {
+    "quality": 1,
+    "requestID": "1",
+    "pudoItems": [
+      {
+        "active": true,
+        "overloaded": false,
+        "pudoId": "PL12037",
+        "order": 1,
+        "pudoType": "100",
+        "pudoTypeInfo": "Główny rodzaj działalności: Paint, wallpaper, decoration.",
+        "name": "Dikom, Okna, Rolety D. Majewski M.Majewska",
+        "language": "PL",
+        "address1": "Świetlików 3",
+        "locationHint": "Dikom, Okna, Rolety: 602-256-916",
+        "localizationInstructions": "Obok ratusza",
+        "zipCode": "01390",
+        "city": "Warszawa",
+        "country": "POL",
+        "longitude": "20.9105",
+        "latitude": "52.227",
+        "parking": true,
+        "handicape": false,
+        "openingHoursItems": [
+          {
+            "dayId": 1,
+            "startTm": "11:00",
+            "endTm": "18:00"
+          },
+          {
+            "dayId": 2,
+            "startTm": "11:00",
+            "endTm": "18:00"
+          },
+          {
+            "dayId": 3,
+            "startTm": "11:00",
+            "endTm": "18:00"
+          },
+          {
+            "dayId": 4,
+            "startTm": "11:00",
+            "endTm": "18:00"
+          }
+        ],
+        "holidayItems": []
+      }
+    ]
+  }
+}

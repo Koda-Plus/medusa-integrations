@@ -1,0 +1,408 @@
+import type { ReactNode } from "react"
+import { Link } from "react-router-dom"
+import { useTranslation } from "react-i18next"
+import {
+  ArrowUpRightMini,
+  ArrowUturnLeft,
+  Cash,
+  CheckCircle,
+  DocumentText,
+  ExclamationCircle,
+  HandTruck,
+  ListBullet,
+  MapPin,
+  PaperPlane,
+  TruckFast,
+  XCircle,
+} from "@medusajs/icons"
+import { Copy, Text, clx } from "@medusajs/ui"
+import type { ProblemDto, SenderProblemDto, ShipmentDto, ShipmentFilter, ShipmentState, StatusResponse, StatusSource, TrackingDto } from "../../modules/dpd/lib/contract"
+import { ToneBadge, type Tone } from "./dpd-blocks"
+import { nb } from "./dpd-guide"
+import { STAGE_TONE, errorTone, fmtMoney, lastAnsweredAt, problemDetail, shownStage, trackingChain, trackingTone } from "./dpd-logic"
+
+export function fmtDateTime(value: string | null | undefined, lang: string): string {
+  if (!value) return ""
+  const d = new Date(value)
+  if (!Number.isFinite(d.getTime())) return ""
+  try {
+    return new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(d)
+  } catch {
+    return d.toISOString().slice(0, 16).replace("T", " ")
+  }
+}
+
+export function fmtNumber(value: unknown, lang: string): string {
+  const n = typeof value === "number" ? value : Number(value)
+  if (!Number.isFinite(n)) return "0"
+  try {
+    return new Intl.NumberFormat(lang).format(n)
+  } catch {
+    return String(n)
+  }
+}
+
+/* Money in the admin's format lives with the plain logic (node --test reads it there). */
+export { fmtMoney }
+
+/** The mode of the plugin in one word, for the header badge: demo, not configured, sandbox or live. */
+export function modeOf(s: StatusResponse | undefined): { key: "demo" | "sandbox" | "live" | "notConfigured" | "unknown"; tone: Exclude<Tone, "purple"> } {
+  if (!s) return { key: "unknown", tone: "grey" }
+  if (s.mode === "demo") return { key: "demo", tone: "blue" }
+  if (!s.configured) return { key: "notConfigured", tone: "orange" }
+  if (s.mode === "sandbox") return { key: "sandbox", tone: "orange" }
+  return { key: "live", tone: "green" }
+}
+
+/** The icon of each list, the same on the counters under the header and on the filter buttons. */
+export const GROUP_ICON: Record<ShipmentFilter, ReactNode> = {
+  all: <ListBullet />,
+  to_create: <PaperPlane />,
+  labeled: <DocumentText />,
+  handed_over: <HandTruck />,
+  in_transit: <TruckFast />,
+  delivered: <CheckCircle />,
+  problems: <ExclamationCircle />,
+  canceled: <XCircle />,
+  returns: <ArrowUturnLeft />,
+}
+
+/* One meaning per colour: orange waits for a person, red went wrong, green is done. */
+const STATE_TONE: Record<ShipmentState, Tone> = {
+  pending: "orange",
+  creating: "blue",
+  created: "blue",
+  labeling: "blue",
+  labeled: "green",
+  failed: "red",
+  unknown: "red",
+  ambiguous: "red",
+  abandoned_unknown: "red",
+  skipped: "grey",
+  canceled: "grey",
+  excluded: "grey",
+}
+
+/* The stage tones live with the plain logic (STAGE_TONE of dpd-logic.ts), so the tone of a waybill is tested there. */
+
+/**
+ * One badge for a row: the state of the row until DPD reports the parcel,
+ * then where the parcel is (shownStage). The tooltip is the last DPD code
+ * and its description.
+ */
+export function ShipmentStatus({ shipment }: { shipment: Pick<ShipmentDto, "state" | "stage" | "status" | "statusDescription"> }) {
+  const { t } = useTranslation("dpd")
+  const stage = shownStage(shipment)
+  if (stage) {
+    const title = [shipment.status, shipment.statusDescription].filter((p): p is string => Boolean(p)).join(" ")
+    return (
+      <ToneBadge tone={STAGE_TONE[stage]} title={title || undefined}>
+        {t(`stage.${stage}`)}
+      </ToneBadge>
+    )
+  }
+  return <ToneBadge tone={STATE_TONE[shipment.state]}>{t(`state.${shipment.state}`)}</ToneBadge>
+}
+
+/**
+ * The last DPD status of a row in words: the DPD description (Polish, as DPD
+ * sends it, O14) with the time of the event, and the time DPD last answered
+ * for a waybill of the row (lastAnsweredAt, simulated in demo and the
+ * sandbox; never lastCheckedAt, the claim time of the pass, E53). `compact`
+ * (a list row) shows the description and its time only. Nothing to show: null.
+ */
+export function StatusLine({
+  shipment,
+  lang,
+  source,
+  compact = false,
+}: {
+  shipment: Pick<ShipmentDto, "status" | "statusDescription" | "statusAt" | "tracking">
+  lang: string
+  source?: StatusSource | null
+  compact?: boolean
+}) {
+  const { t } = useTranslation("dpd")
+  const checked = compact ? null : lastAnsweredAt(shipment.tracking)
+  if (!shipment.statusDescription && !checked) return null
+  const time = fmtDateTime(shipment.statusAt, lang)
+  return (
+    <span className="flex flex-col">
+      {shipment.statusDescription ? (
+        <>
+          <Text size="small" className="text-ui-fg-base" title={shipment.status ?? undefined}>
+            {nb(shipment.statusDescription)}
+          </Text>
+          {time ? (
+            <Text size="xsmall" className="text-ui-fg-muted">
+              {time}
+            </Text>
+          ) : null}
+        </>
+      ) : (
+        <Text size="small" className="text-ui-fg-subtle">
+          {t("statuses.noEvents")}
+        </Text>
+      )}
+      {checked ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t(source === "simulated" ? "statuses.checkedSimulated" : "statuses.checkedAt", { time: fmtDateTime(checked, lang) })}
+        </Text>
+      ) : null}
+    </span>
+  )
+}
+
+/** One waybill of TrackingList: the number to copy, its stage, its role and its last DPD event. */
+function TrackingRow({ entry: e, demo, lang }: { entry: TrackingDto; demo: boolean; lang: string }) {
+  const { t } = useTranslation("dpd")
+  const old = Boolean(e.supersededBy)
+  const time = fmtDateTime(e.lastAt, lang)
+  return (
+    <span className={clx("flex flex-col gap-y-0.5", old && "opacity-70")}>
+      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <span className={clx("txt-compact-small font-mono", old ? "text-ui-fg-muted line-through" : "text-ui-fg-subtle")} title={demo ? t("shipments.sampleWaybill") : undefined}>
+          {e.waybill}
+        </span>
+        <Copy content={e.waybill} className="text-ui-fg-muted" />
+        <ToneBadge tone={trackingTone(e)}>{e.stage ? t(`stage.${e.stage}`) : t("statuses.noEvents")}</ToneBadge>
+        {e.role === "return" ? <ToneBadge tone="orange">{t("statuses.returnRole")}</ToneBadge> : null}
+      </span>
+      {e.description || time ? (
+        <Text size="xsmall" className="text-ui-fg-muted" title={e.lastCode ?? undefined}>
+          {[e.description ? nb(e.description) : "", time].filter(Boolean).join(", ")}
+        </Text>
+      ) : null}
+      {e.supersededBy ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("statuses.repinnedTo", { waybill: e.supersededBy })}
+        </Text>
+      ) : null}
+      {e.from ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("statuses.repinnedFrom", { waybill: e.from })}
+        </Text>
+      ) : null}
+    </span>
+  )
+}
+
+/**
+ * Every waybill of a shipment with its stage, grouped by box: the current
+ * waybill first, then the ones DPD moved the parcel from (trackingChain).
+ * Empty: null.
+ */
+export function TrackingList({ shipment, lang }: { shipment: Pick<ShipmentDto, "tracking" | "demo">; lang: string }) {
+  if (shipment.tracking.length === 0) return null
+  return (
+    <ul className="flex flex-col gap-y-2">
+      {trackingChain(shipment.tracking).map((g) => (
+        <li key={`${g.box}-${g.current.waybill}`} className="flex flex-col gap-y-1">
+          <TrackingRow entry={g.current} demo={shipment.demo} lang={lang} />
+          {g.previous.length > 0 ? (
+            <span className="flex flex-col gap-y-1 border-l border-ui-border-base pl-3">
+              {g.previous.map((e) => (
+                <TrackingRow key={e.waybill} entry={e} demo={shipment.demo} lang={lang} />
+              ))}
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Why Medusa did not take the status of a row (the server's masked message, cut to 500 characters); none: null. */
+export function WriterErrorText({ shipment }: { shipment: Pick<ShipmentDto, "statusWriterError"> }) {
+  const { t } = useTranslation("dpd")
+  if (!shipment.statusWriterError) return null
+  return (
+    <Text size="xsmall" className="text-ui-fg-error">
+      {t("statuses.writerError", { message: nb(shipment.statusWriterError) })}
+    </Text>
+  )
+}
+
+/** Courier, Pickup point or return, and cash on delivery. */
+export function KindBadges({ shipment }: { shipment: Pick<ShipmentDto, "kind" | "optionKind" | "cod"> }) {
+  const { t } = useTranslation("dpd")
+  const kind = shipment.kind === "return" ? "return" : shipment.optionKind
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {kind ? (
+        <ToneBadge icon={kind === "pickup" ? <MapPin /> : kind === "return" ? <ArrowUturnLeft /> : <TruckFast />}>{t(`kind.${kind}`)}</ToneBadge>
+      ) : (
+        <ToneBadge>{t("kind.unknown")}</ToneBadge>
+      )}
+      {shipment.cod ? (
+        <ToneBadge tone="blue" icon={<Cash />}>
+          {t("kind.cod")}
+        </ToneBadge>
+      ) : null}
+    </span>
+  )
+}
+
+/** Where the parcel goes: the Pickup point, the order's address (not kept here), or back to the store. */
+export function Destination({ shipment }: { shipment: Pick<ShipmentDto, "kind" | "optionKind" | "pudoId" | "country"> }) {
+  const { t } = useTranslation("dpd")
+  if (shipment.kind === "return") {
+    return (
+      <Text size="small" className="text-ui-fg-subtle">
+        {t("shipments.toStore")}
+      </Text>
+    )
+  }
+  if (shipment.optionKind === "pickup") {
+    return shipment.pudoId ? (
+      <span className="flex flex-col">
+        <span className="txt-compact-small-plus font-mono text-ui-fg-base">{shipment.pudoId}</span>
+        <span className="txt-compact-xsmall text-ui-fg-subtle">{t("shipments.point", { country: shipment.country ?? "" })}</span>
+      </span>
+    ) : (
+      <ToneBadge tone="red" icon={<MapPin />}>
+        {t("shipments.noPoint")}
+      </ToneBadge>
+    )
+  }
+  return (
+    <Text size="small" className="text-ui-fg-subtle">
+      {shipment.country ? t("shipments.toAddressIn", { country: shipment.country }) : t("shipments.toAddress")}
+    </Text>
+  )
+}
+
+/** The Medusa mark (the hexagon of the admin's own login screen), in the text colour. */
+export function MedusaMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 36 38" fill="none" aria-hidden className={className}>
+      <path
+        d="M30.85 6.16832L22.2453 1.21782C19.4299 -0.405941 15.9801 -0.405941 13.1648 1.21782L4.52043 6.16832C1.74473 7.79208 0 10.802 0 14.0099V23.9505C0 27.198 1.74473 30.1683 4.52043 31.7921L13.1251 36.7822C15.9405 38.4059 19.3903 38.4059 22.2056 36.7822L30.8103 31.7921C33.6257 30.1683 35.3307 27.198 35.3307 23.9505V14.0099C35.41 10.802 33.6653 7.79208 30.85 6.16832ZM17.6852 27.8317C12.8079 27.8317 8.8426 23.8713 8.8426 19C8.8426 14.1287 12.8079 10.1683 17.6852 10.1683C22.5625 10.1683 26.5674 14.1287 26.5674 19C26.5674 23.8713 22.6022 27.8317 17.6852 27.8317Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
+/** The Medusa order of a row, one click away; a return without its order yet shows a dash. */
+export function OrderCell({ orderId, displayId }: { orderId: string | null; displayId: number | null }) {
+  const { t } = useTranslation("dpd")
+  if (!orderId) return <span className="text-ui-fg-muted">-</span>
+  return (
+    <Link to={`/orders/${orderId}`} className="group flex items-center gap-x-2.5" title={t("actions.openOrder")}>
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-ui-bg-component shadow-borders-base transition-fg group-hover:bg-ui-bg-component-hover">
+        <MedusaMark className="h-3.5 w-3.5 text-ui-fg-base" />
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="txt-compact-small-plus truncate text-ui-fg-base group-hover:text-ui-fg-interactive">{displayId !== null ? `#${displayId}` : orderId}</span>
+        <span className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 whitespace-nowrap text-ui-fg-interactive">
+          {t("actions.openOrder")}
+          <ArrowUpRightMini />
+        </span>
+      </span>
+    </Link>
+  )
+}
+
+/** The waybill of each box with a copy button; two are shown, the rest as "+n". */
+export function WaybillCell({ shipment }: { shipment: Pick<ShipmentDto, "waybills" | "demo"> }) {
+  const { t } = useTranslation("dpd")
+  if (shipment.waybills.length === 0) return <span className="text-ui-fg-muted">&nbsp;</span>
+  const shown = shipment.waybills.slice(0, 2)
+  const more = shipment.waybills.length - shown.length
+  return (
+    <span className="flex flex-col gap-y-0.5">
+      {shown.map((w) => (
+        <span key={w} className="flex items-center gap-x-1">
+          <span className="txt-compact-small font-mono text-ui-fg-subtle" title={shipment.demo ? t("shipments.sampleWaybill") : undefined}>
+            {w}
+          </span>
+          <Copy content={w} className="text-ui-fg-muted" />
+        </span>
+      ))}
+      {more > 0 ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("shipments.moreWaybills", { count: more })}
+        </Text>
+      ) : null}
+    </span>
+  )
+}
+
+/**
+ * Problems of a row or a plan, translated; an unknown code falls back to the
+ * code and its detail, an amount goes in as money of the admin's language. Orange is for the warnings of a plan (`warning.*`),
+ * red for what blocks (`problem.*`).
+ */
+export function ProblemList({ items, tone = "red" }: { items: ProblemDto[]; tone?: "red" | "orange" }) {
+  const { t, i18n } = useTranslation("dpd")
+  const lang = i18n.language || "en"
+  if (items.length === 0) return null
+  return (
+    <ul className="flex flex-col gap-y-0.5">
+      {items.map((p, i) => {
+        const key = tone === "orange" ? `warning.${p.code}` : `problem.${p.code}`
+        /* An amount (order_paid) is formatted in the admin's language; the detail stays for the logs. */
+        const text = i18n.exists(key, { ns: "dpd" }) ? t(key, { detail: problemDetail(p, lang) }) : nb(`${p.code}${p.detail ? `: ${p.detail}` : ""}`)
+        return (
+          <li key={`${p.code}-${i}`} className="flex gap-x-1.5">
+            <span className={clx("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", tone === "orange" ? "bg-ui-tag-orange-icon" : "bg-ui-tag-red-icon")} />
+            <Text size="xsmall" className="text-ui-fg-subtle">
+              {text}
+            </Text>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/**
+ * What went wrong with a row, in the admin's language: the text of its error
+ * code when the dictionary has one, else the stored (masked) message. Shown
+ * for refused, unclear and mismatched rows, for a row with waybills whose
+ * label did not come, and for a pending row the pass left to a person
+ * (errorTone). The stored message stays in the tooltip.
+ */
+export function ErrorText({ shipment: s }: { shipment: Pick<ShipmentDto, "state" | "error" | "errorCode"> }) {
+  const { t, i18n } = useTranslation("dpd")
+  const tone = errorTone(s)
+  if (!tone) return null
+  const key = s.errorCode ? `errorCode.${s.errorCode}` : ""
+  const text = key && i18n.exists(key, { ns: "dpd" }) ? t(key) : s.error ? nb(s.error) : ""
+  if (!text) return null
+  return (
+    <Text size="xsmall" className={tone === "orange" ? "text-ui-tag-orange-text" : "text-ui-tag-red-text"} title={s.error ? nb(s.error) : undefined}>
+      {text}
+    </Text>
+  )
+}
+
+/**
+ * A sender problem in plain words: who (the sender, the orderer, the sender
+ * of a stock location), which field, what is wrong.
+ */
+export function useSenderProblemText(): (p: SenderProblemDto) => string {
+  const { t } = useTranslation("dpd")
+  return (p) => {
+    if (p.code === "missing") return t("sender.problem.missing")
+    const parts = p.path.split(".")
+    const location = parts[0] === "senders" ? (parts[1] ?? "") : ""
+    const field = (parts[0] === "senders" ? parts[2] : parts[1]) ?? ""
+    const who = parts[0] === "senders" ? t("sender.who.location", { location }) : parts[0] === "orderer" ? t("sender.who.orderer") : t("sender.who.sender")
+    const fieldName = field ? t(`sender.fields.${field}`, { defaultValue: field }) : who
+    return t(`sender.problem.${p.code}`, { who, field: fieldName, max: p.max ?? 0 })
+  }
+}
+
+/** A label over a value, for facts in sections and cards. */
+export function Fact({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-y-0.5">
+      <Text size="xsmall" className="text-ui-fg-muted">
+        {label}
+      </Text>
+      <div className={clx("txt-small text-ui-fg-base", mono && "break-all font-mono")}>{children}</div>
+    </div>
+  )
+}

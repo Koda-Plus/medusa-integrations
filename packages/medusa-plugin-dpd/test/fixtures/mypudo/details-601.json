@@ -1,0 +1,9 @@
+{
+  "source": "MP s.35",
+  "note": "Error 601 of the table of MP s.35 in the shape of the errors of MP s.5; the HTTP status is not documented.",
+  "httpStatus": 200,
+  "body": {
+    "code": "601",
+    "message": "Nie znaleziono PUDO o identyfikatorze PL99999"
+  }
+}
