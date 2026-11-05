@@ -1,4 +1,4 @@
-import { AbstractPaymentProvider } from "@medusajs/framework/utils"
+import { AbstractPaymentProvider, MedusaError } from "@medusajs/framework/utils"
 import type {
   AuthorizePaymentInput,
   AuthorizePaymentOutput,
@@ -23,9 +23,12 @@ import type {
   WebhookActionResult,
 } from "@medusajs/framework/types"
 import { randomUUID } from "node:crypto"
+import { createBasketAppClient, InpostPayApiError, type BasketAppClient } from "../../modules/inpostpay/lib/client"
 import { PROVIDER_IDENTIFIER } from "../../modules/inpostpay/lib/constants"
-import { resolveOptions, type InpostPayPluginOptions, type ResolvedInpostPayOptions } from "../../modules/inpostpay/lib/options"
+import { withKeyLock } from "../../modules/inpostpay/lib/lock"
+import { refundMode, resolveOptions, type InpostPayPluginOptions, type ResolvedInpostPayOptions } from "../../modules/inpostpay/lib/options"
 import { proofSecret, proofValid } from "../../modules/inpostpay/lib/proof"
+import { pickTransaction, refundCommandId, refundWindowOpen, type InpostTransaction } from "../../modules/inpostpay/lib/refund"
 
 type Cradle = Record<string, unknown>
 
@@ -37,10 +40,26 @@ function optional<T>(cradle: Cradle, key: string): T | null {
   }
 }
 
+/** Minor units of a number, a string, a BigNumber (`numeric`) or a raw amount (`value`, what Medusa refunds with). */
 const minor = (amount: unknown): number => {
-  const n = typeof amount === "number" ? amount : typeof amount === "string" ? Number(amount) : Number((amount as { numeric?: unknown } | null)?.numeric ?? NaN)
+  const o = amount as { numeric?: unknown; value?: unknown } | null
+  const n = typeof amount === "number" ? amount : typeof amount === "string" ? Number(amount) : Number(o?.numeric ?? o?.value ?? NaN)
   return Number.isFinite(n) ? Math.round(Number((n * 100).toFixed(4))) : NaN
 }
+
+const day = (d: Date): string => d.toISOString().slice(0, 10)
+const str = (v: unknown): string => (typeof v === "string" ? v : "")
+
+/** Pages of the transaction list read to find the paid transaction of an order. */
+const TX_PAGES = 10
+const TX_PER_PAGE = 100
+
+/**
+ * The refunds InPost took per basket in this process. Medusa hands the
+ * provider the payment data as it was read before the refund, so two
+ * refunds made together see the same counter there; this one is current.
+ */
+const refundSeqs = new Map<string, number>()
 
 /**
  * THE PAYMENT PROVIDER of InPost Pay by Koda Plus (identifier "inpost-pay";
@@ -55,14 +74,20 @@ const minor = (amount: unknown): number => {
  *   demo          authorized at once; the data says `demo: true`
  *   sandbox/live  authorized when InPost hands the order over
  *                 (`POST /v1/izi/order`, a signed call): Medusa needs an
- *                 authorized session to turn the cart into an order. The
+ *                 authorized session to turn the cart into an order, and
+ *                 InPost creates the order before the customer pays. The
  *                 money state is InPost's payment status, which the plugin
  *                 keeps on the basket (AUTHORIZED, DECLINED, COD...) and
- *                 shows on the order. Capture in Medusa when InPost reports
- *                 AUTHORIZED (or when the courier collected cash on delivery).
- *   capture, cancel, refund  recorded in the session data only: settlements
- *                 and refunds of InPost Pay go through InPost (merchant
- *                 portal or InPost's returns API), not through this provider.
+ *                 shows on the order. The plugin captures the payment
+ *                 itself when InPost reports AUTHORIZED (`autoCapture`, on
+ *                 by default).
+ *   capture, cancel  recorded in the session data: InPost settles the money.
+ *   refund        with `merchantSecret`: InPost Pay returns the money
+ *                 (`POST /v1/izi/transaction/{id}/refund`, lib/refund.ts), and
+ *                 a refund InPost refuses fails in Medusa too. Without it the
+ *                 refund fails, unless `manualRefunds` says the store returns
+ *                 the money in the merchant portal. Cash on delivery and the
+ *                 demo are recorded only.
  *
  * It never breaks the boot: options are resolved leniently.
  */
@@ -75,6 +100,7 @@ class InpostPayPaymentProvider extends AbstractPaymentProvider<InpostPayPluginOp
 
   protected readonly options_: ResolvedInpostPayOptions
   protected readonly logger_: Pick<Logger, "info" | "warn" | "error">
+  private client_: BasketAppClient | null = null
 
   constructor(cradle: Cradle, options: InpostPayPluginOptions) {
     // eslint-disable-next-line prefer-rest-params
@@ -88,6 +114,28 @@ class InpostPayPaymentProvider extends AbstractPaymentProvider<InpostPayPluginOp
     if (!proofValid(proofSecret(this.options_), data)) return false
     if (amount !== undefined && Number.isFinite(minor(amount)) && Math.abs(minor(amount) - Number(data?.amount_minor)) > 1) return false
     return true
+  }
+
+  /** The Basket App client refunds go through (sandbox and live); tests replace it. */
+  protected refundClient(): BasketAppClient {
+    if (!this.client_) {
+      const o = this.options_
+      this.client_ = createBasketAppClient({
+        mode: o.mode === "live" ? "live" : "sandbox",
+        apiUrl: o.apiUrl,
+        tokenUrl: o.tokenUrl,
+        clientId: o.clientId,
+        clientSecret: o.clientSecret,
+        timeoutMs: o.timeoutMs,
+        merchantSecret: o.merchantSecret,
+      })
+    }
+    return this.client_
+  }
+
+  /** The clock; tests replace it. */
+  protected now(): Date {
+    return new Date()
   }
 
   async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentOutput> {
@@ -119,9 +167,97 @@ class InpostPayPaymentProvider extends AbstractPaymentProvider<InpostPayPluginOp
 
   async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentOutput> {
     const data = (input.data ?? {}) as Record<string, unknown>
-    const refunds = Array.isArray(data.refunds) ? (data.refunds as unknown[]) : []
-    if (data.demo !== true) this.logger_.info("[inpostpay] A refund was recorded in Medusa; return the money through InPost (merchant portal or InPost's returns API).")
-    return { data: { ...data, refunds: [...refunds, { amount: String(input.amount), at: new Date().toISOString() }].slice(-20) } }
+    const refunds = Array.isArray(data.refunds) ? (data.refunds as Array<Record<string, unknown>>) : []
+    const amountMinor = minor(input.amount)
+    const at = this.now().toISOString()
+    const record = (entry: Record<string, unknown>, extra: Record<string, unknown> = {}): RefundPaymentOutput => ({
+      data: { ...data, ...extra, refunds: [...refunds, { amount: (amountMinor / 100).toFixed(2), at, ...entry }].slice(-20) },
+    })
+
+    const mode = data.demo === true ? "demo" : refundMode(this.options_)
+    if (mode === "demo") return record({ demo: true })
+    if (data.inpost_payment_type === "CASH_ON_DELIVERY" || data.inpost_payment_status === "COD") {
+      this.logger_.info("[inpostpay] A refund of a cash on delivery order was recorded in Medusa; InPost Pay holds none of that money, return it to the customer yourself.")
+      return record({ cash_on_delivery: true })
+    }
+    if (mode === "manual") {
+      this.logger_.info("[inpostpay] A refund was recorded in Medusa only (manualRefunds); return the money in merchant.inpost.pl.")
+      return record({ manual: true })
+    }
+    if (mode === "off") {
+      throw new MedusaError(
+        MedusaError.Types.NOT_ALLOWED,
+        "InPost Pay refunds need the merchantSecret option (merchant.inpost.pl, API keys). Return the money in the merchant portal, or set manualRefunds: true to record such refunds in Medusa.",
+      )
+    }
+    if (!Number.isInteger(amountMinor) || amountMinor <= 0) throw new MedusaError(MedusaError.Types.INVALID_DATA, "The refund amount is not a positive amount")
+    if (!refundWindowOpen(this.now())) throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "InPost Pay takes no refunds between 23:00 and 6:30 (Polish time). Try again after 6:30.")
+
+    const basketId = str(data.basket_id)
+    /* One refund of a basket at a time: two of the same amount made together must not share a command id. */
+    return withKeyLock(`inpostpay-refund:${basketId}`, async () => {
+      const client = this.refundClient()
+      const transactionId = await this.transactionOf(client, data)
+      const seq = Math.max(Number.isInteger(data.refund_seq) ? Number(data.refund_seq) : refunds.length, refundSeqs.get(basketId) ?? 0)
+      const commandId = refundCommandId(basketId, seq, amountMinor)
+      let status: string
+      try {
+        const result = await client.refund(transactionId, { commandId, body: { external_refund_id: commandId, refund_amount: amountMinor / 100 } })
+        if (result.status === "FAILED") throw new MedusaError(MedusaError.Types.NOT_ALLOWED, `InPost Pay refused the refund${result.description ? `: ${result.description}` : ""}`)
+        status = result.status
+      } catch (e) {
+        if (e instanceof MedusaError) throw e
+        if (e instanceof InpostPayApiError && (e.kind === "unavailable" || e.status >= 500)) {
+          throw new MedusaError(
+            MedusaError.Types.UNEXPECTED_STATE,
+            `InPost Pay gave no clear answer, the refund may have gone through: check merchant.inpost.pl. Repeating the same amount is safe, InPost does not refund one command twice (${e.message}).`,
+          )
+        }
+        throw new MedusaError(MedusaError.Types.NOT_ALLOWED, `InPost Pay refused the refund: ${(e as Error)?.message ?? e}`)
+      }
+      /* Only a refund InPost took moves the counter: a retry after an unclear answer keeps the command id. */
+      refundSeqs.set(basketId, seq + 1)
+      if (refundSeqs.size > 5000) refundSeqs.delete(refundSeqs.keys().next().value as string)
+      return record({ inpost: true, status, command_id: commandId }, { transaction_id: transactionId, refund_seq: seq + 1 })
+    })
+  }
+
+  /**
+   * The InPost transaction of this payment: the one saved by an earlier
+   * refund, the payment reference of InPost's event, or the paid
+   * transaction of the order in the store's transaction list.
+   */
+  private async transactionOf(client: BasketAppClient, data: Record<string, unknown>): Promise<string> {
+    if (str(data.transaction_id)) return str(data.transaction_id)
+    const orderId = str(data.order_id)
+    if (!orderId) {
+      throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "This payment does not carry its Medusa order id, so its InPost transaction cannot be found. Return the money in merchant.inpost.pl.")
+    }
+    const fail = (reason: "none" | "refunded" | "ambiguous" | "incomplete"): never => {
+      const why = {
+        none: "InPost lists no paid transaction of this order",
+        refunded: "InPost already refunded this order in full",
+        ambiguous: "InPost lists more than one paid transaction of this order",
+        incomplete: "the store has too many recent transactions to check them all",
+      }[reason]
+      throw new MedusaError(MedusaError.Types.NOT_ALLOWED, `The refund did not go to InPost Pay: ${why}. Check merchant.inpost.pl.`)
+    }
+    if (str(data.payment_reference)) {
+      const byRef = pickTransaction((await client.transactions({ transaction_id: str(data.payment_reference) })).items, orderId)
+      if (byRef.ok) return byRef.transaction.transaction_id
+    }
+    const since = new Date(Date.parse(str(data.authorized_at)) || this.now().getTime())
+    since.setUTCDate(since.getUTCDate() - 1)
+    const items: InpostTransaction[] = []
+    for (let page = 0; page < TX_PAGES; page++) {
+      const r = await client.transactions({ date_from: day(since), date_to: day(this.now()), page, per_page: TX_PER_PAGE })
+      items.push(...r.items)
+      const pick = pickTransaction(items, orderId)
+      if (pick.ok) return pick.transaction.transaction_id
+      /* The end: an empty page, or all of `count` read. A short page is not the end: InPost may cap per_page. */
+      if (r.items.length === 0 || (r.count !== null && items.length >= r.count)) return fail(pick.reason)
+    }
+    return fail("incomplete")
   }
 
   async deletePayment(input: DeletePaymentInput): Promise<DeletePaymentOutput> {

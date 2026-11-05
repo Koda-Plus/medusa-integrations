@@ -60,6 +60,8 @@ export interface ShippingOptionLite {
   id: string
   name: string
   provider_id: string | null
+  /** The fulfillment option of the shipping option (`data.id`), for the COD twins of the InPost plugin. */
+  data_id?: string | null
 }
 
 export type BasketFilter = "all" | BasketStatus | "payment_problems"
@@ -80,6 +82,11 @@ export interface StatusResponse {
     storefrontUrl: string | null
     sendOrderEvents: boolean
     basketTtlHours: number
+    /** "***" and the last four characters, or empty. */
+    merchantSecret: string
+    /** How a refund in Medusa reaches the money (options merchantSecret, manualRefunds). */
+    refunds: "demo" | "inpost" | "manual" | "off"
+    autoCapture: boolean
   }
   urls: {
     /** What goes into the merchant portal as the Merchant Backend API address. */

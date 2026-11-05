@@ -1,3 +1,4 @@
+import { refundSignature, toTransaction, type InpostTransaction, type RefundBody } from "./refund"
 import type { SigningKey } from "./signature"
 
 /**
@@ -11,6 +12,8 @@ import type { SigningKey } from "./signature"
  *   DELETE /v1/izi/basket/{basket_id}/binding    unlink the basket from the phone
  *   POST   /v1/izi/order/{order_id}/event        the order changed in the store
  *   GET    /v1/izi/signing-keys/public/{version} the key InPost signs its calls with
+ *   GET    /v1/izi/transaction                   the payment transactions of the store
+ *   POST   /v1/izi/transaction/{id}/refund       a refund (signed with the merchant secret, lib/refund.ts)
  *
  * Authorization: OAuth 2.0 client credentials against InPost's login
  * (`grant_type=client_credentials`), the token reused until `expires_in`.
@@ -46,6 +49,22 @@ export interface OrderEventInput {
   }
 }
 
+export interface TransactionFilters {
+  order_id?: string
+  transaction_id?: string
+  date_from?: string
+  date_to?: string
+  page?: number
+  per_page?: number
+}
+
+export interface RefundResult {
+  external_refund_id: string | null
+  refund_amount: number | null
+  status: "PENDING" | "SUCCESS" | "FAILED" | string
+  description: string | null
+}
+
 export interface BasketAppClient {
   readonly mode: "live" | "sandbox" | "demo"
   /** A token (live) or a fixed word (demo); proves the keys work. */
@@ -56,6 +75,10 @@ export interface BasketAppClient {
   unbind(basketId: string): Promise<void>
   orderEvent(orderId: string, event: OrderEventInput): Promise<Record<string, unknown>>
   signingKey(version: string): Promise<SigningKey>
+  /** One page of the store's transactions; `count` is the number of all matches. */
+  transactions(filters: TransactionFilters): Promise<{ items: InpostTransaction[]; count: number | null }>
+  /** A refund of a transaction; the X-Command-ID makes a repeated call safe. */
+  refund(transactionId: string, input: { commandId: string; body: RefundBody }): Promise<RefundResult>
 }
 
 type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; ok: boolean; text(): Promise<string> }>
@@ -67,6 +90,8 @@ export interface ClientConfig {
   clientId: string
   clientSecret: string
   timeoutMs: number
+  /** The merchant secret refunds are signed with; refunds throw without it. */
+  merchantSecret?: string
   /** Injected in tests; the global fetch otherwise. */
   fetch?: FetchLike
 }
@@ -91,7 +116,7 @@ const enc = encodeURIComponent
 
 export function createBasketAppClient(config: ClientConfig): BasketAppClient {
   const doFetch: FetchLike = config.fetch ?? ((url, init) => fetch(url, init as RequestInit) as unknown as ReturnType<FetchLike>)
-  const secrets = [config.clientSecret]
+  const secrets = [config.clientSecret, config.merchantSecret ?? ""]
   let token: { value: string; until: number } | null = null
 
   async function call(url: string, init: { method: string; headers: Record<string, string>; body?: string }): Promise<{ status: number; json: any }> {
@@ -132,9 +157,9 @@ export function createBasketAppClient(config: ClientConfig): BasketAppClient {
     return { value, expiresIn: Number.isFinite(expiresIn) ? expiresIn : null }
   }
 
-  async function api(method: string, path: string, body?: unknown): Promise<any> {
+  async function api(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<any> {
     const { value } = await accessToken()
-    const headers: Record<string, string> = { Authorization: `Bearer ${value}`, Accept: "application/json" }
+    const headers: Record<string, string> = { Authorization: `Bearer ${value}`, Accept: "application/json", ...extra }
     if (body !== undefined) headers["Content-Type"] = "application/json"
     const { json } = await call(`${config.apiUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
     return json
@@ -170,6 +195,26 @@ export function createBasketAppClient(config: ClientConfig): BasketAppClient {
       const merchant = typeof json?.merchant_external_id === "string" ? json.merchant_external_id : String(json?.merchant_external_id ?? "")
       if (!key) throw new InpostPayApiError(502, "error", "InPost gave no public_key_base64")
       return { public_key_base64: key, merchant_external_id: merchant }
+    },
+    async transactions(filters) {
+      const q = new URLSearchParams()
+      for (const [k, v] of Object.entries(filters)) if (v !== undefined && v !== "") q.set(k, String(v))
+      const json = await api("GET", `/v1/izi/transaction${q.size ? `?${q}` : ""}`)
+      const items = (Array.isArray(json?.items) ? json.items : []).map(toTransaction).filter((t: InpostTransaction | null): t is InpostTransaction => t !== null)
+      const count = Number(json?.count)
+      return { items, count: Number.isFinite(count) ? count : null }
+    },
+    async refund(transactionId, input) {
+      if (!config.merchantSecret) throw new InpostPayApiError(0, "invalid", "Refunds need the merchantSecret option (merchant.inpost.pl, API keys)")
+      const signature = refundSignature({ commandId: input.commandId, transactionId, body: input.body, merchantSecret: config.merchantSecret })
+      const json = await api("POST", `/v1/izi/transaction/${enc(transactionId)}/refund`, { ...input.body, signature }, { "X-Command-ID": input.commandId })
+      const amount = Number(json?.refund_amount)
+      return {
+        external_refund_id: typeof json?.external_refund_id === "string" ? json.external_refund_id : null,
+        refund_amount: Number.isFinite(amount) ? amount : null,
+        status: typeof json?.status === "string" ? json.status : "PENDING",
+        description: typeof json?.description === "string" ? json.description : null,
+      }
     },
   }
 }

@@ -190,6 +190,8 @@ export function AccountSection({ status: s }: { status: StatusResponse }) {
           </span>
         </Fact>
         <Fact label={t("account.events")}>{s.options.sendOrderEvents ? t("account.eventsOn") : t("account.eventsOff")}</Fact>
+        <Fact label={t("account.refunds")}>{t(`account.refunds_${s.options.refunds}`)}</Fact>
+        <Fact label={t("account.capture")}>{s.options.autoCapture ? t("account.captureOn") : t("account.captureOff")}</Fact>
         <Fact label={t("account.ttl")}>{t("account.ttlValue", { count: s.options.basketTtlHours })}</Fact>
       </div>
     </Section>

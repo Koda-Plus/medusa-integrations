@@ -1,0 +1,64 @@
+import { InpostPayApiError } from "./client"
+import { createLimiter } from "./rate-limit"
+import type { SigningKey } from "./signature"
+
+/**
+ * THE SIGNING KEYS InPost signs its calls with, by version, fresh for an
+ * hour. Anyone can send a call with a made-up version, so the fetches are
+ * limited, but in two pools: a version InPost already gave a key for is
+ * refreshed at most once a minute, and its last key is used while the
+ * refresh is limited or fails (a day at most; a key InPost answers 404 for
+ * is dropped at once); unknown versions share 10 fetches a minute, and one
+ * InPost does not know is not asked for again for 10 minutes. Once a
+ * version is cached, forged calls cannot lock it out. Before that (right
+ * after a restart) they can delay its first fetch by a minute at a time.
+ */
+
+export interface KeyCache {
+  get(version: string, fetchKey: (version: string) => Promise<SigningKey>, onError?: (e: unknown) => void, now?: number): Promise<SigningKey | null>
+  reset(): void
+}
+
+const FRESH_MS = 60 * 60 * 1000
+const MISSING_MS = 10 * 60 * 1000
+const STALE_MS = 24 * 60 * 60 * 1000
+
+export function createKeyCache(): KeyCache {
+  const keys = new Map<string, { key: SigningKey; until: number }>()
+  const missing = new Map<string, number>()
+  const known = createLimiter(1, 60_000)
+  const unknown = createLimiter(10, 60_000)
+  return {
+    async get(version, fetchKey, onError, now = Date.now()) {
+      const cached = keys.get(version)
+      if (cached && cached.until > now) return cached.key
+      if (!cached && (missing.get(version) ?? 0) > now) return null
+      const usable = cached && now - cached.until < STALE_MS ? cached.key : null
+      if (cached ? known.limited(version, now) : unknown.limited("unknown", now)) return usable
+      try {
+        const key = await fetchKey(version)
+        keys.set(version, { key, until: now + FRESH_MS })
+        missing.delete(version)
+        if (keys.size > 20) keys.delete(keys.keys().next().value as string)
+        return key
+      } catch (e) {
+        onError?.(e)
+        const gone = e instanceof InpostPayApiError && e.kind === "not_found"
+        /* A key InPost no longer knows is dropped; one it cannot serve now is kept for a day at most. */
+        if (cached && gone) keys.delete(version)
+        else if (usable) return usable
+        if (gone) {
+          missing.set(version, now + MISSING_MS)
+          if (missing.size > 200) missing.delete(missing.keys().next().value as string)
+        }
+        return null
+      }
+    },
+    reset() {
+      keys.clear()
+      missing.clear()
+      known.reset()
+      unknown.reset()
+    },
+  }
+}

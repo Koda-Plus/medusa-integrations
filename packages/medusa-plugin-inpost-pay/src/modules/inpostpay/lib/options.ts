@@ -43,6 +43,25 @@ export interface InpostPayPluginOptions {
    * (the parcel numbers). Off by default; simulated in demo mode.
    */
   sendOrderEvents?: boolean | string
+  /**
+   * The Merchant Secret (merchant.inpost.pl, API keys) refunds are signed
+   * with. With it a refund in Medusa returns the money through InPost Pay.
+   * Server only, never shown in full.
+   */
+  merchantSecret?: string
+  /**
+   * Without `merchantSecret`: record refunds in Medusa only, for stores that
+   * return the money in the merchant portal. Default false: a refund then
+   * fails, so Medusa never shows money as returned when it was not.
+   */
+  manualRefunds?: boolean | string
+  /**
+   * Capture the Medusa payment when InPost reports AUTHORIZED. Default: on
+   * when refunds work (`merchantSecret` or `manualRefunds`), off otherwise,
+   * because Medusa refunds a captured payment when an order is canceled and
+   * a refund without them fails, which would fail the cancel.
+   */
+  autoCapture?: boolean | string
   /** A stable secret for the payment session proofs; default derived from `clientSecret`. */
   sessionSecret?: string
   /**
@@ -71,6 +90,9 @@ export interface ResolvedInpostPayOptions {
   shippingVatRate: number
   timeoutMs: number
   sendOrderEvents: boolean
+  merchantSecret: string
+  manualRefunds: boolean
+  autoCapture: boolean
   sessionSecret: string
   demo: boolean
   mode: InpostPayMode
@@ -124,6 +146,9 @@ export function resolveOptions(input: InpostPayPluginOptions | undefined | null)
     shippingVatRate: num(o.shippingVatRate, 23, 0, 100),
     timeoutMs: Math.round(num(o.timeoutMs, 15_000, 1_000, 60_000)),
     sendOrderEvents: bool(o.sendOrderEvents),
+    merchantSecret: str(o.merchantSecret),
+    manualRefunds: bool(o.manualRefunds),
+    autoCapture: o.autoCapture === undefined || o.autoCapture === null || o.autoCapture === "" ? Boolean(str(o.merchantSecret)) || bool(o.manualRefunds) : bool(o.autoCapture),
     sessionSecret: str(o.sessionSecret),
     demo,
     mode: demo ? "demo" : keys ? (sandbox ? "sandbox" : "live") : "off",
@@ -149,6 +174,14 @@ export function missingOptions(o: ResolvedInpostPayOptions): string[] {
   if (!o.clientSecret) missing.push("clientSecret")
   if (!o.merchantClientId) missing.push("merchantClientId")
   return missing
+}
+
+/** How a refund in Medusa reaches the money: through InPost, recorded only, or refused. */
+export function refundMode(o: Pick<ResolvedInpostPayOptions, "mode" | "merchantSecret" | "manualRefunds">): "demo" | "inpost" | "manual" | "off" {
+  if (o.mode === "demo") return "demo"
+  if (o.mode === "off") return "off"
+  if (o.merchantSecret) return "inpost"
+  return o.manualRefunds ? "manual" : "off"
 }
 
 /** "***" and the last four characters, for the admin. */
