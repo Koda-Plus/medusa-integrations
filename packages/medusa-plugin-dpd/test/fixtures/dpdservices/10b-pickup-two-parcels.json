@@ -1,0 +1,72 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "reference": "probe-mvzryyzy-Pb",
+          "pudoReceiver": {
+            "name": "Anna Przykładowa",
+            "countryCode": "PL",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "ref1": "9100",
+          "services": [
+            {
+              "code": "DPD_PICKUP",
+              "attributes": [
+                {
+                  "code": "PUDO",
+                  "value": "PL14509"
+                }
+              ]
+            }
+          ],
+          "parcels": [
+            {
+              "reference": "probe-mvzryyzy-Pb-1",
+              "weight": 1
+            },
+            {
+              "reference": "probe-mvzryyzy-Pb-2",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "errors": [
+        {
+          "userMessage": "Domestic DPD_PICKUP service is available only for single parcel shipments",
+          "field": "packages[0].services[0]"
+        }
+      ],
+      "traceId": "a0a97270-922d-4874-9c15-5784884043e5"
+    }
+  }
+}

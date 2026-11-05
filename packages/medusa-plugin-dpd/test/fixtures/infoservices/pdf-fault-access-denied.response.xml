@@ -1,0 +1,15 @@
+<!-- HTTP 500 -->
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+  <S:Body>
+    <S:Fault xmlns:ns4="http://www.w3.org/2003/05/soap-envelope">
+      <faultcode>S:Server</faultcode>
+      <faultstring>Access denied to secured webserwis method</faultstring>
+      <detail>
+        <ns2:exception class="pl.com.dpd.wscommon.exceptions.DeniedAccessWSException" note="To disable this feature, set com.sun.xml.ws.fault.SOAPFaultBuilder.disableCaptureStackTrace system property to false" xmlns:ns2="http://jax-ws.dev.java.net/">
+          <message>Access denied to secured webserwis method</message>
+          <ns2:stackTrace></ns2:stackTrace>
+        </ns2:exception>
+      </detail>
+    </S:Fault>
+  </S:Body>
+</S:Envelope>

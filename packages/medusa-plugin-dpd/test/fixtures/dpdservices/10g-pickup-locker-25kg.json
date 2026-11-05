@@ -1,0 +1,68 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "reference": "probe-mvzryyzy-Pg",
+          "pudoReceiver": {
+            "name": "Anna Przykładowa",
+            "countryCode": "PL",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "ref1": "9100",
+          "services": [
+            {
+              "code": "DPD_PICKUP",
+              "attributes": [
+                {
+                  "code": "PUDO",
+                  "value": "PL85854"
+                }
+              ]
+            }
+          ],
+          "parcels": [
+            {
+              "reference": "probe-mvzryyzy-Pg-1",
+              "weight": 25
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "errors": [
+        {
+          "userMessage": "The DPD_PICKUP service is unavailable for parcels from 20 kg",
+          "field": "packages[0].services[0]"
+        }
+      ],
+      "traceId": "cb7bfa91-e8d9-4e8f-90d2-eb42ab51173e"
+    }
+  }
+}

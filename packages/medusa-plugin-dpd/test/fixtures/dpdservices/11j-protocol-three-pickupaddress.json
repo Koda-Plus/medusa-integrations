@@ -1,0 +1,81 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generateProtocol",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "protocolSearchParams": {
+        "policy": "STOP_ON_FIRST_ERROR",
+        "session": {
+          "type": "DOMESTIC",
+          "packages": [
+            {
+              "reference": "probe-mw0lmyze-H2"
+            },
+            {
+              "reference": "probe-mw0lmyze-H3"
+            },
+            {
+              "reference": "probe-mw0lmyze-H4"
+            }
+          ]
+        },
+        "pickupAddress": {
+          "fid": "***",
+          "company": "Testowa Firma Sp. z o.o.",
+          "name": "Jan Testowy",
+          "address": "Testowa 1",
+          "city": "Warszawa",
+          "countryCode": "PL",
+          "postalCode": "02274",
+          "phone": "500000000",
+          "email": "test@example.com"
+        }
+      },
+      "outputDocFormat": "PDF"
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "documentData": "<pdf>",
+      "session": {
+        "statusInfo": {
+          "status": "OK"
+        },
+        "packages": [
+          {
+            "reference": "probe-mw0lmyze-H2",
+            "statusInfo": {
+              "status": "OK"
+            },
+            "parcels": []
+          },
+          {
+            "reference": "probe-mw0lmyze-H3",
+            "statusInfo": {
+              "status": "OK"
+            },
+            "parcels": []
+          },
+          {
+            "reference": "probe-mw0lmyze-H4",
+            "statusInfo": {
+              "status": "OK"
+            },
+            "parcels": []
+          }
+        ]
+      },
+      "documentId": "203219111",
+      "traceId": "9898f30d-fe04-44df-a97d-14e2a0811f4c"
+    }
+  }
+}

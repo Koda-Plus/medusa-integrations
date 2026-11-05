@@ -1,0 +1,62 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generateProtocol",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "protocolSearchParams": {
+        "policy": "STOP_ON_FIRST_ERROR",
+        "session": {
+          "type": "DOMESTIC",
+          "packages": [
+            {
+              "reference": "probe-mw0lmyze-H3"
+            }
+          ]
+        },
+        "pickupAddress": {
+          "fid": 1234,
+          "company": "Testowa Firma Sp. z o.o.",
+          "name": "Jan Testowy",
+          "address": "Testowa 1",
+          "city": "Warszawa",
+          "countryCode": "PL",
+          "postalCode": "02274",
+          "phone": "500000000",
+          "email": "test@example.com"
+        }
+      },
+      "outputDocFormat": "PDF"
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "INCORRECT_DATA",
+      "documentData": "",
+      "session": {
+        "statusInfo": {
+          "status": "ACCESS_DENIED_FOR_FID",
+          "description": "Access denied for pickup fid (PickupAddress/FID)"
+        },
+        "packages": [
+          {
+            "reference": "probe-mw0lmyze-H3",
+            "statusInfo": {
+              "status": "NOT_PROCESSED"
+            },
+            "parcels": []
+          }
+        ]
+      },
+      "documentId": null,
+      "traceId": "ee9c04b1-86d2-49a2-9543-4a2e2db5ef85"
+    }
+  }
+}

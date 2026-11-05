@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/public/courierorder/v1/packagesPickupCall",
+    "query": {
+      "orderNumber": "***",
+      "checkSum": "123"
+    },
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": null
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "errors": [
+        {
+          "userMessage": "size must be between 8 and 36",
+          "field": "packagesPickupCallDelete.checkSum"
+        }
+      ],
+      "traceId": "783de1e1-a141-4704-b1f9-ef0b47f03018"
+    }
+  }
+}

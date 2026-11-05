@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/public/courierorder/v1/packagesPickupCall",
+    "query": {
+      "orderNumber": "***",
+      "checkSum": "********"
+    },
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": null
+  },
+  "response": {
+    "httpStatus": 500,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "checkSum": null,
+      "orderNumber": null,
+      "status": {
+        "status": "UNKNOWN_ERROR"
+      },
+      "traceId": "027d9dec-c178-4251-a7fa-e6f815b5fa14"
+    }
+  }
+}

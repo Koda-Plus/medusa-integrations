@@ -1,0 +1,2 @@
+<!-- HTTP 200 -->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><ns2:getEventsForWaybillV1Response xmlns:ns2="http://events.dpdinfoservices.dpd.com.pl/"><return><confirmId>0</confirmId></return></ns2:getEventsForWaybillV1Response></soap:Body></soap:Envelope>

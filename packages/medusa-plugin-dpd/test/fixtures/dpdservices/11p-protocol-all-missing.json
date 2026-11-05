@@ -1,0 +1,42 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generateProtocol",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "protocolSearchParams": {
+        "policy": "STOP_ON_FIRST_ERROR",
+        "session": {
+          "type": "DOMESTIC",
+          "packages": [
+            {
+              "reference": "probe-mw0xpilq-ghost"
+            }
+          ]
+        }
+      },
+      "outputDocFormat": "PDF"
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "INCORRECT_DATA",
+      "documentData": "",
+      "session": {
+        "statusInfo": {
+          "status": "NOT_FOUND"
+        },
+        "packages": []
+      },
+      "documentId": null,
+      "traceId": "1e76046e-8092-416e-b2d2-cb21218204ba"
+    }
+  }
+}

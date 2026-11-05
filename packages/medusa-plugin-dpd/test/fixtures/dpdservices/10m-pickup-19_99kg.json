@@ -1,0 +1,79 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "reference": "probe-mvzs07ps-W10m",
+          "pudoReceiver": {
+            "name": "Anna Przykładowa",
+            "countryCode": "PL",
+            "phone": "500000001"
+          },
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "services": [
+            {
+              "code": "DPD_PICKUP",
+              "attributes": [
+                {
+                  "code": "PUDO",
+                  "value": "PL14509"
+                }
+              ]
+            }
+          ],
+          "parcels": [
+            {
+              "reference": "probe-mvzs07ps-W10m-1",
+              "weight": 19.99
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "sessionId": 244463293,
+      "beginTime": null,
+      "endTime": null,
+      "packages": [
+        {
+          "status": "OK",
+          "reference": "probe-mvzs07ps-W10m",
+          "validationInfo": [],
+          "parcels": [
+            {
+              "status": "OK",
+              "reference": "probe-mvzs07ps-W10m-1",
+              "waybill": "0000899060531Q",
+              "validationInfo": []
+            }
+          ]
+        }
+      ],
+      "traceId": "a777ba3e-1a45-4ff6-a58c-96398d6a10b4"
+    }
+  }
+}

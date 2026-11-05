@@ -1,0 +1,67 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/courierorder/v1/packagesPickupCall",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "pickupDate": "2026-11-06",
+      "pickupTimeFrom": "09:00",
+      "pickupTimeTo": "17:00",
+      "orderType": "DOMESTIC",
+      "waybillsReady": true,
+      "packagesForCollection": {
+        "payer": {
+          "number": 1234
+        },
+        "orderer": {
+          "name": "Testowa Firma",
+          "fullName": "Jan Testowy",
+          "phone": "500000000"
+        },
+        "sender": {
+          "name": "Testowa Firma Sp. z o.o.",
+          "fullName": "Jan Testowy",
+          "address": "Testowa 1",
+          "city": "Warszawa",
+          "postalCode": "02274",
+          "phone": "500000000"
+        },
+        "packagesParams": {
+          "doxCount": 0,
+          "parcel": {
+            "count": 1,
+            "weight": 1,
+            "maxWeight": 1,
+            "maxHeight": 10,
+            "maxWidth": 10,
+            "maxDepth": 10
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "checkSum": "null",
+      "orderNumber": null,
+      "status": {
+        "status": "DISALLOWED_FID",
+        "errorDetails": [
+          {
+            "code": "INCORRECT_VALUE",
+            "description": null,
+            "fields": "PickupPayer/PickupNumber;"
+          }
+        ]
+      },
+      "traceId": "b5592573-face-4447-8a87-541902db80a8"
+    }
+  }
+}

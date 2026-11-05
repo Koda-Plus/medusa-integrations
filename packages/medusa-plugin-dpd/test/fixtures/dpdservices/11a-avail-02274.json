@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/public/courierorder/v1/courierOrderAvailability",
+    "query": {
+      "countryCode": "PL",
+      "zipCode": "02274"
+    },
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": null
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "ranges": [
+        {
+          "offset": 360,
+          "range": "09:00-17:00"
+        },
+        {
+          "offset": 180,
+          "range": "11:00-14:00"
+        },
+        {
+          "offset": 180,
+          "range": "14:00-17:00"
+        }
+      ],
+      "traceId": "b634e10b-7d69-4cfd-981f-2f59d66ca71b"
+    }
+  }
+}

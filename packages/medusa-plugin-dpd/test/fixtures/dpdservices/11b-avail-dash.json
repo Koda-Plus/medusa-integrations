@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/public/courierorder/v1/courierOrderAvailability",
+    "query": {
+      "countryCode": "PL",
+      "zipCode": "02-274"
+    },
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": null
+  },
+  "response": {
+    "httpStatus": 404,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "POSTAL_CODE_NOT_FOUND",
+      "ranges": [],
+      "traceId": "eab08492-d72c-4c3f-b90f-251a9ee3f614"
+    }
+  }
+}

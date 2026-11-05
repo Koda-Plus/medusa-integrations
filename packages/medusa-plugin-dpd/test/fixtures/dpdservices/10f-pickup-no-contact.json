@@ -1,0 +1,70 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "reference": "probe-mvzryyzy-Pf",
+          "pudoReceiver": {
+            "name": "Anna Przykładowa",
+            "countryCode": "PL"
+          },
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "ref1": "9100",
+          "services": [
+            {
+              "code": "DPD_PICKUP",
+              "attributes": [
+                {
+                  "code": "PUDO",
+                  "value": "PL14509"
+                }
+              ]
+            }
+          ],
+          "parcels": [
+            {
+              "reference": "probe-mvzryyzy-Pf-1",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "errors": [
+        {
+          "userMessage": "Name or company is required",
+          "field": "packages[0].pudoReceiver"
+        },
+        {
+          "userMessage": "Pudo receiver phone or email is needed with DPD_PICKUP service",
+          "field": "packages[0].services[0]"
+        }
+      ],
+      "traceId": "fd142461-9b08-4c38-ae40-02773feb0791"
+    }
+  }
+}

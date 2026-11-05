@@ -1,0 +1,68 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generateSpedLabels",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "labelSearchParams": {
+        "policy": "STOP_ON_FIRST_ERROR",
+        "session": {
+          "type": "DOMESTIC",
+          "packages": [
+            {
+              "reference": "probe-mvzj6089-COD"
+            }
+          ]
+        }
+      },
+      "outputDocFormat": "PDF",
+      "format": "A4",
+      "outputType": "BIC3",
+      "variant": "STANDARD"
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "OK",
+      "documentData": "<pdf>",
+      "session": {
+        "statusInfo": {
+          "status": "OK"
+        },
+        "packages": [
+          {
+            "reference": "probe-mvzj6089-COD",
+            "statusInfo": {
+              "status": "OK"
+            },
+            "parcels": [
+              {
+                "reference": null,
+                "waybill": "0000899044737Q",
+                "statusInfo": {
+                  "status": "OK"
+                }
+              },
+              {
+                "reference": null,
+                "waybill": "0000899044877Q",
+                "statusInfo": {
+                  "status": "OK"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "documentId": null,
+      "traceId": "56da823b-c1e9-4d5e-adcf-d585cc1a432e"
+    }
+  }
+}

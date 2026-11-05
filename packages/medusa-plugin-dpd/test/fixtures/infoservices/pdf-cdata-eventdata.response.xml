@@ -1,0 +1,32 @@
+<!-- HTTP 200 -->
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+  <S:Body>
+    <ns2:getEventsForWaybillV1Response xmlns:ns2="http://events.dpdinfoservices.dpd.com.pl/">
+      <return>
+        <confirmId>0</confirmId>
+        <eventsList>
+          <businessCode>230403</businessCode>
+          <country>616</country>
+          <depot>BIA</depot>
+          <eventDataList>
+            <code>01</code>
+            <value>&lt;![CDATA[parcel_3]]&gt;</value>
+          </eventDataList>
+          <eventDataList>
+            <code>02</code>
+            <value>&lt;![CDATA[parcel_3]]&gt;</value>
+          </eventDataList>
+          <eventDataList>
+            <code>03</code>
+            <value>&lt;![CDATA[parcel_3]]&gt;</value>
+          </eventDataList>
+          <eventTime>2014-11-26T11:39:39</eventTime>
+          <objectId>0</objectId>
+          <packageReference/>
+          <parcelReference/>
+          <waybill>0000000000201S</waybill>
+        </eventsList>
+      </return>
+    </ns2:getEventsForWaybillV1Response>
+  </S:Body>
+</S:Envelope>

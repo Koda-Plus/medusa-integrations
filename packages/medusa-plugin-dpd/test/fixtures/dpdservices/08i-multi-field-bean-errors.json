@@ -1,0 +1,68 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/public/shipment/v1/generatePackagesNumbers",
+    "headers": {
+      "x-dpd-fid": "***",
+      "authorization": "Basic ***"
+    },
+    "body": {
+      "generationPolicy": "STOP_ON_FIRST_ERROR",
+      "packages": [
+        {
+          "sender": {
+            "company": "Testowa Firma Sp. z o.o.",
+            "name": "Jan Testowy",
+            "address": "Testowa 1",
+            "city": "Warszawa",
+            "countryCode": "PL",
+            "postalCode": "02274",
+            "phone": "500000000",
+            "email": "test@example.com"
+          },
+          "receiver": {
+            "company": "Odbiorca Testowy",
+            "name": "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+            "address": "Przykładowa 2",
+            "city": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+            "countryCode": "PL",
+            "postalCode": "30001",
+            "phone": "500000001",
+            "email": "test@example.com"
+          },
+          "payerFID": "***",
+          "parcels": [
+            {
+              "reference": "probe-mvzj6089-Vi-1",
+              "weight": 0
+            }
+          ],
+          "reference": "probe-mvzj6089-Vi"
+        }
+      ]
+    }
+  },
+  "response": {
+    "httpStatus": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "errors": [
+        {
+          "userMessage": "size must be between 0 and 50",
+          "field": "packages[0].receiver.city"
+        },
+        {
+          "userMessage": "must be greater than or equal to 0.01",
+          "field": "packages[0].parcels[0].weight"
+        },
+        {
+          "userMessage": "size must be between 0 and 100",
+          "field": "packages[0].receiver.name"
+        }
+      ],
+      "traceId": "642b547a-20e2-4d23-95a2-b3dfcabf3bba"
+    }
+  }
+}
