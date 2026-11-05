@@ -294,7 +294,7 @@ export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: Senten
   parts.push(...uses(c, t, false))
   const st = stacking(c, n, t)
   if (st.with) parts.push(t("sentence.combinesWith", { list: st.with }))
-  if (st.never) parts.push(t("sentence.combinesNever", { list: st.never }))
+  /* The codes it never goes with stay out of the sentence (they read as a flaw of the coupon, and the customer gets the sentence by e-mail): the side panel (couponFacts) keeps them. */
   for (const r of s.rules ?? []) parts.push(describeRule(r, t))
   const text = parts.join(", ")
   if (rule.replaces) return `${cap(rule.text)}. ${cap(text)}.`

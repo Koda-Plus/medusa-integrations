@@ -123,6 +123,8 @@ export interface CouponDto {
   campaign: { id: string; name: string } | null
   stats: CouponStats
   createdAt: string | null
+  /** Who made it: the panel user (metadata `created_by_label`, set on create and copy) or a store's own `created_by`; null when unknown. */
+  createdBy?: string | null
   /** The store's own terms (option storeTerms), null when the store keeps none for it. */
   terms?: StoreTerms | null
   /** Who got the code by e-mail from the panel (promotion metadata `code_sent`), oldest first. */

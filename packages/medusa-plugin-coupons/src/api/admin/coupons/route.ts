@@ -4,7 +4,7 @@ import { KIT_META } from "../../../modules/coupons/lib/kit-meta"
 import { createCoupon } from "../../../workflows/coupons/create"
 import { listCoupons } from "../../../workflows/coupons/reads"
 import { couponsService } from "../../../workflows/coupons/runtime"
-import { fail } from "./helpers"
+import { fail, stampCreator } from "./helpers"
 
 /**
  * GET /admin/coupons: every promotion as a coupon (the newest 300), its use
@@ -41,7 +41,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   try {
     const { coupon, warnings } = await createCoupon(req.scope, (req.body ?? {}) as WizardInput)
-    const body: CreateResponse = { coupon, warnings }
+    const createdBy = await stampCreator(req, coupon.id)
+    const body: CreateResponse = { coupon: { ...coupon, createdBy: createdBy ?? coupon.createdBy ?? null }, warnings }
     res.status(201).json(body)
   } catch (err) {
     fail(req, res, err, "The coupon could not be saved. Nothing was created.")

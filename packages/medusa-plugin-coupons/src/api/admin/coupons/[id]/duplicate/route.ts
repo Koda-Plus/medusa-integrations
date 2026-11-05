@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { CreateResponse, DuplicateInput } from "../../../../../modules/coupons/lib/contract"
 import { duplicateCoupon } from "../../../../../workflows/coupons/duplicate"
-import { fail, idParam } from "../../helpers"
+import { fail, idParam, stampCreator } from "../../helpers"
 
 /**
  * POST /admin/coupons/:id/duplicate  { code, patch? }
@@ -17,7 +17,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   }
   try {
     const out: CreateResponse = await duplicateCoupon(req.scope, id, (req.body ?? {}) as DuplicateInput)
-    res.status(201).json(out)
+    const createdBy = await stampCreator(req, out.coupon.id)
+    res.status(201).json({ ...out, coupon: { ...out.coupon, createdBy: createdBy ?? out.coupon.createdBy ?? null } })
   } catch (err) {
     fail(req, res, err, "The copy could not be made. Nothing was created.")
   }

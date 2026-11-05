@@ -47,6 +47,7 @@ const en = {
     emptyAll: "No coupons yet",
     clear: "Show all",
     automatic: "automatic",
+    createdTitle: "Created: date and by whom",
     noCode: "no code",
     uses: "Uses",
     discount: "Discount",
