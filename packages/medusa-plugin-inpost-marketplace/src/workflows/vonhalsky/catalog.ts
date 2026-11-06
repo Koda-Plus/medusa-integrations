@@ -44,7 +44,6 @@ interface VariantRecord {
     height?: number | string | null
     width?: number | string | null
     images?: Array<{ url?: string | null; rank?: number | null } | null> | null
-    variants?: Array<{ id?: string | null } | null> | null
     categories?: Array<{ id?: string | null } | null> | null
   } | null
   inventory_items?: Array<{
@@ -125,10 +124,29 @@ export function imagesOf(product: VariantRecord["product"]): string[] {
  * when the product has more variants to tell apart ("Bluza z kapturem M").
  * A product with one variant ("Standard", "Default variant") is just its title.
  */
-export function offerTitle(productTitle: string | null, variantTitle: string | null, variantCount: number): string | null {
+export function offerTitle(productTitle: string | null, variantTitle: string | null, variantCount: number | null): string | null {
   if (!productTitle) return variantTitle
   if (!variantTitle || variantCount === 1 || variantTitle.toLowerCase() === "default variant" || variantTitle === productTitle) return productTitle
   return `${productTitle} ${variantTitle}`
+}
+
+/**
+ * How many variants each product has (deleted ones not counted), read from the
+ * products themselves: a variant's own `product.variants` does not come back
+ * through the query graph. A product that could not be read is missing.
+ */
+export async function variantCountsOf(query: QueryLike, productIds: readonly string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  for (let i = 0; i < productIds.length; i += PAGE) {
+    const chunk = productIds.slice(i, i + PAGE)
+    try {
+      const { data } = await query.graph({ entity: "product", fields: ["id", "variants.id"], filters: { id: [...chunk] } })
+      for (const p of data as Array<{ id: string; variants?: Array<{ id?: string | null } | null> | null }>) out.set(p.id, (p.variants ?? []).filter((v) => v && v.id).length)
+    } catch {
+      /* without the count the variant title stays in the name */
+    }
+  }
+  return out
 }
 
 /** The default PLN price per variant (no price list, no rules, no quantity tier), in minor units. */
@@ -241,7 +259,6 @@ export async function loadFacts(scope: Scope, o: ResolvedVonHalskyOptions, only:
         "product.width",
         "product.images.url",
         "product.images.rank",
-        "product.variants.id",
         "product.categories.id",
         "inventory_items.required_quantity",
         "inventory_items.inventory.location_levels.location_id",
@@ -261,12 +278,12 @@ export async function loadFacts(scope: Scope, o: ResolvedVonHalskyOptions, only:
   const usable = records.filter((r) => r.product_id)
   const ids = usable.map((r) => r.id)
   const productIds = [...new Set(usable.map((r) => String(r.product_id)))]
-  const [prices, gpsr, includesTax] = await Promise.all([plnPrices(query, ids), complianceManufacturers(scope, productIds), plnIncludesTax(query, o.pricesIncludeTax)])
+  const [prices, gpsr, includesTax, variantCounts] = await Promise.all([plnPrices(query, ids), complianceManufacturers(scope, productIds), plnIncludesTax(query, o.pricesIncludeTax), variantCountsOf(query, productIds)])
   const thumbnails = new Map<string, string | null>()
   const facts: VariantFacts[] = usable.map((r) => {
     const productTitle = str(r.product?.title)
     const variantTitle = str(r.title)
-    const title = offerTitle(productTitle, variantTitle, (r.product?.variants ?? []).filter(Boolean).length)
+    const title = offerTitle(productTitle, variantTitle, variantCounts.get(String(r.product_id)) ?? null)
     const picked = pickManufacturer(gpsr.get(String(r.product_id)) ?? null, fromMetadata(r.product?.metadata ?? null) ?? fromMetadata(r.metadata ?? null))
     thumbnails.set(r.id, str(r.product?.thumbnail))
     return {

@@ -211,4 +211,5 @@ test("the offer name has the variant title only when the product has more varian
   assert.equal(offerTitle("Bluza z kapturem", "M", 3), "Bluza z kapturem M")
   assert.equal(offerTitle("Bluza z kapturem", "Default variant", 2), "Bluza z kapturem")
   assert.equal(offerTitle(null, "M", 3), "M")
+  assert.equal(offerTitle("Bluza z kapturem", "M", null), "Bluza z kapturem M", "unknown count: the variant title stays")
 })
