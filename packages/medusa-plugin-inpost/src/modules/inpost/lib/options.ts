@@ -10,10 +10,13 @@ import {
   DEFAULT_WEIGHT_KG,
   LABEL_SIZES,
   MAX_REQUESTS_PER_MINUTE,
+  MAX_RETURN_EXPIRATION_DAYS,
+  MIN_RETURN_EXPIRATION_DAYS,
   PARCEL_SIZES,
   SENDING_METHODS,
   type LabelSize,
   type ParcelSize,
+  type ReturnsEnvironment,
   type SendingMethod,
 } from "./constants"
 import { isLockerCode, normalizeLockerCode } from "./lockers"
@@ -102,6 +105,29 @@ export interface InpostPluginOptions {
   pointsPerMinute?: number | string
   /** Stores running the integration, shown in the admin ("Running in production"). */
   references?: InpostReferenceOption[]
+  /** InPost Returns API (InPost Group developer portal): the client id of the OAuth2 client credentials the InPost Integration Team issues. */
+  returnsClientId?: string
+  /** Its secret. Never leaves the server, masked in every log and error. */
+  returnsClientSecret?: string
+  /** The organization of the Returns API: a UUID, NOT the numeric ShipX organization id. */
+  returnsOrganizationId?: string
+  /** "stage" or "production". Default: "stage" with `sandbox: true`, else "production". */
+  returnsEnvironment?: "stage" | "production" | string
+  /** HARD SWITCH of the Returns API writes (create a return). Default false (true in demo mode, simulated). */
+  returnsWriter?: boolean | string
+  /** How many days a return stays valid, 7 to 90. Default: the InPost account's own setting. */
+  returnExpirationDays?: number | string
+  /** The PUBLIC Geowidget token of the storefront map (InPost Manager, My account, API, Geowidget). Shown in Settings and served by GET /store/inpost/geowidget. */
+  geowidgetToken?: string
+}
+
+export interface ResolvedReturnsOptions {
+  clientId: string
+  clientSecret: string
+  organizationId: string
+  environment: ReturnsEnvironment
+  /** Days a return stays valid; null: the account's own setting. */
+  expirationDays: number | null
 }
 
 export interface ResolvedSender {
@@ -123,7 +149,11 @@ export interface ResolvedInpostOptions {
   sandbox: boolean
   demo: boolean
   demoReason: "option" | "no_token" | null
-  writers: { shipment: boolean; fulfillmentStatus: boolean }
+  writers: { shipment: boolean; fulfillmentStatus: boolean; returns: boolean }
+  /** The InPost Returns API; configured when the client id, the secret and the organization are set. */
+  returns: ResolvedReturnsOptions
+  /** The public Geowidget token of the storefront map, "" when not set. */
+  geowidgetToken: string
   autoCreate: boolean
   autoCreateMaxAgeHours: number
   codPaymentProviders: string[]
@@ -199,6 +229,20 @@ export function organizationId(v: unknown): string {
   return /^\d{1,12}$/.test(s) ? s : ""
 }
 
+/** A UUID (the Returns API organization and shipment ids), in lower case; "" when it is not one. */
+export function uuidOrEmpty(v: unknown): string {
+  const s = str(v).toLowerCase()
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s) ? s : ""
+}
+
+/** "stage" or "production" (also "staging", "sandbox", "prod", "live"); null when the value says neither. */
+export function returnsEnvironment(v: unknown): ReturnsEnvironment | null {
+  const s = str(v).toLowerCase()
+  if (s === "stage" || s === "staging" || s === "sandbox") return "stage"
+  if (s === "production" || s === "prod" || s === "live") return "production"
+  return null
+}
+
 /** Lowercase letters and digits, at least 24: InPost wants the webhook path in lower case. */
 export function isWebhookSecret(s: string): boolean {
   return /^[a-z0-9]{24,128}$/.test(s)
@@ -263,16 +307,34 @@ export function resolveOptions(o: InpostPluginOptions | undefined | null): Resol
   if (secretInvalid) problems.push("webhookSecret (at least 24 lowercase letters and digits)")
   const unit = str(opts.weightUnit).toLowerCase()
   const weight = Number(str(opts.defaultWeightKg).replace(",", "."))
+  const sandbox = boolOrNull(opts.sandbox) === true
+  const returnsOrg = uuidOrEmpty(opts.returnsOrganizationId)
+  if (str(opts.returnsOrganizationId) && !returnsOrg) problems.push("returnsOrganizationId (a UUID, not the ShipX organization id)")
+  const env = returnsEnvironment(opts.returnsEnvironment)
+  if (str(opts.returnsEnvironment) && !env) problems.push("returnsEnvironment (stage or production)")
+  const daysRaw = str(opts.returnExpirationDays)
+  const days = daysRaw ? Math.floor(Number(daysRaw)) : null
+  const daysOk = days !== null && Number.isFinite(days) && days >= MIN_RETURN_EXPIRATION_DAYS && days <= MAX_RETURN_EXPIRATION_DAYS
+  if (daysRaw && !daysOk) problems.push(`returnExpirationDays (${MIN_RETURN_EXPIRATION_DAYS} to ${MAX_RETURN_EXPIRATION_DAYS} days)`)
   return {
     apiToken,
     organizationId: org,
-    sandbox: boolOrNull(opts.sandbox) === true,
+    sandbox,
     demo,
     demoReason: demo ? "option" : null,
     writers: {
       shipment: writerSwitch(opts.shipmentWriter, "shipmentWriter"),
       fulfillmentStatus: writerSwitch(opts.fulfillmentStatusWriter, "fulfillmentStatusWriter"),
+      returns: writerSwitch(opts.returnsWriter, "returnsWriter"),
     },
+    returns: {
+      clientId: str(opts.returnsClientId).slice(0, 200),
+      clientSecret: str(opts.returnsClientSecret),
+      organizationId: returnsOrg,
+      environment: env ?? (sandbox ? "stage" : "production"),
+      expirationDays: daysOk ? days : null,
+    },
+    geowidgetToken: str(opts.geowidgetToken).slice(0, 4000),
     autoCreate: boolOrNull(opts.autoCreate) === true,
     autoCreateMaxAgeHours: bounded(opts.autoCreateMaxAgeHours, 48, 1, 720),
     codPaymentProviders: opts.codPaymentProviders === undefined ? ["pp_system_default"] : textList(opts.codPaymentProviders),
@@ -305,6 +367,26 @@ export function missingOptions(o: ResolvedInpostOptions): string[] {
   if (!o.apiToken) missing.push("apiToken")
   if (!o.organizationId) missing.push("organizationId")
   return missing
+}
+
+/** Option names the Returns API still needs in live mode, for the admin. Empty in demo mode. */
+export function missingReturnOptions(o: ResolvedInpostOptions): string[] {
+  if (o.demo) return []
+  const missing: string[] = []
+  if (!o.returns.clientId) missing.push("returnsClientId")
+  if (!o.returns.clientSecret) missing.push("returnsClientSecret")
+  if (!o.returns.organizationId) missing.push("returnsOrganizationId")
+  return missing
+}
+
+/** Returns can be created: demo mode (simulated), or the client id, the secret and the organization. */
+export function returnsConfigured(o: ResolvedInpostOptions): boolean {
+  return missingReturnOptions(o).length === 0
+}
+
+/** The Returns API can be called: live mode with its credentials. */
+export function canCallReturns(o: ResolvedInpostOptions): boolean {
+  return !o.demo && returnsConfigured(o)
 }
 
 /** ShipX can be called: live mode with a token and an organization. */

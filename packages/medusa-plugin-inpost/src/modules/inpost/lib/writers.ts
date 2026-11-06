@@ -7,9 +7,11 @@
  *   fulfillmentStatus  Medusa writes: mark the fulfillment shipped when
  *                      InPost has the parcel and delivered when it is
  *                      delivered (Medusa's own shipment and delivery flows)
+ *   returns            InPost Returns API writes: create a return (a drop-off
+ *                      code or a label) from the plan a person read
  *
  * Switch one, the hard switch: the option (`shipmentWriter`,
- * `fulfillmentStatusWriter`), false by default in live mode. `false` wins:
+ * `fulfillmentStatusWriter`, `returnsWriter`), false by default in live mode. `false` wins:
  * the admin cannot arm a writer the options turn off.
  *
  * Switch two, the runtime toggle: a person arms the writer in Settings. It is
@@ -21,7 +23,7 @@
  * shipments are read.
  */
 
-export const WRITERS = ["shipment", "fulfillmentStatus"] as const
+export const WRITERS = ["shipment", "fulfillmentStatus", "returns"] as const
 export type WriterKey = (typeof WRITERS)[number]
 
 export function isWriterKey(v: unknown): v is WriterKey {
@@ -32,6 +34,7 @@ export function isWriterKey(v: unknown): v is WriterKey {
 export const WRITER_OPTION: Record<WriterKey, string> = {
   shipment: "shipmentWriter",
   fulfillmentStatus: "fulfillmentStatusWriter",
+  returns: "returnsWriter",
 }
 
 export interface WriterSetting {

@@ -1,5 +1,5 @@
 import { isPolishPostCode, normalizePostCode, splitStreet } from "./address"
-import { OPTION_SPECS, type InpostOptionId, type OptionSpec, type ParcelKind, type ParcelSize } from "./constants"
+import { OPTION_SPECS, RETURN_OPTION_ID, type InpostOptionId, type OptionSpec, type ParcelKind, type ParcelSize } from "./constants"
 import { isLockerCode, lockerData, lockerFromData, type Locker } from "./lockers"
 
 /**
@@ -32,6 +32,31 @@ export interface FulfillmentOptionData {
 
 export function fulfillmentOptions(): FulfillmentOptionData[] {
   return OPTION_SPECS.map((s) => ({ id: s.id, name: s.name, description: s.description, kind: s.kind, cod: s.cod, service: s.service, type: s.legacyType }))
+}
+
+/** The return option: a return shipping option in Medusa (`is_return`), sent back through the InPost Returns API. */
+export interface ReturnOptionData {
+  id: typeof RETURN_OPTION_ID
+  name: string
+  description: string
+  is_return: true
+  kind: "return"
+  [k: string]: unknown
+}
+
+export function returnFulfillmentOption(): ReturnOptionData {
+  return {
+    id: RETURN_OPTION_ID,
+    name: "InPost return (Paczkomat)",
+    description: "The customer sends the parcel back from any InPost Paczkomat with a short drop-off code, nothing to print (InPost Returns API).",
+    is_return: true,
+    kind: "return",
+  }
+}
+
+/** The shipping option (or a fulfillment's data) stands for the InPost return option. */
+export function isReturnOption(data: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(data && typeof data === "object" && (data.id === RETURN_OPTION_ID || data.inpost_option === RETURN_OPTION_ID || data.inpost_return === true))
 }
 
 /** The option a shipping option stands for, or null when it is not one of ours. */

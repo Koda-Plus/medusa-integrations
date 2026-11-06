@@ -10,6 +10,12 @@ import type {
   ParcelsResponse,
   PlanResponse,
   PointsResponse,
+  ReturnActionResponse,
+  ReturnFilter,
+  ReturnMethod,
+  ReturnPlanResponse,
+  ReturnsCheckResult,
+  ReturnsResponse,
   StatusResponse,
   WriterKey,
 } from "../../modules/inpost/lib/contract"
@@ -61,6 +67,11 @@ export function labelUrl(id: string, size?: "A6" | "A4", download = false): stri
   return `${backendUrl()}/admin/inpost/parcels/${encodeURIComponent(id)}/label${q ? `?${q}` : ""}`
 }
 
+/** The label PDF of a return created without a drop-off code, through the backend. */
+export function returnLabelUrl(id: string, download = false): string {
+  return `${backendUrl()}/admin/inpost/returns/${encodeURIComponent(id)}/label${download ? "?download=1" : ""}`
+}
+
 export const inpostKeys = {
   all: ["inpost"] as const,
   status: ["inpost", "status"] as const,
@@ -70,6 +81,8 @@ export const inpostKeys = {
   order: (id: string) => ["inpost", "order", id] as const,
   events: (kind: string, offset: number) => ["inpost", "events", kind, offset] as const,
   points: (q: string) => ["inpost", "points", q] as const,
+  returns: (filter: ReturnFilter, q: string, offset: number, limit: number) => ["inpost", "returns", filter, q, offset, limit] as const,
+  returnPlan: (orderId: string, returnId: string | null, method: ReturnMethod) => ["inpost", "return-plan", orderId, returnId ?? "-", method] as const,
 }
 
 export function useInpostStatus(pollUntil: number) {
@@ -136,6 +149,29 @@ export function useInpostPoints(q: string) {
   })
 }
 
+export function useInpostReturns(filter: ReturnFilter, q: string, offset: number, limit: number, poll = false) {
+  const params = new URLSearchParams({ filter, limit: String(limit), offset: String(offset) })
+  if (q) params.set("q", q)
+  return useQuery<ReturnsResponse>({
+    queryKey: inpostKeys.returns(filter, q, offset, limit),
+    queryFn: () => inpostFetch<ReturnsResponse>(`/admin/inpost/returns?${params.toString()}`),
+    placeholderData: (previous) => previous,
+    refetchInterval: poll ? 5_000 : false,
+  })
+}
+
+export function useInpostReturnPlan(orderId: string | null, returnId: string | null, method: ReturnMethod) {
+  const params = new URLSearchParams({ method })
+  if (returnId) params.set("returnId", returnId)
+  return useQuery<ReturnPlanResponse>({
+    queryKey: inpostKeys.returnPlan(orderId ?? "", returnId, method),
+    queryFn: () => inpostFetch<ReturnPlanResponse>(`/admin/inpost/orders/${encodeURIComponent(orderId ?? "")}/return-plan?${params.toString()}`),
+    enabled: Boolean(orderId),
+    staleTime: 0,
+    gcTime: 0,
+  })
+}
+
 function usePost<TResult, TVars = void>(path: (vars: TVars) => string, body: (vars: TVars) => unknown = () => ({})) {
   const client = useQueryClient()
   return useMutation<TResult, unknown, TVars>({
@@ -169,3 +205,12 @@ export const useInpostSkip = () => usePost<ActionResponse, { id: string }>((v) =
 export const useInpostLink = () => usePost<ActionResponse, { id: string; shipmentId: string }>((v) => parcelPath(v.id, "link"), (v) => ({ shipmentId: v.shipmentId }))
 export const useInpostLocker = () => usePost<ActionResponse, { id: string; code: string }>((v) => parcelPath(v.id, "locker"), (v) => ({ code: v.code }))
 export const useInpostSize = () => usePost<ActionResponse, { id: string; size: ParcelSize }>((v) => parcelPath(v.id, "size"), (v) => ({ size: v.size }))
+
+const returnPath = (id: string, action: string) => `/admin/inpost/returns/${encodeURIComponent(id)}/${action}`
+
+export const useInpostReturnCreate = () =>
+  usePost<ReturnActionResponse, { orderId: string; returnId: string | null; method: ReturnMethod; planHash: string }>(() => "/admin/inpost/returns", (v) => v)
+export const useInpostReturnRefresh = () => usePost<ReturnActionResponse, { id: string }>((v) => returnPath(v.id, "refresh"))
+export const useInpostReturnRetry = () => usePost<ReturnActionResponse, { id: string; checked?: boolean }>((v) => returnPath(v.id, "retry"), (v) => ({ checked: v.checked === true }))
+export const useInpostReturnSkip = () => usePost<ReturnActionResponse, { id: string }>((v) => returnPath(v.id, "skip"))
+export const useInpostReturnsCheck = () => usePost<{ result: ReturnsCheckResult }>(() => "/admin/inpost/check/returns")

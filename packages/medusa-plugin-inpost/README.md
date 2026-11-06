@@ -19,9 +19,10 @@ Ship with InPost from Medusa: Paczkomat parcel lockers and the InPost courier, b
 - **Labels**: PDF in A6 or A4 through the backend, so the ShipX token never reaches the browser.
 - **Tracking**: statuses by webhook, with a status pass every 15 minutes as the fallback; the tracking link on inpost.pl; the names of all 53 ShipX statuses in English and Polish.
 - **Medusa follows InPost** (optional writer): the fulfillment is marked shipped with the tracking number and link when InPost has the parcel, and delivered when it is delivered.
-- **Order widget** on the order page: the customer's choice with the locker and a map link, each shipment with its status, tracking, cash on delivery, label, plan, actions and history.
+- **Returns** (InPost Returns API): from the order page, or for a Medusa return on the return option `inpost-zwrot`, the plugin creates the InPost return from a plan a person reads. InPost answers with a short drop-off code the customer types at any Paczkomat (nothing to print) or, if you choose, a label. The admin shows the code big with a copy button, the tracking number and link, the expiry and the label.
+- **Order widget** on the order page: the customer's choice with the locker and a map link, each shipment with its status, tracking, cash on delivery, label, plan, actions and history, and the InPost returns of the order.
 - **Locker search** in the admin (to fix a wrong locker before sending) and for the storefront (`GET /store/inpost/points`).
-- **Setup guide** and **Settings** in the admin: the InPost account and the webhook, the sender with the default parcel and label, the writers, the history.
+- **Setup guide** and **Settings** in the admin: the InPost account and the webhook, the Returns API, the sender with the default parcel and label, the writers, the history.
 
 ## Features
 
@@ -105,7 +106,7 @@ Run the migrations, then open **InPost** in the admin sidebar:
 npx medusa db:migrate
 ```
 
-Then create the shipping options: Settings, Locations and Shipping, the shipping zone of your location, Create option, the InPost provider and one of its four fulfillment options (ids `inpost-paczkomat`, `inpost-paczkomat-cod`, `inpost-kurier`, `inpost-kurier-cod`). The price is the shipping option's own: the provider does not calculate prices.
+Then create the shipping options: Settings, Locations and Shipping, the shipping zone of your location, Create option, the InPost provider and one of its four fulfillment options (ids `inpost-paczkomat`, `inpost-paczkomat-cod`, `inpost-kurier`, `inpost-kurier-cod`). The price is the shipping option's own: the provider does not calculate prices. For returns, create a return option with the fifth fulfillment option, `inpost-zwrot` ("InPost return (Paczkomat)", `is_return`), see [Returns](#returns).
 
 ### Options
 
@@ -122,6 +123,7 @@ Writes:
 
 - `shipmentWriter` (default `false`; in demo mode `true`, acting on the simulation only): allows the ShipX writes: create a shipment, buy the offer of a prepaid account, order a courier pickup, cancel a shipment ShipX still allows to cancel. The admin cannot arm it while this is not `true`.
 - `fulfillmentStatusWriter` (default `false`; in demo mode `true`, simulated): allows marking Medusa fulfillments shipped and delivered.
+- `returnsWriter` (default `false`; in demo mode `true`, simulated): allows creating returns on the InPost Returns API. The admin cannot arm it while this is not `true`.
 - `autoCreate` (default `false`): with the shipment writer armed, create the shipment as soon as its fulfillment is created, from its plan, without a click, and let the status pass order the courier pickup of confirmed `dispatch_order` shipments. Plans with problems wait for a person either way.
 - `autoCreateMaxAgeHours` (default `48`, 1 to 720): the status pass creates only fulfillments recorded after the shipment writer was armed and within these hours. A backlog (fulfillments shipped by hand while the writer was off) is never turned into new, paid labels.
 - `codPaymentProviders` (default `["pp_system_default"]`): the payment providers that mean "pay at the door". When an order has a payment by any other provider (a card, BLIK, Przelewy24), its cash on delivery plan stops with `cod_paid_online`: the buyer never pays twice.
@@ -150,6 +152,16 @@ Tracking and limits:
 - `requestsPerMinute` (default `60`, at most 600): the plugin's own limit towards ShipX.
 - `timeoutMs` (default `20000`, from 3000 to 120000): one ShipX request.
 - `pointsPerMinute` (default `60`): searches one IP may send to `GET /store/inpost/points` per minute.
+
+Returns (InPost Returns API, see [Returns](#returns)):
+
+- `returnsClientId`, `returnsClientSecret` (default none): the OAuth2 client credentials the InPost Integration Team issues for the Returns API, with the scopes `api:returns:read` and `api:returns:write`. Another login than the ShipX token. The secret stays on the server and is masked everywhere.
+- `returnsOrganizationId` (default none): the organization of the Returns API, a UUID like `a1b2c3d4-e5f6-7890-abcd-ef1234567890`. It is NOT the numeric ShipX `organizationId`; a value that is not a UUID is ignored and listed in the admin.
+- `returnsEnvironment` (default `"stage"` with `sandbox: true`, else `"production"`): `"stage"` (`https://stage-api.inpost-group.com`) or `"production"` (`https://api.inpost-group.com`).
+- `returnExpirationDays` (default: the InPost account's own setting): how long a new return stays valid, 7 to 90 days. The plan sends the end of that day (UTC).
+- `geowidgetToken` (default none): the PUBLIC Geowidget token of your storefront map (InPost Manager, My account, API, Geowidget). The plugin does not need it to ship; Settings show its environment, domains and expiry (and warn when the map's environment differs from the ShipX one), and `GET /store/inpost/geowidget` answers `{ token, environment, host }` for the storefront.
+
+Returns are configured when the client id, the secret and the organization are set. Without them the rest of the plugin works as before, and the admin says what is missing.
 
 Presentation:
 
@@ -269,6 +281,19 @@ export const config: SubscriberConfig = { event: "inpost.shipment.status_changed
 
 With the fulfillment status writer armed, Medusa's own `shipment.created` follows when InPost has the parcel, so your "order shipped" e-mail carries the InPost tracking link.
 
+## Returns
+
+Returns use the InPost Returns API of the InPost Group developer portal (the current "Szybkie Zwroty"), not ShipX: another host, an OAuth2 client and an organization UUID. The store creates the return; InPost answers with a short drop-off code (the default: the customer types it at any Paczkomat and puts the parcel in, nothing to print) or, without the code, a label.
+
+1. Ask the InPost Integration Team for a Returns API client with the scopes `api:returns:read api:returns:write` and for the organization UUID, on stage first. The return address and the default parcel come from the InPost account they set up: the plugin sends neither.
+2. Set `returnsClientId`, `returnsClientSecret`, `returnsOrganizationId` and `returnsEnvironment`, and `returnsWriter: true`. Test the connection in Settings, InPost account (it only gets a token).
+3. Optionally create a return shipping option with the fulfillment option `inpost-zwrot`. A Medusa return requested on it (`order.return_requested`) is recorded as a pending InPost return; the provider sends nothing.
+4. Arm "Returns in InPost" in Settings, Writers. On the order page, "InPost return" opens the plan: the customer as InPost's sender (name, e-mail, phone in E.164, read from the order now and never stored), the origin country, the order number for the label, a drop-off code or a label, the expiry, and the exact request. **Create the return** sends exactly that plan, once.
+
+The drop-off code, the tracking number (link to inpost.pl), the short number, whether a label exists and the expiry are kept on the row; the label (A4 PDF) is fetched by the backend. The InPost page lists every return with filters (to create, need you, created, handled outside) and a search by order number, code or tracking number.
+
+One InPost return per order and Medusa return: the database refuses a second row, and a second create answers 409. The Returns API has no idempotency key and no search, so an answer that never came (a timeout, a dropped connection, a 5xx) leaves the return `unknown` and nothing sends it again: a person checks InPost, then presses Try again (confirming the return is not there) or marks it handled outside the plugin. The Returns API has no status of a return: tracking is another InPost API, which this version does not read.
+
 ## Setup in brief
 
 The admin has the full guide (**InPost**, **Setup guide**, or `/app/inpost?view=guide`), each step with its state from your store.
@@ -287,7 +312,7 @@ The admin has the full guide (**InPost**, **Setup guide**, or `/app/inpost?view=
 
 ## Write safety
 
-- **Two switches per writer.** The option (`shipmentWriter`, `fulfillmentStatusWriter`) is the hard one: `false` wins and the admin cannot override it. The switch in Settings is the runtime one, stored with who flipped it and when. Demo and live toggles are separate.
+- **Two switches per writer.** The option (`shipmentWriter`, `fulfillmentStatusWriter`, `returnsWriter`) is the hard one: `false` wins and the admin cannot override it. The switch in Settings is the runtime one, stored with who flipped it and when. Demo and live toggles are separate.
 - **Plan first.** A person creates a shipment from its plan and sends the plan's hash with the click; when the order, the settings or the shipment changed since the plan was read, the create is refused and the new plan is shown. A plan with problems sends nothing.
 - **Auto or button.** With `autoCreate`, an armed writer creates the shipment when its fulfillment is created, from a plan without problems, and the status pass orders the courier pickups; otherwise every shipment and every pickup waits for its button. The pass never takes a backlog (`autoCreateMaxAgeHours`), and a fulfillment Medusa already marks shipped or delivered gets no shipment.
 - **Cash on delivery once per order.** The amount is what is still due (the order total minus what was captured), on the first live cash on delivery parcel of the order; further parcels of the same order go without it. An order paid online (`codPaymentProviders`) gets no cash on delivery at all.
@@ -295,13 +320,15 @@ The admin has the full guide (**InPost**, **Setup guide**, or `/app/inpost?view=
 - **Cancel only while ShipX allows it**: the status is read first, and only `created`, `offers_prepared` and `offer_selected` can be canceled. Later, the admin says to cancel in InPost Manager (lockers) or WebTrucker (courier). Shipments the plugin did not create (linked, or found under `skipMetadataKeys`) are only tracked, never canceled or paid.
 - **Prepaid offers once**: one purchase per shipment at a time (an atomic claim), whoever asks first, the webhook, the status pass or a person.
 - **One courier pickup per shipment**: shipments are claimed before the dispatch order, so none is in two pickups.
+- **One return per order and Medusa return**, created from its plan, sent once; an unclear answer is `unknown` and never sent again by itself (the Returns API cannot look a return up).
 - **Medusa marks once**: shipped and delivered are claimed on the row before Medusa's flow runs and released with the error if it fails; a fulfillment a person already marked is only noted.
 
 ## Security and data
 
 - **The token stays on the server**: only in the `Authorization` header towards the ShipX host of the configured environment; masked in logs, errors, the history and the admin, which only knows whether it is set. Labels are fetched by the backend and streamed to the admin.
+- **The Returns API secret stays on the server** too: it goes only in the `Authorization: Basic` header of the token request; the access token is kept in memory until shortly before it expires and is masked like the secret. Return labels are fetched by the backend; the label link InPost answers with is never stored.
 - **The webhook trusts only its secret**, compared in constant time, and re-reads every shipment from ShipX.
-- **Personal data stays where it lives**: the receiver's name, phone, e-mail and address are read from the order when a plan is built and sent to ShipX only when a shipment is created. The plugin's tables keep the order and fulfillment ids, the option, the locker (public data), the parcel, the cash on delivery amount, the reference and the statuses; problems name what is wrong, never the value. Events carry no personal data.
+- **Personal data stays where it lives**: the receiver's name, phone, e-mail and address are read from the order when a plan is built and sent to ShipX only when a shipment is created; the customer of a return likewise, sent to the Returns API only when the return is created. The plugin's tables keep the order and fulfillment ids, the option, the locker (public data), the parcel, the cash on delivery amount, the reference and the statuses; problems name what is wrong, never the value. Events carry no personal data.
 - **Rate limited** towards ShipX (`requestsPerMinute`), with retries only for reads (network errors, 5xx, 429 with `Retry-After`); writes are sent once.
 - **History**: status passes, webhook deliveries, actions and statuses are kept for 120 days.
 - **Admin routes** sit behind Medusa's admin authentication. Writes to `/admin/inpost/*` take a JSON body or the `x-koda-request` header and answer 415 otherwise: Medusa's session cookie is `SameSite=None` in production, so a form on another site could otherwise post with it (shipments, offers and pickups cost money). The plugin's admin sends both.
@@ -312,7 +339,7 @@ The admin has the full guide (**InPost**, **Setup guide**, or `/app/inpost?view=
 
 ## What this plugin does not do (yet)
 
-- It does not create returns yet: self-service returns through InPost's Returns API (Szybkie Zwroty) and return labels are planned; until then use InPost Manager. A parcel returned to the sender shows under Problems and returns.
+- It does not track returns: the Returns API has no status, and InPost's tracking API is not read for returns yet (the tracking link on inpost.pl works). It does not create returns by itself either: every return is created by a person from its plan. A parcel returned to the sender after a failed delivery shows under Problems and returns.
 - It does not calculate shipping prices from InPost's price list: the shipping options' own prices apply.
 - It does not send several parcels in one shipment: one shipment carries one parcel (split the items into more fulfillments for more parcels).
 - It does not change a shipment after it is sent (the locker, the size, the receiver): InPost allows that only in InPost Manager.
@@ -334,7 +361,10 @@ Every route is behind Medusa's admin authentication. Writes answer 409 while the
 - `GET /admin/inpost/orders/:orderId`: the order widget.
 - `GET /admin/inpost/points?q=`: the locker search.
 - `POST /admin/inpost/settings`: the sender, the default parcel size and the label size of the current mode.
-- `POST /admin/inpost/writers` `{ writer: "shipment" | "fulfillmentStatus", on }`: arms or disarms a writer.
+- `POST /admin/inpost/writers` `{ writer: "shipment" | "fulfillmentStatus" | "returns", on }`: arms or disarms a writer.
+- `GET /admin/inpost/returns?filter=all|open|attention|created|skipped&q=&offset=0&limit=20`: the InPost returns; `GET /admin/inpost/returns/:id`: one with its history.
+- `GET /admin/inpost/orders/:orderId/return-plan?returnId=&method=code|label`: the plan of a return with its hash. `POST /admin/inpost/returns` `{ orderId, returnId?, method, planHash }`: creates it (409 when the order and return already have one).
+- `POST /admin/inpost/returns/:id/refresh`, `.../retry` `{ checked }`, `.../skip`: read it from InPost again, back to pending (after an unclear answer only with `checked: true`), mark it handled outside. `GET /admin/inpost/returns/:id/label?download=1`: the A4 label PDF of a return without a drop-off code. `POST /admin/inpost/check/returns`: gets a Returns API token, nothing else.
 - `POST /admin/inpost/sync`: a status pass now (202). `POST /admin/inpost/check`: checks the token and the organization.
 - `GET /admin/inpost/events`: the history. `POST /admin/inpost/demo/seed`: demo mode only, builds the sample shipments once. `POST /admin/inpost/demo/reset`: demo mode only, starts the simulation over.
 - `GET /admin/inpost/integration`, `/integration/summary`, `/integration/attention`: the koda.integration/1 contract, see below.
@@ -415,6 +445,10 @@ InPost, Paczkomat and the InPost logo are trademarks of InPost, used here only t
 MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost/LICENSE).
 
 ## Changelog
+
+### 0.4.0 (unreleased)
+
+InPost returns on the InPost Returns API: a drop-off code for any Paczkomat or a label, created once from a plan, with its own writer, options, admin list, order widget section and Settings card (see [Returns](#returns)). A new table, `inpost_parcel_return`: run `npx medusa db:migrate`.
 
 ### 0.3.0 (unreleased)
 

@@ -20,8 +20,9 @@ const provider = (options: Record<string, unknown> = {}) => new InpostFulfillmen
 const LOCKER = { line1: "ul. Narzędziowa 12", line2: "00-950 Warszawa", city: "Warszawa", post_code: "00-950" }
 const ADDRESS = { address_1: "ul. Przykładowa 5/2", city: "Warszawa", postal_code: "00-950", country_code: "pl" }
 
-test("four options with the ids existing shipping options use, and the legacy type and cod fields", async () => {
-  const options = await provider().getFulfillmentOptions()
+test("four options with the ids existing shipping options use, and the legacy type and cod fields; then the return option", async () => {
+  const all = await provider().getFulfillmentOptions()
+  const options = all.filter((o) => !o.is_return)
   assert.deepEqual(
     options.map((o) => [o.id, o.kind, o.cod, o.service, o.type]),
     [
@@ -33,6 +34,11 @@ test("four options with the ids existing shipping options use, and the legacy ty
   )
   assert.equal(PROVIDER(), "inpost")
   assert.equal(fulfillmentOptions().length, 4)
+  /* The return option comes last, marked is_return, so Medusa offers it for return shipping options. */
+  assert.deepEqual(all.map((o) => o.id), ["inpost-paczkomat", "inpost-paczkomat-cod", "inpost-kurier", "inpost-kurier-cod", "inpost-zwrot"])
+  assert.equal(all[4].is_return, true)
+  assert.equal(await provider().validateOption({ id: "inpost-zwrot" }), true)
+  assert.equal(await provider().validateOption({ id: "dpd-zwrot" }), false)
 })
 
 function PROVIDER(): string {
@@ -130,7 +136,26 @@ test("a fulfillment records the choice and the cash on delivery amount, and send
   assert.equal(eur.data.inpost_cod_amount, null)
   assert.deepEqual(readFulfillmentData(res.data)?.spec.id, "inpost-paczkomat-cod")
   assert.deepEqual(await p.cancelFulfillment({}), {})
-  await assert.rejects(() => p.createReturnFulfillment({}), /returns are not supported/, "a return on the InPost provider is refused, never an empty success")
+  /* A return on a delivery option (or with no option at all) is refused, never an empty success. */
+  await assert.rejects(() => p.createReturnFulfillment({}), /return option inpost-zwrot/)
+  await assert.rejects(() => p.createReturnFulfillment({ shipping_option: { data: { id: "inpost-paczkomat" } } }), /delivery options of InPost take no returns/)
+})
+
+test("a return on the return option is recorded like a fulfillment, with no request to InPost", async () => {
+  let called = false
+  globalThis.fetch = (async () => {
+    called = true
+    throw new Error("no network in a return")
+  }) as unknown as typeof fetch
+  const p = provider({ ...LIVE })
+  const res = await p.createReturnFulfillment({ id: "ful_ret_1", data: { note: "kept" }, shipping_option: { id: "so_ret", data: { id: "inpost-zwrot" } } })
+  assert.equal(called, false)
+  assert.deepEqual(res.labels, [])
+  assert.equal(res.data.inpost_return, true)
+  assert.equal(res.data.inpost_option, "inpost-zwrot")
+  assert.equal(res.data.note, "kept")
+  /* Choosing the return method needs nothing from the customer. */
+  assert.deepEqual(await p.validateFulfillmentData({ id: "inpost-zwrot" }, {}, {}), { inpost_option: "inpost-zwrot", inpost_return: true })
 })
 
 test("documents: the label of a fulfillment with a shipment id; a generated PDF in demo mode", async () => {

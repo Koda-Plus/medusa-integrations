@@ -11,6 +11,7 @@ import { InpostIcon } from "../lib/inpost-icon"
 import { EmptyState, ToneBadge } from "../lib/inpost-blocks"
 import { KitLoading, WidgetFrame, hostable } from "../lib/inpost-kit"
 import { History, ParcelActions } from "../lib/inpost-plan"
+import { OrderReturns } from "../lib/inpost-returns"
 import { KindBadges, LockerLines, ParcelStatus, ProblemList, TrackingCell, fmtDateTime, fmtMoney } from "../lib/inpost-ui"
 
 /**
@@ -18,8 +19,11 @@ import { KindBadges, LockerLines, ParcelStatus, ProblemList, TrackingCell, fmtDa
  * chose (with a map link), then each shipment of the order: its status, the
  * tracking number and link, the cash on delivery, the label, the plan and
  * "Create" (when the shipment writer is armed), the cancel while ShipX allows
- * it, a new locker before sending, and the history. Hidden on orders that do
- * not go with InPost.
+ * it, a new locker before sending, and the history. Then the InPost returns
+ * of the order: the drop-off code shown big with a copy button, the tracking
+ * link, the label, and "Create a return" from its plan (when the returns
+ * writer is armed). Hidden on orders that do not go with InPost and have no
+ * InPost return.
  *
  * A host (an app that shows every integration as tabs of one card) embeds it
  * with `embedded`: no frame and header of its own, a line while loading and
@@ -32,7 +36,7 @@ const InpostOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
   const info = q.data
   if (q.isLoading) return embedded ? <KitLoading label={t("widget.loading")} /> : null
   if (!info) return embedded ? <EmptyState compact icon={<TruckFast />} title={t("widget.failed")} /> : null
-  if (!info.chosen && info.parcels.length === 0) return embedded ? <EmptyState compact icon={<TruckFast />} title={t("widget.notInpost")} /> : null
+  if (!info.chosen && info.parcels.length === 0 && info.returns.length === 0) return embedded ? <EmptyState compact icon={<TruckFast />} title={t("widget.notInpost")} /> : null
   const chosen = info.chosen
 
   return (
@@ -96,6 +100,9 @@ const InpostOrderCard = ({ data, embedded }: DetailWidgetProps<AdminOrder> & { e
       ) : (
         info.parcels.map((p) => <ParcelBlock key={p.id} parcel={p} lang={lang} writers={info.writers} events={info.events.filter((e) => e.parcelId === p.id)} />)
       )}
+
+      {/* Without the Returns API (and no return yet) the order card stays as it was. */}
+      {info.returnsConfigured || info.returns.length > 0 ? <OrderReturns orderId={data.id} displayId={typeof data.display_id === "number" ? data.display_id : null} returns={info.returns} writers={info.writers} configured={info.returnsConfigured} lang={lang} /> : null}
     </WidgetFrame>
   )
 }

@@ -10,10 +10,12 @@ import {
   Clock,
   CursorArrowRays,
   FloppyDisk,
+  GlobeEurope,
   History as HistoryIcon,
   Key,
   ListBullet,
   LockClosedSolid,
+  MapPin,
   ShieldCheck,
   TruckFast,
   User,
@@ -145,6 +147,68 @@ export function AccountSection({ status: s, lang }: { status: StatusResponse; la
 }
 
 /* ------------------------------------------------------------------ */
+/* The storefront map (Geowidget)                                      */
+/* ------------------------------------------------------------------ */
+
+export function GeowidgetSection({ status: s, lang }: { status: StatusResponse; lang: string }) {
+  const { t } = useTranslation("inpost")
+  const g = s.geowidget
+  const envLabel = g.environment === "sandbox" ? t("geowidget.envSandbox") : g.environment === "production" ? t("geowidget.envProduction") : "-"
+  return (
+    <Section
+      icon={<MapPin />}
+      title={t("geowidget.title")}
+      pointsLabel={t("geowidget.subtitle")}
+      points={[
+        { icon: <MapPin />, text: t("geowidget.points.map") },
+        { icon: <GlobeEurope />, text: t("geowidget.points.domain") },
+        { icon: <ShieldCheck />, text: t("geowidget.points.public"), tone: "green" },
+      ]}
+    >
+      <div className="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Fact label={t("geowidget.token")}>
+          {g.set ? (
+            <span>
+              <ToneBadge tone={g.expired ? "red" : "green"}>{g.expired ? t("geowidget.expired") : t("geowidget.set")}</ToneBadge>
+              {g.preview ? <span className="mt-1 block font-mono text-ui-fg-muted txt-compact-xsmall">{g.preview}</span> : null}
+            </span>
+          ) : (
+            <span className="text-ui-fg-subtle">{t("geowidget.missing")}</span>
+          )}
+        </Fact>
+        <Fact label={t("geowidget.environment")}>
+          {g.set ? <ToneBadge tone={g.environment === "sandbox" ? "orange" : g.environment === "production" ? "green" : "grey"}>{envLabel}</ToneBadge> : "-"}
+        </Fact>
+        <Fact label={t("geowidget.domains")}>{g.domains.length ? g.domains.join(", ") : g.set ? t("geowidget.anyDomain") : "-"}</Fact>
+        <Fact label={t("geowidget.expires")}>{g.expiresAt ? fmtDateTime(g.expiresAt, lang) : g.set && g.readable ? t("geowidget.noExpiry") : "-"}</Fact>
+      </div>
+      <div className="flex flex-col gap-3 px-6 py-4">
+        {!g.set ? (
+          <Text size="small" className="text-ui-fg-subtle">
+            {t("geowidget.howTo")}
+          </Text>
+        ) : !g.readable ? (
+          <InlineTip variant="warning" label={t("geowidget.title")}>
+            {t("geowidget.unreadable")}
+          </InlineTip>
+        ) : g.mismatch ? (
+          <InlineTip variant="warning" label={t("geowidget.title")}>
+            {g.environment === "sandbox" ? t("geowidget.mismatchSandbox") : t("geowidget.mismatchProduction")}
+          </InlineTip>
+        ) : (
+          <Text size="small" className="text-ui-fg-subtle">
+            {t("geowidget.ready", { host: g.host.replace(/^https:\/\//, "") })}
+          </Text>
+        )}
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("geowidget.storeRoute")} <code className="font-mono">GET /store/inpost/geowidget</code>
+        </Text>
+      </div>
+    </Section>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* Shipping: sender, default parcel, label size                        */
 /* ------------------------------------------------------------------ */
 
@@ -256,8 +320,8 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
 /* Writers                                                             */
 /* ------------------------------------------------------------------ */
 
-const WRITER_KEYS: WriterKey[] = ["shipment", "fulfillmentStatus"]
-const WRITER_OPTION: Record<WriterKey, string> = { shipment: "shipmentWriter", fulfillmentStatus: "fulfillmentStatusWriter" }
+const WRITER_KEYS: WriterKey[] = ["shipment", "fulfillmentStatus", "returns"]
+const WRITER_OPTION: Record<WriterKey, string> = { shipment: "shipmentWriter", fulfillmentStatus: "fulfillmentStatusWriter", returns: "returnsWriter" }
 
 function WriterRow({ writer, lang, busy, onFlip }: { writer: WriterDto; lang: string; busy: boolean; onFlip: (on: boolean) => void }) {
   const { t } = useTranslation("inpost")

@@ -17,7 +17,7 @@ export type ShipmentStage = "preparing" | "ready" | "in_transit" | "in_locker" |
 /** The lists of the Panel. */
 export type PanelGroup = "to_create" | "waiting" | "in_transit" | "in_locker" | "delivered" | "problems"
 export type ParcelFilter = "all" | PanelGroup | "canceled" | "skipped"
-export type WriterKey = "shipment" | "fulfillmentStatus"
+export type WriterKey = "shipment" | "fulfillmentStatus" | "returns"
 export type RunTrigger = "schedule" | "manual" | "webhook"
 
 export interface LockerAddressDto {
@@ -238,6 +238,31 @@ export interface StatusResponse {
   running: boolean
   schedule: string
   references: ReferenceDto[]
+  /** The InPost Returns API: configuration and counters of the return rows of this mode. */
+  returns: ReturnsStatusDto
+  /** The storefront map: what the public Geowidget token says (never the whole token). */
+  geowidget: GeowidgetStatusDto
+}
+
+export interface GeowidgetStatusDto {
+  set: boolean
+  readable: boolean
+  environment: "sandbox" | "production" | null
+  domains: string[]
+  expiresAt: string | null
+  expired: boolean
+  preview: string | null
+  /** The token's environment differs from the ShipX one (a sandbox map with production shipments or the other way round). */
+  mismatch: boolean
+  /** The Geowidget script host the storefront should load. */
+  host: string
+}
+
+/** GET /store/inpost/geowidget: what a storefront needs to show the map. */
+export interface GeowidgetStoreResponse {
+  token: string
+  environment: "sandbox" | "production"
+  host: string
 }
 
 export interface ParcelsResponse {
@@ -296,6 +321,10 @@ export interface OrderInpostResponse {
   parcels: ParcelDto[]
   events: ParcelEventDto[]
   writers: Record<WriterKey, WriterDto>
+  /** The InPost returns of the order in the current mode. */
+  returns: ReturnDto[]
+  /** Returns can be created (demo mode, or the Returns API credentials are set). */
+  returnsConfigured: boolean
 }
 
 export interface PointDto {
@@ -322,4 +351,124 @@ export interface PointsResponse {
 export interface ActionResponse {
   parcel: ParcelDto
   message?: string
+}
+
+/* ------------------------------------------------------------------ */
+/* Returns (InPost Returns API)                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A return row: pending (recorded, nothing sent), creating (sent, waiting
+ * for the answer), created (InPost answered with the return), failed (InPost
+ * refused it: fix and try again), unknown (no clear answer: the return may
+ * exist; a person checks InPost, then tries again or marks it handled),
+ * skipped (handled outside the plugin).
+ */
+export type ReturnState = "pending" | "creating" | "created" | "failed" | "unknown" | "skipped"
+/** How the customer sends it: a short drop-off code typed at any Paczkomat (no printing), or a label. */
+export type ReturnMethod = "code" | "label"
+export type ReturnFilter = "all" | "open" | "created" | "attention" | "skipped"
+export type ReturnsEnvironmentName = "stage" | "production"
+
+export interface ReturnDto {
+  id: string
+  orderId: string
+  displayId: number | null
+  /** The Medusa return this InPost return belongs to; null: created for the order from the admin. */
+  returnId: string | null
+  state: ReturnState
+  method: ReturnMethod | null
+  reference: string | null
+  /** The InPost return shipment (a UUID). */
+  shipmentId: string | null
+  trackingNumber: string | null
+  trackingUrl: string | null
+  shortNumber: string | null
+  /** The code the customer types at the Paczkomat. */
+  dropOffCode: string | null
+  hasLabel: boolean
+  expiresAt: string | null
+  expired: boolean
+  skipReason: string | null
+  error: string | null
+  errorCode: string | null
+  attempts: number
+  createdBy: string | null
+  shipmentCreatedAt: string | null
+  lastCheckedAt: string | null
+  demo: boolean
+  createdAt: string | null
+  updatedAt: string | null
+  actions: { create: boolean; refresh: boolean; label: boolean; retry: boolean; skip: boolean }
+}
+
+export interface ReturnsResponse {
+  returns: ReturnDto[]
+  count: number
+  offset: number
+  limit: number
+}
+
+export interface ReturnPlanDto {
+  ok: boolean
+  /** The customer who sends the parcel back (InPost's `sender`), read from the order now, never stored. */
+  sender: { name: string; email: string | null; phone: string | null; sample: boolean }
+  originCountry: string | null
+  method: ReturnMethod
+  reference: string
+  /** null: the expiry of the InPost account. */
+  expirationDate: string | null
+  /** Where the parcel goes: always the return address of the InPost account (the plugin sends none). */
+  destination: "account"
+  problems: ProblemDto[]
+  warnings: ProblemDto[]
+  /** The exact Returns API request. */
+  request: Record<string, unknown> | null
+  hash: string
+}
+
+export interface ReturnPlanResponse {
+  plan: ReturnPlanDto
+  /** The row of this order and Medusa return, if one exists already. */
+  existing: ReturnDto | null
+  /** The returns writer is armed: Create sends this plan. */
+  writerArmed: boolean
+  configured: boolean
+  mode: InpostMode
+}
+
+export interface ReturnActionResponse {
+  return: ReturnDto
+  message?: string
+}
+
+export interface ReturnDetailResponse {
+  return: ReturnDto
+  events: ParcelEventDto[]
+}
+
+export interface ReturnsCheckResult {
+  ok: boolean
+  mode: InpostMode
+  environment: ReturnsEnvironmentName
+  checkedAt: string
+  error: string | null
+  /** Seconds the fresh token is valid. */
+  expiresIn: number | null
+  scope: string | null
+}
+
+export interface ReturnsStatusDto {
+  /** Demo mode, or the client id, the secret and the organization are set. */
+  configured: boolean
+  missing: string[]
+  environment: ReturnsEnvironmentName
+  clientIdSet: boolean
+  secretSet: boolean
+  /** The organization UUID (not a secret). */
+  organizationId: string | null
+  expirationDays: number | null
+  host: string
+  counts: { all: number; open: number; created: number; attention: number; skipped: number }
+  lastCheck: ReturnsCheckResult | null
 }

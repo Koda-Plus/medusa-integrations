@@ -2,6 +2,7 @@ import { MedusaService } from "@medusajs/framework/utils"
 import type { Logger } from "@medusajs/framework/types"
 import InpostParcel from "./models/inpost-parcel"
 import InpostParcelEvent from "./models/inpost-parcel-event"
+import InpostParcelReturn from "./models/inpost-parcel-return"
 import InpostSetting from "./models/inpost-setting"
 import { missingOptions, resolveOptions, type InpostPluginOptions, type ResolvedInpostOptions } from "./lib/options"
 import { maskSecrets } from "./lib/security"
@@ -21,8 +22,8 @@ function loggerOf(deps: InjectedDependencies | undefined): Logger {
 }
 
 /**
- * InPost module service: generated CRUD for the three tables (the shipments,
- * their history, the settings) plus the resolved options and masking.
+ * InPost module service: generated CRUD for the four tables (the shipments,
+ * their history, the settings, the returns) plus the resolved options and masking.
  * Nothing else.
  *
  * THE SERVICE STAYS THIN ON PURPOSE. The work (plans, creating shipments,
@@ -39,6 +40,7 @@ class InpostModuleService extends MedusaService({
   InpostParcel,
   InpostParcelEvent,
   InpostSetting,
+  InpostParcelReturn,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedInpostOptions
@@ -82,9 +84,9 @@ class InpostModuleService extends MedusaService({
     return missingOptions(this.options_)
   }
 
-  /** Masks the token, the webhook secret and every token-like run of characters. */
+  /** Masks the token, the webhook secret, the Returns API secret and every token-like run of characters. */
   mask(text: string): string {
-    return maskSecrets(text, [this.options_.apiToken, this.options_.webhookSecret])
+    return maskSecrets(text, [this.options_.apiToken, this.options_.webhookSecret, this.options_.returns.clientSecret])
   }
 }
 
