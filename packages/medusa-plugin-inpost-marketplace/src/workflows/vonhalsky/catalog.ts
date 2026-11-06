@@ -44,6 +44,7 @@ interface VariantRecord {
     height?: number | string | null
     width?: number | string | null
     images?: Array<{ url?: string | null; rank?: number | null } | null> | null
+    variants?: Array<{ id?: string | null } | null> | null
     categories?: Array<{ id?: string | null } | null> | null
   } | null
   inventory_items?: Array<{
@@ -96,7 +97,19 @@ export function vatOf(v: unknown): number | null {
   return s && Number.isFinite(n) && n >= 0 && n <= 100 ? n : null
 }
 
-/** The images in Medusa's order with the thumbnail first, http(s) only, at most 20 (the marketplace's limit). */
+/**
+ * Picture formats the marketplace refuses (UC9, accepted IMAGE types: JPEG,
+ * PNG, GIF, WebP). A URL with one of these extensions is left out instead of
+ * failing the whole offer; a URL without an extension is sent as it is.
+ */
+const REFUSED_IMAGE = /\.(avif|heic|heif|svg|tiff?|bmp|ico|jxl)(?:[?#].*)?$/i
+
+/** Whether the marketplace takes a picture of this URL (by its extension). */
+export function imageAccepted(url: string): boolean {
+  return !REFUSED_IMAGE.test(url)
+}
+
+/** The images in Medusa's order with the thumbnail first, http(s) only, in formats the marketplace takes, at most 20 (the marketplace's limit). */
 export function imagesOf(product: VariantRecord["product"]): string[] {
   const list = [...(product?.images ?? [])]
     .filter((i): i is NonNullable<typeof i> => Boolean(i && i.url))
@@ -104,7 +117,18 @@ export function imagesOf(product: VariantRecord["product"]): string[] {
     .map((i) => String(i.url))
   const thumb = str(product?.thumbnail)
   const all = [...(thumb ? [thumb] : []), ...list]
-  return [...new Set(all)].filter((u) => /^https?:\/\//i.test(u)).slice(0, 20)
+  return [...new Set(all)].filter((u) => /^https?:\/\//i.test(u) && imageAccepted(u)).slice(0, 20)
+}
+
+/**
+ * The offer name: the product title, with the variant title after it only
+ * when the product has more variants to tell apart ("Bluza z kapturem M").
+ * A product with one variant ("Standard", "Default variant") is just its title.
+ */
+export function offerTitle(productTitle: string | null, variantTitle: string | null, variantCount: number): string | null {
+  if (!productTitle) return variantTitle
+  if (!variantTitle || variantCount === 1 || variantTitle.toLowerCase() === "default variant" || variantTitle === productTitle) return productTitle
+  return `${productTitle} ${variantTitle}`
 }
 
 /** The default PLN price per variant (no price list, no rules, no quantity tier), in minor units. */
@@ -217,6 +241,7 @@ export async function loadFacts(scope: Scope, o: ResolvedVonHalskyOptions, only:
         "product.width",
         "product.images.url",
         "product.images.rank",
+        "product.variants.id",
         "product.categories.id",
         "inventory_items.required_quantity",
         "inventory_items.inventory.location_levels.location_id",
@@ -241,7 +266,7 @@ export async function loadFacts(scope: Scope, o: ResolvedVonHalskyOptions, only:
   const facts: VariantFacts[] = usable.map((r) => {
     const productTitle = str(r.product?.title)
     const variantTitle = str(r.title)
-    const title = productTitle && variantTitle && variantTitle.toLowerCase() !== "default variant" && variantTitle !== productTitle ? `${productTitle} ${variantTitle}` : productTitle ?? variantTitle
+    const title = offerTitle(productTitle, variantTitle, (r.product?.variants ?? []).filter(Boolean).length)
     const picked = pickManufacturer(gpsr.get(String(r.product_id)) ?? null, fromMetadata(r.product?.metadata ?? null) ?? fromMetadata(r.metadata ?? null))
     thumbnails.set(r.id, str(r.product?.thumbnail))
     return {

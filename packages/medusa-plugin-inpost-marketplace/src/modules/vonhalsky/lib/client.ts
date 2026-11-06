@@ -221,7 +221,15 @@ export function createLiveClient(config: { mode: "sandbox" | "live" } & HttpConf
     limits: () => http.limits(),
 
     async check() {
-      const orgs = arr(await http.request("GET", "/v1/organizations"))
+      // `GET /v1/organizations` is for integrators (Authorization Code apps). A
+      // merchant's Client Credentials app gets 401 or 403 there although its token
+      // is good (stage, 06.11.2026): then the organization's offers prove it alone.
+      let orgs: Record<string, unknown>[] = []
+      try {
+        orgs = arr(await http.request("GET", "/v1/organizations"))
+      } catch (e) {
+        if (!isApiError(e) || e.code === "TOKEN" || (e.status !== 401 && e.status !== 403)) throw e
+      }
       const mine = orgs.find((x) => text(x.id, 80) === config.organizationId)
       if (orgs.length && !mine) throw new MarketplaceApiError(403, "FORBIDDEN", "The API application does not see this organizationId: copy it from the Merchant Portal (Settings, Organization).")
       await http.request("GET", o("/offers"), { query: { limit: 1, offset: 0 } })

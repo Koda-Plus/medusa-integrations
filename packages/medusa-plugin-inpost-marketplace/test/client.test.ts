@@ -115,6 +115,22 @@ test("live client: proves the credentials by finding its organization, and names
   assert.equal(other.calls.length, 1, "nothing else is asked once the organization is missing")
 })
 
+test("live client: a merchant app without the organizations list is proven by its offers", async () => {
+  for (const status of [401, 403]) {
+    const merchant = live((c) => {
+      if (c.path === "/v1/organizations") throw new MarketplaceApiError(status, status === 401 ? "UNAUTHORIZED" : "FORBIDDEN", "integrators only")
+      return { data: [] }
+    })
+    assert.deepEqual(await merchant.client.check(), { ok: true, organization: null })
+    assert.deepEqual(merchant.calls.map((c) => c.path), ["/v1/organizations", "/v1/organizations/org-1/offers"])
+  }
+  const badSecret = live(() => {
+    throw new MarketplaceApiError(401, "TOKEN", "InPost refused the API application's credentials")
+  })
+  await assert.rejects(badSecret.client.check(), (e: unknown) => isApiError(e) && e.code === "TOKEN")
+  assert.equal(badSecret.calls.length, 1, "bad credentials stop the check")
+})
+
 test("live client: an offer PATCH is a merge patch on the organization's offer", async () => {
   const { client, calls } = live(() => ({ offer: { id: "off-1", status: "PENDING" } }))
   const offer = await client.patchOffer("off/1", { stock: { quantity: 2, unit: "UNIT" } })
