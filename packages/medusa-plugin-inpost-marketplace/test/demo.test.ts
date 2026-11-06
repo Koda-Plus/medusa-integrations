@@ -5,7 +5,9 @@
  * leaf category) stays PENDING with validation codes, prices follow the
  * promotion and the price program, events are kept newest first and paged
  * backwards, a simulated order takes stock (sold out at zero), parcels,
- * returns, claims and refunds appear where the panel reads them.
+ * returns, claims and refunds appear where the panel reads them; a
+ * published offer refuses a change other than price and stock (close it
+ * first); one offer of "another tool" waits for "Import from InPost".
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -347,4 +349,36 @@ test("catalog: a small Polish category tree, attributes of leaves only, a hint f
   assert.equal(hint.ean, "5901234123457")
   assert.ok(tree.flatMap((r) => r.children).some((l) => l.id === hint.categoryId), "the hint names a leaf")
   assert.deepEqual(await c.hints({ name: "Kubek" }), [], "a name alone is not enough")
+})
+
+test("edits: a published offer refuses a change other than price and stock, a closed one takes it when the command is read", async () => {
+  const c = createDemoClient()
+  const id = await listed(c, proposal("variant_1"))
+  const refused = await c.updateOffer(id, { product: { name: "Kubek emaliowany niebieski" } })
+  assert.equal(refused.offer, null)
+  const read = await c.offerCommand(refused.command!.commandId)
+  assert.equal(read?.status, "FAILURE", "as InPost's FAQ warns")
+  assert.equal((await c.getOffer(id))?.name, "Ceramic mug")
+  const close = await c.closeOffer(id)
+  await c.offerCommand(close!.commandId)
+  const patched = await c.updateOffer(id, { product: { name: "Kubek emaliowany niebieski" }, shippingTime: { daysToShip: 5 } })
+  assert.equal((await c.getOffer(id))?.name, "Ceramic mug", "nothing changes before the command is read")
+  assert.equal((await c.offerCommand(patched.command!.commandId))?.status, "SUCCESS")
+  const after = await c.getOffer(id)
+  assert.equal(after?.name, "Kubek emaliowany niebieski")
+  assert.equal(after?.status, "CLOSED", "a patch never reopens")
+  assert.deepEqual(await c.updateOffer("demo-unknown", { product: { name: "Kubek emaliowany" } }), { command: null, offer: null })
+  const price = await c.updateOffer(id, { price: { grossPrice: { amount: 90, currency: "PLN" }, taxRateInfo: "23%" } })
+  assert.equal((await c.offerCommand(price.command!.commandId))?.status, "SUCCESS", "price and stock are fine on any offer")
+})
+
+test("import: one offer of another tool, added once, with a SKU and an EAN of no product", async () => {
+  const c = createDemoClient()
+  const a = c.addForeignOffer()
+  const b = c.addForeignOffer()
+  assert.equal(a.id, b.id)
+  assert.equal(a.status, "PUBLISHED")
+  assert.equal(a.sku, "ERP-TERMOS-500")
+  assert.equal((await c.listOffers({ offset: 0, limit: 30 })).total, 1)
+  assert.equal((await c.offerEvents({ limit: 10 })).length, 0, "no event: the sync does not link it by itself")
 })

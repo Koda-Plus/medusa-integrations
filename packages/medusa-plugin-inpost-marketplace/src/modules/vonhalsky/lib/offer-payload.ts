@@ -137,6 +137,32 @@ function attributesOf(v: unknown): Array<{ id: string; values: string[] }> {
 }
 
 /**
+ * The merge patch of an edit: only what "Edit offer" and the category
+ * parameters can change (the name, the description, the dimension, the
+ * parameters, the photos, the days to ship), taken from the full proposal so
+ * the values are shaped exactly as a listing shapes them. Price and stock
+ * are left out: the price and stock sync owns them. A merge patch keeps
+ * what it does not name, so an offer without dimensions keeps its own.
+ */
+export function editPatchOf(p: OfferProposal): OfferPatchBody {
+  return {
+    product: {
+      name: p.product.name,
+      description: p.product.description,
+      ...(p.product.dimension ? { dimension: p.product.dimension } : {}),
+      ...(p.product.attributes ? { attributes: p.product.attributes } : {}),
+    },
+    images: p.images,
+    shippingTime: p.shippingTime,
+  }
+}
+
+/** Whether a patch changes more than the price and the stock (what a published offer may refuse). */
+export function patchTouchesContent(patch: OfferPatchBody): boolean {
+  return Object.keys(patch).some((k) => k !== "price" && k !== "stock")
+}
+
+/**
  * The `OfferProposal` of one offer. The caller has checked eligibility: here
  * every value is only shaped to the API's limits (lengths, units, money).
  */

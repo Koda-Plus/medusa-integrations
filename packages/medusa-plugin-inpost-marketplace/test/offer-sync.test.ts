@@ -12,7 +12,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { commandPatch, pushPlan, remotePatch, trackingStatus } from "../src/modules/vonhalsky/lib/offer-sync.ts"
+import { afterEditStep, commandPatch, editStart, pushPlan, remotePatch, trackingStatus } from "../src/modules/vonhalsky/lib/offer-sync.ts"
 import type { CommandState, RemoteOffer } from "../src/modules/vonhalsky/lib/remote.ts"
 
 const NOW = new Date("2026-10-18T10:00:00Z")
@@ -225,4 +225,34 @@ test("tracking: every number shown by the marketplace is linked, spaces do not m
   assert.equal(trackingStatus(["111", "222"], [{ trackingNumber: "222" }, { trackingNumber: "111" }]), "linked")
   assert.equal(trackingStatus(["6800 0000 1234"], [{ trackingNumber: "680000001234" }]), "linked")
   assert.equal(trackingStatus([], [{ trackingNumber: "111" }]), "linked", "a parcel InPost linked without a Medusa number is linked too")
+})
+
+test("edit: how an edit reaches the marketplace", () => {
+  assert.equal(editStart(row({ status: "draft", remote_id: null })), "local", "not on the marketplace")
+  assert.equal(editStart(row({ status: "detached", remote_id: null })), "local")
+  assert.equal(editStart(row({ command_status: "PENDING" })), "busy", "one command at a time")
+  assert.equal(editStart(row({ remote_status: "PUBLISHED" })), "close", "a live offer is closed first")
+  assert.equal(editStart(row({ remote_status: "SOLDOUT" })), "close")
+  assert.equal(editStart(row({ remote_status: "PENDING" })), "patch", "in review: patched")
+  assert.equal(editStart(row({ remote_status: "REJECTED" })), "patch")
+  assert.equal(editStart(row({ remote_status: "CLOSED", command_kind: "close" })), "edit_patch", "closed by the sync at zero stock: patched, then back")
+  assert.equal(editStart(row({ status: "closed", remote_status: "CLOSED", command_kind: "close" })), "patch", "closed by a person: stays closed")
+})
+
+test("edit: what follows each step", () => {
+  assert.equal(afterEditStep(row({ command_kind: "edit_close" }), { status: "SUCCESS" }), "send_patch")
+  assert.equal(afterEditStep(row({ command_kind: "edit_close" }), { status: "FAILURE" }), "none", "a refused close keeps the offer live")
+  assert.equal(afterEditStep(row({ command_kind: "edit_patch", stock: 3 }), { status: "SUCCESS" }), "reopen")
+  assert.equal(afterEditStep(row({ command_kind: "edit_patch", stock: 3 }), { status: "FAILURE" }), "reopen", "a refused patch never leaves the offer closed")
+  assert.equal(afterEditStep(row({ command_kind: "edit_patch", stock: 0 }), { status: "SUCCESS" }), "park", "at zero stock it waits closed")
+  assert.equal(afterEditStep(row({ command_kind: "edit_patch" }), { status: "PENDING" }), "none")
+  assert.equal(afterEditStep(row({ command_kind: "price" }), { status: "SUCCESS" }), "none")
+})
+
+test("edit: an offer closed for an edit is ours: never taken off, reopened when an edit stopped half way", () => {
+  for (const kind of ["edit_close", "edit_patch"]) {
+    assert.equal(remotePatch(row({ command_kind: kind }), remote({ status: "CLOSED" }), NOW).status, undefined, `${kind} keeps the row listed`)
+    assert.deepEqual(pushPlan([row({ command_kind: kind, remote_status: "CLOSED", stock: 2 })]).reopen.map((x) => x.rowId), ["vhoff_1"])
+  }
+  assert.equal(remotePatch(row({ command_kind: "patch" }), remote({ status: "CLOSED" }), NOW).status, "closed", "closed by someone else")
 })

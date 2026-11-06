@@ -6,7 +6,8 @@
  * one reads ok, returns and claims show on the order, a blocked variant
  * makes the product wait for a person, and the counters (held imports,
  * shipments waiting for InPost, open after sale cases, orders to ship,
- * blocked offers) count the right rows and link to the filters of the page.
+ * blocked offers, a lost connection) count the right rows and link to the
+ * filters of the page.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -170,7 +171,7 @@ test("integration: a blocked variant makes the product wait, with its first reas
 })
 
 test("integration: the counters link to the filters of the page", () => {
-  const c = vonHalskyCounters({ held: 1, trackingWaiting: 2, openCases: 5, blockedOffers: 3, awaitingShipment: 4 })
+  const c = vonHalskyCounters({ held: 1, trackingWaiting: 2, openCases: 5, blockedOffers: 3, awaitingShipment: 4, connectionLost: true })
   assert.deepEqual(
     c.map((x) => [x.key, x.scope, x.count, x.tone, x.link.href]),
     [
@@ -179,8 +180,10 @@ test("integration: the counters link to the filters of the page", () => {
       ["open_cases", "orders", 5, "orange", "/vonhalsky?section=after-sale"],
       ["awaiting_shipment", "orders", 4, "blue", "/vonhalsky?section=orders&filter=awaiting_shipment"],
       ["blocked_offers", "products", 3, "orange", "/vonhalsky?section=offers&filter=blocked"],
+      ["connection_lost", "integration", 1, "red", "/vonhalsky?view=settings&tab=account"],
     ],
   )
+  assert.equal(vonHalskyCounters({ held: 0, trackingWaiting: 0, openCases: 0, blockedOffers: 0, awaitingShipment: 0 }).find((x) => x.key === "connection_lost")?.count, 0, "connected: zero")
 })
 
 test("integration: the board counts held imports, waiting shipments, open cases, orders to ship and blocked offers", async () => {

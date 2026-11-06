@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   AttributesResponse,
+  BulkEditResponse,
+  EditResponse,
+  ImportOffersResponse,
+  OfferEditDto,
   ClaimResolution,
   PromotionInput,
   PromotionMode,
@@ -221,6 +225,14 @@ export const useSetPrice = () => usePost<{ offer: OfferDto }, { id: string; valu
 export const useHintOffer = () => usePost<HintResponse, string>((id) => `/admin/vonhalsky/offers/${enc(id)}/hint`)
 export const useSetOfferCategory = () => usePost<{ updated: number }, { ids: string[]; categoryId: string | null }>(() => "/admin/vonhalsky/offers/category", (v) => v)
 export const useSetOfferAttributes = () => usePost<OfferDto, { id: string; attributes: AttributeValues }>((v) => `/admin/vonhalsky/offers/${enc(v.id)}/attributes`, (v) => ({ attributes: v.attributes }))
+/** An edit as the route takes it: a field left out stays, null goes back to Medusa. */
+export type OfferEditInput = { [K in keyof OfferEditDto]?: Exclude<OfferEditDto[K], null> | null }
+export type { EditResponse, BulkEditResponse, ImportOffersResponse, OfferEditDto }
+export const useEditOffer = () => usePost<EditResponse, { id: string; overrides: OfferEditInput }>((v) => `/admin/vonhalsky/offers/${enc(v.id)}/edit`, (v) => ({ overrides: v.overrides }))
+export const useSetDaysToShip = () => usePost<BulkEditResponse, { ids: string[]; daysToShip: number | null }>(() => "/admin/vonhalsky/offers/days-to-ship", (v) => v)
+export const useSetAttributesMany = () => usePost<BulkEditResponse, { ids: string[]; attributes: AttributeValues }>(() => "/admin/vonhalsky/offers/attributes", (v) => v)
+export const useDetachOffers = () => usePost<{ detached: number; skipped: Array<{ id: string; reason: string }> }, string[]>(() => "/admin/vonhalsky/offers/detach", (ids) => ({ ids }))
+export const useImportOffers = () => usePost<ImportOffersResponse>(() => "/admin/vonhalsky/offers/import")
 export const useSetPromotion = () => usePost<{ sent: number; failed: number }, { ids: string[]; promotion: PromotionInput | null }>(() => "/admin/vonhalsky/offers/promotion", (v) => v)
 export const useSetProgram = () => usePost<{ sent: number }, { ids: string[]; mode: "IN" | "OUT" }>(() => "/admin/vonhalsky/offers/program", (v) => v)
 export const useSimulateOrder = () => usePost<ImportOutcome>(() => "/admin/vonhalsky/demo/simulate-order")

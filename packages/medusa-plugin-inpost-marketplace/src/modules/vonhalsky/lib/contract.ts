@@ -6,9 +6,10 @@
 import type { CaseKind, ImportStatus, OfferStatus, TrackingStatus } from "./constants"
 import type { BlockingReason, WarningCode } from "./eligibility"
 import type { VonHalskyMode } from "./options"
+import type { OfferDimension, OverrideField } from "./overrides"
 import type { ShippingMapping } from "./shipping"
 
-export type OfferFilter = "all" | "listed" | "draft" | "blocked" | "closed" | "pending"
+export type OfferFilter = "all" | "listed" | "draft" | "blocked" | "closed" | "detached" | "pending"
 export type OrderFilter = "all" | "awaiting_shipment" | "tracking_waiting" | "held" | "errors"
 export type CaseFilter = "all" | "open" | CaseKind
 
@@ -83,8 +84,63 @@ export interface OfferDto {
   command: { id: string; kind: string; status: "PENDING" | "SUCCESS" | "FAILURE"; at: string | null } | null
   image_count: number | null
   published_at: string | null
-  /** The category parameters saved for this offer (sent with the next listing). */
+  /** The category parameters saved for this offer (sent with the listing; a change of a listed offer is sent at once). */
   attributes: Array<{ id: string; values: string[] }>
+  /** What a person set in "Edit offer"; a null field follows Medusa. */
+  overrides: OfferEditDto
+  /** The fields set in "Edit offer". */
+  overridden: OverrideField[]
+  /** What Medusa (and the offer defaults) give for those fields: the placeholders of the edit form. Null when not read with this answer. */
+  medusa: OfferEditDto | null
+  /** What the marketplace gets: the override, else Medusa's value. Null when Medusa was not read with this answer. */
+  effective: OfferEditDto | null
+}
+
+/** The fields "Edit offer" changes, as the admin shows them. Dimensions in mm, weight in g. */
+export interface OfferEditDto {
+  title: string | null
+  description: string | null
+  images: string[] | null
+  dimension: OfferDimension | null
+  daysToShip: number | null
+}
+
+/** POST /admin/vonhalsky/offers/:id/edit: the offer after the edit and what was sent to the marketplace. */
+export interface EditResponse {
+  offer: OfferDto
+  /** How the change reaches the marketplace: kept here only, patched, or closed first (patched and reopened by the sync). */
+  sent: "local" | "patch" | "close"
+}
+
+/** Bulk edits (days to ship, category parameters). */
+export interface BulkEditResponse {
+  updated: number
+  /** Offers whose change went to the marketplace. */
+  sent: number
+  skipped: Array<{ id: string; reason: string }>
+}
+
+/** One marketplace offer "Import from InPost" could not link to a Medusa variant. */
+export interface UnmatchedOfferDto {
+  id: string
+  name: string | null
+  sku: string | null
+  ean: string | null
+  status: string | null
+  /** no_match: nothing matches; ambiguous: more variants match; taken: the variant is linked to another offer. */
+  reason: "no_match" | "ambiguous" | "taken"
+}
+
+export interface ImportOffersResponse {
+  /** Marketplace offers read. */
+  read: number
+  /** Linked to a variant now. */
+  linked: number
+  /** Linked before: their marketplace state was read again. */
+  updated: number
+  unmatched: UnmatchedOfferDto[]
+  /** Every page was read. */
+  complete: boolean
 }
 
 export interface OffersResponse {
@@ -369,6 +425,8 @@ export interface Counts {
   draft: number
   blocked: number
   closed: number
+  /** Removed from the panel only (still on the marketplace, not synced). */
+  detached: number
   /** Offers the marketplace keeps PENDING or REJECTED. */
   pending: number
   orders: number
@@ -419,6 +477,10 @@ export interface StatusResponse {
   /** The last rate limit headers of the seller API (sandbox and live). */
   limits: { limit: number | null; remaining: number | null; resetAt: string | null } | null
   categories: { count: number; syncedAt: string | null }
+  /** The marketplace refused the credentials on consecutive runs: the integration came apart (InPost deactivates the offers). */
+  connection: { ok: boolean; since: string | null; message: string | null }
+  /** How often price and stock are sent, and when they last were (InPost asks sellers to be told; it recommends at most 15 minutes). */
+  sync: { everyMinutes: number; priceStock: boolean; lastPushAt: string | null; lastRunAt: string | null }
 }
 
 /** The answer of the credentials check. */

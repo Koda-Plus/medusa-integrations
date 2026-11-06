@@ -1,7 +1,9 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { Counts, StatusResponse } from "../../../modules/vonhalsky/lib/contract"
+import { connectionView } from "../../../modules/vonhalsky/lib/connection"
+import { SYNC_EVERY_MINUTES } from "../../../modules/vonhalsky/lib/constants"
 import { mask, missingOptions } from "../../../modules/vonhalsky/lib/options"
-import { caseFilter, offerFilter, orderFilter, readSettings, readSyncState, vonHalskySvc } from "../../../modules/vonhalsky/lib/store"
+import { caseFilter, offerFilter, orderFilter, readConnection, readSettings, readSyncState, vonHalskySvc } from "../../../modules/vonhalsky/lib/store"
 import { complianceOf, plnIncludesTax } from "../../../workflows/vonhalsky/catalog"
 import { resolveTarget } from "../../../workflows/vonhalsky/orders"
 import { clientOf, optionsOf, queryOf } from "../../../workflows/vonhalsky/runtime"
@@ -11,7 +13,9 @@ import { regionsOfStore, salesChannelsOfStore, shippingOptionsOfStore } from "..
  * GET /admin/vonhalsky: the page in one read: the mode, the options in use
  * (the client id and secret masked), the last rate limit seen, the category
  * tree, the settings, where imported orders land, the lists
- * the settings pick from and the counters. Read only: the demo sales
+ * the settings pick from, the counters, whether the marketplace still takes
+ * the credentials (`connection`) and how often price and stock are sent
+ * (`sync`). Read only: the demo sales
  * channel is created on the first simulated order, not here.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
@@ -41,18 +45,19 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       return 0
     }
   }
-  const [all, listed, draft, blocked, closed, pending, imported, awaiting, trackingWaiting, held, offerErrors, commandsPending, casesOpen, categoryCount] = await Promise.all([
+  const [all, listed, draft, blocked, closed, detached, pending, imported, awaiting, trackingWaiting, held, offerErrors, commandsPending, casesOpen, categoryCount] = await Promise.all([
     offers({}),
     offers({ status: "listed" }),
     offers({ status: "draft" }),
     offers({ status: "blocked" }),
     offers({ status: "closed" }),
+    offers({ status: "detached" }),
     offers(offerFilter("pending")),
     orders({ status: "imported" }),
     orders(orderFilter("awaiting_shipment")),
     orders(orderFilter("tracking_waiting")),
     orders({ status: "held" }),
-    offers({ error: { $ne: null }, status: { $ne: "closed" } }),
+    offers({ error: { $ne: null }, status: { $nin: ["closed", "detached"] } }),
     offers({ command_status: "PENDING" }),
     count(() => svc.listAndCountVonHalskyCases(caseFilter("open"), { take: 1 })),
     count(() => svc.listAndCountVonHalskyCategories({}, { take: 1 })),
@@ -63,6 +68,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     draft,
     blocked,
     closed,
+    detached,
     pending,
     orders: imported,
     awaiting_shipment: awaiting,
@@ -82,6 +88,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     lastSyncAt = null
   }
   const target = await resolveTarget(req.scope, false).catch(() => null)
+  const settings = await readSettings(req.scope)
+  /* Demo mode never loses a connection; an old alert from before it was switched on is not shown. */
+  const connection = o.mode === "live" || o.mode === "sandbox" ? connectionView(await readConnection(req.scope)) : { ok: true, since: null, message: null }
   const body: StatusResponse = {
     mode: o.mode,
     configured: o.mode !== "off",
@@ -104,7 +113,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       dimensionUnit: o.dimensionUnit,
       weightUnit: o.weightUnit,
     },
-    settings: await readSettings(req.scope),
+    settings,
     target: {
       salesChannel: target?.salesChannelId ? { id: target.salesChannelId, name: target.salesChannelName ?? target.salesChannelId } : null,
       region: target?.regionId ? { id: target.regionId, name: target.regionName ?? target.regionId, currency: target.currency ?? "" } : null,
@@ -118,6 +127,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     lastSyncAt: sync?.at.sync ?? lastSyncAt,
     limits: seen && seen.limit !== null ? { limit: seen.limit, remaining: seen.remaining, resetAt: seen.resetAt ? new Date(seen.resetAt).toISOString() : null } : null,
     categories: { count: categoryCount, syncedAt: sync?.at.categories ?? null },
+    connection,
+    sync: { everyMinutes: SYNC_EVERY_MINUTES, priceStock: settings.offerDefaults.syncPriceStock, lastPushAt: sync?.at.push ?? null, lastRunAt: sync?.at.sync ?? lastSyncAt },
   }
   res.setHeader("Cache-Control", "no-store, must-revalidate")
   res.json(body)

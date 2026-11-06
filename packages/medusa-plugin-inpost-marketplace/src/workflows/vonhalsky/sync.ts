@@ -19,12 +19,13 @@
 
 import type { MedusaContainer } from "@medusajs/framework/types"
 import type { SyncPart, SyncReport } from "../../modules/vonhalsky/lib/contract"
+import { connectionFailure } from "../../modules/vonhalsky/lib/connection"
 import { commandPatch, pushPlan, remotePatch } from "../../modules/vonhalsky/lib/offer-sync"
 import { newerThan, type RemoteEvent } from "../../modules/vonhalsky/lib/remote"
-import { logSync, readSettings, readSyncState, vonHalskySvc, writeSyncState, type Scope } from "../../modules/vonhalsky/lib/store"
+import { logSync, readSettings, readSyncState, recordConnection, vonHalskySvc, writeSyncState, type Scope } from "../../modules/vonhalsky/lib/store"
 import { syncCases } from "./cases"
 import { syncCategories } from "./categories"
-import { refreshOffers } from "./offers"
+import { continueEdit, refreshOffers } from "./offers"
 import { importNewOrders } from "./orders"
 import { clientOf, errorText, optionsOf, requireClient, withLock } from "./runtime"
 
@@ -45,6 +46,7 @@ export async function followCommands(scope: Scope): Promise<string> {
   const rows = await listedRows(scope, { command_status: "PENDING" }, 200)
   let done = 0
   let failed = 0
+  let edits = 0
   for (const r of rows) {
     const id = String(r.command_id)
     const c = await (r.command_kind === "program" ? client.campaignCommand(id) : client.offerCommand(id)).catch(() => null)
@@ -63,8 +65,13 @@ export async function followCommands(scope: Scope): Promise<string> {
     await svc.updateVonHalskyOffers({ id: r.id, ...patch })
     if (c.status === "FAILURE") failed += 1
     else done += 1
+    /* An edit of a live offer goes on: the patch after the close, the reopen after the patch. */
+    if (r.command_kind === "edit_close" || r.command_kind === "edit_patch") {
+      await continueEdit(scope, { ...r, ...patch }, c).catch(() => undefined)
+      edits += 1
+    }
   }
-  return `${rows.length} pending, ${done} done, ${failed} failed`
+  return `${rows.length} pending, ${done} done, ${failed} failed${edits ? `, ${edits} edits moved on` : ""}`
 }
 
 /**
@@ -111,7 +118,8 @@ export async function followOffers(scope: Scope): Promise<string> {
     for (const remoteId of part.filter((x) => !known.has(x))) {
       const remote = await client.getOffer(remoteId).catch(() => null)
       if (!remote?.externalId) continue
-      const [row] = ((await svc.listVonHalskyOffers({ variant_id: remote.externalId, remote_id: null }, { take: 1 })) ?? []) as Row[]
+      /* Never a row removed from the panel: it comes back only by listing or "Import from InPost". */
+      const [row] = ((await svc.listVonHalskyOffers({ variant_id: remote.externalId, remote_id: null, status: { $ne: "detached" } }, { take: 1 })) ?? []) as Row[]
       if (!row) continue
       await svc.updateVonHalskyOffers({ id: row.id, remote_id: remote.id, status: "listed", error: null, ...remotePatch({ ...row, remote_id: remote.id }, remote) })
       linked += 1
@@ -128,6 +136,8 @@ export async function pushPriceStock(scope: Scope): Promise<string> {
   if (!settings.offerDefaults.syncPriceStock) return "off"
   const client = requireClient(scope)
   const svc = vonHalskySvc(scope)
+  /* The time the admin shows next to "every 5 minutes": the writer ran, whatever it had to send. */
+  await writeSyncState(scope, { at: { push: new Date().toISOString() } })
   const listed = await listedRows(scope, { status: "listed", remote_id: { $ne: null } }, 5000)
   if (listed.length === 0) return "nothing listed"
   await refreshOffers(scope, { variantIds: listed.map((r) => String(r.variant_id)) })
@@ -228,6 +238,8 @@ async function runParts(container: MedusaContainer, parts: readonly SyncPart[]):
   return withLock("sync", async () => {
     const report: SyncReport = {}
     const state = await readSyncState(container)
+    /* Whether the marketplace refused the credentials in this run (see `connection.ts`). */
+    let refused: string | null = null
     const run = async (part: SyncPart, fn: () => Promise<string>) => {
       if (!parts.includes(part)) return
       try {
@@ -235,6 +247,7 @@ async function runParts(container: MedusaContainer, parts: readonly SyncPart[]):
       } catch (err) {
         const message = errorText(err, container)
         report[part] = { ok: false, detail: message }
+        if (!refused && connectionFailure(err)) refused = message
         await logSync(container, { area: "sync", action: part, outcome: "error", message, demo: optionsOf(container).demo })
       }
     }
@@ -259,6 +272,9 @@ async function runParts(container: MedusaContainer, parts: readonly SyncPart[]):
     })
     await run("snapshot", () => takeSnapshot(container))
     await writeSyncState(container, { at: { sync: new Date().toISOString() } })
+    /* The parts that always ask the marketplace: one of them answering proves the credentials. */
+    const reached = (["offers", "orders", "cases"] as const).some((p) => report[p]?.ok)
+    await recordConnection(container, refused ? { refused } : reached ? { reached: true } : null, optionsOf(container).demo)
     return report
   })
 }

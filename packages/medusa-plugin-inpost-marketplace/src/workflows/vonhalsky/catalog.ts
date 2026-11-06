@@ -10,6 +10,7 @@ import type { VariantFacts } from "../../modules/vonhalsky/lib/eligibility"
 import { normalizeEan } from "../../modules/vonhalsky/lib/eligibility"
 import { fromCompliance, fromMetadata, pickManufacturer, type GpsrManufacturer } from "../../modules/vonhalsky/lib/gpsr"
 import type { ResolvedVonHalskyOptions } from "../../modules/vonhalsky/lib/options"
+import { imageAccepted, type OfferDimension } from "../../modules/vonhalsky/lib/overrides"
 import { toMinor } from "../../modules/vonhalsky/lib/pricing"
 import { availableQuantity, type VariantStock } from "../../modules/vonhalsky/lib/stock"
 import type { Scope } from "../../modules/vonhalsky/lib/store"
@@ -96,17 +97,8 @@ export function vatOf(v: unknown): number | null {
   return s && Number.isFinite(n) && n >= 0 && n <= 100 ? n : null
 }
 
-/**
- * Picture formats the marketplace refuses (UC9, accepted IMAGE types: JPEG,
- * PNG, GIF, WebP). A URL with one of these extensions is left out instead of
- * failing the whole offer; a URL without an extension is sent as it is.
- */
-const REFUSED_IMAGE = /\.(avif|heic|heif|svg|tiff?|bmp|ico|jxl)(?:[?#].*)?$/i
-
-/** Whether the marketplace takes a picture of this URL (by its extension). */
-export function imageAccepted(url: string): boolean {
-  return !REFUSED_IMAGE.test(url)
-}
+/* The format filter lives with the overrides: photos a person sets pass the same rule. */
+export { imageAccepted }
 
 /** The images in Medusa's order with the thumbnail first, http(s) only, in formats the marketplace takes, at most 20 (the marketplace's limit). */
 export function imagesOf(product: VariantRecord["product"]): string[] {
@@ -309,6 +301,46 @@ export async function loadFacts(scope: Scope, o: ResolvedVonHalskyOptions, only:
     }
   })
   return { facts, thumbnails, complete: complete && !only.variantIds?.length && !only.productIds?.length, includesTax }
+}
+
+/** What Medusa says about the fields an offer edit can override: the placeholders of the edit form and the base of the effective values. */
+export interface EditableFacts {
+  title: string | null
+  description: string | null
+  images: string[]
+  dimension: OfferDimension | null
+}
+
+/**
+ * The editable facts of the given variants (one page of the offers list):
+ * the name, the description, the photos and the package, read the same way
+ * as `loadFacts` reads them, without prices, stock or GPSR. A variant that
+ * could not be read is missing: the list then shows the overrides alone.
+ */
+export async function editableFactsOf(scope: Scope, o: Pick<ResolvedVonHalskyOptions, "dimensionUnit" | "weightUnit">, variantIds: readonly string[]): Promise<Map<string, EditableFacts>> {
+  const out = new Map<string, EditableFacts>()
+  if (variantIds.length === 0) return out
+  try {
+    const query = queryOf(scope)
+    const { data } = await query.graph({
+      entity: "product_variant",
+      fields: ["id", "title", "product_id", "weight", "length", "height", "width", "product.title", "product.thumbnail", "product.description", "product.weight", "product.length", "product.height", "product.width", "product.images.url", "product.images.rank"],
+      filters: { id: [...variantIds] },
+    })
+    const records = data as VariantRecord[]
+    const counts = await variantCountsOf(query, [...new Set(records.map((r) => String(r.product_id ?? "")).filter(Boolean))])
+    for (const r of records) {
+      out.set(r.id, {
+        title: offerTitle(str(r.product?.title), str(r.title), counts.get(String(r.product_id)) ?? null),
+        description: str(r.product?.description),
+        images: imagesOf(r.product),
+        dimension: dimensionOf(r, o),
+      })
+    }
+  } catch {
+    /* the list still shows the overrides */
+  }
+  return out
 }
 
 /** Product thumbnails of the given variants, for the offers list. */

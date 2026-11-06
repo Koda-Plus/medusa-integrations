@@ -17,7 +17,7 @@ const VonHalskyOffer = model
     product_id: model.text(),
     sku: model.text().nullable(),
     title: model.text().nullable(),
-    /** draft, listed, blocked, closed */
+    /** draft, listed, blocked, closed, detached (see `OFFER_STATUSES`) */
     status: model.text().default("draft"),
     /** The marketplace's own status (PENDING, PUBLISHED, SOLDOUT...), when known. */
     remote_status: model.text().nullable(),
@@ -66,7 +66,7 @@ const VonHalskyOffer = model
     program: model.text().nullable(),
     /** Why the marketplace keeps it PENDING or REJECTED: [{ code, message }]. */
     validation: model.json().nullable(),
-    /** The last asynchronous write: its id, what it was (create, price, stock, close, reopen, patch, promotion, program) and its status. */
+    /** The last asynchronous write: its id, what it was (create, patch, edit_close, edit_patch, price, stock, close, reopen, promotion, program) and its status. */
     command_id: model.text().nullable(),
     command_kind: model.text().nullable(),
     command_status: model.text().nullable(),
@@ -76,6 +76,13 @@ const VonHalskyOffer = model
     pushed_stock: model.number().nullable(),
     image_count: model.number().nullable(),
     published_at: model.dateTime().nullable(),
+    /**
+     * What a person changed on this offer beside Medusa ("Edit offer"):
+     * { title?, description?, images?: string[], dimension?: { length, width,
+     * height, weight } (mm, g), daysToShip? }. Wins over Medusa's values in the
+     * checks, the proposal and the list; a missing field follows Medusa.
+     */
+    overrides: model.json().nullable(),
   })
   .indexes([
     { on: ["variant_id"], unique: true, where: "deleted_at IS NULL" },

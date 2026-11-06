@@ -19,7 +19,7 @@
 
 import { createHash } from "node:crypto"
 import type { MarketplaceClient, MarketplaceOrder, MarketplaceOrderLine } from "./client"
-import type { OfferPatchBody, OfferProposal } from "./offer-payload"
+import { patchTouchesContent, type OfferPatchBody, type OfferProposal } from "./offer-payload"
 import type { AttributeDefinition, CommandState, DictionaryEntry, OfferCreated, ProductHint, RemoteCategory, RemoteClaim, RemoteEvent, RemoteOffer, RemoteRefund, RemoteReturn } from "./remote"
 import { toMinor } from "./pricing"
 
@@ -37,6 +37,12 @@ export interface DemoClient extends MarketplaceClient {
   addParcel(orderId: string, trackingNumber: string): boolean
   /** A new return or claim on a simulated order. Null when the order is unknown. */
   simulateCase(kind: "return" | "claim", orderId: string, n: number): RemoteReturn | RemoteClaim | null
+  /**
+   * One offer "listed by another tool" (an external id that is no Medusa
+   * variant, a SKU and an EAN of no product), added once: what "Import from
+   * InPost" reports as not matched, so the demo shows that answer too.
+   */
+  addForeignOffer(): RemoteOffer
 }
 
 /** The offer id the simulated marketplace gives a variant: stable, so a second listing finds the same offer. */
@@ -215,6 +221,7 @@ export function createDemoClient(): DemoClient {
       name: p.product.name,
       sku: p.product.sku ?? null,
       ean: p.product.ean ?? null,
+      mpn: p.product.manufacturerProductNumber ?? null,
       categoryId: p.product.categoryId,
       stock: p.stock.quantity,
       grossPriceMinor: base,
@@ -237,6 +244,24 @@ export function createDemoClient(): DemoClient {
     const { proposal: _p, basePriceMinor: _b, ...rest } = o
     return { ...rest, validationErrors: [...rest.validationErrors], promotion: rest.promotion ? { ...rest.promotion } : null }
   }
+
+  /** A merge patch on the simulated offer; one in review is checked again, a closed one stays closed. */
+  const applyPatch = (o: DemoOffer, patch: OfferPatchBody) => {
+    o.proposal = { ...o.proposal, ...patch, product: { ...o.proposal.product, ...(patch.product ?? {}) }, externalId: o.proposal.externalId }
+    if (patch.price) o.basePriceMinor = toMinor(patch.price.grossPrice.amount) ?? o.basePriceMinor
+    if (patch.stock) o.stock = patch.stock.quantity
+    if (patch.product?.name) o.name = patch.product.name
+    if (patch.product?.categoryId) o.categoryId = patch.product.categoryId
+    if (patch.images) o.imageCount = patch.images.length
+    reprice(o)
+    if (o.status === "PENDING" || o.status === "REJECTED") settle(o)
+    else {
+      o.updatedAt = nowIso()
+      offerEvent(o, "UPDATED")
+    }
+  }
+
+  let foreign: DemoOffer | null = null
 
   const page = <T>(list: T[], offset: number, limit: number) => list.slice(Math.max(0, offset), Math.max(0, offset) + Math.min(30, Math.max(1, limit)))
 
@@ -277,6 +302,24 @@ export function createDemoClient(): DemoClient {
     available: true,
     log,
     limits: () => ({ limit: null, remaining: null, resetAt: null }),
+
+    addForeignOffer() {
+      if (!foreign) {
+        const p: OfferProposal = {
+          externalId: "erp-termos-500",
+          product: { name: "Termos stalowy 500 ml (z innego systemu)", description: "Oferta wystawiona w symulowanym marketplace innym narzędziem: nie ma jej w katalogu Medusy.", brand: "Marka demo", categoryId: "demo-cat-akcesoria", sku: "ERP-TERMOS-500", ean: "4006381333931" },
+          stock: { quantity: 12, unit: "UNIT" },
+          price: { grossPrice: { amount: 59.99, currency: "PLN" }, taxRateInfo: "23%" },
+          shippingTime: { daysToShip: 2 },
+          images: [],
+        }
+        foreign = fromProposal(p, `demo-${hash("foreign-termos", 12)}`)
+        foreign.status = "PUBLISHED"
+        offers.set(foreign.id, foreign)
+        note("foreign_offer", foreign.id)
+      }
+      return view(foreign)
+    },
 
     remember(order) {
       orders.set(order.id, order)
@@ -418,16 +461,17 @@ export function createDemoClient(): DemoClient {
       note("patch_offer", offerId)
       const o = offers.get(offerId)
       if (!o) return null
-      o.proposal = { ...o.proposal, ...patch, product: { ...o.proposal.product, ...(patch.product ?? {}) }, externalId: o.proposal.externalId }
-      if (patch.price) o.basePriceMinor = toMinor(patch.price.grossPrice.amount) ?? o.basePriceMinor
-      if (patch.stock) o.stock = patch.stock.quantity
-      if (patch.product?.name) o.name = patch.product.name
-      if (patch.product?.categoryId) o.categoryId = patch.product.categoryId
-      if (patch.images) o.imageCount = patch.images.length
-      reprice(o)
-      if (o.status === "PENDING") settle(o)
-      else offerEvent(o, "UPDATED")
+      applyPatch(o, patch)
       return view(o)
+    },
+    async updateOffer(offerId, patch: OfferPatchBody) {
+      note("update_offer", offerId)
+      const o = offers.get(offerId)
+      if (!o) return { command: null, offer: null }
+      /* As InPost's FAQ warns: a published offer takes price and stock only, anything else is refused (close it first). */
+      const live = o.status === "PUBLISHED" || o.status === "SOLDOUT"
+      const refused = live && patchTouchesContent(patch) ? "A published offer takes only price and stock changes: close it, change it, reopen it." : undefined
+      return { command: command(offerId, () => applyPatch(o, patch), refused), offer: null }
     },
     async getOffer(offerId) {
       const o = offers.get(offerId)

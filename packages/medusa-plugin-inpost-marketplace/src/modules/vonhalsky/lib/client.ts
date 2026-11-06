@@ -150,6 +150,12 @@ export interface MarketplaceClient {
   /* Offers */
   createOffers(proposals: OfferProposal[]): Promise<OfferCreated[]>
   patchOffer(offerId: string, patch: OfferPatchBody): Promise<RemoteOffer | null>
+  /**
+   * The same merge patch for an edit, followed like every other write: the
+   * command the marketplace answers with (`OfferCommandDetails`), or the
+   * offer itself when it answers with that instead. Both null: unknown offer.
+   */
+  updateOffer(offerId: string, patch: OfferPatchBody): Promise<{ command: CommandState | null; offer: RemoteOffer | null }>
   getOffer(offerId: string): Promise<RemoteOffer | null>
   listOffers(q: OfferListQuery): Promise<{ offers: RemoteOffer[]; total: number }>
   updatePrices(items: Array<{ offerId: string; grossPriceMinor: number }>): Promise<CommandState[]>
@@ -287,6 +293,14 @@ export function createLiveClient(config: { mode: "sandbox" | "live" } & HttpConf
     },
     async patchOffer(offerId, patch) {
       return parseRemoteOffer(await http.request("PATCH", o(`/offers/${id(offerId)}`), { body: patch, contentType: "application/merge-patch+json" }))
+    },
+    async updateOffer(offerId, patch) {
+      // OpenAPI 1.7.6 names no answer schema for the PATCH beyond "accepted":
+      // writes of the seller API are commands, so a command id is followed; an
+      // answer with the offer is read as the offer.
+      const body = obj(await http.request("PATCH", o(`/offers/${id(offerId)}`), { body: patch, contentType: "application/merge-patch+json", notFound: "null" }))
+      const command = parseCommand(body)
+      return { command, offer: command ? null : parseRemoteOffer(body) }
     },
     async getOffer(offerId) {
       const body = await http.request("GET", o(`/offers/${id(offerId)}`), { notFound: "null" })

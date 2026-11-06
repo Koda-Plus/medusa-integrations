@@ -68,6 +68,8 @@ export interface RemoteOffer {
   name: string | null
   sku: string | null
   ean: string | null
+  /** The manufacturer part number the offer carries (matching on import). */
+  mpn: string | null
   categoryId: string | null
   stock: number | null
   grossPriceMinor: number | null
@@ -106,6 +108,7 @@ export function parseRemoteOffer(input: unknown): RemoteOffer | null {
     name: text(product.name, 150),
     sku: text(product.sku, 100),
     ean: text(product.ean, 14),
+    mpn: text(product.manufacturerProductNumber, 255),
     categoryId: text(product.categoryId, 80),
     stock: int(obj(o.stock).quantity),
     grossPriceMinor: moneyMinor(price.grossPrice),
