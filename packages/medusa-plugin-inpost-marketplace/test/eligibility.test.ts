@@ -167,10 +167,12 @@ test("offer row: reasons, the price with the markup, the category and the demo f
 })
 
 test("offer row: the override wins over the markup and an existing row keeps its status and flag", () => {
-  const overridden = offerPatch(facts(), { status: "listed", price_override_minor: 3999, demo: false }, PRICING, true, LEAF)
+  const overridden = offerPatch(facts(), { status: "listed", price_override_minor: 3999, demo: false, remote_id: "off-1" }, PRICING, true, LEAF)
   assert.equal(overridden.status, "listed")
   assert.equal(overridden.price_minor, 3999, "the override wins over the markup")
-  assert.equal(overridden.demo, false, "an existing row keeps its flag")
+  assert.equal(overridden.demo, false, "a row with a remote offer keeps its flag")
+  const neverSent = offerPatch(facts(), { status: "draft", demo: true, remote_id: null }, PRICING, false, LEAF)
+  assert.equal(neverSent.demo, false, "a demo row never sent anywhere becomes real once the credentials are set")
 })
 
 test("offer row: net Medusa prices get the product's own VAT rate before the markup", () => {
@@ -188,4 +190,25 @@ test("offer row: the category decides whether GPSR and attributes are needed", (
   assert.deepEqual(offerPatch(facts(), null, PRICING, false, required).reasons, ["attributes_missing"])
   assert.deepEqual(offerPatch(facts(), { status: "draft", attributes: [{ id: "attr-color", values: ["czarny"] }] }, PRICING, false, required).reasons, [])
   assert.deepEqual(offerPatch(facts(), null, PRICING, false, { id: null, source: null, info: null }).reasons, ["no_category"])
+})
+
+test("pictures the marketplace refuses (AVIF, SVG, HEIC) are left out, the rest keep their order", async () => {
+  const { imagesOf, imageAccepted } = await import("../src/workflows/vonhalsky/catalog.ts")
+  assert.equal(imageAccepted("https://cdn.example.com/a.avif"), false)
+  assert.equal(imageAccepted("https://cdn.example.com/a.AVIF?v=2"), false)
+  assert.equal(imageAccepted("https://cdn.example.com/a.svg"), false)
+  assert.equal(imageAccepted("https://cdn.example.com/a.jpg"), true)
+  assert.equal(imageAccepted("https://cdn.example.com/image?id=7"), true, "no extension: sent as it is")
+  assert.deepEqual(
+    imagesOf({ thumbnail: "https://cdn.example.com/hod.avif", images: [{ url: "https://cdn.example.com/hod-2.png", rank: 1 }, { url: "https://cdn.example.com/hod.jpg", rank: 0 }] }),
+    ["https://cdn.example.com/hod.jpg", "https://cdn.example.com/hod-2.png"],
+  )
+})
+
+test("the offer name has the variant title only when the product has more variants", async () => {
+  const { offerTitle } = await import("../src/workflows/vonhalsky/catalog.ts")
+  assert.equal(offerTitle("Bluza z kapturem", "Standard", 1), "Bluza z kapturem")
+  assert.equal(offerTitle("Bluza z kapturem", "M", 3), "Bluza z kapturem M")
+  assert.equal(offerTitle("Bluza z kapturem", "Default variant", 2), "Bluza z kapturem")
+  assert.equal(offerTitle(null, "M", 3), "M")
 })

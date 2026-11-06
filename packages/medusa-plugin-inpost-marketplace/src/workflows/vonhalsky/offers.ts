@@ -111,7 +111,10 @@ export function offerPatch(
     stock: f.stock,
     category_id: category.id,
     category_source: category.source,
-    demo: existing ? existing.demo === true : demo,
+    // A row that never reached a marketplace takes the current mode: the catalog
+    // rows of a demo become real ones once the credentials are set. A row with a
+    // remote offer keeps the flag of the marketplace that offer lives on.
+    demo: existing && existing.remote_id ? existing.demo === true : demo,
   }
 }
 

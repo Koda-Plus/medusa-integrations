@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+Found on InPost's stage environment with a real merchant API application (6 November 2026):
+
+- **Check connection** works for a merchant's Client Credentials application: `GET /v1/organizations` is for integrators and answers 401 or 403 to a merchant token, so the check goes on with the organization's offers (bad credentials still stop it).
+- Pictures in formats the marketplace refuses (AVIF, HEIC, SVG, TIFF, BMP, ICO, JXL) are left out of the offer instead of failing it; JPEG, PNG, GIF and WebP go as before.
+- The offer name has the variant title only when the product has more variants: a product with one "Standard" variant is listed under its own title.
+- Catalog rows made in demo mode that never reached a marketplace become real rows once the credentials are set.
+
 ## 0.1.0 (unreleased)
 
 The first version: the InPost marketplace (InPost Von Halsky, also called InPost Buy) for Medusa v2, on InPost's seller API (OpenAPI 1.7.6). Run `npx medusa db:migrate` after installing: `Migration20261018150000_vonhalsky` adds the offers, the marketplace orders, the sync log and the settings tables; `Migration20261102120000_vonhalsky_live` adds the seller API columns to the first two and the after sale, category and snapshot tables.
