@@ -8,6 +8,7 @@ Found on InPost's stage environment with a real merchant API application (6 Nove
 - Pictures in formats the marketplace refuses (AVIF, HEIC, SVG, TIFF, BMP, ICO, JXL) are left out of the offer instead of failing it; JPEG, PNG, GIF and WebP go as before.
 - The offer name has the variant title only when the product has more variants: a product with one "Standard" variant is listed under its own title.
 - A bare 403 of InPost's gateway (no body; on stage the same call answers 200, 403, 200 within seconds) is asked again up to three times with a short wait, writes too, since the gateway refuses it before the API sees it. A 403 with problem details is the API's answer and is final.
+- Two blocking reasons from InPost's own validation (merchant instructions 11/2026): `title_invalid` (the name needs 7 to 150 characters and at least two words) and `description_short` (fewer than 100 characters of text). The offer is fixed before it is sent, not held in PENDING after.
 - Catalog rows made in demo mode that never reached a marketplace become real rows once the credentials are set.
 
 ## 0.1.0 (unreleased)

@@ -18,10 +18,12 @@ import { plainText } from "./offer-payload"
 
 export const BLOCKING_REASONS = [
   "no_title",
+  "title_invalid",
   "no_ean",
   "invalid_ean",
   "no_brand",
   "no_description",
+  "description_short",
   "no_image",
   "no_category",
   "attributes_missing",
@@ -105,10 +107,27 @@ export interface Eligibility {
 
 const filled = (v: string | null | undefined): boolean => Boolean(v && v.trim())
 
+/**
+ * The marketplace's own validation (merchant instructions 11/2026, "Najczęstsze
+ * błędy walidacji"): a name of 7 to 150 characters with at least two words, a
+ * description of at least 100 characters of text. Checked here so the offer is
+ * fixed before it is sent, not after InPost holds it in PENDING.
+ */
+export const TITLE_MIN = 7
+export const TITLE_MAX = 150
+export const DESCRIPTION_MIN = 100
+
+export function titleValid(title: string): boolean {
+  const t = title.trim()
+  const length = [...t].length
+  return length >= TITLE_MIN && length <= TITLE_MAX && t.split(/\s+/).filter(Boolean).length >= 2
+}
+
 export function eligibility(f: VariantFacts, ctx: OfferContext = { categoryId: null, gpsrFree: false, requiredAttributes: null, attributes: [] }): Eligibility {
   const reasons: BlockingReason[] = []
   const warnings: WarningCode[] = []
   if (!filled(f.title)) reasons.push("no_title")
+  else if (!titleValid(f.title as string)) reasons.push("title_invalid")
   if (f.productStatus && f.productStatus !== "published") reasons.push("not_published")
   const ean = normalizeEan(f.ean)
   /* An EAN, or else the brand with the manufacturer part number. */
@@ -116,7 +135,9 @@ export function eligibility(f: VariantFacts, ctx: OfferContext = { categoryId: n
   else if (!ean && !filled(f.mpn)) reasons.push("no_ean")
   if (!filled(f.brand)) reasons.push("no_brand")
   /* What the marketplace gets is the text of the HTML: markup alone is no description. */
-  if (!filled(f.description ? plainText(f.description) : null)) reasons.push("no_description")
+  const text = f.description ? plainText(f.description) : ""
+  if (!filled(text)) reasons.push("no_description")
+  else if ([...text.trim()].length < DESCRIPTION_MIN) reasons.push("description_short")
   if (f.images.length === 0) reasons.push("no_image")
   if (!ctx.categoryId) reasons.push("no_category")
   else if (ctx.requiredAttributes) {
