@@ -332,3 +332,15 @@ test("problem: a status without a body still gets a code", () => {
   assert.equal(problemOf(502, "not json", "Bad gateway").code, "HTTP_502")
   assert.equal(problemOf(502, null, "Bad gateway").message, "InPost Von Halsky answered 502 HTTP_502: Bad gateway")
 })
+
+test("a bare 403 of the gateway is asked again, writes too; a 403 with problem details is final", async () => {
+  const bare = wire([json(403), json(403), json(200, { ok: true })])
+  assert.deepEqual(await bare.http.request("POST", "/v1/x", { body: {} }), { ok: true })
+  assert.deepEqual(bare.sleeps, [400, 800])
+  const stubborn = wire([json(403)])
+  await assert.rejects(stubborn.http.request("GET", "/v1/x"), (e: unknown) => e instanceof MarketplaceApiError && e.status === 403)
+  assert.equal(stubborn.seen.filter((s) => s.url !== TOKEN_URL).length, 4, "the first try and three more")
+  const real = wire([json(403, { errorCode: "FORBIDDEN", errorMessage: "No access to this organization" }), json(200, {})])
+  await assert.rejects(real.http.request("GET", "/v1/x"), /No access to this organization/)
+  assert.equal(real.seen.filter((s) => s.url !== TOKEN_URL).length, 1)
+})

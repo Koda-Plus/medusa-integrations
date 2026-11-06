@@ -119,6 +119,8 @@ export function problemOf(status: number, body: unknown, fallback: string): Mark
 }
 
 const MAX_WAIT_MS = 30_000
+/** Tries after a bare 403 of the gateway (see `request`). */
+const GATE_RETRIES = 3
 
 export function createHttp(cfg: HttpConfig): Http {
   const doFetch = cfg.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
@@ -226,6 +228,15 @@ export function createHttp(cfg: HttpConfig): Http {
       if (res.status === 404 && opts.notFound === "null") return null as T
       if (res.status === 204) return null as T
       const body = await readJson(res)
+      // InPost's gateway answers some requests with a bare 403 and no body, at
+      // random, with a token that works on the next try (stage, 6 November 2026:
+      // the same call 200, 403, 200 within seconds). It is refused at the gate,
+      // before the API sees it, so it is asked again, writes too. A 403 with
+      // problem details is the API's own answer and is never repeated.
+      if (res.status === 403 && body === null && attempt < GATE_RETRIES) {
+        await sleep(400 * 2 ** attempt)
+        continue
+      }
       if (!res.ok) {
         const e = problemOf(res.status, body, res.statusText || "request failed")
         throw new MarketplaceApiError(e.status, e.code, maskSecrets(e.message, secrets), e.details)

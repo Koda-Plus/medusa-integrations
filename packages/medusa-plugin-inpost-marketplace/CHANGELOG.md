@@ -7,6 +7,7 @@ Found on InPost's stage environment with a real merchant API application (6 Nove
 - **Check connection** works for a merchant's Client Credentials application: `GET /v1/organizations` is for integrators and answers 401 or 403 to a merchant token, so the check goes on with the organization's offers (bad credentials still stop it).
 - Pictures in formats the marketplace refuses (AVIF, HEIC, SVG, TIFF, BMP, ICO, JXL) are left out of the offer instead of failing it; JPEG, PNG, GIF and WebP go as before.
 - The offer name has the variant title only when the product has more variants: a product with one "Standard" variant is listed under its own title.
+- A bare 403 of InPost's gateway (no body; on stage the same call answers 200, 403, 200 within seconds) is asked again up to three times with a short wait, writes too, since the gateway refuses it before the API sees it. A 403 with problem details is the API's answer and is final.
 - Catalog rows made in demo mode that never reached a marketplace become real rows once the credentials are set.
 
 ## 0.1.0 (unreleased)
