@@ -254,10 +254,12 @@ const en = {
   },
   reason: {
     no_title: "No title",
+    title_invalid: "The name needs 7 to 150 characters and at least two words",
     no_ean: "No EAN (variant EAN or barcode) and no manufacturer part number",
     invalid_ean: "The EAN check digit is wrong",
     no_brand: "No brand (metadata \"{{brandKey}}\")",
     no_description: "No product description",
+    description_short: "The description is shorter than 100 characters",
     no_image: "No photo",
     no_category: "No marketplace category (map the Medusa category or set one)",
     attributes_missing: "Required category parameters are missing",

@@ -22,7 +22,7 @@ const facts = (over: Partial<VariantFacts> = {}): VariantFacts => ({
   title: "Ceramic mug",
   thumbnail: "https://cdn.example.com/mug.jpg",
   images: ["https://cdn.example.com/mug.jpg", "https://cdn.example.com/mug-side.jpg"],
-  description: "<p>A mug.</p>",
+  description: "<p>A ceramic mug of 380 ml with a matt finish and a print that survives the dishwasher, made to fit under a coffee machine.</p>",
   productStatus: "published",
   ean: "5901234123457",
   brand: "Brand",
@@ -95,6 +95,10 @@ test("eligibility: no GPSR data is needed in a category outside GPSR or for a pr
 test("eligibility: what the offer itself needs blocks the listing with its own reason", () => {
   assert.deepEqual(reasons({ brand: " " }), ["no_brand"])
   assert.deepEqual(reasons({ description: "" }), ["no_description"])
+  assert.deepEqual(reasons({ description: "<p>A mug.</p>" }), ["description_short"], "fewer than 100 characters of text")
+  assert.deepEqual(reasons({ title: "Mug" }), ["title_invalid"], "fewer than 7 characters")
+  assert.deepEqual(reasons({ title: "Superlongmugname" }), ["title_invalid"], "one word")
+  assert.deepEqual(reasons({ title: "Mug " + "x".repeat(150) }), ["title_invalid"], "over 150 characters")
   assert.deepEqual(reasons({ images: [] }), ["no_image"])
   assert.deepEqual(reasons({ basePriceMinor: null }), ["no_price"])
   assert.deepEqual(reasons({ basePriceMinor: 0 }), ["no_price"])

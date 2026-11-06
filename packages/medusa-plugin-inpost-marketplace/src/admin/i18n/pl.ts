@@ -257,10 +257,12 @@ const pl = {
   },
   reason: {
     no_title: "Brak nazwy",
+    title_invalid: "Nazwa musi mieć od 7 do 150 znaków i co najmniej dwa słowa",
     no_ean: "Brak EAN (EAN albo kod kreskowy wariantu) i brak kodu producenta",
     invalid_ean: "Błędna cyfra kontrolna EAN",
     no_brand: "Brak marki (metadane \"{{brandKey}}\")",
     no_description: "Brak opisu produktu",
+    description_short: "Opis jest krótszy niż 100 znaków",
     no_image: "Brak zdjęcia",
     no_category: "Brak kategorii marketplace (zmapuj kategorię Medusy albo ustaw ją ręcznie)",
     attributes_missing: "Brakuje wymaganych parametrów kategorii",
