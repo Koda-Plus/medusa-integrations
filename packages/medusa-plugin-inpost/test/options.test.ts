@@ -30,18 +30,21 @@ test("demo mode only with demo: true; without a token the plugin is not configur
 })
 
 test("writers: off by default in live mode, on in demo mode, only true opens them, false always wins", () => {
-  assert.deepEqual(resolveOptions({ apiToken: "x" }).writers, { shipment: false, fulfillmentStatus: false })
-  assert.deepEqual(resolveOptions({}).writers, { shipment: false, fulfillmentStatus: false })
-  assert.deepEqual(resolveOptions({ demo: true }).writers, { shipment: true, fulfillmentStatus: true })
-  assert.deepEqual(resolveOptions({ demo: true, shipmentWriter: false }).writers, { shipment: false, fulfillmentStatus: true })
+  assert.deepEqual(resolveOptions({ apiToken: "x" }).writers, { shipment: false, fulfillmentStatus: false, returns: false })
+  assert.deepEqual(resolveOptions({}).writers, { shipment: false, fulfillmentStatus: false, returns: false })
+  assert.deepEqual(resolveOptions({ demo: true }).writers, { shipment: true, fulfillmentStatus: true, returns: true })
+  assert.deepEqual(resolveOptions({ demo: true, shipmentWriter: false }).writers, { shipment: false, fulfillmentStatus: true, returns: true })
+  assert.equal(resolveOptions({ apiToken: "x", returnsWriter: "true" }).writers.returns, true)
+  assert.equal(resolveOptions({ demo: true, returnsWriter: false }).writers.returns, false)
   assert.equal(resolveOptions({ apiToken: "x", shipmentWriter: "true" }).writers.shipment, true)
   const broken = resolveOptions({ apiToken: "x", shipmentWriter: "yes please" as never })
   assert.equal(broken.writers.shipment, false)
   assert.ok(broken.problems.some((p) => p.startsWith("shipmentWriter")))
   assert.equal(resolveOptions({}).autoCreate, false)
-  const armed = writerState("shipment", { shipment: true, fulfillmentStatus: false }, { on: true, updatedBy: "user_1", updatedAt: null })
+  const armed = writerState("shipment", { shipment: true, fulfillmentStatus: false, returns: false }, { on: true, updatedBy: "user_1", updatedAt: null })
   assert.equal(armed.armed, true)
-  assert.equal(writerState("fulfillmentStatus", { shipment: true, fulfillmentStatus: false }, { on: true, updatedBy: null, updatedAt: null }).armed, false, "the option wins over the toggle")
+  assert.equal(writerState("fulfillmentStatus", { shipment: true, fulfillmentStatus: false, returns: false }, { on: true, updatedBy: null, updatedAt: null }).armed, false, "the option wins over the toggle")
+  assert.equal(writerState("returns", { shipment: true, fulfillmentStatus: true, returns: false }, { on: true, updatedBy: null, updatedAt: null }).armed, false)
 })
 
 test("defaults and broken values: sizes, labels, sending methods, weights, keys, limits, the webhook secret", () => {

@@ -14,7 +14,8 @@ import { hostPageTabs } from "../../lib/inpost-kit"
 import { StatTile, StatTiles, type Tone } from "../../lib/inpost-blocks"
 import { DemoDetails, FILTER_ICON, ParcelsSection } from "../../lib/inpost-panel"
 import { LockerDrawer } from "../../lib/inpost-plan"
-import { AccountSection, HistorySection, ShippingSection, WritersSection } from "../../lib/inpost-settings"
+import { ReturnsAccountSection, ReturnsSection } from "../../lib/inpost-returns"
+import { AccountSection, GeowidgetSection, HistorySection, ShippingSection, WritersSection } from "../../lib/inpost-settings"
 import { fmtNumber, fmtRating, kitReferences, modeOf } from "../../lib/inpost-ui"
 
 /**
@@ -23,7 +24,8 @@ import { fmtNumber, fmtRating, kitReferences, modeOf } from "../../lib/inpost-ui
  * - Panel: the shipments next to the orders they belong to, in the lists a
  *   warehouse works with (to create, waiting for pickup, in transit, in the
  *   locker, delivered, problems and returns), with the plan, the label and
- *   the tracking of each.
+ *   the tracking of each. Under them the InPost returns (Returns API): the
+ *   drop-off code, the tracking number, the expiry and the actions of each.
  * - Setup guide (`?view=guide`).
  * - Settings (`?view=settings&tab=`): the InPost account and the webhook, the
  *   sender, the default parcel and the label, the writers, the history.
@@ -73,7 +75,7 @@ const InpostPage = () => {
   const seed = useInpostDemoSeed()
   const asked = useRef(false)
   useEffect(() => {
-    if (asked.current || !s || s.mode !== "demo" || s.counts.all > 0) return
+    if (asked.current || !s || s.mode !== "demo" || (s.counts.all > 0 && s.returns.counts.all > 0)) return
     asked.current = true
     seed.mutate()
   }, [s]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -119,6 +121,8 @@ const InpostPage = () => {
 
       {s && nav.view === "panel" ? <ParcelsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} initialQuery={initialQuery} onSettings={() => nav.go("settings", "writers")} /> : null}
 
+      {s && nav.view === "panel" ? <ReturnsSection status={s} lang={lang} poll={polling} onSettings={() => nav.go("settings", "writers")} /> : null}
+
       {s && nav.view === "settings" ? (
         <SettingsView
           title={t("settings.title")}
@@ -132,7 +136,13 @@ const InpostPage = () => {
             { id: "history", label: t("settings.tab.history") },
           ]}
         >
-          {nav.tab === "account" ? <AccountSection status={s} lang={lang} /> : null}
+          {nav.tab === "account" ? (
+            <>
+              <AccountSection status={s} lang={lang} />
+              <ReturnsAccountSection status={s} lang={lang} />
+              <GeowidgetSection status={s} lang={lang} />
+            </>
+          ) : null}
           {nav.tab === "shipping" ? <ShippingSection status={s} /> : null}
           {nav.tab === "writers" ? <WritersSection status={s} lang={lang} /> : null}
           {nav.tab === "history" ? <HistorySection lang={lang} /> : null}
@@ -272,6 +282,7 @@ function Warnings({ status }: { status: StatusResponse }) {
   if (status.mode === "live" && status.missing.length > 0) notes.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }) })
   if (status.problems.length > 0) notes.push({ key: "problems", variant: "warning", label: t("missing.problemsLabel"), text: t("missing.problems", { list: status.problems.join("; ") }) })
   if (status.counts.attention > 0) notes.push({ key: "attention", variant: "error", label: t("missing.attentionLabel"), text: t("missing.attention", { count: status.counts.attention }) })
+  if (status.returns.counts.attention > 0) notes.push({ key: "returns", variant: "error", label: t("returns.attentionLabel"), text: t("returns.attention", { count: status.returns.counts.attention }) })
   if (notes.length === 0) return null
   return (
     <div className="flex flex-col gap-y-2 px-6 py-4">

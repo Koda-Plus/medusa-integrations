@@ -131,8 +131,12 @@ test("every string the admin asks for exists: static keys, statuses, plan proble
   assert.deepEqual(need("warning", unionMembers("src/modules/inpost/lib/plan.ts", "PlanWarningCode")), [])
   assert.deepEqual(need("state", unionMembers("src/modules/inpost/lib/contract.ts", "ParcelState")), [])
   assert.deepEqual(need("parcels.filter", ["all", "to_create", "waiting", "in_transit", "in_locker", "delivered", "problems", "canceled", "skipped"]), [])
-  assert.deepEqual(need("writers.names", ["shipment", "fulfillmentStatus"]), [])
-  assert.deepEqual(need("writers.descriptions", ["shipment", "fulfillmentStatus"]), [])
+  assert.deepEqual(need("writers.names", ["shipment", "fulfillmentStatus", "returns"]), [])
+  assert.deepEqual(need("writers.descriptions", ["shipment", "fulfillmentStatus", "returns"]), [])
+  assert.deepEqual(need("returns.state", unionMembers("src/modules/inpost/lib/contract.ts", "ReturnState")), [])
+  assert.deepEqual(need("returns.filter", ["all", "open", "created", "attention", "skipped"]), [])
+  assert.deepEqual(need("problem", unionMembers("src/modules/inpost/lib/returns.ts", "ReturnProblemCode")), [])
+  assert.deepEqual(need("warning", unionMembers("src/modules/inpost/lib/returns.ts", "ReturnWarningCode")), [])
   assert.deepEqual(need("sendingMethod", ["parcel_locker", "pok", "pop", "courier_pok", "branch", "dispatch_order", "any_point"]), [])
   /* Every action the server records reads in the admin language (a failed read after a webhook keeps ShipX's own words). */
   const actions = new Set<string>()
@@ -200,9 +204,10 @@ test("a vendored copy is complete: every relative import of a copied file lands 
 
 test("own tables and a migration name unique across the packages; never the tables of another InPost plugin", () => {
   const mine = readdirSync(join(root, "src/modules/inpost/migrations"))
-  assert.deepEqual(mine, ["Migration20261007120000.ts"])
-  const migration = readFileSync(join(root, "src/modules/inpost/migrations", mine[0]), "utf8")
-  const ours = ["inpost_parcel", "inpost_parcel_event", "inpost_setting"]
+  assert.deepEqual(mine, ["Migration20261007120000.ts", "Migration20261106120000_inpost_returns.ts"])
+  const migration = mine.map((f) => readFileSync(join(root, "src/modules/inpost/migrations", f), "utf8")).join("\n")
+  /* Returns live in inpost_parcel_return: "inpost_return" is the table of another InPost plugin. */
+  const ours = ["inpost_parcel", "inpost_parcel_event", "inpost_parcel_return", "inpost_setting"]
   assert.deepEqual([...migration.matchAll(/create table if not exists "([a-z_]+)"/g)].map((m) => m[1]).sort(), ours)
   const models = files(join(root, "src/modules/inpost/models"), [], /\.ts$/)
   assert.deepEqual(models.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/\.define\("([a-z_]+)"/g)].map((m) => m[1])).sort(), ours)

@@ -9,12 +9,12 @@ import type {
   Logger,
 } from "@medusajs/framework/types"
 import { createShipxClient, type ShipxClient } from "../../modules/inpost/lib/client"
-import { PROVIDER_IDENTIFIER } from "../../modules/inpost/lib/constants"
+import { PROVIDER_IDENTIFIER, RETURN_OPTION_ID } from "../../modules/inpost/lib/constants"
 import { DEMO_LOCKERS } from "../../modules/inpost/lib/demo"
 import { describeError } from "../../modules/inpost/lib/errors"
 import { firstMinor, formatMinor } from "../../modules/inpost/lib/money"
 import { canCallShipx, resolveOptions, type InpostPluginOptions, type ResolvedInpostOptions } from "../../modules/inpost/lib/options"
-import { fulfillmentOptions, readFulfillmentData, specOf, validateMethodData, methodDataFor, type CheckoutContext } from "../../modules/inpost/lib/option-data"
+import { fulfillmentOptions, isReturnOption, readFulfillmentData, returnFulfillmentOption, specOf, validateMethodData, methodDataFor, type CheckoutContext } from "../../modules/inpost/lib/option-data"
 import { labelFileName, simpleLabelPdf } from "../../modules/inpost/lib/pdf"
 import { fetchPoints, pointsParams, TtlCache } from "../../modules/inpost/lib/points"
 import { maskSecrets } from "../../modules/inpost/lib/security"
@@ -42,7 +42,8 @@ const MISSING_LOCKERS = new TtlCache<true>(10 * 60 * 1000, 2000)
  *
  *   options    four: Paczkomat, courier, and both with cash on delivery
  *              (ids inpost-paczkomat, inpost-kurier, inpost-paczkomat-cod,
- *              inpost-kurier-cod)
+ *              inpost-kurier-cod), and the return option inpost-zwrot
+ *              (`is_return`, for a return shipping option)
  *   checkout   a locker option needs a locker code of the right shape (and,
  *              with `verifyLockers`, a locker that exists); a courier option
  *              a full Polish address; cash on delivery a cart in PLN
@@ -50,6 +51,10 @@ const MISSING_LOCKERS = new TtlCache<true>(10 * 60 * 1000, 2000)
  *              delivery amount from the order total) and NEVER calls ShipX:
  *              the plugin's flows create the shipment from a plan a person
  *              reads, only when the shipment writer is armed
+ *   return     RECORDS a return on the return option (no request to InPost):
+ *              the plugin records the return row on order.return_requested
+ *              and creates the InPost return from its plan, only when the
+ *              returns writer is armed
  *
  * It never breaks the boot and never throws while fulfilling: a fulfillment
  * must work even when InPost is down, the token is missing or the writer is
@@ -82,11 +87,11 @@ class InpostFulfillmentProvider extends AbstractFulfillmentProviderService {
   }
 
   async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
-    return fulfillmentOptions() as unknown as FulfillmentOption[]
+    return [...fulfillmentOptions(), returnFulfillmentOption()] as unknown as FulfillmentOption[]
   }
 
   async validateOption(data: Record<string, unknown>): Promise<boolean> {
-    return specOf(data) !== null
+    return specOf(data) !== null || isReturnOption(data)
   }
 
   async canCalculate(): Promise<boolean> {
@@ -116,6 +121,8 @@ class InpostFulfillmentProvider extends AbstractFulfillmentProviderService {
   }
 
   async validateFulfillmentData(optionData: Record<string, unknown>, data: Record<string, unknown>, context: Record<string, unknown>): Promise<Record<string, unknown>> {
+    /* A return method: nothing to choose at checkout, the customer drops the parcel at any Paczkomat. */
+    if (isReturnOption(optionData)) return { ...(data ?? {}), inpost_option: RETURN_OPTION_ID, inpost_return: true }
     const result = validateMethodData(optionData, data, context as CheckoutContext)
     if (!result.ok) throw new MedusaError(MedusaError.Types.INVALID_DATA, result.error.message)
     if (result.locker && this.options_.verifyLockers && !(await this.lockerExists(result.locker.code))) {
@@ -165,12 +172,26 @@ class InpostFulfillmentProvider extends AbstractFulfillmentProviderService {
   }
 
   /**
-   * Returns go through InPost Manager or the InPost returns service. Refused
-   * here with a clear error, so a return option on this provider never looks
-   * like a return that was sent.
+   * A return on the InPost return option (`inpost-zwrot`): RECORDED, like a
+   * fulfillment, with no request to InPost. The plugin records the return row
+   * when Medusa emits order.return_requested; a person reads its plan on the
+   * order page and creates the InPost return (a drop-off code or a label)
+   * when the returns writer is armed. A return on any other option of this
+   * provider (a delivery option) is refused with a clear error, so it never
+   * looks like a return that was sent.
    */
-  async createReturnFulfillment(_fulfillment: Record<string, unknown>): Promise<CreateFulfillmentResult> {
-    throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "InPost returns are not supported by this provider yet: use InPost Manager or the InPost returns service.")
+  async createReturnFulfillment(fulfillment: Record<string, unknown>): Promise<CreateFulfillmentResult> {
+    const f = (fulfillment ?? {}) as { data?: Record<string, unknown> | null; shipping_option?: { data?: Record<string, unknown> | null } | null }
+    if (!isReturnOption(f.shipping_option?.data ?? null) && !isReturnOption(f.data ?? null)) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_ALLOWED,
+        `InPost returns go through the return option ${RETURN_OPTION_ID} ("InPost return (Paczkomat)"): create a return shipping option with it. The delivery options of InPost take no returns.`,
+      )
+    }
+    return {
+      data: { ...(f.data ?? {}), inpost_option: RETURN_OPTION_ID, inpost_return: true, inpost_recorded_at: new Date().toISOString() },
+      labels: [],
+    }
   }
 
   /**

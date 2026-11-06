@@ -12,11 +12,16 @@
  *   FakeShipx    a scripted ShipX organization behind `fetch`: it keeps
  *                shipments, answers the documented endpoints, can lose answers
  *                on purpose and records every call
+ *   FakeReturns  the InPost Returns API behind `fetch`: the OAuth2 token
+ *                endpoint, create, read and label, with lost answers, refusals
+ *                and expired tokens on purpose
  */
 import { createShipxClient } from "../src/modules/inpost/lib/client.ts"
 import { resolveOptions, type InpostPluginOptions } from "../src/modules/inpost/lib/options.ts"
 import { maskSecrets } from "../src/modules/inpost/lib/security.ts"
 import { PATCHABLE_COLUMNS, type NewEvent, type NewParcel, type ParcelPatch, type ParcelStore, type StatusUpdate } from "../src/modules/inpost/lib/store.ts"
+import { RETURN_PATCHABLE_COLUMNS, type NewReturn, type ReturnPatch, type ReturnStore } from "../src/modules/inpost/lib/return-store.ts"
+import { createReturnsClient } from "../src/modules/inpost/lib/returns-client.ts"
 
 export type Row = Record<string, any>
 
@@ -24,6 +29,11 @@ export type Row = Record<string, any>
 export const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJ0ZXN0IjoidGVzdC10b2tlbi1rb2RhLXN1cHBseS0wMDAwMDAwMDAwMDAwMDAwIn0.c2lnbmF0dXJlLW9mLXRoZS10ZXN0LXRva2VuLXRoYXQtaXMtbG9uZw"
 export const ORG = "12345"
 export const SECRET = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+/* Made-up Returns API credentials: the secret must never appear in a message. */
+export const RETURNS_ID = "koda-supply-returns-client"
+export const RETURNS_SECRET = "rs_9f8e7d6c5b4a39281706f5e4d3c2b1a0-secret"
+export const RETURNS_ORG = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+export const RETURNS: InpostPluginOptions = { returnsClientId: RETURNS_ID, returnsClientSecret: RETURNS_SECRET, returnsOrganizationId: RETURNS_ORG, returnsEnvironment: "stage", returnsWriter: true }
 export const LIVE: InpostPluginOptions = { apiToken: TOKEN, organizationId: ORG, shipmentWriter: true, fulfillmentStatusWriter: true, requestsPerMinute: 6000, webhookSecret: SECRET }
 
 /* ------------------------------------------------------------------ */
@@ -277,6 +287,182 @@ export function memoryStore(parcels: Table, events: Table, settings: Table): Par
   }
 }
 
+const RETURN_DEFAULTS: Row = {
+  display_id: null,
+  return_id: null,
+  state: "pending",
+  method: null,
+  reference: null,
+  plan_hash: null,
+  shipment_id: null,
+  inpost_parcel_id: null,
+  tracking_number: null,
+  short_number: null,
+  drop_off_code: null,
+  has_label: false,
+  expires_at: null,
+  skip_reason: null,
+  error: null,
+  error_code: null,
+  attempts: 0,
+  claim_token: null,
+  claimed_at: null,
+  lease_until: null,
+  created_by: null,
+  shipment_created_at: null,
+  last_checked_at: null,
+}
+
+/** The returns store with the SAME rules as the SQL one: one row per (order, return key, demo), claim only from pending, finish only for the owner. */
+export function memoryReturnStore(returns: Table): ReturnStore {
+  const live = (id: string) => returns.rows.find((r) => r.id === id && !r.deleted_at)
+  const apply = (row: Row, patch: ReturnPatch) => {
+    for (const column of RETURN_PATCHABLE_COLUMNS) {
+      const v = (patch as Row)[column]
+      if (v !== undefined) row[column] = v
+    }
+    row.updated_at = new Date()
+  }
+  return {
+    async insertIgnore(row: NewReturn) {
+      if (returns.rows.some((r) => !r.deleted_at && r.order_id === row.order_id && r.return_key === row.return_key && Boolean(r.demo) === row.demo)) return null
+      return returns.insert({ ...RETURN_DEFAULTS, ...row }) as never
+    },
+    async claim(id, args) {
+      const r = live(id)
+      if (!r || r.state !== "pending") return null
+      Object.assign(r, { state: "creating", claim_token: args.token, claimed_at: args.now, lease_until: args.leaseUntil, attempts: (r.attempts ?? 0) + 1 })
+      return { ...r } as never
+    },
+    async finish(id, token, patch) {
+      const r = live(id)
+      if (!r || r.state !== "creating" || r.claim_token !== token) return false
+      apply(r, patch)
+      r.claim_token = null
+      r.lease_until = null
+      return true
+    },
+    async transition(id, from, patch) {
+      const r = live(id)
+      if (!r || !from.includes(r.state)) return null
+      apply(r, patch)
+      return { ...r } as never
+    },
+    async expireLeases(now, demo) {
+      let n = 0
+      for (const r of returns.rows) {
+        if (!r.deleted_at && r.state === "creating" && r.lease_until && time(r.lease_until) < now.getTime() && Boolean(r.demo) === demo) {
+          Object.assign(r, { state: "unknown", claim_token: null, lease_until: null, error_code: "lease_expired" })
+          n += 1
+        }
+      }
+      return n
+    },
+    async counts(demo) {
+      const map = new Map<string, number>()
+      for (const r of returns.rows) if (!r.deleted_at && Boolean(r.demo) === demo) map.set(r.state, (map.get(r.state) ?? 0) + 1)
+      return [...map.entries()].map(([state, count]) => ({ state, count }))
+    },
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* The InPost Returns API behind fetch                                 */
+/* ------------------------------------------------------------------ */
+
+export interface ReturnsCall {
+  method: string
+  url: string
+  body: any
+  auth: string | null
+  accept: string | null
+  contentType: string | null
+}
+
+export class FakeReturns {
+  calls: ReturnsCall[] = []
+  shipments = new Map<string, Row>()
+  tokens = 0
+  seq = 0
+  /** The next create fails like this. */
+  failCreate: null | { status: number; body?: Row } | "timeout" | "network" = null
+  /** The token endpoint refuses the credentials. */
+  refuseToken = false
+  /** The next API call answers 401 (the token expired at InPost). */
+  expireNext = false
+  /** How long a token lives, in seconds. */
+  expiresIn = 599
+
+  readonly fetch = async (input: unknown, init?: { method?: string; body?: unknown; headers?: Record<string, string>; signal?: AbortSignal }): Promise<Response> => {
+    const url = String(input)
+    const method = init?.method ?? "GET"
+    const headers = init?.headers ?? {}
+    const contentType = headers["Content-Type"] ?? null
+    const raw = typeof init?.body === "string" ? init.body : null
+    const body = raw && contentType === "application/json" ? JSON.parse(raw) : raw
+    const auth = headers["Authorization"] ?? null
+    this.calls.push({ method, url, body, auth, accept: headers["Accept"] ?? null, contentType })
+    const u = new URL(url)
+    if (u.hostname !== "api.inpost-group.com" && u.hostname !== "stage-api.inpost-group.com") throw new Error(`unexpected host ${u.hostname}`)
+    const json = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } })
+    if (u.pathname === "/oauth2/token" && method === "POST") {
+      const basic = `Basic ${Buffer.from(`${RETURNS_ID}:${RETURNS_SECRET}`).toString("base64")}`
+      if (this.refuseToken || auth !== basic) return json(401, { error: "invalid_client", message: "Client authentication failed" })
+      this.tokens += 1
+      return json(200, { access_token: `eyJreturns.${"t".repeat(30)}${this.tokens}.sig`, token_type: "Bearer", expires_in: this.expiresIn, scope: "api:returns:read api:returns:write" })
+    }
+    if (!auth || !auth.startsWith("Bearer eyJreturns.")) return json(401, { status: 401, message: "JWT token missing" })
+    if (this.expireNext) {
+      this.expireNext = false
+      return json(401, { status: 401, message: "JWT expired" })
+    }
+    let m = u.pathname.match(/^\/returns\/v1\/organizations\/([0-9a-f-]{36})\/shipments$/)
+    if (m && method === "POST") {
+      if (this.failCreate === "timeout" || this.failCreate === "network") {
+        const kind = this.failCreate
+        this.failCreate = null
+        const err = new Error(kind === "timeout" ? "aborted" : "socket hang up")
+        if (kind === "timeout") err.name = "AbortError"
+        throw err
+      }
+      if (this.failCreate) {
+        const f = this.failCreate
+        this.failCreate = null
+        return json(f.status, f.body ?? { status: f.status, error: "validation_failed", message: "Some data sent in payload are invalid.", details: { shipment: [{ sender: [{ email: ["The value has an invalid format."] }] }] } })
+      }
+      this.seq += 1
+      const n = String(this.seq).padStart(4, "0")
+      const tn = `6303${"0".repeat(16)}${n}`
+      const code = body?.enableDropOffCode !== false
+      const shipment = {
+        id: `7f2a0d9c-2b7f-4f19-9f1d-2c3b6dbb${n}`,
+        expirationDate: "2026-11-20T23:59:59Z",
+        parcels: [
+          {
+            id: `e3d1c6f8-5a5a-4b2a-9e6a-8f1a2b3c${n}`,
+            trackingNumber: tn,
+            parcelNumbers: [
+              { carrier: "INPOST", id: "STANDARD", value: tn },
+              { carrier: "INPOST", id: "SHORT", value: `12${n.slice(0, 2)} ${n.slice(1)}` },
+            ],
+            ...(code ? { dropOffCode: `01234${n}` } : { labelUrl: `https://stage-api.inpost-group.com/labels/${tn}` }),
+          },
+        ],
+      }
+      this.shipments.set(shipment.id, shipment)
+      return json(201, shipment)
+    }
+    m = u.pathname.match(/^\/returns\/v1\/organizations\/([0-9a-f-]{36})\/shipments\/(\d+)\/label$/)
+    if (m && method === "GET") return new Response(new TextEncoder().encode("%PDF-1.4 fake return label for tests\n%%EOF"), { status: 200, headers: { "content-type": "application/pdf" } })
+    m = u.pathname.match(/^\/returns\/v1\/organizations\/([0-9a-f-]{36})\/shipments\/([0-9a-f-]{36})$/)
+    if (m && method === "GET") {
+      const s = this.shipments.get(m[2])
+      return s ? json(200, s) : json(404, { status: 404, error: "not_found", message: "Shipment not found" })
+    }
+    return json(404, { status: 404, error: "not_found", message: `no route ${method} ${u.pathname}` })
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* A fake ShipX organization behind fetch                              */
 /* ------------------------------------------------------------------ */
@@ -413,14 +599,22 @@ export interface Setup {
   logs: string[]
   orders: Map<string, Row>
   fake: FakeShipx
+  returns: Table
+  returnStore: ReturnStore
+  fakeReturns: FakeReturns
+  /** What Query answers for the entity "return" (Medusa returns). */
+  medusaReturns: Map<string, Row>
 }
 
-export function setup(options: InpostPluginOptions, orders: Row[] = [], fake: FakeShipx = new FakeShipx()): Setup {
+export function setup(options: InpostPluginOptions, orders: Row[] = [], fake: FakeShipx = new FakeShipx(), fakeReturns: FakeReturns = new FakeReturns()): Setup {
   const o = resolveOptions(options)
   const parcels = new Table("inpar")
   const events = new Table("inpev")
   const settings = new Table("inset")
   const store = memoryStore(parcels, events, settings)
+  const returns = new Table("inret")
+  const returnStore = memoryReturnStore(returns)
+  const medusaReturns = new Map<string, Row>()
   const logs: string[] = []
   const log = (level: string) => (msg: string) => void logs.push(`${level} ${msg}`)
   const svc = {
@@ -429,7 +623,10 @@ export function setup(options: InpostPluginOptions, orders: Row[] = [], fake: Fa
     isDemo: () => o.demo,
     isConfigured: () => o.demo || (Boolean(o.apiToken) && Boolean(o.organizationId)),
     missingOptions: () => (o.demo ? [] : [...(o.apiToken ? [] : ["apiToken"]), ...(o.organizationId ? [] : ["organizationId"])]),
-    mask: (s: string) => maskSecrets(s, [o.apiToken, o.webhookSecret]),
+    mask: (s: string) => maskSecrets(s, [o.apiToken, o.webhookSecret, o.returns.clientSecret]),
+    listInpostParcelReturns: async (f: Row, c: Row) => returns.list(f, c),
+    listAndCountInpostParcelReturns: async (f: Row, c: Row) => [returns.list(f, c), returns.list(f).length],
+    deleteInpostParcelReturns: async (ids: string[]) => void (returns.rows = returns.rows.filter((r) => !ids.includes(r.id))),
     listInpostParcels: async (f: Row, c: Row) => parcels.list(f, c),
     listAndCountInpostParcels: async (f: Row, c: Row) => [parcels.list(f, c), parcels.list(f).length],
     createInpostParcels: async (d: Row | Row[]) => (Array.isArray(d) ? d.map((x) => parcels.insert({ ...PARCEL_DEFAULTS, ...x })) : parcels.insert({ ...PARCEL_DEFAULTS, ...d })),
@@ -443,12 +640,20 @@ export function setup(options: InpostPluginOptions, orders: Row[] = [], fake: Fa
   const orderMap = new Map(orders.map((x) => [x.id, x]))
   const emitted: Array<{ name: string; data: Row }> = []
   const client = createShipxClient({ token: o.apiToken, organizationId: o.organizationId, sandbox: o.sandbox, requestsPerMinute: 60000, timeoutMs: 2000, fetchImpl: fake.fetch as unknown as typeof fetch, sleep: async () => {} })
+  const returnsClient = createReturnsClient({ clientId: o.returns.clientId, clientSecret: o.returns.clientSecret, organizationId: o.returns.organizationId, environment: o.returns.environment, timeoutMs: 2000, fetchImpl: fakeReturns.fetch as unknown as typeof fetch })
   const registry: Record<string, unknown> = {
     inpost: svc,
     inpostParcelStore: store,
     inpostShipxClient: client,
+    inpostReturnStore: returnStore,
+    inpostReturnsClient: returnsClient,
     query: {
       graph: async ({ entity, filters, pagination }: Row) => {
+        if (entity === "return") {
+          const id = Array.isArray(filters?.id) ? filters.id[0] : filters?.id
+          const r = medusaReturns.get(id)
+          return { data: r ? [structuredClone(r)] : [] }
+        }
         if (entity !== "order") throw new Error(`Query does not know the entity "${entity}"`)
         const ids: string[] | null = filters?.id ? (Array.isArray(filters.id) ? filters.id : [filters.id]) : null
         let data = ids ? ids.filter((id) => orderMap.has(id)).map((id) => orderMap.get(id)) : [...orderMap.values()]
@@ -469,11 +674,11 @@ export function setup(options: InpostPluginOptions, orders: Row[] = [], fake: Fa
       return registry[key]
     },
   }
-  return { container, parcels, events, settings, store, emitted, logs, orders: orderMap, fake }
+  return { container, parcels, events, settings, store, emitted, logs, orders: orderMap, fake, returns, returnStore, fakeReturns, medusaReturns }
 }
 
 /** Arms a writer in the store, as the admin route does. */
-export async function arm(s: Setup, writer: "shipment" | "fulfillmentStatus", demo = false): Promise<void> {
+export async function arm(s: Setup, writer: "shipment" | "fulfillmentStatus" | "returns", demo = false): Promise<void> {
   await s.store.setSetting(`${demo ? "demo" : "live"}:writer:${writer}`, { on: true }, "user_01TEST")
 }
 

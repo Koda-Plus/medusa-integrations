@@ -91,6 +91,19 @@ autoCreate: false,             // the default; true creates on fulfillment once 
 // sendingMethod: { locker: "parcel_locker", courier: "dispatch_order" },  // default: your account's
 // skipMetadataKeys: ["inpost_shipment"],  // default: none; orders another system ships`
 
+const RETURNS_CODE = `# .env (InPost Returns API, from the InPost Integration Team)
+INPOST_RETURNS_CLIENT_ID=...
+INPOST_RETURNS_CLIENT_SECRET=...
+INPOST_RETURNS_ORGANIZATION_ID=...   # a UUID, not the ShipX organization id
+
+// medusa-config.ts, in the inpost options
+returnsClientId: process.env.INPOST_RETURNS_CLIENT_ID,
+returnsClientSecret: process.env.INPOST_RETURNS_CLIENT_SECRET,
+returnsOrganizationId: process.env.INPOST_RETURNS_ORGANIZATION_ID,
+returnsEnvironment: "stage",   // "production" once InPost gives production credentials
+// returnsWriter: true,        // create returns (off unless allowed here AND armed in the admin)
+// returnExpirationDays: 14,   // default: the account's own setting, at least 7`
+
 /** The same setup as this guide, for "Copy prompt" in the page header. */
 export function usePromptSpec(): SetupPromptSpec {
   const { t } = useTranslation("inpost")
@@ -228,6 +241,19 @@ export function GuideView({ status: s, lang }: { status: StatusResponse; lang: s
       state: state(live && s.writers.fulfillmentStatus.armed, "optional"),
       body: p("guide.step.status.body"),
       check: t("guide.step.status.check"),
+    },
+    {
+      id: "returns",
+      title: t("guide.step.returns.title"),
+      state: state(live && s.returns.configured && Boolean(s.returns.lastCheck?.ok), "optional"),
+      body: (
+        <>
+          {p("guide.step.returns.body1")}
+          {p("guide.step.returns.body2")}
+        </>
+      ),
+      code: RETURNS_CODE,
+      check: t("guide.step.returns.check"),
     },
     {
       id: "live",

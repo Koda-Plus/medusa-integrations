@@ -13,6 +13,9 @@ import { createShipxClient, type ShipxClient } from "../../modules/inpost/lib/cl
 import { INPOST_MODULE } from "../../modules/inpost/lib/constants"
 import type { EventRow, ParcelRow, SettingRow } from "../../modules/inpost/lib/dto"
 import { PLAN_ORDER_FIELDS, type PlanOrder } from "../../modules/inpost/lib/plan"
+import { createSqlReturnStore, type ReturnStore } from "../../modules/inpost/lib/return-store"
+import type { ReturnRow } from "../../modules/inpost/lib/returns"
+import { createReturnsClient, type ReturnsClient } from "../../modules/inpost/lib/returns-client"
 import { effectiveSettings, readStoredSettings, settingsKey, type EffectiveSettings } from "../../modules/inpost/lib/settings"
 import { createSqlStore, type NewEvent, type ParcelStore, type SqlRunner } from "../../modules/inpost/lib/store"
 import { readWriterSetting, WRITERS, writerSettingKey, writerState, type WriterKey, type WriterState } from "../../modules/inpost/lib/writers"
@@ -73,6 +76,35 @@ export function clientFor(scope: Scope): ShipxClient {
 }
 
 /* ------------------------------------------------------------------ */
+/* The Returns API client: one per service instance                    */
+/* ------------------------------------------------------------------ */
+
+const returnsClients = new WeakMap<object, ReturnsClient>()
+/** Container key a test (or a custom) Returns API client may be registered under. */
+export const RETURNS_CLIENT_KEY = "inpostReturnsClient"
+
+export function returnsClientFor(scope: Scope): ReturnsClient {
+  const registered = resolveOptional<ReturnsClient>(scope, RETURNS_CLIENT_KEY)
+  if (registered) return registered
+  const svc = inpostService(scope)
+  let client = returnsClients.get(svc)
+  if (!client) {
+    const o = svc.getOptions()
+    const logger = svc.getLogger()
+    client = createReturnsClient({
+      clientId: o.returns.clientId,
+      clientSecret: o.returns.clientSecret,
+      organizationId: o.returns.organizationId,
+      environment: o.returns.environment,
+      timeoutMs: o.timeoutMs,
+      logger: { info: (m) => logger.info(svc.mask(m)), warn: (m) => logger.warn(svc.mask(m)), error: (m) => logger.error(svc.mask(m)) },
+    })
+    returnsClients.set(svc, client)
+  }
+  return client
+}
+
+/* ------------------------------------------------------------------ */
 /* The atomic store                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -84,6 +116,16 @@ export function storeFor(scope: Scope): ParcelStore {
   if (registered) return registered
   const sql = resolve<SqlRunner>(scope, ContainerRegistrationKeys.PG_CONNECTION)
   return createSqlStore({ sql, newId: (prefix) => generateEntityId(undefined, prefix) })
+}
+
+/** Container key a custom (or test) implementation of the returns store may be registered under. */
+export const RETURN_STORE_KEY = "inpostReturnStore"
+
+export function returnStoreFor(scope: Scope): ReturnStore {
+  const registered = resolveOptional<ReturnStore>(scope, RETURN_STORE_KEY)
+  if (registered) return registered
+  const sql = resolve<SqlRunner>(scope, ContainerRegistrationKeys.PG_CONNECTION)
+  return createSqlReturnStore({ sql, newId: (prefix) => generateEntityId(undefined, prefix) })
 }
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +149,16 @@ export async function getParcel(svc: InpostModuleService, id: string): Promise<P
 /** A row of the current mode (a demo row never answers a live request, and the other way round). */
 export async function getParcelOfMode(svc: InpostModuleService, id: string): Promise<ParcelRow | null> {
   const row = await getParcel(svc, id)
+  return row && Boolean(row.demo) === svc.isDemo() ? row : null
+}
+
+export async function listReturns(svc: InpostModuleService, filters: Record<string, unknown>, config: Record<string, unknown> = {}): Promise<ReturnRow[]> {
+  return (await svc.listInpostParcelReturns(filters as never, config as never)) as unknown as ReturnRow[]
+}
+
+/** A return row of the current mode, or null. */
+export async function getReturnOfMode(svc: InpostModuleService, id: string): Promise<ReturnRow | null> {
+  const [row] = await listReturns(svc, { id }, { take: 1 })
   return row && Boolean(row.demo) === svc.isDemo() ? row : null
 }
 

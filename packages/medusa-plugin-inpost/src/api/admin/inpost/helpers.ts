@@ -1,9 +1,13 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type InpostModuleService from "../../../modules/inpost/service"
 import { GEOWIDGET_URLS, MANAGER_URLS, SYNC_SCHEDULE, WEBTRUCKER_URL } from "../../../modules/inpost/lib/constants"
-import type { CheckResult, PanelGroup, ParcelFilter, StatusResponse, WriterDto, WriterKey } from "../../../modules/inpost/lib/contract"
+import type { CheckResult, GeowidgetStatusDto, PanelGroup, ParcelFilter, ReturnsStatusDto, StatusResponse, WriterDto, WriterKey } from "../../../modules/inpost/lib/contract"
 import { groupOf, toEventDto, toParcelDto, toRunDto, toWriterDto, type EventRow, type ParcelRow } from "../../../modules/inpost/lib/dto"
 import { describeError, InpostApiError } from "../../../modules/inpost/lib/errors"
+import { missingReturnOptions, returnsConfigured } from "../../../modules/inpost/lib/options"
+import { geowidgetHost, readGeowidgetToken } from "../../../modules/inpost/lib/geowidget"
+import { toReturnDto, type ReturnRow } from "../../../modules/inpost/lib/returns"
+import { lastReturnsCheck, returnsHost } from "../../../workflows/inpost/returns"
 import { IN_LOCKER_STATUSES, PRE_LABEL_STATUSES, PROBLEM_STATUSES, RETURNED_STATUSES } from "../../../modules/inpost/lib/statuses"
 import { webhookPath } from "../../../modules/inpost/lib/webhook"
 import { WRITERS } from "../../../modules/inpost/lib/writers"
@@ -16,6 +20,7 @@ import {
   isRunning,
   listEvents,
   queryOf,
+  returnStoreFor,
   settingsOf,
   storeFor,
   writerStates,
@@ -149,6 +154,65 @@ export function parcelDtos(rows: ParcelRow[]) {
   return rows.map((r) => toParcelDto(r))
 }
 
+/** Runs an action on one return and answers `{ return }`, or the refusal. */
+export async function respondReturn(req: MedusaRequest, res: MedusaResponse, run: () => Promise<ReturnRow>, message?: string): Promise<void> {
+  try {
+    const row = await run()
+    res.setHeader("Cache-Control", "private, no-store")
+    res.json({ return: toReturnDto(row), ...(message ? { message } : {}) })
+  } catch (err) {
+    sendError(req.scope, res, err)
+  }
+}
+
+/** The search of the returns list: the order number, the tracking number, the drop-off code, the order or Medusa return id. */
+export function returnSearchFilter(q: string): Record<string, unknown> | null {
+  const s = q.trim().replace(/^#/, "")
+  if (!s) return null
+  const or: Array<Record<string, unknown>> = [
+    { tracking_number: { $ilike: like(s) } },
+    { drop_off_code: { $ilike: like(s) } },
+    { shipment_id: { $ilike: like(s.toLowerCase()) } },
+    { order_id: s },
+    { return_id: s },
+  ]
+  if (/^\d{1,9}$/.test(s)) or.push({ display_id: Number(s) })
+  return { $or: or }
+}
+
+/** The storefront map part of the status: read from the public token, never the token itself. */
+export function geowidgetStatus(o: { geowidgetToken: string; sandbox: boolean; demo: boolean }): GeowidgetStatusDto {
+  const g = readGeowidgetToken(o.geowidgetToken)
+  const shipx = o.sandbox ? "sandbox" : "production"
+  return { ...g, mismatch: !o.demo && g.environment !== null && g.environment !== shipx, host: geowidgetHost(g.environment, o.sandbox) }
+}
+
+/** The Returns API part of the status: configuration (never a secret) and the counters of this mode. */
+export async function returnsStatus(scope: Scope): Promise<ReturnsStatusDto> {
+  const svc = inpostService(scope)
+  const o = svc.getOptions()
+  const counts: ReturnsStatusDto["counts"] = { all: 0, open: 0, created: 0, attention: 0, skipped: 0 }
+  for (const c of await returnStoreFor(scope).counts(o.demo)) {
+    counts.all += c.count
+    if (c.state === "created") counts.created += c.count
+    else if (c.state === "skipped") counts.skipped += c.count
+    else counts.open += c.count
+    if (c.state === "failed" || c.state === "unknown") counts.attention += c.count
+  }
+  return {
+    configured: returnsConfigured(o),
+    missing: missingReturnOptions(o),
+    environment: o.returns.environment,
+    clientIdSet: Boolean(o.returns.clientId),
+    secretSet: Boolean(o.returns.clientSecret),
+    organizationId: o.returns.organizationId || null,
+    expirationDays: o.returns.expirationDays,
+    host: returnsHost(o.returns.environment),
+    counts,
+    lastCheck: lastReturnsCheck(o.demo ? "demo" : "live"),
+  }
+}
+
 /** Runs an action on one shipment and answers `{ parcel }`, or the refusal. */
 export async function respondParcel(req: MedusaRequest, res: MedusaResponse, run: () => Promise<ParcelRow>, message?: string): Promise<void> {
   try {
@@ -273,5 +337,7 @@ export async function buildStatus(req: MedusaRequest): Promise<StatusResponse> {
     running: isRunning("sync"),
     schedule: SYNC_SCHEDULE,
     references: o.references,
+    returns: await returnsStatus(scope),
+    geowidget: geowidgetStatus(o),
   }
 }

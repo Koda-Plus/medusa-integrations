@@ -158,3 +158,35 @@ export const REFERENCE_MAX = 100
 
 /** The rows the demo builds from the store's newest orders. */
 export const DEMO_ROWS = 16
+
+/* ------------------------------------------------------------------ */
+/* Returns (InPost Returns API, "Szybkie Zwroty")                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Hosts of the InPost Returns API (the InPost Group developer portal), NOT
+ * ShipX: another host, another login (OAuth2 client credentials) and another
+ * organization id (a UUID). See docs/shipx-api-notes.md, "Returns API".
+ */
+export const RETURNS_HOSTS = {
+  production: "https://api.inpost-group.com",
+  stage: "https://stage-api.inpost-group.com",
+} as const
+
+export type ReturnsEnvironment = keyof typeof RETURNS_HOSTS
+
+/** The scopes the Returns API client asks for; the Integration Team grants them to the client id. */
+export const RETURNS_SCOPES = "api:returns:read api:returns:write"
+
+/** The fulfillment option of a return (a return shipping option in Medusa, `data.id`). Never changes. */
+export const RETURN_OPTION_ID = "inpost-zwrot"
+
+/** InPost refuses an expiry closer than 7 days. */
+export const MIN_RETURN_EXPIRATION_DAYS = 7
+export const MAX_RETURN_EXPIRATION_DAYS = 90
+
+/** A cached Returns API token is renewed this long before InPost says it expires. */
+export const RETURNS_TOKEN_MARGIN_MS = 30 * 1000
+
+/** How long a simulated return stays valid, in days. */
+export const DEMO_RETURN_DAYS = 14

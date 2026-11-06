@@ -4,11 +4,11 @@ import { storeFor, writerStates } from "../../../../workflows/inpost/runtime"
 import { actorOf, bodyOf, buildStatus, inpostService, sendError } from "../helpers"
 
 /**
- * POST /admin/inpost/writers  { "writer": "shipment" | "fulfillmentStatus", "on": true }
+ * POST /admin/inpost/writers  { "writer": "shipment" | "fulfillmentStatus" | "returns", "on": true }
  *
  * Arms or disarms a writer in the current mode, stored with who did it and
  * when. Arming a writer the options turn off (`shipmentWriter`,
- * `fulfillmentStatusWriter` not true) is refused: the option is the hard
+ * `fulfillmentStatusWriter`, `returnsWriter` not true) is refused: the option is the hard
  * switch. Answers the whole status.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
@@ -17,7 +17,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     const o = svc.getOptions()
     const input = bodyOf(req)
     if (!isWriterKey(input.writer) || typeof input.on !== "boolean") {
-      res.status(400).json({ code: "invalid", message: "Send { writer: \"shipment\" | \"fulfillmentStatus\", on: true | false }." })
+      res.status(400).json({ code: "invalid", message: "Send { writer: \"shipment\" | \"fulfillmentStatus\" | \"returns\", on: true | false }." })
       return
     }
     const writer = input.writer

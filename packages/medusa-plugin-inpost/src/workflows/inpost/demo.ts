@@ -9,22 +9,28 @@
 import { DEMO_ROWS } from "../../modules/inpost/lib/constants"
 import { demoRows, type DemoOrder } from "../../modules/inpost/lib/demo"
 import type { EventRow, ParcelRow, SettingRow } from "../../modules/inpost/lib/dto"
-import { inpostService, listEvents, listParcels, queryOf, storeFor, type Scope } from "./runtime"
+import type { ReturnRow } from "../../modules/inpost/lib/returns"
+import { ensureDemoReturns } from "./returns"
+import { inpostService, listEvents, listParcels, listReturns, queryOf, storeFor, type Scope } from "./runtime"
 
 export const DEMO_SEEDED_KEY = "demo:seeded"
 
-/** Builds the demo rows once (an atomic claim of the `demo:seeded` key). Returns how many were built. */
+/** Builds the demo rows once (an atomic claim of the `demo:seeded` key), and the sample returns once. Returns how many shipments were built. */
 export async function ensureDemoSeed(scope: Scope): Promise<number> {
   const svc = inpostService(scope)
   if (!svc.isDemo()) return 0
   const existing = await listParcels(svc, { demo: true }, { take: 1, select: ["id"] })
-  if (existing.length > 0) return 0
+  const returns = await listReturns(svc, { demo: true }, { take: 1, select: ["id"] })
+  if (existing.length > 0 && returns.length > 0) return 0
   const { data } = await queryOf(scope).graph({
     entity: "order",
     fields: ["id", "display_id", "currency_code", "created_at"],
     pagination: { take: DEMO_ROWS, order: { created_at: "DESC" } },
   })
   const listed = (data as DemoOrder[]).filter((o) => o && typeof o.id === "string")
+  /* The sample returns come with their own claim, so a demo seeded before 0.4.0 gets them too. */
+  if (returns.length === 0) await ensureDemoReturns(scope, listed).catch((err) => svc.getLogger().warn(`[inpost] Demo returns: ${svc.mask((err as Error)?.message ?? String(err))}`))
+  if (existing.length > 0) return 0
   /* Totals one order at a time: Medusa refuses to compute the totals of an order whose shipping
      method has no version (some orders imported by other plugins carry such methods), and in a
      single query one of them failed the whole demo. Without a total a sample has no COD amount. */
@@ -62,7 +68,7 @@ export async function ensureDemoSeed(scope: Scope): Promise<number> {
   return rows.length
 }
 
-/** Starts the simulation over: demo rows, their history and the demo settings go, the sample rows come back. */
+/** Starts the simulation over: demo rows and returns, their history and the demo settings go, the sample rows come back. */
 export async function resetDemo(scope: Scope): Promise<number> {
   const svc = inpostService(scope)
   if (!svc.isDemo()) return 0
@@ -70,6 +76,11 @@ export async function resetDemo(scope: Scope): Promise<number> {
     const rows = await listParcels(svc, { demo: true }, { take: 500, select: ["id"] })
     if (rows.length === 0) break
     await svc.deleteInpostParcels(rows.map((r) => r.id))
+  }
+  for (;;) {
+    const rows = (await listReturns(svc, { demo: true }, { take: 500, select: ["id"] })) as ReturnRow[]
+    if (rows.length === 0) break
+    await svc.deleteInpostParcelReturns(rows.map((r) => r.id))
   }
   for (;;) {
     const events = (await listEvents(svc, { demo: true }, { take: 500, select: ["id"] })) as EventRow[]

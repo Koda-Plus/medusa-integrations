@@ -2,7 +2,8 @@
  * THE STATUS PASS, every 15 minutes (and "Refresh statuses" in the admin):
  * the fallback of the webhook, which ShipX may lose during a deploy.
  *
- *   1. creates that never finished (the process died) become `unknown`
+ *   1. creates that never finished (the process died) become `unknown`,
+ *      shipments and returns alike
  *   2. `unknown` rows are looked up in ShipX (never sent again blindly)
  *   3. open shipments are read again, the never read and the oldest read
  *      first, at most 100 a pass and each at most every 25 minutes; the
@@ -26,6 +27,7 @@ import { FINAL_STATUSES, isPickedUp } from "../../modules/inpost/lib/statuses"
 import { DEMO_SEED_ACTOR } from "../../modules/inpost/lib/demo"
 import { ensureDemoSeed } from "./demo"
 import { createShipment, lookupUnknown, refreshParcel, requestPickup } from "./parcels"
+import { expireReturnLeases } from "./returns"
 import { exclusive, inpostService, isArmed, listParcels, recordEvent, storeFor, writerStates, type Scope } from "./runtime"
 import { syncFulfillmentStatus } from "./status-writer"
 
@@ -78,6 +80,11 @@ export async function runSync(scope: Scope, trigger: "schedule" | "manual"): Pro
     }
 
     stats.expired = await store.expireLeases(new Date(), demo)
+    /* A return whose create never finished becomes unknown: nothing looks it up or sends it again (the Returns API has no search). */
+    stats.expired += await expireReturnLeases(scope).catch((err) => {
+      note("returns", err)
+      return 0
+    })
 
     if (!demo) {
       for (const row of await listParcels(svc, { demo, state: "unknown" }, { take: 20, order: { updated_at: "ASC" } })) {
