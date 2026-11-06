@@ -7,7 +7,7 @@ import { SYNC_PARTS, errorMessage, useCheckConnection, useSaveSettings, useSyncC
 import { EmptyState, EmptyTableRow, SearchInput, Section, ToneBadge, useDebouncedValue } from "./vonhalsky-blocks"
 import { CategoryPicker } from "./vonhalsky-category-picker"
 import { KitFetchingBar, KitSkeletonRows } from "./vonhalsky-kit"
-import { Fact, fmtDateTime, fmtMoney, fmtNumber } from "./vonhalsky-ui"
+import { Fact, fmtDateTime, fmtMoney, fmtNumber, syncLine } from "./vonhalsky-ui"
 
 const TYPES = ["APM", "COURIER"] as const
 const SELECT = "w-full max-w-md rounded-md border border-ui-border-base bg-ui-bg-field px-3 py-1.5 text-sm text-ui-fg-base"
@@ -230,7 +230,7 @@ export function ShippingSection({ status: s }: { status: StatusResponse }) {
 }
 
 /** Settings, Offers: what every offer needs and Medusa does not keep (days to ship, return and complaint texts), and the price and stock writer. */
-export function OfferDefaultsSection({ status: s }: { status: StatusResponse }) {
+export function OfferDefaultsSection({ status: s, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("vonhalsky")
   const save = useSaveSettings()
   const [draft, setDraft] = useState<OfferDefaults | null>(null)
@@ -258,6 +258,7 @@ export function OfferDefaultsSection({ status: s }: { status: StatusResponse }) 
         { icon: <Clock />, text: t("offerDefaults.points.days") },
         { icon: <Tag />, text: t("offerDefaults.points.policies") },
         { icon: <ArrowPath />, text: v.syncPriceStock ? t("offerDefaults.points.syncOn") : t("offerDefaults.points.syncOff"), tone: v.syncPriceStock ? "green" : "grey" },
+        s.mode !== "off" && { icon: <Clock />, text: syncLine(s, lang, (k, o) => t(k, o)) },
       ]}
       actions={
         <Button size="small" variant="primary" isLoading={save.isPending} disabled={!draft || !valid} onClick={() => void onSave()}>
@@ -298,7 +299,7 @@ export function OfferDefaultsSection({ status: s }: { status: StatusResponse }) 
           <span className="flex flex-col">
             <Text size="small">{t("offerDefaults.syncPriceStock")}</Text>
             <Text size="xsmall" className="text-ui-fg-muted">
-              {t("offerDefaults.syncHint")}
+              {t("offerDefaults.syncHint", { minutes: s.sync.everyMinutes })}
             </Text>
           </span>
           <Switch checked={v.syncPriceStock} onCheckedChange={(on) => setDraft({ ...v, syncPriceStock: on })} />
@@ -500,6 +501,19 @@ export function AccountSection({ status: s, lang }: { status: StatusResponse; la
             )}
           </Fact>
           <Fact label={t("account.lastSync")}>{s.lastSyncAt ? fmtDateTime(s.lastSyncAt, lang) : <span className="text-ui-fg-muted">{t("account.never")}</span>}</Fact>
+          <Fact label={t("account.priceStockSync")}>{syncLine(s, lang, (k, o) => t(k, o))}</Fact>
+          {s.mode === "live" || s.mode === "sandbox" ? (
+            <Fact label={t("account.connection")}>
+              {s.connection.ok ? (
+                <ToneBadge tone="green">{t("account.connectionOk")}</ToneBadge>
+              ) : (
+                <span className="flex flex-col items-start gap-y-0.5">
+                  <ToneBadge tone="red">{t("account.connectionLost", { date: fmtDateTime(s.connection.since, lang) })}</ToneBadge>
+                  {s.connection.message ? <span className="txt-compact-xsmall text-ui-fg-muted">{s.connection.message}</span> : null}
+                </span>
+              )}
+            </Fact>
+          ) : null}
           <Fact label={t("account.keys")}>
             <span className="font-mono">
               {s.options.brandKey}, {s.options.mpnKey}, {s.options.eanKey}

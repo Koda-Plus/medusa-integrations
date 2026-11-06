@@ -76,7 +76,7 @@ export function modeOf(s: StatusResponse | undefined): { key: string; tone: Tone
   return { key: "live", tone: "green" }
 }
 
-const OFFER_TONE: Record<OfferDto["status"], Tone> = { draft: "blue", listed: "green", blocked: "orange", closed: "grey" }
+const OFFER_TONE: Record<OfferDto["status"], Tone> = { draft: "blue", listed: "green", blocked: "orange", closed: "grey", detached: "purple" }
 
 export function OfferStatusBadge({ status }: { status: OfferDto["status"] }) {
   const { t } = useTranslation("vonhalsky")
@@ -237,6 +237,17 @@ export function Field({ label, hint, children, required }: { label: string; hint
       ) : null}
     </label>
   )
+}
+
+/**
+ * "Price and stock sync every 5 minutes, last run ...": InPost asks
+ * integrators to tell sellers how often price and stock reach the
+ * marketplace (it recommends at most every 15 minutes).
+ */
+export function syncLine(s: StatusResponse, lang: string, t: (key: string, options?: Record<string, unknown>) => string): string {
+  const minutes = s.sync.everyMinutes
+  if (!s.sync.priceStock) return t("sync.off", { minutes })
+  return s.sync.lastPushAt ? t("sync.every", { minutes, date: fmtDateTime(s.sync.lastPushAt, lang) }) : t("sync.everyNever", { minutes })
 }
 
 /** The native select of these pages, styled like Medusa's fields. */

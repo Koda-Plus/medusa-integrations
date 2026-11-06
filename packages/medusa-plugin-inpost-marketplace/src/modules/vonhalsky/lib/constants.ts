@@ -18,8 +18,11 @@ export const PUBLIC_SDK_URL = "https://github.com/InPost-VonHalsky/InPost-vonHal
  *   listed   on the marketplace (demo: marked listed in our table)
  *   blocked  cannot be listed: `reasons` says what is missing
  *   closed   taken off the marketplace by a person
+ *   detached removed from this panel only: the marketplace offer stays as it
+ *            is (still active on InPost), the plugin forgets its id and the
+ *            sync never touches it again until it is listed or imported again
  */
-export const OFFER_STATUSES = ["draft", "listed", "blocked", "closed"] as const
+export const OFFER_STATUSES = ["draft", "listed", "blocked", "closed", "detached"] as const
 export type OfferStatus = (typeof OFFER_STATUSES)[number]
 
 /**
@@ -67,14 +70,46 @@ export const SETTING_KEYS = {
   offerDefaults: "offer_defaults",
   /** Where the sync stands: the last event ids seen, the last runs. */
   sync: "sync",
+  /** Whether the marketplace still takes the credentials: { failures, since, message, okAt }. */
+  connection: "connection",
 } as const
+
+/**
+ * How often the scheduled sync runs (the cron of `jobs/vonhalsky-sync.ts`
+ * says the same). InPost asks integrators to tell sellers how often price
+ * and stock are sent and recommends at most every 15 minutes: the admin
+ * shows this number next to the time of the last run.
+ */
+export const SYNC_EVERY_MINUTES = 5
+
+/**
+ * Sync runs in a row that the marketplace refused the credentials in before
+ * the admin raises the "connection lost" alert: one refusal can be a hiccup
+ * of the gateway, two in a row (ten minutes) are not.
+ */
+export const CONNECTION_ALERT_RUNS = 2
 
 /** After sale case kinds (one table). */
 export const CASE_KINDS = ["return", "refund", "claim"] as const
 export type CaseKind = (typeof CASE_KINDS)[number]
 
-/** Offer commands the plugin follows. */
-export const COMMAND_KINDS = ["create", "patch", "price", "stock", "close", "reopen", "promotion", "program"] as const
+/**
+ * Offer commands the plugin follows. An edit of an offer on the marketplace
+ * is one command or three, chained by the sync (a row follows one command at
+ * a time):
+ *   patch       the merge patch of an offer that is not live (in review,
+ *               rejected, or closed by a person): nothing follows it
+ *   edit_close  a live offer (PUBLISHED, SOLDOUT) is closed first: InPost's
+ *               FAQ says a change other than price and stock may be refused
+ *               on a published offer and recommends close, patch, reopen
+ *   edit_patch  the merge patch of an offer the plugin closed itself (for an
+ *               edit, or at zero stock); a reopen follows, or at zero stock
+ *               the offer waits closed like any offer closed for no stock
+ */
+export const COMMAND_KINDS = ["create", "patch", "edit_close", "edit_patch", "price", "stock", "close", "reopen", "promotion", "program"] as const
+
+/** The command kinds of a close the plugin made itself: the row stays `listed` while the offer is CLOSED. */
+export const OWN_CLOSE_KINDS: readonly string[] = ["close", "edit_close", "edit_patch"]
 export type CommandKind = (typeof COMMAND_KINDS)[number]
 
 /** The demo sales channel, created on the first simulated order. */

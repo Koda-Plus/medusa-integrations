@@ -21,16 +21,19 @@
  * rows, it never closes the offer of a variant it did not see.
  */
 
-import { BATCH_OFFERS } from "../../modules/vonhalsky/lib/client"
-import type { HintResponse, OfferDto, PromotionInput } from "../../modules/vonhalsky/lib/contract"
+import { BATCH_OFFERS, PAGE_MAX } from "../../modules/vonhalsky/lib/client"
+import type { BulkEditResponse, EditResponse, HintResponse, ImportOffersResponse, OfferDefaults, OfferDto, PromotionInput } from "../../modules/vonhalsky/lib/contract"
 import { eligibility, nextOfferStatus, type VariantFacts } from "../../modules/vonhalsky/lib/eligibility"
-import { buildProposal } from "../../modules/vonhalsky/lib/offer-payload"
+import { buildProposal, editPatchOf, type OfferProposal } from "../../modules/vonhalsky/lib/offer-payload"
+import { importPlan, type ImportRow } from "../../modules/vonhalsky/lib/offer-import"
+import { afterEditStep, editStart, remotePatch } from "../../modules/vonhalsky/lib/offer-sync"
+import { applyOverrides, daysToShipOf, isRefusal, mergeOverrides, overridesOf, parseOverridesPatch } from "../../modules/vonhalsky/lib/overrides"
 import { channelPriceMinor, parseOverride } from "../../modules/vonhalsky/lib/pricing"
-import type { CommandState } from "../../modules/vonhalsky/lib/remote"
+import type { CommandState, RemoteOffer } from "../../modules/vonhalsky/lib/remote"
 import { logSync, readSettings, toOfferDto, vonHalskySvc, type Scope } from "../../modules/vonhalsky/lib/store"
-import { loadFacts, thumbnailsOf } from "./catalog"
+import { editableFactsOf, loadFacts, thumbnailsOf } from "./catalog"
 import { attributesOf, categoryInfo, mappedLeaf, type CategoryInfo } from "./categories"
-import { VonHalskyFlowError, errorText, optionsOf, requireClient, withLock } from "./runtime"
+import { VonHalskyFlowError, demoClientOf, errorText, optionsOf, requireClient, withLock } from "./runtime"
 
 export interface RefreshResult {
   read: number
@@ -76,14 +79,21 @@ export function resolveCategory(row: Row | null, f: Pick<VariantFacts, "category
 const attributeValues = (v: unknown): Array<{ id: string; values: string[] }> =>
   Array.isArray(v) ? v.filter((a) => a && typeof a.id === "string").map((a) => ({ id: String(a.id), values: Array.isArray(a.values) ? a.values.map(String) : [] })) : []
 
-/** The row a variant's facts make, keeping what a person set (override, category, closed, listed). */
+/**
+ * The row a variant's facts make, keeping what a person set (price override,
+ * category, closed, listed, detached). The edits of "Edit offer" (name,
+ * description, photos, package) are applied over Medusa's facts first: the
+ * checks see what the marketplace will get, and the row's title is the name
+ * that is sent.
+ */
 export function offerPatch(
-  f: VariantFacts,
+  medusa: VariantFacts,
   existing: Row | null,
   pricing: { includesTax: boolean; vatRate: number; markupPercent: number },
   demo: boolean,
   category: { id: string | null; source: "manual" | "map" | "hint" | null; info: CategoryInfo | null },
 ): Record<string, unknown> {
+  const f = applyOverrides(medusa, overridesOf(existing?.overrides))
   const e = eligibility(f, {
     categoryId: category.id && (category.info?.leaf ?? true) ? category.id : null,
     gpsrFree: category.info?.gpsrFree ?? false,
@@ -188,6 +198,40 @@ function commandFields(c: CommandState | null, kind: string, now: Date): Record<
 }
 
 /**
+ * The proposal of one row: Medusa's facts with the row's edits over them
+ * (name from the row, description, photos, package from the overrides) and
+ * its own days to ship over the offer defaults.
+ */
+export function rowProposal(r: Row, medusa: VariantFacts, gpsrFree: boolean, defaults: OfferDefaults, vatRate: number): OfferProposal {
+  const edits = overridesOf(r.overrides)
+  return buildProposal({
+    row: r as never,
+    facts: applyOverrides(medusa, edits),
+    categoryId: String(r.category_id),
+    gpsrFree,
+    defaults: { ...defaults, daysToShip: daysToShipOf(edits, defaults.daysToShip) },
+    vatRate,
+  })
+}
+
+/** The proposals of rows that have a category, from a fresh read of Medusa. */
+async function proposalsOf(scope: Scope, rows: readonly Row[]): Promise<Map<string, OfferProposal>> {
+  const out = new Map<string, OfferProposal>()
+  const usable = rows.filter((r) => r.category_id)
+  if (usable.length === 0) return out
+  const o = optionsOf(scope)
+  const read = await loadFacts(scope, o, { variantIds: usable.map((r) => String(r.variant_id)) })
+  const facts = new Map(read.facts.map((f) => [f.variantId, f]))
+  const info = await categoryInfo(scope, [...new Set(usable.map((r) => String(r.category_id)))])
+  const settings = await readSettings(scope)
+  for (const r of usable) {
+    const f = facts.get(String(r.variant_id))
+    if (f) out.set(r.id, rowProposal(r, f, info.get(String(r.category_id))?.gpsrFree ?? false, settings.offerDefaults, o.vatRate))
+  }
+  return out
+}
+
+/**
  * "List selected": the chosen offers, read fresh from the catalog first (a
  * fix made a minute ago counts). Offers without a category ask the catalog
  * first; the attribute definitions of their categories are read, so a
@@ -221,22 +265,15 @@ export async function listOffers(scope: Scope, ids: string[]): Promise<ListResul
   const create: Row[] = []
   const update: Row[] = []
   for (const r of fresh) {
-    if (r.status === "blocked") skipped.push({ id: r.id, reason: (r.reasons ?? [])[0] ?? "blocked" })
+    /* A detached row keeps its status through refreshes: its reasons still block a new listing. */
+    if (r.status === "blocked" || (r.status === "detached" && (r.reasons ?? []).length)) skipped.push({ id: r.id, reason: (r.reasons ?? [])[0] ?? "blocked" })
     else if (r.status === "listed" && r.remote_status !== "CLOSED") skipped.push({ id: r.id, reason: "already_listed" })
     else if (r.command_status === "PENDING") skipped.push({ id: r.id, reason: "command_pending" })
     else if (!facts.get(String(r.variant_id)) || !r.category_id) skipped.push({ id: r.id, reason: "no_category" })
     else if (r.remote_id) update.push(r)
     else create.push(r)
   }
-  const proposalOf = (r: Row) =>
-    buildProposal({
-      row: r as never,
-      facts: facts.get(String(r.variant_id))!,
-      categoryId: String(r.category_id),
-      gpsrFree: info.get(String(r.category_id))?.gpsrFree ?? false,
-      defaults: settings.offerDefaults,
-      vatRate: o.vatRate,
-    })
+  const proposalOf = (r: Row) => rowProposal(r, facts.get(String(r.variant_id))!, info.get(String(r.category_id))?.gpsrFree ?? false, settings.offerDefaults, o.vatRate)
   const now = new Date()
   let listed = 0
   const failures: string[] = []
@@ -415,21 +452,373 @@ export async function setCategory(scope: Scope, ids: string[], categoryId: strin
   return { updated: rows.length }
 }
 
-/** The attribute values of one offer: [{ id, values }]. Unknown ids of the category are dropped. */
+/** Attribute values a person typed, cut to the API's limits; `keepEmpty` keeps ids without values (a bulk edit removes them). */
+function cleanAttributes(input: unknown, known: Set<string> | null, keepEmpty = false): Array<{ id: string; values: string[] }> {
+  return attributeValues(input)
+    .map((a) => ({ id: a.id, values: a.values.map((v) => v.trim().slice(0, 1024)).filter(Boolean).slice(0, 50) }))
+    .filter((a) => (keepEmpty || a.values.length) && (!known || known.has(a.id)))
+    .slice(0, 120)
+}
+
+/**
+ * The attribute values of one offer: [{ id, values }]. Unknown ids of the
+ * category are dropped. An offer on the marketplace gets them at once, the
+ * way every edit goes (see `sendEdit`); a draft gets them with its listing.
+ */
 export async function setAttributes(scope: Scope, id: string, input: unknown): Promise<OfferDto> {
   const svc = vonHalskySvc(scope)
   const [row] = await rowsById(scope, [id])
   if (!row) throw new VonHalskyFlowError(404, "not_found", "Offer not found.")
+  if (editStart(row) === "busy") throw new VonHalskyFlowError(409, "command_pending", "The marketplace has not finished the last change of this offer: try again in a few minutes.")
   const defs = row.category_id ? await attributesOf(scope, String(row.category_id)) : null
   const known = defs ? new Set(defs.map((d) => d.id)) : null
-  const values = attributeValues(input)
-    .map((a) => ({ id: a.id, values: a.values.map((v) => v.trim().slice(0, 1024)).filter(Boolean).slice(0, 50) }))
-    .filter((a) => a.values.length && (!known || known.has(a.id)))
-    .slice(0, 120)
-  await svc.updateVonHalskyOffers({ id, attributes: values })
+  await svc.updateVonHalskyOffers({ id, attributes: cleanAttributes(input, known) })
   await refreshOffers(scope, { variantIds: [String(row.variant_id)] })
   const [after] = await rowsById(scope, [id])
-  return toOfferDto(after ?? row)
+  if (after) await sendEditSafely(scope, after)
+  const [done] = await rowsById(scope, [id])
+  return toOfferDto(done ?? after ?? row)
+}
+
+/**
+ * The same category parameters on many offers of ONE category (bulk): the
+ * values given replace those parameters on every offer, a parameter given
+ * with no values is removed, the others stay. Offers on the marketplace get
+ * the change at once.
+ */
+export async function setAttributesMany(scope: Scope, ids: string[], input: unknown): Promise<BulkEditResponse> {
+  const svc = vonHalskySvc(scope)
+  const rows = await rowsById(scope, ids)
+  if (rows.length === 0) throw new VonHalskyFlowError(404, "not_found", "None of the chosen offers exists.")
+  const categories = new Set(rows.map((r) => r.category_id ?? null))
+  if (categories.has(null)) throw new VonHalskyFlowError(400, "no_category", "Every chosen offer needs a marketplace category first.")
+  if (categories.size > 1) throw new VonHalskyFlowError(400, "mixed_categories", "The chosen offers are in different categories: choose offers of one category.")
+  const categoryId = String(rows[0].category_id)
+  const defs = await attributesOf(scope, categoryId)
+  const given = cleanAttributes(input, defs ? new Set(defs.map((d) => d.id)) : null, true)
+  if (given.length === 0) throw new VonHalskyFlowError(400, "nothing_to_change", "Give at least one parameter of the category.")
+  const skipped: Array<{ id: string; reason: string }> = []
+  const ready = rows.filter((r) => (editStart(r) === "busy" ? (skipped.push({ id: r.id, reason: "command_pending" }), false) : true))
+  if (ready.length > 0) {
+    await svc.updateVonHalskyOffers(
+      ready.map((r) => {
+        const map = new Map(attributeValues(r.attributes).map((a) => [a.id, a.values]))
+        for (const a of given) {
+          if (a.values.length) map.set(a.id, a.values)
+          else map.delete(a.id)
+        }
+        return { id: r.id, attributes: [...map].map(([id, values]) => ({ id, values })).slice(0, 120) }
+      }),
+    )
+    await refreshOffers(scope, { variantIds: ready.map((r) => String(r.variant_id)) })
+  }
+  const sent = await sendEdits(scope, ready.map((r) => r.id), skipped)
+  await logSync(scope, { area: "offers", action: "attributes", outcome: skipped.length ? "warning" : "ok", message: `Category parameters set on ${ready.length} offers, ${sent} sent to the marketplace${skipped.length ? `, ${skipped.length} skipped` : ""}.`, count: ready.length, demo: optionsOf(scope).demo })
+  return { updated: ready.length, sent, skipped }
+}
+
+/* ------------------------------------------------------------------ */
+/* Edits of offers on the marketplace                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sends the current edit of one row to the marketplace (see `editStart`):
+ *   an offer that is not on the marketplace: nothing ("local");
+ *   a live offer: closed first ("close"), the sync sends the patch when the
+ *   close is done and reopens the offer after it (`continueEdit`);
+ *   any other offer on the marketplace: the merge patch now ("patch").
+ * Throws when the marketplace refuses the request itself.
+ */
+export async function sendEdit(scope: Scope, row: Row): Promise<"local" | "patch" | "close"> {
+  const start = editStart(row)
+  if (start === "local") return "local"
+  if (start === "busy") throw new VonHalskyFlowError(409, "command_pending", "The marketplace has not finished the last change of this offer: try again in a few minutes.")
+  const svc = vonHalskySvc(scope)
+  const now = new Date()
+  if (start === "close") {
+    const c = await requireClient(scope).closeOffer(String(row.remote_id))
+    if (!c) throw new VonHalskyFlowError(404, "remote_gone", "The marketplace does not know this offer any more.")
+    await svc.updateVonHalskyOffers({ id: row.id, ...commandFields(c, "edit_close", now), error: null })
+    return "close"
+  }
+  await patchStep(scope, row, start)
+  return "patch"
+}
+
+/** `sendEdit` that never throws: a refusal stays on the row (and in the log) for the person to see. */
+async function sendEditSafely(scope: Scope, row: Row): Promise<"local" | "patch" | "close" | "failed"> {
+  try {
+    return await sendEdit(scope, row)
+  } catch (err) {
+    const message = errorText(err, scope)
+    await vonHalskySvc(scope).updateVonHalskyOffers({ id: row.id, error: message.slice(0, 500) })
+    await logSync(scope, { area: "offers", action: "edit", outcome: "error", message: `Offer ${row.sku ?? row.id}: ${message}`, demo: optionsOf(scope).demo })
+    return "failed"
+  }
+}
+
+/** Sends the edits of these rows (read fresh); counts what went out, notes what failed. */
+async function sendEdits(scope: Scope, ids: string[], skipped: Array<{ id: string; reason: string }>): Promise<number> {
+  let sent = 0
+  for (const r of await rowsById(scope, ids)) {
+    const how = await sendEditSafely(scope, r)
+    if (how === "patch" || how === "close") sent += 1
+    else if (how === "failed") skipped.push({ id: r.id, reason: "send_failed" })
+  }
+  return sent
+}
+
+/**
+ * The merge patch of an edit (`editPatchOf` of the row's proposal), followed
+ * as a command of the given kind. A marketplace that answers with the offer
+ * instead of a command has applied it: the row takes the offer, and a patch
+ * of an offer we closed goes on at once (reopen or wait for stock).
+ */
+async function patchStep(scope: Scope, row: Row, kind: "patch" | "edit_patch"): Promise<void> {
+  const svc = vonHalskySvc(scope)
+  const proposal = (await proposalsOf(scope, [row])).get(row.id)
+  if (!proposal) throw new VonHalskyFlowError(409, "no_category", "The offer has no marketplace category or its variant is gone: nothing to send.")
+  const answer = await requireClient(scope).updateOffer(String(row.remote_id), editPatchOf(proposal))
+  const now = new Date()
+  if (answer.command) {
+    await svc.updateVonHalskyOffers({ id: row.id, ...commandFields(answer.command, kind, now), error: null })
+    return
+  }
+  if (!answer.offer) throw new VonHalskyFlowError(404, "remote_gone", "The marketplace does not know this offer any more.")
+  const next = { ...row, command_kind: kind, command_status: "SUCCESS" }
+  await svc.updateVonHalskyOffers({ id: row.id, ...remotePatch(next, answer.offer, now), command_kind: kind, command_status: "SUCCESS", command_at: now, error: null })
+  if (kind === "edit_patch") await continueEdit(scope, { ...next, remote_status: answer.offer.status }, { status: "SUCCESS" })
+}
+
+/**
+ * The next step of an edit after a command of it finished (the sync calls
+ * this once the row has taken the command's result):
+ *   the close is done: the patch is sent; if that request fails, the offer
+ *   is reopened at once (it must not stay closed for a refused change);
+ *   the patch is done or refused: the offer is reopened, or at zero stock it
+ *   waits closed as a `close` of the price and stock sync.
+ */
+export async function continueEdit(scope: Scope, row: Row, c: Pick<CommandState, "status">): Promise<void> {
+  const next = afterEditStep(row, c)
+  if (next === "none") return
+  const svc = vonHalskySvc(scope)
+  const now = new Date()
+  if (next === "park") {
+    await svc.updateVonHalskyOffers({ id: row.id, command_kind: "close", command_status: "SUCCESS", command_at: now, pushed_stock: 0 })
+    return
+  }
+  if (next === "send_patch") {
+    try {
+      await patchStep(scope, row, "edit_patch")
+      return
+    } catch (err) {
+      const message = errorText(err, scope)
+      await svc.updateVonHalskyOffers({ id: row.id, error: message.slice(0, 500) })
+      await logSync(scope, { area: "offers", action: "edit", outcome: "error", message: `Offer ${row.sku ?? row.id}: the change was refused (${message}); the offer is reopened as it was.`, demo: optionsOf(scope).demo })
+    }
+  }
+  const c2 = await requireClient(scope).reopenOffer(String(row.remote_id)).catch(() => null)
+  if (c2) await svc.updateVonHalskyOffers({ id: row.id, ...commandFields(c2, "reopen", now), pushed_stock: null })
+}
+
+/** The editable fields of one offer as the admin shows them (Medusa's values read for the placeholders). */
+async function editDto(scope: Scope, row: Row): Promise<OfferDto> {
+  const o = optionsOf(scope)
+  const [medusa, thumbs, settings, info] = await Promise.all([
+    editableFactsOf(scope, o, [String(row.variant_id)]),
+    thumbnailsOf(scope, [String(row.variant_id)]),
+    readSettings(scope),
+    row.category_id ? categoryInfo(scope, [String(row.category_id)]).catch(() => new Map<string, CategoryInfo>()) : Promise.resolve(new Map<string, CategoryInfo>()),
+  ])
+  return toOfferDto(row, {
+    thumbnail: thumbs.get(String(row.variant_id)) ?? null,
+    categoryPath: row.category_id ? info.get(String(row.category_id))?.path ?? null : null,
+    medusa: medusa.get(String(row.variant_id)) ?? null,
+    daysToShip: settings.offerDefaults.daysToShip,
+  })
+}
+
+/**
+ * "Edit offer": the name, the description, the photos, the package, the
+ * days to ship of one offer, over Medusa's values (null goes back to
+ * Medusa). Checked against the marketplace's rules first, kept on the row,
+ * the row checked again, and an offer on the marketplace gets the change.
+ */
+export async function editOffer(scope: Scope, id: string, input: unknown): Promise<EditResponse> {
+  const patch = parseOverridesPatch(input)
+  if (isRefusal(patch)) throw new VonHalskyFlowError(400, patch.code, patch.message)
+  const svc = vonHalskySvc(scope)
+  const [row] = await rowsById(scope, [id])
+  if (!row) throw new VonHalskyFlowError(404, "not_found", "Offer not found.")
+  if (editStart(row) === "busy") throw new VonHalskyFlowError(409, "command_pending", "The marketplace has not finished the last change of this offer: try again in a few minutes.")
+  await svc.updateVonHalskyOffers({ id, overrides: mergeOverrides(row.overrides, patch) })
+  await refreshOffers(scope, { variantIds: [String(row.variant_id)] })
+  const [after] = await rowsById(scope, [id])
+  let sent: "local" | "patch" | "close" = "local"
+  try {
+    sent = await sendEdit(scope, after ?? row)
+  } catch (err) {
+    const message = errorText(err, scope)
+    await svc.updateVonHalskyOffers({ id, error: message.slice(0, 500) })
+    await logSync(scope, { area: "offers", action: "edit", outcome: "error", message: `Offer ${row.sku ?? id}: saved here, the marketplace refused it (${message}).`, demo: optionsOf(scope).demo })
+    throw err instanceof VonHalskyFlowError ? err : new VonHalskyFlowError(502, "edit_failed", `Saved here, but the marketplace refused the change: ${message}`)
+  }
+  const fields = [...Object.keys(patch.set), ...patch.clear.map((f) => `${f} (back to Medusa)`)].join(", ")
+  await logSync(scope, { area: "offers", action: "edit", message: `Offer ${row.sku ?? id} edited: ${fields}${sent === "close" ? "; closed on the marketplace, the sync patches and reopens it" : sent === "patch" ? "; sent to the marketplace" : ""}.`, demo: optionsOf(scope).demo, refs: { offer_id: id } })
+  const [done] = await rowsById(scope, [id])
+  return { offer: await editDto(scope, done ?? after ?? row), sent }
+}
+
+/**
+ * The same edit on many offers (the bulk "Days to ship"): each offer the way
+ * `editOffer` goes; one whose last change is still pending is skipped.
+ */
+export async function editOffers(scope: Scope, ids: string[], input: unknown): Promise<BulkEditResponse> {
+  const patch = parseOverridesPatch(input)
+  if (isRefusal(patch)) throw new VonHalskyFlowError(400, patch.code, patch.message)
+  const svc = vonHalskySvc(scope)
+  const rows = await rowsById(scope, ids)
+  if (rows.length === 0) throw new VonHalskyFlowError(404, "not_found", "None of the chosen offers exists.")
+  const skipped: Array<{ id: string; reason: string }> = []
+  const ready = rows.filter((r) => (editStart(r) === "busy" ? (skipped.push({ id: r.id, reason: "command_pending" }), false) : true))
+  if (ready.length > 0) {
+    await svc.updateVonHalskyOffers(ready.map((r) => ({ id: r.id, overrides: mergeOverrides(r.overrides, patch) })))
+    await refreshOffers(scope, { variantIds: ready.map((r) => String(r.variant_id)) })
+  }
+  const sent = await sendEdits(scope, ready.map((r) => r.id), skipped)
+  const fields = [...Object.keys(patch.set), ...patch.clear.map((f) => `${f} (back to Medusa)`)].join(", ")
+  await logSync(scope, { area: "offers", action: "edit", outcome: skipped.length ? "warning" : "ok", message: `${ready.length} offers edited (${fields}), ${sent} sent to the marketplace${skipped.length ? `, ${skipped.length} skipped` : ""}.`, count: ready.length, demo: optionsOf(scope).demo })
+  return { updated: ready.length, sent, skipped }
+}
+
+/* ------------------------------------------------------------------ */
+/* Removing from the panel, importing from the marketplace             */
+/* ------------------------------------------------------------------ */
+
+/** What a row forgets when its marketplace offer is no longer ours to follow. */
+const FORGET_REMOTE = {
+  remote_id: null,
+  remote_status: null,
+  remote_price_minor: null,
+  remote_final_price_minor: null,
+  remote_stock: null,
+  promotion: null,
+  program: null,
+  validation: null,
+  command_id: null,
+  command_kind: null,
+  command_status: null,
+  command_at: null,
+  pushed_price_minor: null,
+  pushed_stock: null,
+  image_count: null,
+  published_at: null,
+  listed_at: null,
+  synced_at: null,
+  error: null,
+}
+
+/**
+ * "Remove from the panel only": the plugin forgets the marketplace offer of
+ * these rows WITHOUT asking InPost anything. The offer stays as it is on
+ * the marketplace (published ones keep selling); the row becomes `detached`
+ * and the sync never touches it again (no price, no stock, no status) until
+ * a person lists it again (a new offer) or imports it ("Import from InPost").
+ * Orders of a detached offer are held until it is imported again. Closing
+ * on the marketplace is the other action, "Close on InPost" (`unlistOffers`).
+ */
+export async function detachOffers(scope: Scope, ids: string[]): Promise<{ detached: number; skipped: Array<{ id: string; reason: string }> }> {
+  const svc = vonHalskySvc(scope)
+  const rows = await rowsById(scope, ids)
+  const skipped: Array<{ id: string; reason: string }> = []
+  const chosen = rows.filter((r) => (r.remote_id ? true : (skipped.push({ id: r.id, reason: "not_on_marketplace" }), false)))
+  if (chosen.length > 0) await svc.updateVonHalskyOffers(chosen.map((r) => ({ id: r.id, status: "detached", ...FORGET_REMOTE })))
+  await logSync(scope, {
+    area: "offers",
+    action: "detach",
+    outcome: chosen.length ? "ok" : "warning",
+    message: `${chosen.length} offers removed from the panel only: they stay on InPost Von Halsky as they were, the sync no longer touches them.`,
+    count: chosen.length,
+    demo: optionsOf(scope).demo,
+    refs: { offers: chosen.slice(0, 50).map((r) => ({ id: r.id, remote_id: r.remote_id })) },
+  })
+  return { detached: chosen.length, skipped }
+}
+
+/** Import reads at most this many marketplace offers in one go. */
+export const IMPORT_MAX = 5000
+
+/**
+ * "Import from InPost": the offers already on the marketplace (listed by
+ * hand, by another tool, or removed from this panel) become rows of this
+ * panel, so the price and stock sync takes them over. The catalog is read
+ * first (a row per variant), then every page of the marketplace's offers;
+ * each offer not linked yet is matched to a variant by its external id (our
+ * variant id), then the SKU, the EAN, the manufacturer part number (see
+ * `importPlan`). A linked row takes the marketplace's status, prices and
+ * stock, with them as "last sent", so the next sync sends Medusa's values
+ * where they differ. Offers matching nothing are reported, never invented
+ * as products.
+ */
+export async function importOffers(scope: Scope): Promise<ImportOffersResponse> {
+  const o = optionsOf(scope)
+  const client = requireClient(scope)
+  const svc = vonHalskySvc(scope)
+  return withLock("import", async () => {
+    demoClientOf(scope)?.addForeignOffer()
+    await refreshOffers(scope)
+    const rows: Row[] = []
+    for (let skip = 0; ; skip += 1000) {
+      const page = ((await svc.listVonHalskyOffers({}, { skip, take: 1000, order: { id: "ASC" }, select: ["id", "variant_id", "sku", "ean", "mpn", "remote_id", "status", "title"] })) ?? []) as Row[]
+      rows.push(...page)
+      if (page.length < 1000) break
+    }
+    const remote: RemoteOffer[] = []
+    let complete = true
+    for (let offset = 0; ; offset += PAGE_MAX) {
+      const page = await client.listOffers({ offset, limit: PAGE_MAX })
+      remote.push(...page.offers)
+      if (page.offers.length < PAGE_MAX || offset + PAGE_MAX >= page.total) break
+      if (remote.length >= IMPORT_MAX) {
+        complete = false
+        break
+      }
+    }
+    const plan = importPlan(remote, rows as ImportRow[])
+    const now = new Date()
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    for (const x of plan.refresh) {
+      const r = byId.get(x.rowId)
+      if (r) await svc.updateVonHalskyOffers({ id: r.id, ...remotePatch(r, x.remote, now) })
+    }
+    for (const x of plan.link) {
+      const r = byId.get(x.rowId)
+      if (!r) continue
+      const status = x.remote.status === "CLOSED" ? "closed" : "listed"
+      await svc.updateVonHalskyOffers({
+        id: r.id,
+        ...FORGET_REMOTE,
+        status,
+        ...remotePatch({ ...r, status }, x.remote, now),
+        /* "Last sent" is what the marketplace holds: the next sync sends Medusa's price and stock where they differ. */
+        pushed_price_minor: x.remote.grossPriceMinor,
+        pushed_stock: x.remote.stock,
+        listed_at: x.remote.createdAt ? new Date(x.remote.createdAt) : now,
+        demo: o.demo,
+      })
+    }
+    const result: ImportOffersResponse = { read: remote.length, linked: plan.link.length, updated: plan.refresh.length, unmatched: plan.unmatched.slice(0, 200), complete }
+    await logSync(scope, {
+      area: "offers",
+      action: "import",
+      outcome: plan.unmatched.length ? "warning" : "ok",
+      message: `Import from InPost Von Halsky: ${result.read} offers read, ${result.linked} linked to variants, ${result.updated} already linked${plan.unmatched.length ? `, ${plan.unmatched.length} match no variant (nothing was created)` : ""}${complete ? "" : " (stopped at the limit)"}.`,
+      count: result.linked,
+      demo: o.demo,
+      refs: { linked: plan.link.slice(0, 50).map((x) => ({ id: x.rowId, remote_id: x.remote.id, by: x.by })) },
+    })
+    return result
+  })
 }
 
 export type { PromotionInput }

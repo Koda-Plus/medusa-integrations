@@ -3,12 +3,15 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import {
   Adjustments,
+  ArrowDownTray,
   ArrowPath,
   ArrowUturnLeft,
+  Calendar,
   CheckCircle,
   Clock,
   CurrencyDollar,
   ExclamationCircle,
+  EyeSlash,
   FloppyDisk,
   FolderOpen,
   ListBullet,
@@ -24,12 +27,17 @@ import {
   XMark,
 } from "@medusajs/icons"
 import { Button, Checkbox, InlineTip, Input, Table, Text, Textarea, toast, usePrompt } from "@medusajs/ui"
-import type { AttributeDto, HintDto, OfferDto, OfferFilter, StatusResponse } from "../../modules/vonhalsky/lib/contract"
+import type { AttributeDto, HintDto, ImportOffersResponse, OfferDto, OfferFilter, StatusResponse } from "../../modules/vonhalsky/lib/contract"
 import {
   errorMessage,
+  useDetachOffers,
+  useEditOffer,
   useHintOffer,
+  useImportOffers,
   useListOffers,
   useReopenOffers,
+  useSetAttributesMany,
+  useSetDaysToShip,
   useSetOfferAttributes,
   useSetOfferCategory,
   useSetPrice,
@@ -38,14 +46,15 @@ import {
   useUnlistOffers,
   useVonHalskyAttributes,
   useVonHalskyOffers,
+  type OfferEditInput,
   type PromotionMode,
 } from "./vonhalsky-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, ToneBadge, useDebouncedValue, type Tone } from "./vonhalsky-blocks"
 import { CategoryResults } from "./vonhalsky-category-picker"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "./vonhalsky-kit"
-import { Field, FormDrawer, OfferStatusBadge, RemoteStatusBadge, SELECT, fmtDateTime, fmtMoney, fmtNumber } from "./vonhalsky-ui"
+import { Field, FormDrawer, OfferStatusBadge, RemoteStatusBadge, SELECT, fmtDateTime, fmtMoney, fmtNumber, syncLine } from "./vonhalsky-ui"
 
-export const OFFER_FILTERS: OfferFilter[] = ["all", "draft", "listed", "pending", "blocked", "closed"]
+export const OFFER_FILTERS: OfferFilter[] = ["all", "draft", "listed", "pending", "blocked", "closed", "detached"]
 const PAGE = 50
 const COLS = 9
 
@@ -56,8 +65,9 @@ const FILTER_ICON: Record<OfferFilter, ReactNode> = {
   pending: <Clock />,
   blocked: <ExclamationCircle />,
   closed: <MinusCircle />,
+  detached: <EyeSlash />,
 }
-const FILTER_GROUPS: OfferFilter[][] = [["all"], ["draft", "listed"], ["pending", "blocked"], ["closed"]]
+const FILTER_GROUPS: OfferFilter[][] = [["all"], ["draft", "listed"], ["pending", "blocked"], ["closed", "detached"]]
 const ATTENTION: OfferFilter[] = ["pending", "blocked"]
 
 function filterCount(s: StatusResponse, f: OfferFilter): number {
@@ -65,13 +75,24 @@ function filterCount(s: StatusResponse, f: OfferFilter): number {
 }
 
 /** Which side panel is open: one per kind, for the offers it names. */
-type Panel = { kind: "category"; ids: string[] } | { kind: "attributes"; offer: OfferDto } | { kind: "hint"; offer: OfferDto } | { kind: "promotion"; ids: string[] } | null
+type Panel =
+  | { kind: "category"; ids: string[] }
+  | { kind: "attributes"; offers: OfferDto[]; ids: string[] }
+  | { kind: "hint"; offer: OfferDto }
+  | { kind: "promotion"; ids: string[] }
+  | { kind: "edit"; offer: OfferDto }
+  | { kind: "days"; ids: string[] }
+  | { kind: "imported"; result: ImportOffersResponse }
+  | null
 
 /**
  * The offers with their photo, our status and the marketplace's, reasons and
  * validation, the category, matching keys, GPSR, channel and marketplace
- * price, stock; bulk list, take off, back to draft, category, promotion and
- * the price program; per offer the catalog hint and the category parameters.
+ * price, stock; bulk list, close on InPost, remove from the panel only, back
+ * to draft, category, category parameters, days to ship, promotion and the
+ * price program; per offer the edit (name, description, photos, package,
+ * days to ship), the catalog hint and the category parameters; the import
+ * of offers already on the marketplace and how often price and stock go out.
  */
 export function OffersSection({ status: s, lang, filter, onFilter, initialQuery }: { status: StatusResponse; lang: string; filter: OfferFilter; onFilter: (f: OfferFilter) => void; initialQuery: string }) {
   const { t } = useTranslation("vonhalsky")
@@ -93,6 +114,8 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
   const unlist = useUnlistOffers()
   const reopen = useReopenOffers()
   const program = useSetProgram()
+  const detach = useDetachOffers()
+  const importer = useImportOffers()
   const ids = [...selected]
   const allOnPage = rows.length > 0 && rows.every((r) => selected.has(r.id))
   const toggle = (id: string) => {
@@ -118,7 +141,7 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
     }
   }
   const onUnlist = async () => {
-    const ok = await prompt({ title: t("confirm.unlistTitle"), description: t("confirm.unlistText", { count: ids.length }), confirmText: t("actions.unlistSelected"), cancelText: t("actions.cancel") })
+    const ok = await prompt({ title: t("confirm.unlistTitle"), description: t("confirm.unlistText", { count: ids.length }), confirmText: t("actions.unlistSelected"), cancelText: t("actions.cancel"), variant: "danger" })
     if (!ok) return
     try {
       const r = await unlist.mutateAsync(ids)
@@ -127,6 +150,37 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
     } catch (e) {
       toast.error(errorMessage(e))
     }
+  }
+  /* Two different removals, worded apart: this one never asks InPost anything. */
+  const onDetach = async () => {
+    const ok = await prompt({ title: t("confirm.detachTitle"), description: t("confirm.detachText", { count: ids.length }), confirmText: t("actions.detachSelected"), cancelText: t("actions.cancel"), variant: "danger" })
+    if (!ok) return
+    try {
+      const r = await detach.mutateAsync(ids)
+      if (r.detached > 0) toast.success(t("toast.detached", { count: r.detached }))
+      if (r.skipped.length > 0) toast.info(t("toast.detachSkipped", { count: r.skipped.length }))
+      setSelected(new Set())
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+  const onImport = async () => {
+    try {
+      const r = await importer.mutateAsync()
+      setPanel({ kind: "imported", result: r })
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+  /* The same parameters on many offers: only offers of one category (the parameters are the category's). */
+  const onBulkAttributes = () => {
+    const chosen = rows.filter((r) => selected.has(r.id))
+    const cats = new Set(chosen.map((r) => r.category_id))
+    if (chosen.length !== ids.length || cats.size !== 1 || cats.has(null)) {
+      toast.warning(t("toast.oneCategory"))
+      return
+    }
+    setPanel({ kind: "attributes", offers: chosen, ids })
   }
   const onReopen = async () => {
     try {
@@ -166,8 +220,19 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
         { icon: <FolderOpen />, text: t("offers.points.category") },
         { icon: <CurrencyDollar />, text: t("offers.points.price") },
         s.counts.commands_pending > 0 && { icon: <Clock />, text: t("offers.points.commands", { count: s.counts.commands_pending }), tone: "orange" },
+        real && { icon: <ArrowPath />, text: syncLine(s, lang, (k, o) => t(k, o)), tone: s.sync.priceStock ? "green" : "grey" },
       ]}
-      actions={<SearchInput value={input} onChange={setInput} placeholder={t("offers.search")} className="sm:w-72" />}
+      actions={
+        <>
+          {real ? (
+            <Button size="small" variant="secondary" isLoading={importer.isPending} onClick={() => void onImport()}>
+              <ArrowDownTray />
+              {t("actions.importOffers")}
+            </Button>
+          ) : null}
+          <SearchInput value={input} onChange={setInput} placeholder={t("offers.search")} className="sm:w-72" />
+        </>
+      }
     >
       <FilterBar>
         {FILTER_GROUPS.map((group, i) => (
@@ -192,6 +257,10 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
             <XCircle />
             {t("actions.unlistSelected")}
           </Button>
+          <Button size="small" variant="secondary" isLoading={detach.isPending} onClick={() => void onDetach()}>
+            <EyeSlash />
+            {t("actions.detachSelected")}
+          </Button>
           <Button size="small" variant="secondary" isLoading={reopen.isPending} onClick={() => void onReopen()}>
             <ArrowUturnLeft />
             {t("actions.reopenSelected")}
@@ -199,6 +268,14 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
           <Button size="small" variant="secondary" onClick={() => setPanel({ kind: "category", ids })}>
             <FolderOpen />
             {t("actions.setCategory")}
+          </Button>
+          <Button size="small" variant="secondary" onClick={onBulkAttributes}>
+            <Adjustments />
+            {t("actions.attributes")}
+          </Button>
+          <Button size="small" variant="secondary" onClick={() => setPanel({ kind: "days", ids })}>
+            <Calendar />
+            {t("actions.daysToShip")}
           </Button>
           <Button size="small" variant="secondary" disabled={!real} onClick={() => setPanel({ kind: "promotion", ids })}>
             <ReceiptPercent />
@@ -292,9 +369,10 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
                 <Table.Cell className="text-right">
                   <RowActions
                     actions={[
+                      { key: "edit", label: o.command?.status === "PENDING" ? t("edit.busy") : t("actions.editOffer"), icon: <Pencil />, disabled: o.command?.status === "PENDING", onClick: () => setPanel({ kind: "edit", offer: o }) },
                       { key: "hint", label: t("actions.hint"), icon: <MagnifyingGlass />, disabled: !real, onClick: () => setPanel({ kind: "hint", offer: o }) },
                       { key: "category", label: t("actions.setCategory"), icon: <FolderOpen />, onClick: () => setPanel({ kind: "category", ids: [o.id] }) },
-                      { key: "attributes", label: o.category_id ? t("actions.attributes") : t("offers.attributesNeedCategory"), icon: <Adjustments />, disabled: !o.category_id, onClick: () => setPanel({ kind: "attributes", offer: o }) },
+                      { key: "attributes", label: o.category_id ? t("actions.attributes") : t("offers.attributesNeedCategory"), icon: <Adjustments />, disabled: !o.category_id, onClick: () => setPanel({ kind: "attributes", offers: [o], ids: [o.id] }) },
                     ]}
                   />
                 </Table.Cell>
@@ -317,7 +395,10 @@ export function OffersSection({ status: s, lang, filter, onFilter, initialQuery 
         />
       ) : null}
       {panel?.kind === "category" ? <CategoryDrawer ids={panel.ids} onDone={() => setPanel(null)} onSaved={() => setSelected(new Set())} /> : null}
-      {panel?.kind === "attributes" ? <AttributesDrawer offer={panel.offer} onDone={() => setPanel(null)} /> : null}
+      {panel?.kind === "attributes" ? <AttributesDrawer offers={panel.offers} ids={panel.ids} onDone={() => setPanel(null)} onSaved={() => setSelected(new Set())} /> : null}
+      {panel?.kind === "edit" ? <EditDrawer offer={panel.offer} onDone={() => setPanel(null)} /> : null}
+      {panel?.kind === "days" ? <DaysDrawer ids={panel.ids} status={s} onDone={() => setPanel(null)} onSaved={() => setSelected(new Set())} /> : null}
+      {panel?.kind === "imported" ? <ImportedDrawer result={panel.result} onDone={() => setPanel(null)} /> : null}
       {panel?.kind === "hint" ? <HintDrawer offer={panel.offer} onDone={() => setPanel(null)} /> : null}
       {panel?.kind === "promotion" ? <PromotionDrawer ids={panel.ids} lang={lang} onDone={() => setPanel(null)} /> : null}
     </Section>
@@ -338,6 +419,13 @@ function ProductCell({ offer: o }: { offer: OfferDto }) {
         <span className="txt-compact-xsmall font-mono text-ui-fg-muted">{o.sku ?? o.variant_id}</span>
         {o.remote_id ? <span className="txt-compact-xsmall text-ui-fg-muted">{t("offers.remote", { id: o.remote_id })}</span> : null}
         {o.image_count !== null ? <span className="txt-compact-xsmall text-ui-fg-muted">{t("offers.images", { count: o.image_count })}</span> : null}
+        {o.overridden.length > 0 ? (
+          <span title={o.overridden.map((f) => t(`edit.field.${f}`)).join(", ")}>
+            <ToneBadge tone="blue" icon={<Pencil />}>
+              {t("offers.edited", { count: o.overridden.length })}
+            </ToneBadge>
+          </span>
+        ) : null}
         {o.demo ? <ToneBadge tone="purple">{t("demo.badge")}</ToneBadge> : null}
       </div>
     </div>
@@ -650,22 +738,37 @@ function AttributeField({ a, values, onChange }: { a: AttributeDto; values: stri
   )
 }
 
-/** The parameters of the offer's category; required ones first. The values are sent with the next listing. */
-function AttributesDrawer({ offer, onDone }: { offer: OfferDto; onDone: () => void }) {
+/**
+ * The parameters of a category; required ones first. One offer: its saved
+ * values, replaced on save. Many offers of one category (bulk): empty, and
+ * only the parameters filled in are set on every offer. An offer on the
+ * marketplace gets them at once, a draft with its listing.
+ */
+function AttributesDrawer({ offers, ids, onDone, onSaved }: { offers: OfferDto[]; ids: string[]; onDone: () => void; onSaved: () => void }) {
   const { t } = useTranslation("vonhalsky")
+  const first = offers[0]
+  const bulk = ids.length > 1
   const [fresh, setFresh] = useState(false)
-  const defs = useVonHalskyAttributes(offer.category_id, fresh)
-  const save = useSetOfferAttributes()
-  const [values, setValues] = useState<Record<string, string[]>>(() => Object.fromEntries(offer.attributes.map((a) => [a.id, a.values])))
+  const defs = useVonHalskyAttributes(first?.category_id ?? null, fresh)
+  const saveOne = useSetOfferAttributes()
+  const saveMany = useSetAttributesMany()
+  const [values, setValues] = useState<Record<string, string[]>>(() => (bulk || !first ? {} : Object.fromEntries(first.attributes.map((a) => [a.id, a.values]))))
   const attributes = [...(defs.data?.attributes ?? [])].sort((a, b) => Number(b.required) - Number(a.required))
   const missing = attributes.filter((a) => a.required && !(values[a.id] ?? []).some((v) => v.trim()))
+  const list = Object.entries(values)
+    .map(([id, vs]) => ({ id, values: vs.map((v) => v.trim()).filter(Boolean) }))
+    .filter((a) => a.values.length > 0)
   const onSave = async () => {
-    const list = Object.entries(values)
-      .map(([id, vs]) => ({ id, values: vs.map((v) => v.trim()).filter(Boolean) }))
-      .filter((a) => a.values.length > 0)
     try {
-      await save.mutateAsync({ id: offer.id, attributes: list })
-      toast.success(t("toast.attributesSaved"))
+      if (bulk) {
+        const r = await saveMany.mutateAsync({ ids, attributes: list })
+        toast.success(t("toast.attributesSavedMany", { count: r.updated, sent: r.sent }))
+        if (r.skipped.length > 0) toast.info(t("toast.editSkipped", { count: r.skipped.length }))
+        onSaved()
+      } else {
+        await saveOne.mutateAsync({ id: first.id, attributes: list })
+        toast.success(t("toast.attributesSaved"))
+      }
       onDone()
     } catch (e) {
       toast.error(errorMessage(e))
@@ -675,12 +778,12 @@ function AttributesDrawer({ offer, onDone }: { offer: OfferDto; onDone: () => vo
     <FormDrawer
       open
       onOpenChange={(open) => (open ? undefined : onDone())}
-      title={t("attributes.title")}
-      description={offer.category_path ?? offer.category_id ?? undefined}
+      title={bulk ? t("attributes.titleMany", { count: ids.length }) : t("attributes.title")}
+      description={first?.category_path ?? first?.category_id ?? undefined}
       confirmLabel={t("actions.save")}
       onConfirm={() => void onSave()}
-      loading={save.isPending}
-      disabled={defs.isLoading || attributes.length === 0}
+      loading={saveOne.isPending || saveMany.isPending}
+      disabled={defs.isLoading || attributes.length === 0 || (bulk && list.length === 0)}
       extra={
         <Button size="small" variant="transparent" isLoading={defs.isFetching && fresh} onClick={() => setFresh(true)}>
           <ArrowPath />
@@ -689,7 +792,7 @@ function AttributesDrawer({ offer, onDone }: { offer: OfferDto; onDone: () => vo
       }
     >
       <InlineTip variant="info" label={t("attributes.noteLabel")}>
-        {t("attributes.note")}
+        {bulk ? t("attributes.noteMany") : t("attributes.note")}
       </InlineTip>
       {defs.isLoading ? <KitLoading label={t("attributes.loading")} /> : null}
       {defs.isError ? (
@@ -705,11 +808,278 @@ function AttributesDrawer({ offer, onDone }: { offer: OfferDto; onDone: () => vo
       {attributes.map((a) => (
         <AttributeField key={a.id} a={a} values={values[a.id] ?? []} onChange={(vs) => setValues({ ...values, [a.id]: vs })} />
       ))}
-      {missing.length > 0 && attributes.length > 0 ? (
+      {!bulk && missing.length > 0 && attributes.length > 0 ? (
         <Text size="xsmall" className="text-ui-tag-orange-text">
           {t("attributes.missing", { count: missing.length })}
         </Text>
       ) : null}
+    </FormDrawer>
+  )
+}
+
+/* The rules of the marketplace as the server checks them (lib/overrides.ts): here only to say so before saving. */
+const TITLE_MIN = 7
+const TITLE_MAX = 150
+const DESCRIPTION_MIN = 100
+const REFUSED_IMAGE = /\.(avif|heic|heif|svg|tiff?|bmp|ico|jxl)(?:[?#].*)?$/i
+const textOf = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/gi, " ").trim()
+const titleOk = (v: string) => [...v].length >= TITLE_MIN && [...v].length <= TITLE_MAX && v.split(/\s+/).filter(Boolean).length >= 2
+const imageOk = (v: string) => /^https:\/\/\S+$/i.test(v) && !REFUSED_IMAGE.test(v)
+const SIDES = ["length", "width", "height", "weight"] as const
+type Side = (typeof SIDES)[number]
+type Dimension = OfferDto["overrides"]["dimension"]
+
+/** One field of "Edit offer": the field, Medusa's value under it, and "Back to Medusa" while the field holds an edit. */
+function EditField({ label, hint, error, medusa, edited, onReset, children }: { label: string; hint?: string; error?: string | null; medusa: string | null; edited: boolean; onReset: () => void; children: ReactNode }) {
+  const { t } = useTranslation("vonhalsky")
+  return (
+    <div className="flex flex-col gap-y-1">
+      <span className="flex items-center justify-between gap-x-2">
+        <Text size="small" weight="plus">
+          {label}
+        </Text>
+        {edited ? (
+          <Button size="small" variant="transparent" onClick={onReset}>
+            <ArrowUturnLeft />
+            {t("edit.reset")}
+          </Button>
+        ) : null}
+      </span>
+      {children}
+      {error ? (
+        <Text size="xsmall" className="text-ui-tag-red-text">
+          {error}
+        </Text>
+      ) : hint ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {hint}
+        </Text>
+      ) : null}
+      <Text size="xsmall" className="line-clamp-2 text-ui-fg-muted">
+        {t("edit.fromMedusa", { value: medusa ?? t("offers.noValue") })}
+      </Text>
+    </div>
+  )
+}
+
+/**
+ * "Edit offer": the name, the description, the photos, the package and the
+ * days to ship of one offer, each over Medusa's value (the placeholder, and
+ * the line under the field). An empty field follows Medusa; "Back to
+ * Medusa" empties it. Only what changed is sent; the server checks the
+ * marketplace's rules again.
+ */
+function EditDrawer({ offer, onDone }: { offer: OfferDto; onDone: () => void }) {
+  const { t } = useTranslation("vonhalsky")
+  const save = useEditOffer()
+  const m = offer.medusa
+  const set = offer.overrides
+  const [title, setTitle] = useState(set.title ?? "")
+  const [description, setDescription] = useState(set.description ?? "")
+  const [images, setImages] = useState((set.images ?? []).join("\n"))
+  const [dim, setDim] = useState<Record<Side, string>>(() => ({
+    length: set.dimension ? String(set.dimension.length) : "",
+    width: set.dimension ? String(set.dimension.width) : "",
+    height: set.dimension ? String(set.dimension.height) : "",
+    weight: set.dimension ? String(set.dimension.weight) : "",
+  }))
+  const [days, setDays] = useState(set.daysToShip === null ? "" : String(set.daysToShip))
+
+  const lines = images
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+  const filled = SIDES.filter((k) => dim[k].trim() !== "")
+  const sides = { length: Number(dim.length), width: Number(dim.width), height: Number(dim.height), weight: Number(dim.weight) }
+  const dimNumbersOk = filled.length === 4 && SIDES.every((k) => Number.isInteger(sides[k]) && sides[k] > 0)
+  const dimFits = dimNumbersOk && sides.length <= 1200 && sides.width <= 1200 && sides.height <= 1200 && sides.length + sides.width + sides.height <= 2200
+  const daysN = Number(days)
+
+  const errors = {
+    title: title.trim() && !titleOk(title.trim()) ? t("edit.error.title") : null,
+    description: description.trim() && [...textOf(description)].length < DESCRIPTION_MIN ? t("edit.error.description") : null,
+    images: lines.length > 20 ? t("edit.error.imagesMany") : lines.some((l) => !imageOk(l)) ? t("edit.error.image") : null,
+    dimension:
+      filled.length > 0 && filled.length < 4 ? t("edit.error.dimensionAll") : filled.length === 4 && !dimNumbersOk ? t("edit.error.dimensionNumbers") : filled.length === 4 && !dimFits ? t("edit.error.dimensionLarge") : null,
+    daysToShip: days.trim() && !(Number.isInteger(daysN) && daysN >= 0 && daysN <= 60) ? t("edit.error.days") : null,
+  }
+
+  /* What goes to the server: only the fields that changed; an emptied field that held an edit goes back to Medusa. */
+  const changes: OfferEditInput = {}
+  const text = (key: "title" | "description", value: string, current: string | null) => {
+    const v = value.trim()
+    if (!v) {
+      if (current !== null) changes[key] = null
+    } else if (v !== current) changes[key] = v
+  }
+  text("title", title, set.title)
+  text("description", description, set.description)
+  if (lines.length === 0) {
+    if (set.images) changes.images = null
+  } else if (JSON.stringify(lines) !== JSON.stringify(set.images ?? [])) changes.images = lines
+  if (filled.length === 0) {
+    if (set.dimension) changes.dimension = null
+  } else if (dimNumbersOk && SIDES.some((k) => sides[k] !== set.dimension?.[k])) changes.dimension = { ...sides }
+  if (!days.trim()) {
+    if (set.daysToShip !== null) changes.daysToShip = null
+  } else if (daysN !== set.daysToShip) changes.daysToShip = daysN
+  const invalid = Object.values(errors).some(Boolean)
+  const nothing = Object.keys(changes).length === 0
+
+  const live = Boolean(offer.remote_id) && offer.status === "listed" && (offer.remote_status === "PUBLISHED" || offer.remote_status === "SOLDOUT")
+  const note = live ? t("edit.noteLive") : offer.remote_id ? t("edit.noteRemote") : t("edit.noteLocal")
+  const preview = lines.length ? lines : m?.images ?? []
+  const fmtDim = (d: Dimension) => (d ? t("edit.dimensionValue", { length: d.length, width: d.width, height: d.height, weight: d.weight }) : null)
+  const medusaDays = m && m.daysToShip !== null ? m.daysToShip : null
+
+  const onSave = async () => {
+    try {
+      const r = await save.mutateAsync({ id: offer.id, overrides: changes })
+      toast.success(r.sent === "close" ? t("toast.editClose") : r.sent === "patch" ? t("toast.editPatch") : t("toast.editSaved"))
+      onDone()
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+
+  return (
+    <FormDrawer
+      open
+      onOpenChange={(open) => (open ? undefined : onDone())}
+      title={t("edit.title")}
+      description={offer.effective?.title ?? offer.title ?? offer.sku ?? offer.variant_id}
+      confirmLabel={t("actions.save")}
+      onConfirm={() => void onSave()}
+      loading={save.isPending}
+      disabled={nothing || invalid}
+    >
+      <InlineTip variant={live ? "warning" : "info"} label={t("edit.noteLabel")}>
+        {note}
+      </InlineTip>
+      <EditField label={t("edit.field.title")} hint={t("edit.hint.title")} error={errors.title} medusa={m?.title ?? null} edited={Boolean(title.trim())} onReset={() => setTitle("")}>
+        <Input size="small" value={title} maxLength={TITLE_MAX} placeholder={m?.title ?? ""} onChange={(e) => setTitle(e.target.value)} />
+      </EditField>
+      <EditField label={t("edit.field.description")} hint={t("edit.hint.description")} error={errors.description} medusa={m?.description ? m.description.slice(0, 200) : null} edited={Boolean(description.trim())} onReset={() => setDescription("")}>
+        <Textarea rows={6} value={description} placeholder={m?.description ?? ""} onChange={(e) => setDescription(e.target.value)} />
+      </EditField>
+      <EditField label={t("edit.field.images")} hint={t("edit.hint.images")} error={errors.images} medusa={m ? t("edit.photos", { count: m.images?.length ?? 0 }) : null} edited={Boolean(images.trim())} onReset={() => setImages("")}>
+        <Textarea rows={4} className="font-mono" value={images} placeholder={(m?.images ?? []).join("\n")} onChange={(e) => setImages(e.target.value)} />
+        {preview.length > 0 ? (
+          <ol className="flex flex-wrap gap-2 pt-1" aria-label={t("edit.preview")}>
+            {preview.slice(0, 20).map((url, i) => (
+              <li key={`${url}-${i}`} className="relative h-12 w-12 overflow-hidden rounded-md border border-ui-border-base bg-ui-bg-subtle">
+                <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                <span className="txt-compact-xsmall absolute left-0.5 top-0.5 rounded bg-ui-bg-base px-1 tabular-nums text-ui-fg-subtle">{i + 1}</span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </EditField>
+      <EditField label={t("edit.field.dimension")} hint={t("edit.hint.dimension")} error={errors.dimension} medusa={fmtDim(m?.dimension ?? null)} edited={filled.length > 0} onReset={() => setDim({ length: "", width: "", height: "", weight: "" })}>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {SIDES.map((k) => (
+            <label key={k} className="flex flex-col gap-y-0.5">
+              <Text size="xsmall" className="text-ui-fg-subtle">
+                {t(`edit.side.${k}`)}
+              </Text>
+              <Input size="small" type="number" min={1} step={1} inputMode="numeric" value={dim[k]} placeholder={m?.dimension ? String(m.dimension[k]) : ""} onChange={(e) => setDim({ ...dim, [k]: e.target.value })} />
+            </label>
+          ))}
+        </div>
+      </EditField>
+      <EditField label={t("edit.field.daysToShip")} hint={t("edit.hint.daysToShip")} error={errors.daysToShip} medusa={medusaDays !== null ? t("edit.days", { count: medusaDays }) : null} edited={Boolean(days.trim())} onReset={() => setDays("")}>
+        <Input size="small" className="max-w-[8rem]" type="number" min={0} max={60} step={1} value={days} placeholder={medusaDays !== null ? String(medusaDays) : ""} onChange={(e) => setDays(e.target.value)} />
+      </EditField>
+      {offer.overridden.length > 0 ? (
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {t("edit.overridden", { list: offer.overridden.map((f) => t(`edit.field.${f}`)).join(", ") })}
+        </Text>
+      ) : null}
+    </FormDrawer>
+  )
+}
+
+/** The days to ship of many offers at once, or back to the offer defaults. */
+function DaysDrawer({ ids, status: s, onDone, onSaved }: { ids: string[]; status: StatusResponse; onDone: () => void; onSaved: () => void }) {
+  const { t } = useTranslation("vonhalsky")
+  const save = useSetDaysToShip()
+  const [value, setValue] = useState("")
+  const n = Number(value)
+  const valid = value.trim() !== "" && Number.isInteger(n) && n >= 0 && n <= 60
+  const send = async (daysToShip: number | null) => {
+    try {
+      const r = await save.mutateAsync({ ids, daysToShip })
+      toast.success(t("toast.daysSaved", { count: r.updated, sent: r.sent }))
+      if (r.skipped.length > 0) toast.info(t("toast.editSkipped", { count: r.skipped.length }))
+      onSaved()
+      onDone()
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+  return (
+    <FormDrawer
+      open
+      onOpenChange={(open) => (open ? undefined : onDone())}
+      title={t("daysDrawer.title", { count: ids.length })}
+      description={t("daysDrawer.text")}
+      confirmLabel={t("actions.save")}
+      onConfirm={() => void send(n)}
+      loading={save.isPending && save.variables?.daysToShip !== null}
+      disabled={!valid}
+      extra={
+        <Button size="small" variant="transparent" isLoading={save.isPending && save.variables?.daysToShip === null} onClick={() => void send(null)}>
+          <ArrowUturnLeft />
+          {t("actions.daysFromDefaults")}
+        </Button>
+      }
+    >
+      <Field label={t("edit.field.daysToShip")} hint={t("daysDrawer.hint", { days: s.settings.offerDefaults.daysToShip })} required>
+        <Input size="small" className="max-w-[8rem]" type="number" min={0} max={60} step={1} value={value} placeholder={String(s.settings.offerDefaults.daysToShip)} onChange={(e) => setValue(e.target.value)} />
+      </Field>
+    </FormDrawer>
+  )
+}
+
+/** What "Import from InPost" did: offers linked, offers read again, and the ones that match no variant (never created). */
+function ImportedDrawer({ result: r, onDone }: { result: ImportOffersResponse; onDone: () => void }) {
+  const { t } = useTranslation("vonhalsky")
+  return (
+    <FormDrawer open onOpenChange={(open) => (open ? undefined : onDone())} title={t("imported.title")} description={t("imported.text")}>
+      <InlineTip variant={r.unmatched.length ? "warning" : "success"} label={t("imported.summaryLabel")}>
+        {t("imported.summary", { read: r.read, linked: r.linked, updated: r.updated })}
+      </InlineTip>
+      {!r.complete ? (
+        <InlineTip variant="warning" label={t("imported.partialLabel")}>
+          {t("imported.partial")}
+        </InlineTip>
+      ) : null}
+      {r.unmatched.length === 0 ? (
+        <Text size="small" className="text-ui-fg-subtle">
+          {t("imported.allLinked")}
+        </Text>
+      ) : (
+        <>
+          <Text size="small" weight="plus">
+            {t("imported.unmatched", { count: r.unmatched.length })}
+          </Text>
+          <Text size="xsmall" className="text-ui-fg-muted">
+            {t("imported.unmatchedHint")}
+          </Text>
+          <ul className="flex flex-col gap-y-2">
+            {r.unmatched.map((u) => (
+              <li key={u.id} className="flex flex-col gap-y-0.5 rounded-md border border-ui-border-base px-3 py-2">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="txt-compact-small-plus text-ui-fg-base">{u.name ?? u.id}</span>
+                  {u.status ? <RemoteStatusBadge status={u.status} /> : null}
+                  <ToneBadge tone={u.reason === "no_match" ? "grey" : "orange"}>{t(`imported.reason.${u.reason}`)}</ToneBadge>
+                </span>
+                <span className="txt-compact-xsmall font-mono text-ui-fg-muted">{[t("offers.remote", { id: u.id }), u.sku && `SKU ${u.sku}`, u.ean && `EAN ${u.ean}`].filter(Boolean).join(", ")}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </FormDrawer>
   )
 }

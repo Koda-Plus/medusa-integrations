@@ -1,4 +1,7 @@
+import { CONNECTION_OK, connectionStateOf, connectionView, nextConnectionState, type ConnectionState } from "./connection"
 import { BLOCKING_REASONS, WARNING_CODES, type BlockingReason, type WarningCode } from "./eligibility"
+import { plainText } from "./offer-payload"
+import { OVERRIDE_FIELDS, overriddenFields, overridesOf, type OfferDimension } from "./overrides"
 import { IMPORT_LEASE_MS } from "./orders"
 import { CASE_KINDS, LOG_KEEP_DAYS, MAX_EVENTS, OFFER_STATUSES, ORDER_STATUSES, SETTING_KEYS, TRACKING_STATUSES, VONHALSKY_MODULE, type CaseKind, type ImportStatus, type OfferStatus, type TrackingStatus } from "./constants"
 import type { CaseDto, CaseLineDto, EventDto, LogDto, MarketplaceOrderDto, OfferDefaults, OfferDto, OrderLineDto, ParcelDto, PromotionDto, VonHalskySettings } from "./contract"
@@ -94,6 +97,40 @@ export async function writeSyncState(scope: Scope, patch: Partial<SyncState>): P
   await writeSetting(scope, SETTING_KEYS.sync, { ...now, ...patch, at: { ...now.at, ...(patch.at ?? {}) } })
 }
 
+/** Whether the marketplace still takes the credentials (see `connection.ts`). Never throws. */
+export async function readConnection(scope: Scope): Promise<ConnectionState> {
+  try {
+    const rows = ((await vonHalskySvc(scope).listVonHalskySettings({ key: SETTING_KEYS.connection })) ?? []) as Array<{ value: unknown }>
+    return connectionStateOf(rows[0]?.value)
+  } catch {
+    return { ...CONNECTION_OK }
+  }
+}
+
+/**
+ * Records one run or check: refused (`{ refused: message }`), reached, or
+ * null (nothing was asked of the marketplace: the state stays). The first
+ * refusal that raises the alert and the first success after it go to the
+ * sync log. Never throws: the record must not fail a sync.
+ */
+export async function recordConnection(scope: Scope, outcome: Parameters<typeof nextConnectionState>[1], demo = false): Promise<ConnectionState> {
+  try {
+    if (!outcome) return await readConnection(scope)
+    const prev = await readConnection(scope)
+    /* Connected and known to be: no write every five minutes. */
+    if ("reached" in outcome && prev.failures === 0 && prev.okAt) return prev
+    const next = nextConnectionState(prev, outcome)
+    await writeSetting(scope, SETTING_KEYS.connection, next)
+    const was = connectionView(prev).ok
+    const now = connectionView(next).ok
+    if (was && !now) await logSync(scope, { area: "sync", action: "connection", outcome: "error", message: `InPost Von Halsky refused the credentials ${next.failures} times in a row since ${next.since}: ${next.message ?? ""}`, demo })
+    if (!was && now) await logSync(scope, { area: "sync", action: "connection", message: "InPost Von Halsky takes the credentials again.", demo })
+    return next
+  } catch {
+    return { ...CONNECTION_OK }
+  }
+}
+
 export async function readSettings(scope: Scope): Promise<VonHalskySettings> {
   const svc = vonHalskySvc(scope)
   const o = svc.getOptions() as ResolvedVonHalskyOptions
@@ -146,7 +183,29 @@ function parcelsOf(v: unknown): ParcelDto[] {
     .map((p) => ({ trackingNumber: String(p.trackingNumber), createdAt: str(p.createdAt), status: str(p.status) }))
 }
 
-export function toOfferDto(row: Record<string, any>, extra: { thumbnail?: string | null; categoryPath?: string | null } = {}): OfferDto {
+/** What Medusa gives for the editable fields (the catalog's `EditableFacts`), when the caller read it. */
+export interface MedusaEditable {
+  title: string | null
+  description: string | null
+  images: string[]
+  dimension: OfferDimension | null
+}
+
+/**
+ * The edit fields of an offer: what a person set, what Medusa (and the
+ * offer defaults) give, and what the marketplace gets. Medusa's side is only
+ * known when the caller read it; the description is shown as the plain text
+ * the marketplace receives.
+ */
+export function offerEditOf(overrides: unknown, medusa: MedusaEditable | null | undefined, defaultDays: number | null | undefined): Pick<OfferDto, "overrides" | "overridden" | "medusa" | "effective"> {
+  const o = overridesOf(overrides)
+  const set: OfferDto["overrides"] = { title: o.title ?? null, description: o.description ?? null, images: o.images ?? null, dimension: o.dimension ?? null, daysToShip: o.daysToShip ?? null }
+  const base: OfferDto["medusa"] = medusa ? { title: medusa.title, description: medusa.description ? plainText(medusa.description) : null, images: medusa.images, dimension: medusa.dimension ? { ...medusa.dimension } : null, daysToShip: defaultDays ?? null } : null
+  const effective: OfferDto["effective"] = base ? Object.fromEntries(OVERRIDE_FIELDS.map((f) => [f, set[f] ?? base[f]])) as unknown as OfferDto["effective"] : null
+  return { overrides: set, overridden: overriddenFields(o), medusa: base, effective }
+}
+
+export function toOfferDto(row: Record<string, any>, extra: { thumbnail?: string | null; categoryPath?: string | null; medusa?: MedusaEditable | null; daysToShip?: number | null } = {}): OfferDto {
   const hint = jsonObj(row.hint)
   const cmdStatus = row.command_status === "PENDING" || row.command_status === "SUCCESS" || row.command_status === "FAILURE" ? row.command_status : null
   return {
@@ -198,6 +257,7 @@ export function toOfferDto(row: Record<string, any>, extra: { thumbnail?: string
           .filter((a: unknown): a is { id: unknown; values: unknown } => Boolean(a) && typeof a === "object")
           .map((a: { id: unknown; values: unknown }) => ({ id: String(a.id), values: Array.isArray(a.values) ? a.values.map(String) : [] }))
       : [],
+    ...offerEditOf(row.overrides, extra.medusa, extra.daysToShip),
   }
 }
 

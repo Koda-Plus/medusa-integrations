@@ -2,7 +2,8 @@ import { orderSummary, productSummary, vonHalskyCounters, type OrderRow, type Pr
 import { integrationEn, integrationPl } from "../../modules/vonhalsky/lib/integration-texts"
 import { KIT_META } from "../../modules/vonhalsky/lib/kit-meta"
 import { integrationRoutes, type SummaryDraft } from "../../modules/vonhalsky/lib/kit-routes"
-import { caseFilter, orderFilter, vonHalskySvc } from "../../modules/vonhalsky/lib/store"
+import { connectionView } from "../../modules/vonhalsky/lib/connection"
+import { caseFilter, orderFilter, readConnection, vonHalskySvc } from "../../modules/vonhalsky/lib/store"
 
 /**
  * koda.integration/1 for InPost Von Halsky: the manifest, one line per
@@ -11,7 +12,7 @@ import { caseFilter, orderFilter, vonHalskySvc } from "../../modules/vonhalsky/l
  *
  *   GET /admin/vonhalsky/integration
  *   GET /admin/vonhalsky/integration/summary?entity=order&id=order_...  (or entity=product)
- *   GET /admin/vonhalsky/integration/attention?scope=orders,products
+ *   GET /admin/vonhalsky/integration/attention?scope=orders,products,integration
  *
  * Reads only: nothing is written and nothing is asked of the marketplace while answering.
  */
@@ -23,7 +24,7 @@ export const vonHalskyIntegration = integrationRoutes({
   kind: "integration",
   adminPath: "/vonhalsky",
   entities: ["order", "product"],
-  attention: ["orders", "products"],
+  attention: ["orders", "products", "integration"],
   widgets: [{ id: "vonhalsky.order", zone: "order.details" }],
   texts: { en: integrationEn, pl: integrationPl },
   externalHosts: [],
@@ -103,6 +104,9 @@ export const vonHalskyIntegration = integrationRoutes({
     } catch {
       openCases = 0
     }
-    return vonHalskyCounters({ held, trackingWaiting, openCases, awaitingShipment, blockedOffers })
+    /* Only a real marketplace can refuse the credentials; demo never does. */
+    const mode = svc.getOptions().mode
+    const connectionLost = (mode === "live" || mode === "sandbox") && !connectionView(await readConnection(ctx.scope)).ok
+    return vonHalskyCounters({ held, trackingWaiting, openCases, awaitingShipment, blockedOffers, connectionLost })
   },
 })

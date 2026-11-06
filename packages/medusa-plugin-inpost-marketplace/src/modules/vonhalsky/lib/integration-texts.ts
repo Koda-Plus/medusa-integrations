@@ -26,10 +26,12 @@ export const integrationEn = {
   },
   reason: {
     no_title: "No title",
+    title_invalid: "The name needs 7 to 150 characters and two words",
     no_ean: "No EAN",
     invalid_ean: "The EAN check digit is wrong",
     no_brand: "No brand (and no EAN)",
     no_description: "No description",
+    description_short: "The description is shorter than 100 characters",
     no_image: "No image",
     no_category: "No marketplace category",
     attributes_missing: "Required category attributes are missing",
@@ -57,6 +59,7 @@ export const integrationEn = {
     open_cases: "InPost Von Halsky returns and claims waiting for a decision",
     awaiting_shipment: "InPost Von Halsky orders to ship",
     blocked_offers: "Variants that cannot be listed on InPost Von Halsky",
+    connection_lost: "InPost Von Halsky refuses the credentials: the integration is disconnected and the marketplace deactivates its offers",
   },
   problems: {
     credentials: "The InPost Von Halsky credentials are missing (organizationId, clientId, clientSecret)",
@@ -89,10 +92,12 @@ export const integrationPl = {
   },
   reason: {
     no_title: "Brak nazwy",
+    title_invalid: "Nazwa musi mieć od 7 do 150 znaków i dwa słowa",
     no_ean: "Brak EAN",
     invalid_ean: "Błędna cyfra kontrolna EAN",
     no_brand: "Brak marki (i brak EAN)",
     no_description: "Brak opisu",
+    description_short: "Opis ma mniej niż 100 znaków",
     no_image: "Brak zdjęcia",
     no_category: "Brak kategorii marketplace",
     attributes_missing: "Brak wymaganych parametrów kategorii",
@@ -120,6 +125,7 @@ export const integrationPl = {
     open_cases: "Zwroty i reklamacje z InPost Von Halsky czekające na decyzję",
     awaiting_shipment: "Zamówienia z InPost Von Halsky do wysłania",
     blocked_offers: "Warianty, których nie da się wystawić w InPost Von Halsky",
+    connection_lost: "InPost Von Halsky odrzuca dane dostępowe: integracja jest rozłączona, a marketplace wyłącza jej oferty",
   },
   problems: {
     credentials: "Brak danych dostępowych InPost Von Halsky (organizationId, clientId, clientSecret)",

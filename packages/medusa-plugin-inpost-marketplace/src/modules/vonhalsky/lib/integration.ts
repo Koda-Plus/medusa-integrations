@@ -75,14 +75,17 @@ export function productSummary(productId: string, rows: ProductOfferRow[]): Summ
 /**
  * The board counters: imports that are held (red), shipments InPost has not
  * linked yet and open returns or claims (orange), blocked offers (orange),
- * orders to ship (blue).
+ * orders to ship (blue), and the integration itself: 1 while the
+ * marketplace refuses the credentials (red; InPost deactivates the offers
+ * of a disconnected integration).
  */
-export function vonHalskyCounters(c: { held: number; trackingWaiting: number; openCases: number; blockedOffers: number; awaitingShipment: number }): CounterDraft[] {
+export function vonHalskyCounters(c: { held: number; trackingWaiting: number; openCases: number; blockedOffers: number; awaitingShipment: number; connectionLost?: boolean }): CounterDraft[] {
   return [
     { key: "held_orders", scope: "orders", count: c.held, tone: "red", link: { kind: "admin", href: "/vonhalsky?section=orders&filter=held" } },
     { key: "tracking_waiting", scope: "orders", count: c.trackingWaiting, tone: "orange", link: { kind: "admin", href: "/vonhalsky?section=orders&filter=tracking_waiting" }, entity: "order" },
     { key: "open_cases", scope: "orders", count: c.openCases, tone: "orange", link: { kind: "admin", href: "/vonhalsky?section=after-sale" } },
     { key: "awaiting_shipment", scope: "orders", count: c.awaitingShipment, tone: "blue", link: { kind: "admin", href: "/vonhalsky?section=orders&filter=awaiting_shipment" }, entity: "order" },
     { key: "blocked_offers", scope: "products", count: c.blockedOffers, tone: "orange", link: { kind: "admin", href: "/vonhalsky?section=offers&filter=blocked" } },
+    { key: "connection_lost", scope: "integration", count: c.connectionLost ? 1 : 0, tone: "red", link: { kind: "admin", href: "/vonhalsky?view=settings&tab=account" } },
   ]
 }

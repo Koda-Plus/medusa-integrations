@@ -18,7 +18,7 @@ import { ORDER_FILTERS, OrdersSection } from "../../lib/vonhalsky-orders"
 import { AccountSection, CategoryMappingSection, OfferDefaultsSection, OrderSettingsSection, PricingSection, ShippingSection } from "../../lib/vonhalsky-settings"
 import { StatsSection } from "../../lib/vonhalsky-stats"
 import { FilterBar, FilterButton, StatTile, StatTiles, type Tone } from "../../lib/vonhalsky-blocks"
-import { fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
+import { fmtDateTime, fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
 
 /**
  * InPost Von Halsky by Koda Plus. Three views, switched in the header and
@@ -100,7 +100,7 @@ const VonHalskyPage = () => {
             </InlineTip>
           </div>
         ) : null}
-        {s ? <Warnings status={s} /> : null}
+        {s ? <Warnings status={s} lang={lang} /> : null}
         {s && nav.view === "panel" ? (
           <>
             <StatTiles columns={6}>
@@ -139,7 +139,7 @@ const VonHalskyPage = () => {
           ]}
         >
           {nav.tab === "pricing" ? <PricingSection status={s} lang={lang} /> : null}
-          {nav.tab === "offers" ? <OfferDefaultsSection status={s} /> : null}
+          {nav.tab === "offers" ? <OfferDefaultsSection status={s} lang={lang} /> : null}
           {nav.tab === "categories" ? <CategoryMappingSection status={s} lang={lang} /> : null}
           {nav.tab === "orders" ? <OrderSettingsSection status={s} /> : null}
           {nav.tab === "shipping" ? <ShippingSection status={s} /> : null}
@@ -261,11 +261,18 @@ function DemoDetails() {
   )
 }
 
-/** Only what needs a person now; the demo note lives in the mode badge. */
-function Warnings({ status }: { status: StatusResponse }) {
+/**
+ * Only what needs a person now; the demo note lives in the mode badge. A lost
+ * connection comes first and in red: InPost deactivates the offers of an
+ * integration that came apart (the credentials refused on consecutive runs).
+ */
+function Warnings({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("vonhalsky")
   const real = status.mode === "live" || status.mode === "sandbox"
   const notes: Array<{ key: string; variant: "warning" | "error" | "info"; label: string; text: string }> = []
+  if (real && !status.connection.ok) {
+    notes.push({ key: "connection", variant: "error", label: t("connection.label"), text: t("connection.text", { date: fmtDateTime(status.connection.since, lang), message: status.connection.message ?? "" }) })
+  }
   if (status.mode === "off" && status.missing.length > 0) notes.push({ key: "missing", variant: "warning", label: t("missing.label"), text: t("missing.text", { missing: status.missing.join(", ") }) })
   if (status.problems.length > 0) notes.push({ key: "problems", variant: "warning", label: t("missing.problemsLabel"), text: t("missing.problems", { list: status.problems.join("; ") }) })
   if (real && status.categories.count === 0) notes.push({ key: "categories", variant: "info", label: t("missing.categoriesLabel"), text: t("missing.categories") })

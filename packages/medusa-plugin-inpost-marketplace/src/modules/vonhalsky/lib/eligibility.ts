@@ -163,9 +163,12 @@ export function eligibility(f: VariantFacts, ctx: OfferContext = { categoryId: n
  * listed: a person lists it), closed stays closed. A listed offer stays
  * listed even when a field went missing in Medusa: it is on the marketplace
  * already (its price and stock still sync) and `reasons` shows what to fix.
+ * A detached offer stays detached: only listing or importing it again
+ * brings it back, never a fresh read of Medusa.
  */
-export function nextOfferStatus(current: string | null, listable: boolean): "draft" | "listed" | "blocked" | "closed" {
+export function nextOfferStatus(current: string | null, listable: boolean): "draft" | "listed" | "blocked" | "closed" | "detached" {
   if (current === "closed") return "closed"
+  if (current === "detached") return "detached"
   if (!listable) return current === "listed" ? "listed" : "blocked"
   if (current === "listed") return "listed"
   return "draft"
