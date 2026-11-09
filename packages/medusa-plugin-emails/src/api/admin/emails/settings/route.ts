@@ -1,7 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { SettingsRequest } from "../../../../modules/emails/lib/contract"
 import { resolveTemplate } from "../../../../modules/emails/lib/registry"
-import { brandKey, forgetSettings, mergeOverrides, readSettings, sanitizeBrandOverrides, templateKey, type BrandOverrides } from "../../../../modules/emails/lib/settings"
+import { sanitizeCopyOverrides, type CopyOverrides } from "../../../../modules/emails/lib/copy-overrides"
+import { brandKey, copyKey, forgetSettings, mergeOverrides, readSettings, sanitizeBrandOverrides, templateKey, type BrandOverrides } from "../../../../modules/emails/lib/settings"
 import { storeFor } from "../../../../workflows/emails/runtime"
 import { actorOf, buildStatus, emailsService, serverError } from "../helpers"
 
@@ -15,6 +16,8 @@ import { actorOf, buildStatus, emailsService, serverError } from "../helpers"
  *              goes back to the option, `brand: null` resets them all
  *   templates  the switches; a template the options turned off
  *              (`templates: { key: false }`) cannot be turned on here
+ *   copy       the rewritten words per template ({ pl: {...}, en: {...} }),
+ *              replacing what was saved; null goes back to the template's words
  *
  * Answers with the new status. Sends nothing.
  */
@@ -46,6 +49,26 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     }
   }
 
+  const copies: Array<[string, CopyOverrides]> = []
+  if (input.copy !== undefined) {
+    if (!input.copy || typeof input.copy !== "object" || Array.isArray(input.copy)) {
+      res.status(400).json({ message: "copy: an object of template keys and the words per language, or null." })
+      return
+    }
+    for (const [key, value] of Object.entries(input.copy)) {
+      if (!resolveTemplate(key, o)) {
+        res.status(400).json({ message: `copy["${key.slice(0, 64)}"]: an existing template.` })
+        return
+      }
+      const { value: clean, errors } = sanitizeCopyOverrides(value)
+      if (errors.length > 0) {
+        res.status(400).json({ message: `Check these fields: ${errors.join(", ")}.`, fields: errors })
+        return
+      }
+      copies.push([key, clean])
+    }
+  }
+
   let brand: Record<string, unknown> | null | undefined
   if (input.brand === null) brand = {}
   else if (input.brand !== undefined) {
@@ -68,12 +91,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   try {
     for (const [key, on] of switches) await store.setSetting(templateKey(demo, key), { on }, actor)
     if (brand !== undefined) await store.setSetting(brandKey(demo), brand, actor)
+    for (const [key, value] of copies) await store.setSetting(copyKey(demo, key), value as Record<string, unknown>, actor)
   } catch (err) {
     serverError(req, res, err, "The settings cannot be saved. Did the migrations run (npx medusa db:migrate)? The server log has the details.", 503)
     return
   }
   forgetSettings({ keepFallback: true })
   if (switches.length > 0) svc.getLogger().info(`[emails] Templates ${switches.map(([k, on]) => `${k} ${on ? "on" : "off"}`).join(", ")} by ${actor ?? "unknown"}`)
+  if (copies.length > 0) svc.getLogger().info(`[emails] Words of ${copies.map(([k]) => k).join(", ")} changed by ${actor ?? "unknown"}`)
   if (brand !== undefined) svc.getLogger().info(`[emails] Branding ${input.brand === null ? "reset" : "changed"} by ${actor ?? "unknown"}`)
   try {
     res.json(await buildStatus(req.scope))

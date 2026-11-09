@@ -270,6 +270,7 @@ export async function deliver(deps: DeliverDeps, n: IncomingNotification): Promi
     locale,
     options: o,
     brand: applyBrandOverrides(o.brand, settings.brand),
+    copy: resolved ? settings.copy?.[resolved.key]?.value ?? null : null,
     subjectPrefix: kind === "test" ? COPY[locale].testPrefix : "",
   }
   let rendered: RenderedEmail
