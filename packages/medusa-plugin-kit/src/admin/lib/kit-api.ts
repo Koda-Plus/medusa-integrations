@@ -20,7 +20,7 @@ export type Status = {
   }
   counts: { subscribed: number; failed: number; last_7_days: number }
   /** Storefront forms wired to Kit, one per sign-up source (missing from older backends). */
-  sources?: Array<{ source: string; ok: number; failed: number; last_at: string | null }>
+  sources?: Array<{ source: string; name?: string | null; ok: number; failed: number; last_at: string | null }>
 }
 
 export type KitTag = { id: number; name: string; subscriber_count?: number }
