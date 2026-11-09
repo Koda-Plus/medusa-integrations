@@ -66,6 +66,8 @@ export interface StatusResponse {
 export interface SourceRow {
   /** The `source` the storefront sends; `form` when it sends none. */
   source: string
+  /** The name of the form from the `forms` option; null for a source nobody declared. */
+  name: string | null
   ok: number
   failed: number
   last_at: string | null

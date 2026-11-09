@@ -211,9 +211,12 @@ const BaseLinkerPage = () => {
           <div id="baselinker-orders">
             <OrdersSection key={deepKey} status={s} lang={lang} poll={polling} onAction={poll} />
           </div>
-          <div id="baselinker-imports">
-            <ImportsSection key={deepKey} status={s} lang={lang} poll={polling} />
-          </div>
+          {/* Marketplace import only where it is on or has history: a store without marketplaces does not see an empty table. */}
+          {s.features2.orderImport || Object.values(s.counts2.imports).some((n) => n > 0) ? (
+            <div id="baselinker-imports">
+              <ImportsSection key={deepKey} status={s} lang={lang} poll={polling} />
+            </div>
+          ) : null}
           {s.more.returnsSync || s.counts2.returns > 0 ? (
             <div id="baselinker-returns">
               <ReturnsSection status={s} lang={lang} />
@@ -347,7 +350,7 @@ function Header({
         { icon: <LinkIcon />, text: t("points.cards") },
         { icon: <CubeSolid />, text: t("points.stock") },
         { icon: <PaperPlane />, text: t("points.ordersOut") },
-        { icon: <ShoppingCart />, text: t("points.ordersIn") },
+        (!status || status.features2.orderImport) && { icon: <ShoppingCart />, text: t("points.ordersIn") },
         { icon: <LockClosedSolid />, text: t("points.plans"), tone: live > 0 ? "orange" : "green" },
         status?.mode === "demo" && { icon: <Beaker />, text: t("points.demo"), tone: "blue" },
       ]}

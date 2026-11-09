@@ -161,7 +161,8 @@ const pl = {
     empty: "Sklep jeszcze nie wysłał żadnego zapisu",
     default: "Formularz newslettera",
     noTags: "bez tagów",
-    direct: "lista, bez formularza",
+    direct: "lista Kita, od razu aktywny",
+    viaFormShort: "formularz {{name}} (z potwierdzeniem)",
     failed: "{{n}} nieudane",
     never: "jeszcze nikt"
   },

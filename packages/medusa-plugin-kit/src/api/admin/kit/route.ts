@@ -28,7 +28,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const bySource = new Map<string, SourceRow>()
   const row = (source: string): SourceRow => {
     let r = bySource.get(source)
-    if (!r) bySource.set(source, (r = { source, ok: 0, failed: 0, last_at: null }))
+    if (!r) bySource.set(source, (r = { source, name: null, ok: 0, failed: 0, last_at: null }))
     return r
   }
   try {
@@ -49,9 +49,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     /* the table may not exist yet */
   }
 
-  /* Sources with extra tags but no sign-up yet are wired too - list them. */
+  /* The declared storefront forms first (even before a sign-up), then any other source seen or given tags. */
+  for (const f of o.forms) row(f.source).name = f.name
   for (const source of Object.keys(settings.source_tags ?? {})) row(source)
-  const sources = [...bySource.values()].sort((a, b) => (b.last_at ?? "").localeCompare(a.last_at ?? "") || a.source.localeCompare(b.source))
+  const declared = o.forms.map((f) => f.source)
+  const rank = (s: SourceRow) => (declared.includes(s.source) ? declared.indexOf(s.source) : declared.length)
+  const sources = [...bySource.values()].sort((a, b) => rank(a) - rank(b) || (b.last_at ?? "").localeCompare(a.last_at ?? "") || a.source.localeCompare(b.source))
 
   const body: StatusResponse = {
     configured: isActive(o),

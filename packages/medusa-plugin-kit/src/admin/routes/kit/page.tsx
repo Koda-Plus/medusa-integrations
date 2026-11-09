@@ -195,15 +195,6 @@ function FormsCard({ status: s, tagList, formList, onSettings }: { status: Statu
       ]}
       actions={<RowActions actions={[{ key: "settings", label: t("forms.edit"), icon: <Tag />, onClick: onSettings }]} />}
     >
-      <div className="px-6 py-4">
-        <InlineTip variant={viaForm ? "success" : "info"} label={t("forms.kitForm")}>
-          {viaForm
-            ? t("forms.viaForm", { name: formName })
-            : formName
-              ? t("forms.formIdle", { name: formName })
-              : t("forms.noForm")}
-        </InlineTip>
-      </div>
       <div className="overflow-x-auto">
         <Table>
           <Table.Header>
@@ -223,14 +214,14 @@ function FormsCard({ status: s, tagList, formList, onSettings }: { status: Statu
                 <Table.Row key={r.source}>
                   <Table.Cell>
                     <Text size="small" weight="plus">
-                      {r.source === "form" ? t("forms.default") : r.source}
+                      {r.name ?? (r.source === "form" ? t("forms.default") : r.source)}
                     </Text>
                     <Text size="xsmall" className="text-ui-fg-muted">
                       source: {r.source}
                     </Text>
                   </Table.Cell>
                   <Table.Cell className="text-ui-fg-subtle">{tagIds.map(tagName).join(", ") || t("forms.noTags")}</Table.Cell>
-                  <Table.Cell className="text-ui-fg-subtle">{viaForm ? formName : t("forms.direct")}</Table.Cell>
+                  <Table.Cell className="text-ui-fg-subtle">{viaForm ? t("forms.viaFormShort", { name: formName }) : t("forms.direct")}</Table.Cell>
                   <Table.Cell className="text-right tabular-nums">
                     {r.ok.toLocaleString(lang)}
                     {r.failed > 0 ? <span className="text-ui-fg-error"> / {t("forms.failed", { n: r.failed })}</span> : null}

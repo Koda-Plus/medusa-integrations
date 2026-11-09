@@ -4,6 +4,7 @@
 
 ### Added
 
+- A store without marketplace import (no `orderImportSources` and no imported orders) does not see the marketplace orders section nor its point in the header.
 - Manual card links: a card that shares no SKU or EAN with the store (an e-book entered without a SKU, a set under another code) can be linked to a variant by hand from the Cards table ("Link to a product", a search that starts from the card name). The pair is kept in the plugin settings (`card_links`), on the Medusa side only, wins over SKU and EAN and is shown as "linked by hand" with an Unlink action. Nothing is written to Base. `GET/POST /admin/baselinker/links`; the catalog is matched again right after a change.
 
 ### Fixed

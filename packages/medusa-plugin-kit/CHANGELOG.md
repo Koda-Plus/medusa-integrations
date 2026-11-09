@@ -2,6 +2,7 @@
 
 ## 0.2.1 (2026-11-09)
 
+- The `forms` option names the storefront forms by the source each one sends (`[{ source: "form", name: "Newsletter" }, { source: "drop", name: "Drop alert" }]`); the panel lists them from the start, before the first sign-up, without a note about the Kit form.
 - The panel lists the storefront forms connected to Kit: one row per sign-up source, with the tags a sign-up from it gets, where it lands (the double opt-in form or the list directly), the sign-ups and the last one. `GET /admin/kit` returns them as `sources`.
 
 ## 0.2.0 (2026-10-18)

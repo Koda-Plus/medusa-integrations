@@ -158,7 +158,8 @@ const en = {
     empty: "The store has not sent a sign-up yet",
     default: "Newsletter form",
     noTags: "no tags",
-    direct: "the list, no form",
+    direct: "the Kit list, active at once",
+    viaFormShort: "the form {{name}} (with confirmation)",
     failed: "{{n}} failed",
     never: "nobody yet"
   },
