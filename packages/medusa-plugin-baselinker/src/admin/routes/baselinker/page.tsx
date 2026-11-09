@@ -1149,7 +1149,7 @@ function RunsSection({ lang, poll }: { lang: string; poll: boolean }) {
 }
 
 export const config = defineRouteConfig({
-  label: "BaseLinker",
+  label: "Base",
   rank: 2,
   icon: BaseLinkerIcon,
 })

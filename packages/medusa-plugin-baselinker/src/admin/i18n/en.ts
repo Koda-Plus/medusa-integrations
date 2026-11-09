@@ -2,12 +2,12 @@ import { communityEn } from "../lib/baselinker-kit-community"
 import { integrationEn } from "../../modules/baselinker/lib/integration-texts"
 
 const en = {
-  title: "BaseLinker",
+  title: "Base",
   integration: integrationEn,
   by: "by Koda Plus",
   subtitle:
-    "Medusa and BaseLinker in both directions: cards linked or created, products imported, stock and prices carried the way you choose, store orders sent exactly once, marketplace orders imported exactly once, statuses, parcels, returns and invoice numbers in step. Every write waits behind a plan and a switch a person arms.",
-  loading: "Reading BaseLinker",
+    "Medusa and Base in both directions: cards linked or created, products imported, stock and prices carried the way you choose, store orders sent exactly once, marketplace orders imported exactly once, statuses, parcels, returns and invoice numbers in step. Every write waits behind a plan and a switch a person arms.",
+  loading: "Reading Base",
   points: {
     cards: "Cards linked by SKU and EAN",
     stock: "Stock and prices your way",
@@ -22,10 +22,10 @@ const en = {
   },
   settings: {
     title: "Settings",
-    subtitle: "The technical side of the integration: the directions with their writers, the BaseLinker account, the plans, invoice numbers and the sync history.",
+    subtitle: "The technical side of the integration: the directions with their writers, the Base account, the plans, invoice numbers and the sync history.",
     tab: {
       directions: "Directions",
-      account: "BaseLinker account",
+      account: "Base account",
       plans: "Plans",
       invoices: "Invoice numbers",
       runs: "Sync history",
@@ -47,7 +47,7 @@ const en = {
     running: "Running",
     check: "Check connection",
     sendAgain: "Send again",
-    sendNow: "Send to BaseLinker now",
+    sendNow: "Send to Base now",
     track: "Track parcel",
     importOrders: "Import orders now",
     readReturns: "Read returns",
@@ -56,7 +56,7 @@ const en = {
   },
   demo: {
     label: "Demo mode",
-    text: "A simulated BaseLinker account is built from your own catalog: cards for most variants, products with variants, a duplicated SKU, an EAN on two cards, a bundle, products only in BaseLinker, a simulated Allegro and Amazon with a few orders a day. Store orders get BaseLinker ids in seconds and move to \"Wysłane\" with an InPost number minutes later, in the plugin's own rows only: the orders themselves never get a simulated number, status or parcel. Arm a writer to see it apply: catalog, stock, prices and invoice numbers change only the simulation; marketplace orders become orders of this store only with demoCreatesOrders. Nothing leaves Medusa. Demo mode runs only with demo: true. To connect a real account, set apiToken, inventoryId, warehouseId and orderStatusId in the plugin options.",
+    text: "A simulated Base account is built from your own catalog: cards for most variants, products with variants, a duplicated SKU, an EAN on two cards, a bundle, products only in Base, a simulated Allegro and Amazon with a few orders a day. Store orders get Base ids in seconds and move to \"Wysłane\" with an InPost number minutes later, in the plugin's own rows only: the orders themselves never get a simulated number, status or parcel. Arm a writer to see it apply: catalog, stock, prices and invoice numbers change only the simulation; marketplace orders become orders of this store only with demoCreatesOrders. Nothing leaves Medusa. Demo mode runs only with demo: true. To connect a real account, set apiToken, inventoryId, warehouseId and orderStatusId in the plugin options.",
     preparing: {
       label: "Demo data",
       text: "The simulated account is not built yet. The demo job builds it within a minute; prepare it now to see the data at once.",
@@ -66,12 +66,12 @@ const en = {
   },
   missing: {
     label: "Configuration",
-    text: "Missing plugin options: {{missing}}. The token is in BaseLinker under My account, API; catalog, warehouse and status ids come from the connection check in Settings (the BaseLinker account tab) or from getInventories and getOrderStatusList.",
+    text: "Missing plugin options: {{missing}}. The token is in Base under My account, API; catalog, warehouse and status ids come from the connection check in Settings (the Base account tab) or from getInventories and getOrderStatusList.",
   },
   stats: {
-    cards: "BaseLinker cards",
+    cards: "Base cards",
     linked: "Linked",
-    unmatched: "Only in BaseLinker",
+    unmatched: "Only in Base",
     conflicts: "Conflicts",
     onlyInMedusa: "Only in Medusa",
     stockChanges: "Stock changes planned",
@@ -93,7 +93,7 @@ const en = {
       returns: "Returns every hour",
     },
     title: "Connection",
-    subtitle: "BaseLinker API with the token from the plugin options. Reads use get methods; the only writes are addOrder and the four writes of armed writers, each behind the barrier.",
+    subtitle: "Base API with the token from the plugin options. Reads use get methods; the only writes are addOrder and the four writes of armed writers, each behind the barrier.",
     token: "API token",
     tokenSet: "set",
     tokenMissing: "missing",
@@ -125,7 +125,7 @@ const en = {
     warehouseMissing: "Warehouse {{id}} is not in this catalog. Its warehouses: {{list}}.",
     priceGroupFound: "Price group {{id}} ({{name}}, {{currency}}) is a standard group.",
     priceGroupMissing: "Price group {{id}} is not on this account. Groups: {{list}}.",
-    priceGroupDerived: "Price group {{id}} ({{name}}) is derived from another group: BaseLinker computes its prices, so choose a standard group for priceGroupId.",
+    priceGroupDerived: "Price group {{id}} ({{name}}) is derived from another group: Base computes its prices, so choose a standard group for priceGroupId.",
     priceGroupCurrency: "Price group {{id}} is in {{currency}}, while priceCurrency is {{medusa}}.",
     schedule: "Cards and plans every hour at minute 15, the order queue every 2 minutes, marketplace orders every 5 minutes, statuses every 15 minutes, returns every hour at minute 45.",
     demoNote: "Demo mode talks to a simulated account built from your catalog.",
@@ -141,14 +141,14 @@ const en = {
     derived: "derived from another group",
     journalStates: {
       events: "returns events: enabled",
-      empty: "answers empty: enable it in BaseLinker (Account & other, My account, API) or ask Base support",
+      empty: "answers empty: enable it in Base (Account & other, My account, API) or ask Base support",
       error: "not available",
     },
     lists: "What the account has, to pick the ids for the options",
   },
   stock: {
     points: {
-      formula: "Available in Medusa = BaseLinker",
+      formula: "Available in Medusa = Base",
       after: "After every catalog read",
       noZero: "Missing items never zeroed",
     },
@@ -160,7 +160,7 @@ const en = {
     },
     title: "Stock plan",
     subtitle:
-      "BaseLinker to Medusa: target stocked = max(0, BaseLinker stock) + reserved, so Medusa available equals BaseLinker. Planned after every complete catalog read; items missing from a read are never zeroed.",
+      "Base to Medusa: target stocked = max(0, Base stock) + reserved, so Medusa available equals Base. Planned after every complete catalog read; items missing from a read are never zeroed.",
     modeOff: "Stock sync is off (stockSync: \"off\").",
     modePlan: "Plan only: nothing is written. Read the plan, then set stockSync: \"write\" in the plugin options and arm the stock writer.",
     modeWrite: "Write: up to {{max}} changes per run go through Medusa's own inventory workflow, decreases first.",
@@ -175,12 +175,12 @@ const en = {
       overCap: "Next run",
       unchanged: "Already right",
       kits: "Kits skipped",
-      negative: "Negative in BaseLinker",
+      negative: "Negative in Base",
     },
     col: {
       variant: "Variant",
       medusa: "Medusa now",
-      bl: "BaseLinker",
+      bl: "Base",
       target: "Target",
       units: "Units",
       status: "Status",
@@ -203,20 +203,20 @@ const en = {
       nothing: "Nothing created here",
     },
     title: "Cards",
-    subtitle: "Product cards of your BaseLinker catalog next to the store products they are linked to. A linked card shows its product in Medusa, one click away.",
+    subtitle: "Product cards of your Base catalog next to the store products they are linked to. A linked card shows its product in Medusa, one click away.",
     matching:
       "Matching key: SKU first, then EAN, unique on both sides; duplicates are reported and never linked. Main cards with variants are shown, their variants are linked. Nothing is created or imported here: that is the job of armed writers.",
     search: "Search name, SKU, EAN or card id",
     filter: {
       all: "All",
       linked: "Linked",
-      unmatched: "Only in BaseLinker",
+      unmatched: "Only in Base",
       conflicts: "Conflicts",
       nosku: "No SKU",
     },
     col: {
       card: "Card",
-      stock: "BaseLinker stock",
+      stock: "Base stock",
       product: "Product in the store",
     },
     conflict: {
@@ -233,7 +233,7 @@ const en = {
     sample: "Sample",
     variantOf: "variant of {{id}}",
     empty: "No cards in this view",
-    onlyInMedusa: "Variants without a BaseLinker card: {{list}}",
+    onlyInMedusa: "Variants without a Base card: {{list}}",
   },
   orders: {
     points: {
@@ -241,11 +241,11 @@ const en = {
       retry: "Failures retry, then wait here",
       exportOff: "Export off",
     },
-    title: "Orders to BaseLinker",
+    title: "Orders to Base",
     subtitle:
-      "Orders placed in your store, each sent to BaseLinker once, with the status and parcel number it received there. An order that could not be sent waits here with the reason.",
-    how: "Every placed order goes out once: a marker in admin_comments lets the plugin find an order BaseLinker already has before it writes. Failures retry with backoff, then wait here.",
-    search: "Order number or BaseLinker id",
+      "Orders placed in your store, each sent to Base once, with the status and parcel number it received there. An order that could not be sent waits here with the reason.",
+    how: "Every placed order goes out once: a marker in admin_comments lets the plugin find an order Base already has before it writes. Failures retry with backoff, then wait here.",
+    search: "Order number or Base id",
     filter: {
       all: "All",
       pending: "Queued",
@@ -256,8 +256,8 @@ const en = {
     col: {
       order: "Order in the store",
       status: "Status",
-      bl: "BaseLinker order",
-      blStatus: "BaseLinker status",
+      bl: "Base order",
+      blStatus: "Base status",
       tracking: "Tracking",
       attempts: "Attempts",
       details: "Details",
@@ -294,7 +294,7 @@ const en = {
       statuses: "Statuses",
       catalog_import: "Catalog import",
       cards: "Cards from Medusa",
-      stock_push: "Stock to BaseLinker",
+      stock_push: "Stock to Base",
       prices: "Prices",
       imports: "Marketplace orders",
       returns: "Returns",
@@ -332,30 +332,30 @@ const en = {
     next: "Next",
   },
   widget: {
-    title: "BaseLinker",
+    title: "Base",
     demo: "Demo",
-    more: "BaseLinker page",
-    none: "This order has not been sent to BaseLinker.",
-    queued: "Queued. The BaseLinker order appears here in a few seconds.",
-    blOrder: "BaseLinker order",
+    more: "Base page",
+    none: "This order has not been sent to Base.",
+    queued: "Queued. The Base order appears here in a few seconds.",
+    blOrder: "Base order",
     status: "Status",
     tracking: "Tracking",
     sentAt: "Sent",
     fulfilledAt: "Fulfilled in Medusa",
     exportOff: "Order export is off in the plugin options.",
     notConfigured: "The plugin is not configured to send orders yet.",
-    imported: "Came from BaseLinker ({{source}})",
-    importedNote: "A marketplace order this plugin imported: it never goes back to BaseLinker.",
+    imported: "Came from Base ({{source}})",
+    importedNote: "A marketplace order this plugin imported: it never goes back to Base.",
     marketplaceRef: "Marketplace reference",
-    marketplaceNote: "A marketplace order taken straight from the marketplace: BaseLinker gets it from its own integration.",
+    marketplaceNote: "A marketplace order taken straight from the marketplace: Base gets it from its own integration.",
     payment: "Payment",
     importedAt: "Imported",
-    loading: "Loading BaseLinker data",
-    failed: "Could not read the BaseLinker data of this order.",
+    loading: "Loading Base data",
+    failed: "Could not read the Base data of this order.",
     skip: {
-      canceled: "The order is canceled, so it does not go to BaseLinker.",
-      skip_key: "Marked as a test order (skip key in the order metadata), so it stays out of BaseLinker.",
-      marketplace_order: "A marketplace order taken straight from the marketplace: BaseLinker gets it from its own integration.",
+      canceled: "The order is canceled, so it does not go to Base.",
+      skip_key: "Marked as a test order (skip key in the order metadata), so it stays out of Base.",
+      marketplace_order: "A marketplace order taken straight from the marketplace: Base gets it from its own integration.",
     },
   },
   productWidget: {
@@ -363,15 +363,15 @@ const en = {
       sku: "Same SKU or EAN as the card",
       hourly: "Links after the hourly read",
     },
-    title: "BaseLinker",
+    title: "Base",
     none: "No linked card",
-    stock: "BaseLinker stock",
+    stock: "Base stock",
     noStock: "no number for the warehouse",
     more: "All cards",
     container: "Main card with variants",
     containerNote: "Holds the variant cards and is never linked to a variant itself.",
-    loading: "Loading BaseLinker cards",
-    failed: "Could not read the BaseLinker cards of this product.",
+    loading: "Loading Base cards",
+    failed: "Could not read the Base cards of this product.",
     moreCards_one: "and {{count}} more card",
     /* Polish plural forms; English uses one and other. */
     moreCards_few: "and {{count}} more cards",
@@ -382,7 +382,7 @@ const en = {
     started: "Started. Results appear here in a moment.",
     already: "Already running.",
     sent: "Queued. Sending now.",
-    checkOk: "BaseLinker answers. The token works.",
+    checkOk: "Base answers. The token works.",
     checkFailed: "No connection: {{error}}",
     error: "Something went wrong: {{error}}",
     armed: "{{writer}} armed. The next run writes.",
@@ -433,21 +433,21 @@ const en = {
       invoices: "Invoice numbers",
     },
     medusa: "Medusa",
-    baselinker: "BaseLinker",
+    baselinker: "Base",
     pickCatalog: "Catalog lives in",
     pickStock: "Stock truth in",
     how: {
       catalogMedusa: "Variants linked to cards by SKU, then EAN; missing cards created by the writer.",
       catalogBaseLinker: "Products imported by the writer after a plan; duplicates never imported.",
-      stockBaseLinker: "Medusa stocked = BaseLinker stock plus reservations, planned after every read.",
-      stockMedusa: "BaseLinker stock = what Medusa can still sell, planned after every read.",
+      stockBaseLinker: "Medusa stocked = Base stock plus reservations, planned after every read.",
+      stockMedusa: "Base stock = what Medusa can still sell, planned after every read.",
       stockOff: "Off (stockSync: \"off\").",
       pricesPush: "Medusa base price in {{currency}} into price group {{group}}.",
       pricesNoGroup: "No price group set (priceGroupId).",
       pricesWithCatalog: "Come with the imported products, from price group {{group}}.",
       ordersOutOn: "Sent once each, with a marker scan before every write.",
       ordersOutOff: "Not sent (exportOrders: false).",
-      ordersInOn: "Sources: {{sources}}. Exactly once per BaseLinker order.",
+      ordersInOn: "Sources: {{sources}}. Exactly once per Base order.",
       ordersInOff: "No sources set (orderImportSources).",
       statuses: "Every 15 minutes. Journal: {{journal}}.",
       returns: "Every hour, read only, linked to Medusa orders.",
@@ -461,7 +461,7 @@ const en = {
       catalogImport: "Catalog import",
       cards: "Cards from Medusa",
       stockToMedusa: "Stock into Medusa",
-      stockToBaseLinker: "Stock into BaseLinker",
+      stockToBaseLinker: "Stock into Base",
       prices: "Price push",
       orderImport: "Order import",
       invoiceNumbers: "Invoice numbers",
@@ -485,7 +485,7 @@ const en = {
     confirmButton: "Arm",
     cancel: "Cancel",
     inMedusa: "Medusa",
-    inBaseLinker: "BaseLinker",
+    inBaseLinker: "Base",
   },
   plans: {
     modeShort: {
@@ -501,22 +501,22 @@ const en = {
       catalog_import: {
         title: "Catalog import plan",
         subtitle:
-          "BaseLinker products into Medusa: what the armed writer creates, updates field by field or turns into a draft. A SKU or EAN on several cards is a conflict and is never imported. Nothing is ever deleted.",
+          "Base products into Medusa: what the armed writer creates, updates field by field or turns into a draft. A SKU or EAN on several cards is a conflict and is never imported. Nothing is ever deleted.",
       },
       cards: {
         title: "Card plan",
         subtitle:
-          "Medusa variants into BaseLinker cards: a card for each variant that has none, name and EAN kept in step. A SKU already on a card is a conflict, never a second card. Stock and prices have their own writers.",
+          "Medusa variants into Base cards: a card for each variant that has none, name and EAN kept in step. A SKU already on a card is a conflict, never a second card. Stock and prices have their own writers.",
       },
       stock_push: {
-        title: "Stock plan: Medusa to BaseLinker",
+        title: "Stock plan: Medusa to Base",
         subtitle:
-          "What Medusa can still sell (stocked minus reserved) into the BaseLinker warehouse, as absolute numbers, decreases first. Items missing from a read are never zeroed; kits are skipped.",
+          "What Medusa can still sell (stocked minus reserved) into the Base warehouse, as absolute numbers, decreases first. Items missing from a read are never zeroed; kits are skipped.",
       },
       prices: {
         title: "Price plan",
         subtitle:
-          "Medusa base prices into the BaseLinker price group. BaseLinker keeps gross prices: net Medusa prices are multiplied by the card's VAT rate, a card without a rate is left alone.",
+          "Medusa base prices into the Base price group. Base keeps gross prices: net Medusa prices are multiplied by the card's VAT rate, a card without a rate is left alone.",
       },
     },
     filter: {
@@ -554,12 +554,12 @@ const en = {
     reasons: {
       bundle: "A bundle (kit): not imported",
       no_sku: "No SKU",
-      sku_too_long: "SKU longer than the 50 characters BaseLinker keeps",
+      sku_too_long: "SKU longer than the 50 characters Base keeps",
       duplicate_sku: "SKU on several cards",
       duplicate_ean: "EAN on several cards",
       ambiguous_variant: "Several Medusa variants have this SKU",
       split_product: "Its variants sit on different Medusa products",
-      removed_in_baselinker: "Removed in BaseLinker",
+      removed_in_baselinker: "Removed in Base",
       new_variant_needs_options: "New variant: add it in Medusa with this SKU, it links on the next read",
       category_missing: "Category not in Medusa (createMissingCategories is off)",
       sku_on_card: "The SKU is already on a card",
@@ -607,9 +607,9 @@ const en = {
       waiting: "{{count}} wait for the writer",
       off: "Import off",
     },
-    title: "Marketplace orders from BaseLinker",
-    subtitle: "Marketplace orders (Allegro, Amazon, eBay, Erli and others) that BaseLinker collected, next to the store orders they became.",
-    how: "Found every 5 minutes; turned into Medusa orders, exactly once each, only while the order import writer is armed. Our own orders sent to BaseLinker never come back.",
+    title: "Marketplace orders from Base",
+    subtitle: "Marketplace orders (Allegro, Amazon, eBay, Erli and others) that Base collected, next to the store orders they became.",
+    how: "Found every 5 minutes; turned into Medusa orders, exactly once each, only while the order import writer is armed. Our own orders sent to Base never come back.",
     waiting: "{{count}} order(s) wait for the order import writer.",
     off: "Order import is off: set orderImportSources to import marketplace orders.",
     emailNote:
@@ -623,12 +623,12 @@ const en = {
       flagged: "Flagged",
     },
     col: {
-      order: "BaseLinker order",
+      order: "Base order",
       source: "Source",
       medusa: "Order in the store",
       total: "Total",
       payment: "Payment",
-      blStatus: "BaseLinker status",
+      blStatus: "Base status",
       details: "Details",
     },
     noOrder: {
@@ -649,13 +649,13 @@ const en = {
       awaiting: "Awaiting payment",
     },
     flags: {
-      cancel_blocked: "Cancelled in BaseLinker, already fulfilled in Medusa: a person decides",
+      cancel_blocked: "Cancelled in Base, already fulfilled in Medusa: a person decides",
     },
     lines: "{{count}} line(s)",
     unlinked: "{{count}} without a card link (custom lines)",
     importNow: "Import now",
     empty: "No marketplace orders in this view",
-    search: "BaseLinker id, order number or reference",
+    search: "Base id, order number or reference",
   },
   returns: {
     points: {
@@ -665,7 +665,7 @@ const en = {
       off: "Returns off",
     },
     title: "Returns",
-    subtitle: "Returns from the BaseLinker return manager, next to the store order they belong to.",
+    subtitle: "Returns from the Base return manager, next to the store order they belong to.",
     how: "Read only. A return is linked to the store order when this plugin sent or imported that order. No buyer data is stored.",
     off: "Returns are off (returnsSync: false).",
     col: {
@@ -679,7 +679,7 @@ const en = {
     },
     noOrder: "Not a store order",
     empty: "No returns in {{days}} days",
-    search: "Return id, BaseLinker order or order number",
+    search: "Return id, Base order or order number",
   },
   invoices: {
     points: {
@@ -689,7 +689,7 @@ const en = {
     },
     title: "Invoice numbers",
     subtitle:
-      "Numbers of documents the Fakturownia plugin issues, written into the BaseLinker order field {{field}}. The field is read first: an empty one is written, the same number is left as it is, another value is never overwritten.",
+      "Numbers of documents the Fakturownia plugin issues, written into the Base order field {{field}}. The field is read first: an empty one is written, the same number is left as it is, another value is never overwritten.",
     filter: {
       all: "All",
       pending: "Waiting",
@@ -702,7 +702,7 @@ const en = {
       order: "Order",
       number: "Number",
       kind: "Kind",
-      bl: "BaseLinker order",
+      bl: "Base order",
       status: "Status",
       details: "Details",
     },
@@ -730,11 +730,11 @@ const en = {
     copied: "Copied",
     demoNote: "Demo mode: the states below come from the simulated account. On a real store they follow your own setup.",
     intro: {
-      title: "Set up BaseLinker for a real store",
-      text: "This plugin connects Medusa to BaseLinker (Base) in both directions. It links variants to BaseLinker cards or creates them, imports BaseLinker products when the catalog lives there, carries stock and prices the way you choose, sends store orders to BaseLinker exactly once, imports marketplace orders exactly once, and brings statuses, parcels, returns and invoice numbers back. Every write that changes data waits behind a plan you read and a writer a person arms.",
+      title: "Set up Base for a real store",
+      text: "This plugin connects Medusa to Base (formerly BaseLinker) in both directions. It links variants to Base cards or creates them, imports Base products when the catalog lives there, carries stock and prices the way you choose, sends store orders to Base exactly once, imports marketplace orders exactly once, and brings statuses, parcels, returns and invoice numbers back. Every write that changes data waits behind a plan you read and a writer a person arms.",
       time: "Half a day for orders and stock; a full day with the catalog import and marketplace orders",
       needs: [
-        "BaseLinker account with API access",
+        "Base account with API access",
         "An API token",
         "A catalog (inventory) and a bl_ warehouse",
         "Medusa 2.12 or newer",
@@ -745,11 +745,11 @@ const en = {
     },
     diagram: {
       title: "How the parts talk",
-      subtitle: "Marketplaces sell through BaseLinker; this plugin keeps Medusa and BaseLinker in step, plan first.",
+      subtitle: "Marketplaces sell through Base; this plugin keeps Medusa and Base in step, plan first.",
       nodes: {
         marketplaces: "Marketplaces",
         marketplacesCaption: "Allegro, Amazon, eBay, Erli: offers and orders",
-        baselinker: "BaseLinker",
+        baselinker: "Base",
         baselinkerCaption: "Catalog, warehouse stock, order manager, returns, journal",
         plugin: "This plugin",
         pluginCaption: "Links, plans, armed writers, exactly once in both directions",
@@ -767,9 +767,9 @@ const en = {
       subtitle: "Each step shows its live state from this store.",
       token: {
         title: "Create the API token",
-        body: "In BaseLinker open Account & other, My account, then the API tab, and generate a token named after this store. Copy it once and keep it on the server: the plugin masks it in every log, error and screen.",
-        link: "BaseLinker API documentation",
-        check: "Check connection (Settings, BaseLinker account) says the token works.",
+        body: "In Base open Account & other, My account, then the API tab, and generate a token named after this store. Copy it once and keep it on the server: the plugin masks it in every log, error and screen.",
+        link: "Base API documentation",
+        check: "Check connection (Settings, Base account) says the token works.",
       },
       options: {
         title: "Configure the plugin",
@@ -778,32 +778,32 @@ const en = {
       },
       catalog: {
         title: "Choose the catalog and the warehouse",
-        body: "BaseLinker keeps products in catalogs (inventories); the old BaseLinker storage is not used. Check connection lists the catalogs with their warehouses: set inventoryId, and a warehouse of type bl (bl_1234) as warehouseId. Only bl_ warehouses take stock writes; shop_ and warehouse_ ones mirror an external system.",
+        body: "Base keeps products in catalogs (inventories); the old Base storage is not used. Check connection lists the catalogs with their warehouses: set inventoryId, and a warehouse of type bl (bl_1234) as warehouseId. Only bl_ warehouses take stock writes; shop_ and warehouse_ ones mirror an external system.",
         check: "Check connection confirms the catalog and that the warehouse belongs to it.",
       },
       ids: {
         title: "Price group and order statuses",
-        body: "Check connection lists price groups (with their currency) and order statuses. Set priceGroupId to a standard group in your currency (a derived group is computed by BaseLinker and should not be written), orderStatusId for new orders, fulfillOnStatusIds for shipped, closedStatusIds for finished and orderImportCancelStatusIds for cancelled.",
+        body: "Check connection lists price groups (with their currency) and order statuses. Set priceGroupId to a standard group in your currency (a derived group is computed by Base and should not be written), orderStatusId for new orders, fulfillOnStatusIds for shipped, closedStatusIds for finished and orderImportCancelStatusIds for cancelled.",
         check: "The ids in the options match the lists of Check connection.",
       },
       source: {
         title: "A custom order source for Medusa",
-        body: "In BaseLinker open Orders, Settings, Custom order sources and create one named after the store. Its id goes to customSourceId: Medusa orders are labelled in BaseLinker, statuses are read 100 at a time, and the marketplace import never takes our own orders back.",
+        body: "In Base open Orders, Settings, Custom order sources and create one named after the store. Its id goes to customSourceId: Medusa orders are labelled in Base, statuses are read 100 at a time, and the marketplace import never takes our own orders back.",
         check: "Check connection lists the source under personal.",
       },
       truth: {
         title: "Decide the source of truth",
-        body: "For each kind of data, one side owns it: the catalog (catalogSource), stock (stockSource), prices (they follow the catalog) and marketplace orders (orderImportSources). Audit duplicates before any import or stock push: at a tyre retailer with about 11 000 cards, 4 438 SKU pairs were the same physical item entered twice. Merge them in BaseLinker until the Conflicts filter of the cards is empty.",
+        body: "For each kind of data, one side owns it: the catalog (catalogSource), stock (stockSource), prices (they follow the catalog) and marketplace orders (orderImportSources). Audit duplicates before any import or stock push: at a tyre retailer with about 11 000 cards, 4 438 SKU pairs were the same physical item entered twice. Merge them in Base until the Conflicts filter of the cards is empty.",
         check: "The cards show no conflicts, or every conflict is understood.",
       },
       dryRun: {
         title: "Read the plans (dry run)",
-        body: "Sync cards now reads BaseLinker and makes every plan of the directions in force: catalog import or card plan, stock plan, price plan. Nothing is written. Read them in Settings, under Plans, item by item and field by field.",
+        body: "Sync cards now reads Base and makes every plan of the directions in force: catalog import or card plan, stock plan, price plan. Nothing is written. Read them in Settings, under Plans, item by item and field by field.",
         check: "Each plan you need shows its last run in the History.",
       },
       arm: {
         title: "Arm the writers one at a time",
-        body: "Arm one writer, run Sync cards now, read the result in the History, then the next writer. Caps limit every run (maxCatalogChangesPerRun, maxStockChangesPerRun, maxPriceChangesPerRun) and an item that fails three runs in a row is quarantined until a person releases it. Start the cards writer with maxCatalogChangesPerRun: 1 and look at that one card in BaseLinker. writers: { <name>: false } in the options switches a writer off for good: the options win over the admin.",
+        body: "Arm one writer, run Sync cards now, read the result in the History, then the next writer. Caps limit every run (maxCatalogChangesPerRun, maxStockChangesPerRun, maxPriceChangesPerRun) and an item that fails three runs in a row is quarantined until a person releases it. Start the cards writer with maxCatalogChangesPerRun: 1 and look at that one card in Base. writers: { <name>: false } in the options switches a writer off for good: the options win over the admin.",
         check: "The writers you want are armed, each with a name and a date.",
       },
       orders: {
@@ -813,8 +813,8 @@ const en = {
       },
       invoices: {
         title: "Invoice numbers (optional)",
-        body: "With the Fakturownia plugin, each issued invoice number can go into the BaseLinker order. Create a custom order field in BaseLinker (or use extra_field_1), set invoiceNumberField, then arm the invoice number writer.",
-        check: "An issued invoice shows its number in the BaseLinker order.",
+        body: "With the Fakturownia plugin, each issued invoice number can go into the Base order. Create a custom order field in Base (or use extra_field_1), set invoiceNumberField, then arm the invoice number writer.",
+        check: "An issued invoice shows its number in the Base order.",
       },
       golive: {
         title: "Go live",
@@ -832,9 +832,9 @@ const en = {
       armed: "Each writer armed deliberately",
       armedList: "Armed: {{list}}",
       quarantine: "No item in quarantine",
-      ordersOut: "Store orders reach BaseLinker",
+      ordersOut: "Store orders reach Base",
       statuses: "Statuses come back without errors",
-      journal: "Order journal enabled in BaseLinker",
+      journal: "Order journal enabled in Base",
       emails: "Order confirmation e-mails skip marketplace orders",
       emailsHint: "The plugin cannot see your e-mail code: check your order.placed subscriber.",
       alerts: "Someone watches failed orders (baselinker.order_failed and baselinker.order_import_failed)",
@@ -844,15 +844,15 @@ const en = {
       items: [
         {
           q: "Check connection says the token is refused",
-          a: "The token was revoked, regenerated or pasted with a space; the message under the button is BaseLinker's own. Generate a new one in Account & other, My account, API, put it in the environment and restart Medusa.",
+          a: "The token was revoked, regenerated or pasted with a space; the message under the button is Base's own. Generate a new one in Account & other, My account, API, put it in the environment and restart Medusa.",
         },
         {
           q: "The history shows ERROR_RATE_LIMIT",
-          a: "BaseLinker documents a limit of 100 requests a minute. The plugin stays at 80 (requestsPerMinute) with one limiter shared by all its jobs, but other tools using the same account count too: lower requestsPerMinute when they are busy. A request refused for the limit is repeated after a pause; the documentation says nothing more about what happens above the limit.",
+          a: "Base documents a limit of 100 requests a minute. The plugin stays at 80 (requestsPerMinute) with one limiter shared by all its jobs, but other tools using the same account count too: lower requestsPerMinute when they are busy. A request refused for the limit is repeated after a pause; the documentation says nothing more about what happens above the limit.",
         },
         {
           q: "Cards are in conflict: a SKU on several cards",
-          a: "The same goods were entered twice, or two items share a SKU. The plugin never guesses: such cards are not linked, not imported and get no stock or prices. Merge the cards in BaseLinker or give them distinct SKUs; the conflict clears on the next read.",
+          a: "The same goods were entered twice, or two items share a SKU. The plugin never guesses: such cards are not linked, not imported and get no stock or prices. Merge the cards in Base or give them distinct SKUs; the conflict clears on the next read.",
         },
         {
           q: "An EAN sits on two cards",
@@ -860,11 +860,11 @@ const en = {
         },
         {
           q: "Kits and bundles are skipped",
-          a: "BaseLinker computes the stock of a bundle from its parts, and a Medusa kit uses several inventory items. Neither has one number to carry over, so both are left out of the stock plans and the import.",
+          a: "Base computes the stock of a bundle from its parts, and a Medusa kit uses several inventory items. Neither has one number to carry over, so both are left out of the stock plans and the import.",
         },
         {
-          q: "addOrder timed out: is the order now in BaseLinker twice?",
-          a: "No. Every order carries the marker [medusa:<order id>] in admin_comments, and the plugin scans BaseLinker for it before every write and again after an unclear answer. An order that arrived late is adopted, never sent again.",
+          q: "addOrder timed out: is the order now in Base twice?",
+          a: "No. Every order carries the marker [medusa:<order id>] in admin_comments, and the plugin scans Base for it before every write and again after an unclear answer. An order that arrived late is adopted, never sent again.",
         },
         {
           q: "Orders stay queued",
@@ -872,27 +872,27 @@ const en = {
         },
         {
           q: "Statuses arrive late, or the journal answers empty",
-          a: "The order journal must be enabled for the account in BaseLinker (Account & other, My account, API); if you cannot find it, ask Base support. Until it returns events the plugin reads every followed order every 15 minutes. Set journal: \"off\" to stop asking.",
+          a: "The order journal must be enabled for the account in Base (Account & other, My account, API); if you cannot find it, ask Base support. Until it returns events the plugin reads every followed order every 15 minutes. Set journal: \"off\" to stop asking.",
         },
         {
           q: "A marketplace order was skipped as a duplicate",
-          a: "Medusa already has an order with the same marketplace reference, usually imported by the Allegro plugin. One importer per marketplace: either the Allegro plugin or the BaseLinker import for Allegro.",
+          a: "Medusa already has an order with the same marketplace reference, usually imported by the Allegro plugin. One importer per marketplace: either the Allegro plugin or the Base import for Allegro.",
         },
         {
           q: "An order import failed for stock",
           a: "Medusa refused the order: a variant has no stock in the sales channel's location and no backorder. Fix the stock or the variant, then Import now. The import never creates a second order when you retry.",
         },
         {
-          q: "BaseLinker refused the stock of one card",
+          q: "Base refused the stock of one card",
           a: "The warning names the card (often a bundle or a card of an external warehouse). The other cards are written; the refused one is counted and, after three failed runs, quarantined. Fix it, then Release.",
         },
         {
           q: "Prices look 23 % off",
-          a: "BaseLinker keeps gross prices, Medusa keeps net ones unless the currency is set to include tax. The plugin converts with the VAT rate of each BaseLinker product and leaves a product without a rate alone. Set Medusa's price preference for the currency to tax inclusive if your prices are gross.",
+          a: "Base keeps gross prices, Medusa keeps net ones unless the currency is set to include tax. The plugin converts with the VAT rate of each Base product and leaves a product without a rate alone. Set Medusa's price preference for the currency to tax inclusive if your prices are gross.",
         },
         {
           q: "An invoice number shows a conflict",
-          a: "The BaseLinker field already held another value, so nothing was overwritten. Clear it in BaseLinker, or choose another field (invoiceNumberField), then Retry.",
+          a: "The Base field already held another value, so nothing was overwritten. Clear it in Base, or choose another field (invoiceNumberField), then Retry.",
         },
         {
           q: "Imported orders send the store's confirmation e-mail",
@@ -901,7 +901,7 @@ const en = {
       ],
     },
   },
-  error: "Could not load BaseLinker data: {{message}}",
+  error: "Could not load Base data: {{message}}",
 }
 
 export default en
