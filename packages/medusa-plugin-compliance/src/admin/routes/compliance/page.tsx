@@ -22,9 +22,8 @@ import {
   User,
   Users,
   XCircle,
-  XMark,
 } from "@medusajs/icons"
-import { Button, Container, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, Textarea, toast } from "@medusajs/ui"
+import { Button, Container, Drawer, InlineTip, Input, Label, Select, Table, Text, Textarea, toast } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/compliance-kit"
 import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/compliance-guide"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/compliance-blocks"
@@ -249,7 +248,7 @@ function GpsrPart({ status, loading, q, onQ }: { status: StatusResponse; loading
               {loading && rows.length === 0 ? <KitSkeletonRows cols={6} /> : null}
               {!loading && rows.length === 0 ? <EmptyTableRow cols={6} icon={<ShieldCheck />} title={products.length === 0 ? t("products.empty") : t("products.emptySearch")} /> : null}
               {rows.map((p) => (
-                <ProductRow key={p.product_id} product={p} operators={status.responsible_persons} onEdit={() => setEditing(editing === p.product_id ? null : p.product_id)} />
+                <ProductRow key={p.product_id} product={p} operators={status.responsible_persons} onEdit={() => setEditing(p.product_id)} />
               ))}
             </Table.Body>
           </Table>
@@ -456,44 +455,57 @@ function ProductEditor({ product, operators, onDone }: { product: ProductComplia
     </Select>
   )
 
+  /* A drawer over the list, like every edit form of the Medusa admin: the
+     product it edits stays in view, and nothing opens at the far end of a
+     long table. */
   return (
-    <div className="grid grid-cols-1 gap-3 bg-ui-bg-subtle px-6 py-4 md:grid-cols-2">
-      <div className="flex items-center justify-between gap-x-2 md:col-span-2">
-        <div className="flex min-w-0 items-center gap-x-2">
-          <PencilSquare className="shrink-0 text-ui-fg-subtle" />
-          <Heading level="h3" className="truncate text-ui-fg-base">
-            {t("products.editor")}: {product.sku ?? product.product_id} / {product.title}
-          </Heading>
-        </div>
-        <IconButton size="small" variant="transparent" title={t("products.cancel")} aria-label={t("products.cancel")} onClick={onDone}>
-          <XMark />
-        </IconButton>
-      </div>
-      <div className="flex flex-col gap-y-1">
-        <Label size="xsmall">{t("products.manufacturer")}</Label>
-        {operatorSelect(manufacturer, setManufacturer)}
-      </div>
-      <div className="flex flex-col gap-y-1">
-        <Label size="xsmall">{t("products.responsible")}</Label>
-        {operatorSelect(responsible, setResponsible)}
-      </div>
-      <div className="flex flex-col gap-y-1 md:col-span-2">
-        <Label size="xsmall">{t("products.warnings")}</Label>
-        <Textarea value={warnings} onChange={(e) => setWarnings(e.target.value)} placeholder={t("products.warningsPlaceholder")} />
-      </div>
-      <div className="flex flex-col gap-y-1 md:col-span-2">
-        <Label size="xsmall">{t("products.safety")}</Label>
-        <Textarea value={safety} onChange={(e) => setSafety(e.target.value)} placeholder={t("products.safetyPlaceholder")} />
-      </div>
-      <div className="flex items-center gap-x-2 md:col-span-2">
-        <Button size="small" variant="primary" isLoading={save.isPending} onClick={submit}>
-          {t("products.save")}
-        </Button>
-        <Button size="small" variant="secondary" onClick={onDone}>
-          {t("products.cancel")}
-        </Button>
-      </div>
-    </div>
+    <Drawer open onOpenChange={(open) => !open && onDone()}>
+      <Drawer.Content>
+        <Drawer.Header>
+          <Drawer.Title>{t("products.editor")}</Drawer.Title>
+          <Drawer.Description>
+            {product.title}
+            {product.sku ? ` / ${product.sku}` : ""}
+          </Drawer.Description>
+        </Drawer.Header>
+        <Drawer.Body className="flex flex-col gap-y-6 overflow-y-auto">
+          <div className="flex flex-col gap-y-2">
+            <Label size="small" weight="plus">
+              {t("products.manufacturer")}
+            </Label>
+            {operatorSelect(manufacturer, setManufacturer)}
+          </div>
+          <div className="flex flex-col gap-y-2">
+            <Label size="small" weight="plus">
+              {t("products.responsible")}
+            </Label>
+            {operatorSelect(responsible, setResponsible)}
+          </div>
+          <div className="flex flex-col gap-y-2">
+            <Label size="small" weight="plus">
+              {t("products.warnings")}
+            </Label>
+            <Textarea rows={5} value={warnings} onChange={(e) => setWarnings(e.target.value)} placeholder={t("products.warningsPlaceholder")} />
+          </div>
+          <div className="flex flex-col gap-y-2">
+            <Label size="small" weight="plus">
+              {t("products.safety")}
+            </Label>
+            <Textarea rows={5} value={safety} onChange={(e) => setSafety(e.target.value)} placeholder={t("products.safetyPlaceholder")} />
+          </div>
+        </Drawer.Body>
+        <Drawer.Footer>
+          <Drawer.Close asChild>
+            <Button size="small" variant="secondary">
+              {t("products.cancel")}
+            </Button>
+          </Drawer.Close>
+          <Button size="small" variant="primary" isLoading={save.isPending} onClick={submit}>
+            {t("products.save")}
+          </Button>
+        </Drawer.Footer>
+      </Drawer.Content>
+    </Drawer>
   )
 }
 
