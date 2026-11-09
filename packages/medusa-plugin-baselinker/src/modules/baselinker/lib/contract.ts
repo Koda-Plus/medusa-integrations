@@ -67,7 +67,7 @@ export interface CardDto {
   stock: number | null
   price: Record<string, number> | null
   matchKey: string | null
-  matchSource: "sku" | "ean" | null
+  matchSource: "sku" | "ean" | "manual" | null
   variantId: string | null
   productId: string | null
   variantSku: string | null

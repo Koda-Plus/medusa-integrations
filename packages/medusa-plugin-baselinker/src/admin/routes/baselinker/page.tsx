@@ -26,13 +26,15 @@ import {
   Tag,
   XCircle,
 } from "@medusajs/icons"
-import { Button, Container, InlineTip, Table, Text, toast } from "@medusajs/ui"
+import { Button, Container, Drawer, InlineTip, Input, Table, Text, toast } from "@medusajs/ui"
 import type { CardDto, CardFilter, CheckResult, OrderFilter, StatusResponse, SyncWhat } from "../../../modules/baselinker/lib/contract"
 import {
   baselinkerKeys,
   errorMessage,
   useBaseLinkerCards,
   useBaseLinkerCheck,
+  useBaseLinkerLink,
+  useVariantSearch,
   useBaseLinkerDemoPrepare,
   useBaseLinkerOrders,
   useBaseLinkerRunning,
@@ -782,6 +784,7 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
   const rows = cards.data?.cards ?? []
   const thumbs = useProductThumbs(rows.map((c) => c.productId))
   const onlyInMedusa = (status.lastRuns.catalog?.counts?.onlyInMedusaSkus ?? []) as string[]
+  const [linking, setLinking] = useState<CardDto | null>(null)
 
   return (
     <Section
@@ -853,7 +856,7 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
                     {c.stock === null ? "" : fmtNumber(c.stock, lang)}
                   </Table.Cell>
                   <Table.Cell className="max-w-[300px]">
-                    <StoreProductCell card={c} thumb={c.productId ? thumbs[c.productId] : null} />
+                    <StoreProductCell card={c} thumb={c.productId ? thumbs[c.productId] : null} onLink={() => setLinking(c)} />
                   </Table.Cell>
                 </Table.Row>
               ))
@@ -870,16 +873,108 @@ function CardsSection({ status, lang, filter, onFilter }: { status: StatusRespon
           </Text>
         </div>
       ) : null}
+      {linking ? <LinkCardDrawer card={linking} onClose={() => setLinking(null)} /> : null}
     </Section>
   )
 }
 
-/** The store side of a card: the Medusa product of its variant (with its picture), one click away, or why there is none. */
-function StoreProductCell({ card: c, thumb }: { card: CardDto; thumb?: string | null }) {
+/** The words of a card name a person would search the store for: no "E-book", "Zestaw", quotes or punctuation. */
+function searchWords(name: string | null): string {
+  return (name ?? "")
+    .replace(/\b(e-?booki?|zestaw|set|bundle)\b/gi, " ")
+    .replace(/["\u201E\u201D\u201C'():-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 4)
+    .join(" ")
+}
+
+/**
+ * Link a card that shares no SKU or EAN with the store to a variant, by hand.
+ * The search starts from the card name, so the likely product is on top.
+ * Kept on the Medusa side: nothing is written to BaseLinker.
+ */
+function LinkCardDrawer({ card, onClose }: { card: CardDto; onClose: () => void }) {
   const { t } = useTranslation("baselinker")
+  const [q, setQ] = useState(searchWords(card.name))
+  const debounced = useDebounced(q)
+  const hits = useVariantSearch(debounced, true)
+  const link = useBaseLinkerLink()
+  const choose = (variantId: string) =>
+    link.mutate(
+      { blProductId: card.blProductId, variantId },
+      {
+        onSuccess: () => {
+          toast.success(t("cards.link.done"))
+          onClose()
+        },
+        onError: (e) => toast.error(errorMessage(e)),
+      },
+    )
+  return (
+    <Drawer open onOpenChange={(open) => !open && onClose()}>
+      <Drawer.Content>
+        <Drawer.Header>
+          <Drawer.Title>{t("cards.link.title")}</Drawer.Title>
+          <Drawer.Description>
+            {card.name || "-"} <span className="font-mono">#{card.blProductId}</span>
+          </Drawer.Description>
+        </Drawer.Header>
+        <Drawer.Body className="flex flex-col gap-y-4 overflow-y-auto">
+          <InlineTip variant="info" label={t("cards.link.tipLabel")}>
+            {t("cards.link.tip")}
+          </InlineTip>
+          <Input type="search" size="small" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("cards.link.search")} autoFocus />
+          <div className="flex flex-col divide-y rounded-lg border border-ui-border-base">
+            {hits.isLoading ? <KitLoading /> : null}
+            {!hits.isLoading && (hits.data ?? []).length === 0 ? (
+              <Text size="small" className="px-4 py-6 text-center text-ui-fg-muted">
+                {t("cards.link.none")}
+              </Text>
+            ) : null}
+            {(hits.data ?? []).map((v) => (
+              <div key={v.id} className="flex items-center gap-x-3 px-4 py-3">
+                <Thumb src={v.thumbnail} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="txt-compact-small-plus truncate text-ui-fg-base">{v.productTitle}</span>
+                  <span className="truncate font-mono text-ui-fg-muted txt-compact-xsmall">
+                    {v.sku ?? t("cards.link.noSku")}
+                    {v.title && v.title !== "Default variant" ? ` / ${v.title}` : ""}
+                  </span>
+                </span>
+                <Button size="small" variant="secondary" isLoading={link.isPending && link.variables?.variantId === v.id} onClick={() => choose(v.id)}>
+                  {t("cards.link.choose")}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Drawer.Body>
+        <Drawer.Footer>
+          <Drawer.Close asChild>
+            <Button size="small" variant="secondary">
+              {t("cards.link.cancel")}
+            </Button>
+          </Drawer.Close>
+        </Drawer.Footer>
+      </Drawer.Content>
+    </Drawer>
+  )
+}
+
+/** The store side of a card: the Medusa product of its variant (with its picture), one click away, or why there is none. */
+function StoreProductCell({ card: c, thumb, onLink }: { card: CardDto; thumb?: string | null; onLink?: () => void }) {
+  const { t } = useTranslation("baselinker")
+  const unlink = useBaseLinkerLink()
+  const linkButton =
+    onLink && !c.demo ? (
+      <button type="button" onClick={onLink} className="txt-compact-xsmall-plus text-ui-fg-interactive hover:text-ui-fg-interactive-hover hover:underline">
+        {t("cards.link.open")}
+      </button>
+    ) : null
   const keyTitle = c.matchKey ? `${c.matchKey}${c.matchSource ? ` (${t(`cards.source.${c.matchSource}`)})` : ""}` : undefined
   if (c.productId) {
-    return (
+    const store = (
       <StoreLink
         to={`/products/${c.productId}`}
         name={c.productTitle ?? c.productId}
@@ -888,6 +983,28 @@ function StoreProductCell({ card: c, thumb }: { card: CardDto; thumb?: string | 
         open={t("actions.openProduct")}
         thumb={thumb}
       />
+    )
+    if (c.matchSource !== "manual") return store
+    return (
+      <div className="flex flex-col items-start gap-y-1">
+        {store}
+        <span className="flex items-center gap-x-2">
+          <ToneBadge tone="blue">{t("cards.link.manual")}</ToneBadge>
+          <button
+            type="button"
+            disabled={unlink.isPending}
+            onClick={() =>
+              unlink.mutate(
+                { blProductId: c.blProductId, variantId: null },
+                { onSuccess: () => toast.success(t("cards.link.removed")), onError: (e) => toast.error(errorMessage(e)) },
+              )
+            }
+            className="txt-compact-xsmall text-ui-fg-muted hover:text-ui-fg-base hover:underline disabled:opacity-50"
+          >
+            {t("cards.link.unlink")}
+          </button>
+        </span>
+      </div>
     )
   }
   if (c.isContainer) {
@@ -906,13 +1023,17 @@ function StoreProductCell({ card: c, thumb }: { card: CardDto; thumb?: string | 
             {c.matchKey}
           </span>
         ) : null}
+        {linkButton}
       </div>
     )
   }
   return (
-    <Text size="small" className="text-ui-fg-muted">
-      {t("cards.noKey")}
-    </Text>
+    <div className="flex flex-col items-start gap-y-1">
+      <Text size="small" className="text-ui-fg-muted">
+        {t("cards.noKey")}
+      </Text>
+      {linkButton}
+    </div>
   )
 }
 
