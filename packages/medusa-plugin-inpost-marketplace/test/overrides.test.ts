@@ -127,7 +127,7 @@ test("edit: the proposal carries the edits, the patch only what an edit may chan
   assert.equal(p.shippingTime.daysToShip, 7, "the offer's own days win over the defaults")
   const patch = editPatchOf(p)
   assert.deepEqual(Object.keys(patch).sort(), ["images", "product", "shippingTime"])
-  assert.deepEqual(Object.keys(patch.product ?? {}).sort(), ["attributes", "description", "dimension", "name"])
+  assert.deepEqual(Object.keys(patch.product ?? {}).sort(), ["attributes", "categoryId", "description", "dimension", "name"])
   assert.equal(patchTouchesContent(patch), true)
   assert.equal(patchTouchesContent({ price: p.price, stock: p.stock }), false)
   const defaults = rowProposal({ ...row, overrides: null }, facts(), false, { daysToShip: 2, returnPolicy: "", complaintPolicy: "" }, 23)
