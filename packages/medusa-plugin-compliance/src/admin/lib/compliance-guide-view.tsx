@@ -68,7 +68,7 @@ export function GuideView({ status }: { status?: StatusResponse }) {
     step("config", state(loaded), ["p1", "p2"], CONFIG),
     step("demo", state(Boolean(status?.demo), "optional"), ["p1", "p2"]),
     step("operators", state((c?.responsible_persons ?? 0) > 0 && (c?.products_complete ?? 0) > 0), ["p1"]),
-    step("store", "later", ["p1"]),
+    step("store", state((c?.store_reads ?? 0) > 0, "later"), ["p1"]),
   ]
 
   const done: Record<(typeof CHECKS)[number], boolean> = {

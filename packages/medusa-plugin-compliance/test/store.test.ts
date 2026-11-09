@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { completeOf, toConsent, toDsr, toProductCompliance, toResponsiblePerson } from "../src/modules/compliance/lib/store.ts"
+import { completeOf, storeReadDue, toConsent, toDsr, toProductCompliance, toResponsiblePerson } from "../src/modules/compliance/lib/store.ts"
 
 test("store: a responsible person maps with cleaned fields and the kind kept", () => {
   const dto = toResponsiblePerson({ id: "crp_1", kind: "manufacturer", name: " Maker GmbH ", address: null, email: " mail@example.com ", country_code: "de", demo: true })
@@ -28,6 +28,17 @@ test("store: warnings map to an array of strings, completeness follows the ids",
   assert.deepEqual(dto.warnings, ["w1", " w2 "])
   assert.equal(dto.complete, true)
   assert.equal(dto.product_id, "prod_1")
+})
+
+test("store: the storefront read mark comes from metadata and is renewed once a day", () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z")
+  assert.equal(toProductCompliance({ id: "cpr_1", product_id: "p", metadata: null }).store_read_at, null)
+  assert.equal(toProductCompliance({ id: "cpr_1", product_id: "p", metadata: { store_read_at: "nonsense" } }).store_read_at, null)
+  const read = { id: "cpr_1", product_id: "p", metadata: { store_read_at: "2026-11-09T08:00:00.000Z" } }
+  assert.equal(toProductCompliance(read).store_read_at, "2026-11-09T08:00:00.000Z")
+  assert.equal(storeReadDue(read, now), false)
+  assert.equal(storeReadDue({ id: "cpr_1", metadata: { store_read_at: "2026-11-08T08:00:00.000Z" } }, now), true)
+  assert.equal(storeReadDue({ id: "cpr_1", metadata: null }, now), true)
 })
 
 test("store: consent maps defaults and booleans", () => {

@@ -23,6 +23,8 @@ export interface ProductComplianceDto {
   safety_info: string | null
   complete: boolean
   demo: boolean
+  /** Last time the storefront read this record (GET /store/compliance/products/:id), at most once a day; null: never. */
+  store_read_at: string | null
 }
 
 /** A single consent decision, as recorded by the storefront or the account page. */
@@ -83,6 +85,8 @@ export interface StatusResponse {
     dsr_open: number
     consent_total: number
     snapshots: number
+    /** Records the storefront has read at least once: the offer shows the GPSR block. */
+    store_reads: number
   }
   responsible_persons: ResponsiblePersonDto[]
   products: ProductComplianceDto[]

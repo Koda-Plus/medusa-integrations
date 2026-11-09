@@ -53,6 +53,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
         safety_info: null,
         complete: false,
         demo: false,
+        store_read_at: null,
       },
     )
   }
@@ -81,6 +82,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       dsr_open: dsrDtos.filter((d) => d.status === "pending" || d.status === "in_progress").length,
       consent_total: consents.length,
       snapshots: windows.reduce((n, w) => n + w.snapshots, 0),
+      store_reads: products.filter((p) => p.store_read_at !== null).length,
     },
     responsible_persons: personDtos,
     products,

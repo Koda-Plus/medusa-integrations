@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 (2026-11-09)
+
+- The setup guide marks "Connect the store" done once the storefront reads a GPSR record: GET /store/compliance/products/:id leaves `store_read_at` in the record metadata (at most once a day), the status counts `store_reads` and every product row carries `store_read_at`.
+
 ## 0.1.2 (2026-11-09)
 
 - The GPSR record of a product opens in a drawer over the list instead of a form under the table, so the edit is in view whatever row it starts from.

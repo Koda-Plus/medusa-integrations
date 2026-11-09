@@ -81,7 +81,23 @@ export function toProductCompliance(row: Row): ProductComplianceDto {
     safety_info: str(row.safety_info),
     complete: completeOf(row),
     demo: row.demo === true,
+    store_read_at: storeReadAt(row),
   }
+}
+
+/** When the storefront last read the record, kept in its metadata by the store route. */
+export function storeReadAt(row: Row): string | null {
+  const meta = row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : null
+  const v = meta?.store_read_at
+  return typeof v === "string" && !Number.isNaN(Date.parse(v)) ? v : null
+}
+
+/** The store route marks a record read at most once a day, so a busy offer does not write on every view. */
+export const STORE_READ_EVERY_MS = 24 * 60 * 60 * 1000
+
+export function storeReadDue(row: Row, now = Date.now()): boolean {
+  const at = storeReadAt(row)
+  return at === null || now - Date.parse(at) >= STORE_READ_EVERY_MS
 }
 
 export function toConsent(row: Row): ConsentDto {
