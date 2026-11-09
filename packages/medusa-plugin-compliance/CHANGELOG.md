@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (2026-11-09)
+
+- The GPSR record of a product opens in a drawer over the list instead of a form under the table, so the edit is in view whatever row it starts from.
+
 ## 0.1.1 (2026-10-18)
 
 - The panel has a setup guide.
