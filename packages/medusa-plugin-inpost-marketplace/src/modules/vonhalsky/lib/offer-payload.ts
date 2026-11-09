@@ -149,6 +149,9 @@ export function editPatchOf(p: OfferProposal): OfferPatchBody {
     product: {
       name: p.product.name,
       description: p.product.description,
+      // The category goes too: a PENDING offer refused with CATEGORY_INCORRECT
+      // is fixed by a patch (stage 09.11.2026 took it and answered with the offer).
+      categoryId: p.product.categoryId,
       ...(p.product.dimension ? { dimension: p.product.dimension } : {}),
       ...(p.product.attributes ? { attributes: p.product.attributes } : {}),
     },

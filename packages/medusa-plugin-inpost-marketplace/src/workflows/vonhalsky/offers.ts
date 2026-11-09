@@ -438,7 +438,7 @@ export async function hintOffer(scope: Scope, id: string): Promise<HintResponse>
 }
 
 /** A category a person picked for offers (a leaf), or null to go back to the mapping and the catalog. */
-export async function setCategory(scope: Scope, ids: string[], categoryId: string | null): Promise<{ updated: number }> {
+export async function setCategory(scope: Scope, ids: string[], categoryId: string | null): Promise<{ updated: number; sent: number; skipped: Array<{ id: string; reason: string }> }> {
   const svc = vonHalskySvc(scope)
   if (categoryId) {
     const info = await categoryInfo(scope, [categoryId])
@@ -446,10 +446,15 @@ export async function setCategory(scope: Scope, ids: string[], categoryId: strin
     await attributesOf(scope, categoryId).catch(() => null)
   }
   const rows = await rowsById(scope, ids)
-  if (rows.length === 0) return { updated: 0 }
+  if (rows.length === 0) return { updated: 0, sent: 0, skipped: [] }
   await svc.updateVonHalskyOffers(rows.map((r) => (categoryId ? { id: r.id, category_id: categoryId, category_source: "manual" } : { id: r.id, category_id: null, category_source: null })))
   await refreshOffers(scope, { variantIds: rows.map((r) => String(r.variant_id)) })
-  return { updated: rows.length }
+  // An offer already on the marketplace gets the new category like an edit
+  // (a patch, or close, patch and reopen for a live one); the others wait for "List".
+  const skipped: Array<{ id: string; reason: string }> = []
+  const onMarketplace = (await rowsById(scope, rows.map((r) => r.id))).filter((r) => editStart(r) !== "local")
+  const sent = onMarketplace.length ? await sendEdits(scope, onMarketplace.map((r) => r.id), skipped) : 0
+  return { updated: rows.length, sent, skipped }
 }
 
 /** Attribute values a person typed, cut to the API's limits; `keepEmpty` keeps ids without values (a bulk edit removes them). */

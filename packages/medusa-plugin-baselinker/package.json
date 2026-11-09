@@ -117,7 +117,7 @@
   "koda": {
     "ns": "baselinker",
     "moduleDir": "baselinker",
-    "brand": "BaseLinker",
+    "brand": "Base",
     "title": "BaseLinker by Koda Plus",
     "kind": "integration",
     "catalog": "erp"
