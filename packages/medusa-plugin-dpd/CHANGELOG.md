@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 (unreleased)
+## 0.5.0 (2026-11-09)
 
 - The icon is DPD's cube in white on DPD red, a rounded tile like the other Koda Plus integrations (was a generic truck), in the sidebar, the page header and the order card. The admin page has `rank: 100`, so DPD comes last among the extensions.
 
