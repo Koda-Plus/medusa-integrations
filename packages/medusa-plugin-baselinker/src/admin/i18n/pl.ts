@@ -4,12 +4,12 @@ import { communityPl } from "../lib/baselinker-kit-community"
 import { integrationPl } from "../../modules/baselinker/lib/integration-texts"
 
 const pl: typeof en = {
-  title: "BaseLinker",
+  title: "Base",
   integration: integrationPl,
   by: "by Koda Plus",
   subtitle:
-    "Medusa i BaseLinker w obie strony: karty łączone albo zakładane, produkty importowane, stany i ceny płyną w wybranym kierunku, zamówienia sklepu trafiają do BaseLinkera dokładnie raz, zamówienia z marketplace'ów wracają do Medusy dokładnie raz, a statusy, przesyłki, zwroty i numery faktur się zgadzają. Każdy zapis czeka za planem i przełącznikiem, który uzbraja człowiek.",
-  loading: "Czytam BaseLinkera",
+    "Medusa i Base w obie strony: karty łączone albo zakładane, produkty importowane, stany i ceny płyną w wybranym kierunku, zamówienia sklepu trafiają do Base dokładnie raz, zamówienia z marketplace'ów wracają do Medusy dokładnie raz, a statusy, przesyłki, zwroty i numery faktur się zgadzają. Każdy zapis czeka za planem i przełącznikiem, który uzbraja człowiek.",
+  loading: "Czytam Base",
   points: {
     cards: "Karty łączone po SKU i EAN",
     stock: "Stany i ceny w wybraną stronę",
@@ -24,10 +24,10 @@ const pl: typeof en = {
   },
   settings: {
     title: "Ustawienia",
-    subtitle: "Techniczna strona integracji: kierunki z ich zapisami, konto BaseLinkera, plany, numery faktur i historia synchronizacji.",
+    subtitle: "Techniczna strona integracji: kierunki z ich zapisami, konto Base, plany, numery faktur i historia synchronizacji.",
     tab: {
       directions: "Kierunki",
-      account: "Konto BaseLinkera",
+      account: "Konto Base",
       plans: "Plany",
       invoices: "Numery faktur",
       runs: "Historia synchronizacji",
@@ -49,7 +49,7 @@ const pl: typeof en = {
     running: "Trwa",
     check: "Sprawdź połączenie",
     sendAgain: "Wyślij ponownie",
-    sendNow: "Wyślij do BaseLinkera teraz",
+    sendNow: "Wyślij do Base teraz",
     track: "Śledź przesyłkę",
     importOrders: "Importuj zamówienia teraz",
     readReturns: "Pobierz zwroty",
@@ -58,7 +58,7 @@ const pl: typeof en = {
   },
   demo: {
     label: "Tryb demo",
-    text: "Symulowane konto BaseLinkera powstaje z Twojego katalogu: karty dla większości wariantów, produkty z wariantami, zdublowane SKU, EAN na dwóch kartach, zestaw, produkty tylko w BaseLinkerze oraz symulowane Allegro i Amazon z kilkoma zamówieniami dziennie. Zamówienia sklepu dostają numer BaseLinkera w kilka sekund, a po kilku minutach przechodzą na „Wysłane” z numerem przesyłki InPost, ale tylko we własnych wierszach wtyczki: same zamówienia nigdy nie dostają symulowanego numeru, statusu ani przesyłki. Uzbrój zapis, żeby zobaczyć, jak działa: katalog, stany, ceny i numery faktur zmieniają tylko symulację, a zamówienia z marketplace'ów stają się zamówieniami tego sklepu tylko z opcją demoCreatesOrders. Nic nie wychodzi poza Medusę. Tryb demo działa tylko z demo: true. Aby podłączyć prawdziwe konto, ustaw w opcjach wtyczki apiToken, inventoryId, warehouseId i orderStatusId.",
+    text: "Symulowane konto Base powstaje z Twojego katalogu: karty dla większości wariantów, produkty z wariantami, zdublowane SKU, EAN na dwóch kartach, zestaw, produkty tylko w Base oraz symulowane Allegro i Amazon z kilkoma zamówieniami dziennie. Zamówienia sklepu dostają numer Base w kilka sekund, a po kilku minutach przechodzą na „Wysłane” z numerem przesyłki InPost, ale tylko we własnych wierszach wtyczki: same zamówienia nigdy nie dostają symulowanego numeru, statusu ani przesyłki. Uzbrój zapis, żeby zobaczyć, jak działa: katalog, stany, ceny i numery faktur zmieniają tylko symulację, a zamówienia z marketplace'ów stają się zamówieniami tego sklepu tylko z opcją demoCreatesOrders. Nic nie wychodzi poza Medusę. Tryb demo działa tylko z demo: true. Aby podłączyć prawdziwe konto, ustaw w opcjach wtyczki apiToken, inventoryId, warehouseId i orderStatusId.",
     preparing: {
       label: "Dane demo",
       text: "Symulowane konto jeszcze nie powstało. Zadanie demo zbuduje je w ciągu minuty; przygotuj je teraz, żeby od razu zobaczyć dane.",
@@ -68,12 +68,12 @@ const pl: typeof en = {
   },
   missing: {
     label: "Konfiguracja",
-    text: "Brakuje opcji wtyczki: {{missing}}. Token znajdziesz w BaseLinkerze w sekcji Moje konto, API; numery katalogu, magazynu i statusu podpowie sprawdzenie połączenia w Ustawieniach (zakładka Konto BaseLinkera) albo metody getInventories i getOrderStatusList.",
+    text: "Brakuje opcji wtyczki: {{missing}}. Token znajdziesz w Base w sekcji Moje konto, API; numery katalogu, magazynu i statusu podpowie sprawdzenie połączenia w Ustawieniach (zakładka Konto Base) albo metody getInventories i getOrderStatusList.",
   },
   stats: {
-    cards: "Karty w BaseLinkerze",
+    cards: "Karty w Base",
     linked: "Połączone",
-    unmatched: "Tylko w BaseLinkerze",
+    unmatched: "Tylko w Base",
     conflicts: "Konflikty",
     onlyInMedusa: "Tylko w Medusie",
     stockChanges: "Zaplanowane zmiany stanów",
@@ -95,7 +95,7 @@ const pl: typeof en = {
       returns: "Zwroty co godzinę",
     },
     title: "Połączenie",
-    subtitle: "API BaseLinkera z tokenem z opcji wtyczki. Odczyt metodami get; jedyne zapisy to addOrder i cztery zapisy uzbrojonych zapisów, każdy za barierą.",
+    subtitle: "API Base z tokenem z opcji wtyczki. Odczyt metodami get; jedyne zapisy to addOrder i cztery zapisy uzbrojonych zapisów, każdy za barierą.",
     token: "Token API",
     tokenSet: "ustawiony",
     tokenMissing: "brak",
@@ -127,7 +127,7 @@ const pl: typeof en = {
     warehouseMissing: "Magazynu {{id}} nie ma w tym katalogu. Jego magazyny: {{list}}.",
     priceGroupFound: "Grupa cenowa {{id}} ({{name}}, {{currency}}) jest grupą standardową.",
     priceGroupMissing: "Na tym koncie nie ma grupy cenowej {{id}}. Grupy: {{list}}.",
-    priceGroupDerived: "Grupa cenowa {{id}} ({{name}}) jest liczona z innej grupy: jej ceny wylicza BaseLinker, więc jako priceGroupId wybierz grupę standardową.",
+    priceGroupDerived: "Grupa cenowa {{id}} ({{name}}) jest liczona z innej grupy: jej ceny wylicza Base, więc jako priceGroupId wybierz grupę standardową.",
     priceGroupCurrency: "Grupa cenowa {{id}} jest w {{currency}}, a priceCurrency to {{medusa}}.",
     schedule: "Karty i plany co godzinę w 15. minucie, kolejka zamówień co 2 minuty, zamówienia z marketplace'ów co 5 minut, statusy co 15 minut, zwroty co godzinę w 45. minucie.",
     demoNote: "W trybie demo wtyczka rozmawia z symulowanym kontem zbudowanym z Twojego katalogu.",
@@ -143,14 +143,14 @@ const pl: typeof en = {
     derived: "liczona z innej grupy",
     journalStates: {
       events: "zwraca zdarzenia: włączony",
-      empty: "odpowiada pusto: włącz go w BaseLinkerze (Konto i inne, Moje konto, API) albo zapytaj wsparcie Base",
+      empty: "odpowiada pusto: włącz go w Base (Konto i inne, Moje konto, API) albo zapytaj wsparcie Base",
       error: "niedostępny",
     },
     lists: "Co ma konto: stąd weź numery do opcji",
   },
   stock: {
     points: {
-      formula: "Dostępne w Medusie = BaseLinker",
+      formula: "Dostępne w Medusie = Base",
       after: "Po każdym odczycie katalogu",
       noZero: "Brakujących nigdy nie zeruje",
     },
@@ -162,7 +162,7 @@ const pl: typeof en = {
     },
     title: "Plan stanów",
     subtitle:
-      "Z BaseLinkera do Medusy: docelowy stan = max(0, stan w BaseLinkerze) + rezerwacje, więc dostępność w Medusie równa się liczbie w BaseLinkerze. Plan powstaje po każdym pełnym odczycie katalogu; pozycji, których zabrakło w odczycie, nigdy nie zerujemy.",
+      "Z Base do Medusy: docelowy stan = max(0, stan w Base) + rezerwacje, więc dostępność w Medusie równa się liczbie w Base. Plan powstaje po każdym pełnym odczycie katalogu; pozycji, których zabrakło w odczycie, nigdy nie zerujemy.",
     modeOff: "Synchronizacja stanów jest wyłączona (stockSync: \"off\").",
     modePlan: "Tylko plan: nic nie jest zapisywane. Przejrzyj plan, potem ustaw w opcjach wtyczki stockSync: \"write\" i uzbrój zapis stanów.",
     modeWrite: "Zapis: do {{max}} zmian na przebieg przechodzi przez własny workflow magazynowy Medusy, najpierw zmniejszenia.",
@@ -177,12 +177,12 @@ const pl: typeof en = {
       overCap: "W następnym przebiegu",
       unchanged: "Bez zmian",
       kits: "Pominięte zestawy",
-      negative: "Ujemne w BaseLinkerze",
+      negative: "Ujemne w Base",
     },
     col: {
       variant: "Wariant",
       medusa: "Medusa teraz",
-      bl: "BaseLinker",
+      bl: "Base",
       target: "Cel",
       units: "Sztuki",
       status: "Status",
@@ -205,20 +205,20 @@ const pl: typeof en = {
       nothing: "Tu nic się nie tworzy",
     },
     title: "Karty",
-    subtitle: "Karty produktów z katalogu BaseLinkera obok produktów sklepu, z którymi są połączone. Przy połączonej karcie widać jej produkt w Medusie, jeden klik dalej.",
+    subtitle: "Karty produktów z katalogu Base obok produktów sklepu, z którymi są połączone. Przy połączonej karcie widać jej produkt w Medusie, jeden klik dalej.",
     matching:
       "Klucz dopasowania: najpierw SKU, potem EAN, unikalne po obu stronach; duplikaty są pokazywane, nigdy łączone. Karty główne z wariantami są widoczne, łączymy ich warianty. Tu niczego nie zakładamy ani nie importujemy: to zadanie uzbrojonych zapisów.",
     search: "Szukaj: nazwa, SKU, EAN, numer karty",
     filter: {
       all: "Wszystkie",
       linked: "Połączone",
-      unmatched: "Tylko w BaseLinkerze",
+      unmatched: "Tylko w Base",
       conflicts: "Konflikty",
       nosku: "Bez SKU",
     },
     col: {
       card: "Karta",
-      stock: "Stan w BaseLinkerze",
+      stock: "Stan w Base",
       product: "Produkt w sklepie",
     },
     conflict: {
@@ -235,7 +235,7 @@ const pl: typeof en = {
     sample: "Przykład",
     variantOf: "wariant karty {{id}}",
     empty: "Brak kart w tym widoku",
-    onlyInMedusa: "Warianty bez karty w BaseLinkerze: {{list}}",
+    onlyInMedusa: "Warianty bez karty w Base: {{list}}",
   },
   orders: {
     points: {
@@ -243,11 +243,11 @@ const pl: typeof en = {
       retry: "Błędy ponawiane, potem czekają tu",
       exportOff: "Eksport wyłączony",
     },
-    title: "Zamówienia do BaseLinkera",
+    title: "Zamówienia do Base",
     subtitle:
-      "Zamówienia złożone w sklepie, każde wysłane do BaseLinkera raz, ze statusem i numerem przesyłki, które tam otrzymało. Zamówienie, którego nie udało się wysłać, czeka tutaj razem z powodem.",
-    how: "Każde złożone zamówienie trafia tam raz: znacznik w admin_comments pozwala wtyczce znaleźć zamówienie, które BaseLinker już ma, zanim cokolwiek zapisze. Nieudane próby wracają z rosnącą przerwą, a potem czekają tutaj.",
-    search: "Numer zamówienia lub numer z BaseLinkera",
+      "Zamówienia złożone w sklepie, każde wysłane do Base raz, ze statusem i numerem przesyłki, które tam otrzymało. Zamówienie, którego nie udało się wysłać, czeka tutaj razem z powodem.",
+    how: "Każde złożone zamówienie trafia tam raz: znacznik w admin_comments pozwala wtyczce znaleźć zamówienie, które Base już ma, zanim cokolwiek zapisze. Nieudane próby wracają z rosnącą przerwą, a potem czekają tutaj.",
+    search: "Numer zamówienia lub numer z Base",
     filter: {
       all: "Wszystkie",
       pending: "W kolejce",
@@ -258,8 +258,8 @@ const pl: typeof en = {
     col: {
       order: "Zamówienie w sklepie",
       status: "Status",
-      bl: "Zamówienie w BaseLinkerze",
-      blStatus: "Status w BaseLinkerze",
+      bl: "Zamówienie w Base",
+      blStatus: "Status w Base",
       tracking: "Przesyłka",
       attempts: "Próby",
       details: "Szczegóły",
@@ -296,7 +296,7 @@ const pl: typeof en = {
       statuses: "Statusy",
       catalog_import: "Import katalogu",
       cards: "Karty z Medusy",
-      stock_push: "Stany do BaseLinkera",
+      stock_push: "Stany do Base",
       prices: "Ceny",
       imports: "Zamówienia z marketplace'ów",
       returns: "Zwroty",
@@ -334,30 +334,30 @@ const pl: typeof en = {
     next: "Następna",
   },
   widget: {
-    title: "BaseLinker",
+    title: "Base",
     demo: "Demo",
-    more: "Strona BaseLinkera",
-    none: "To zamówienie nie trafiło jeszcze do BaseLinkera.",
-    queued: "W kolejce. Zamówienie z BaseLinkera pojawi się tu za kilka sekund.",
-    blOrder: "Zamówienie w BaseLinkerze",
+    more: "Strona Base",
+    none: "To zamówienie nie trafiło jeszcze do Base.",
+    queued: "W kolejce. Zamówienie z Base pojawi się tu za kilka sekund.",
+    blOrder: "Zamówienie w Base",
     status: "Status",
     tracking: "Przesyłka",
     sentAt: "Wysłano",
     fulfilledAt: "Zrealizowano w Medusie",
     exportOff: "Wysyłka zamówień jest wyłączona w opcjach wtyczki.",
     notConfigured: "Wtyczka nie jest jeszcze skonfigurowana do wysyłania zamówień.",
-    imported: "Przyszło z BaseLinkera ({{source}})",
-    importedNote: "Zamówienie z marketplace'u zaimportowane przez wtyczkę: nigdy nie wraca do BaseLinkera.",
+    imported: "Przyszło z Base ({{source}})",
+    importedNote: "Zamówienie z marketplace'u zaimportowane przez wtyczkę: nigdy nie wraca do Base.",
     marketplaceRef: "Numer z marketplace'u",
-    marketplaceNote: "Zamówienie pobrane prosto z marketplace'u: BaseLinker dostaje je przez własną integrację.",
+    marketplaceNote: "Zamówienie pobrane prosto z marketplace'u: Base dostaje je przez własną integrację.",
     payment: "Płatność",
     importedAt: "Zaimportowano",
-    loading: "Wczytuję dane z BaseLinkera",
-    failed: "Nie udało się odczytać danych BaseLinkera dla tego zamówienia.",
+    loading: "Wczytuję dane z Base",
+    failed: "Nie udało się odczytać danych Base dla tego zamówienia.",
     skip: {
-      canceled: "Zamówienie jest anulowane, więc nie trafia do BaseLinkera.",
-      skip_key: "Oznaczone jako zamówienie testowe (klucz pominięcia w metadanych zamówienia), więc zostaje poza BaseLinkerem.",
-      marketplace_order: "Zamówienie pobrane prosto z marketplace'u: BaseLinker dostaje je przez własną integrację.",
+      canceled: "Zamówienie jest anulowane, więc nie trafia do Base.",
+      skip_key: "Oznaczone jako zamówienie testowe (klucz pominięcia w metadanych zamówienia), więc zostaje poza Base.",
+      marketplace_order: "Zamówienie pobrane prosto z marketplace'u: Base dostaje je przez własną integrację.",
     },
   },
   productWidget: {
@@ -365,15 +365,15 @@ const pl: typeof en = {
       sku: "To samo SKU lub EAN co karta",
       hourly: "Łączy się po odczycie co godzinę",
     },
-    title: "BaseLinker",
+    title: "Base",
     none: "Brak połączonej karty",
-    stock: "Stan w BaseLinkerze",
+    stock: "Stan w Base",
     noStock: "brak liczby dla magazynu",
     more: "Wszystkie karty",
     container: "Karta główna z wariantami",
     containerNote: "Trzyma karty wariantów, sama nie jest łączona z wariantem.",
-    loading: "Wczytuję karty BaseLinkera",
-    failed: "Nie udało się odczytać kart BaseLinkera dla tego produktu.",
+    loading: "Wczytuję karty Base",
+    failed: "Nie udało się odczytać kart Base dla tego produktu.",
     moreCards_one: "i jeszcze {{count}} karta",
     moreCards_few: "i jeszcze {{count}} karty",
     moreCards_many: "i jeszcze {{count}} kart",
@@ -383,7 +383,7 @@ const pl: typeof en = {
     started: "Uruchomione. Wynik pojawi się tu za chwilę.",
     already: "Już trwa.",
     sent: "W kolejce. Wysyłam.",
-    checkOk: "BaseLinker odpowiada. Token działa.",
+    checkOk: "Base odpowiada. Token działa.",
     checkFailed: "Brak połączenia: {{error}}",
     error: "Coś poszło nie tak: {{error}}",
     armed: "{{writer}}: uzbrojony. Następny przebieg zapisuje.",
@@ -434,21 +434,21 @@ const pl: typeof en = {
       invoices: "Numery faktur",
     },
     medusa: "Medusa",
-    baselinker: "BaseLinker",
+    baselinker: "Base",
     pickCatalog: "Katalog żyje w",
     pickStock: "Prawda o stanach w",
     how: {
       catalogMedusa: "Warianty łączone z kartami po SKU, potem po EAN; brakujące karty zakłada zapis.",
       catalogBaseLinker: "Produkty importuje zapis po planie; duplikaty nigdy nie są importowane.",
-      stockBaseLinker: "Stan w Medusie = stan w BaseLinkerze plus rezerwacje, planowany po każdym odczycie.",
-      stockMedusa: "Stan w BaseLinkerze = to, co Medusa może jeszcze sprzedać, planowany po każdym odczycie.",
+      stockBaseLinker: "Stan w Medusie = stan w Base plus rezerwacje, planowany po każdym odczycie.",
+      stockMedusa: "Stan w Base = to, co Medusa może jeszcze sprzedać, planowany po każdym odczycie.",
       stockOff: "Wyłączone (stockSync: \"off\").",
       pricesPush: "Cena bazowa z Medusy w {{currency}} do grupy cenowej {{group}}.",
       pricesNoGroup: "Nie ustawiono grupy cenowej (priceGroupId).",
       pricesWithCatalog: "Przychodzą z importowanymi produktami, z grupy cenowej {{group}}.",
       ordersOutOn: "Każde wysyłane raz, ze skanem znacznika przed każdym zapisem.",
       ordersOutOff: "Nie są wysyłane (exportOrders: false).",
-      ordersInOn: "Źródła: {{sources}}. Dokładnie raz na zamówienie w BaseLinkerze.",
+      ordersInOn: "Źródła: {{sources}}. Dokładnie raz na zamówienie w Base.",
       ordersInOff: "Nie ustawiono źródeł (orderImportSources).",
       statuses: "Co 15 minut. Dziennik zdarzeń: {{journal}}.",
       returns: "Co godzinę, tylko odczyt, z powiązaniem z zamówieniami w Medusie.",
@@ -462,7 +462,7 @@ const pl: typeof en = {
       catalogImport: "Import katalogu",
       cards: "Karty z Medusy",
       stockToMedusa: "Stany do Medusy",
-      stockToBaseLinker: "Stany do BaseLinkera",
+      stockToBaseLinker: "Stany do Base",
       prices: "Wysyłka cen",
       orderImport: "Import zamówień",
       invoiceNumbers: "Numery faktur",
@@ -486,7 +486,7 @@ const pl: typeof en = {
     confirmButton: "Uzbrój",
     cancel: "Anuluj",
     inMedusa: "Medusie",
-    inBaseLinker: "BaseLinkerze",
+    inBaseLinker: "Base",
   },
   plans: {
     modeShort: {
@@ -502,22 +502,22 @@ const pl: typeof en = {
       catalog_import: {
         title: "Plan importu katalogu",
         subtitle:
-          "Produkty z BaseLinkera do Medusy: co uzbrojony zapis założy, zmieni pole po polu albo przestawi na szkic. SKU lub EAN na kilku kartach to konflikt i nigdy nie jest importowany. Niczego nie usuwamy.",
+          "Produkty z Base do Medusy: co uzbrojony zapis założy, zmieni pole po polu albo przestawi na szkic. SKU lub EAN na kilku kartach to konflikt i nigdy nie jest importowany. Niczego nie usuwamy.",
       },
       cards: {
         title: "Plan kart",
         subtitle:
-          "Warianty z Medusy jako karty w BaseLinkerze: karta dla każdego wariantu, który jej nie ma, nazwa i EAN zgodne z Medusą. SKU, które już jest na karcie, to konflikt, nigdy druga karta. Stany i ceny mają własne zapisy.",
+          "Warianty z Medusy jako karty w Base: karta dla każdego wariantu, który jej nie ma, nazwa i EAN zgodne z Medusą. SKU, które już jest na karcie, to konflikt, nigdy druga karta. Stany i ceny mają własne zapisy.",
       },
       stock_push: {
-        title: "Plan stanów: z Medusy do BaseLinkera",
+        title: "Plan stanów: z Medusy do Base",
         subtitle:
-          "To, co Medusa może jeszcze sprzedać (stan minus rezerwacje), trafia do magazynu BaseLinkera jako liczby bezwzględne, najpierw zmniejszenia. Pozycji, których zabrakło w odczycie, nigdy nie zerujemy; zestawy są pomijane.",
+          "To, co Medusa może jeszcze sprzedać (stan minus rezerwacje), trafia do magazynu Base jako liczby bezwzględne, najpierw zmniejszenia. Pozycji, których zabrakło w odczycie, nigdy nie zerujemy; zestawy są pomijane.",
       },
       prices: {
         title: "Plan cen",
         subtitle:
-          "Ceny bazowe z Medusy do grupy cenowej BaseLinkera. BaseLinker trzyma ceny brutto: ceny netto z Medusy mnożymy przez stawkę VAT karty, a karty bez stawki zostawiamy w spokoju.",
+          "Ceny bazowe z Medusy do grupy cenowej Base. Base trzyma ceny brutto: ceny netto z Medusy mnożymy przez stawkę VAT karty, a karty bez stawki zostawiamy w spokoju.",
       },
     },
     filter: {
@@ -555,12 +555,12 @@ const pl: typeof en = {
     reasons: {
       bundle: "Zestaw (komplet): nie importujemy",
       no_sku: "Brak SKU",
-      sku_too_long: "SKU dłuższe niż 50 znaków, które mieści BaseLinker",
+      sku_too_long: "SKU dłuższe niż 50 znaków, które mieści Base",
       duplicate_sku: "SKU na kilku kartach",
       duplicate_ean: "EAN na kilku kartach",
       ambiguous_variant: "To SKU ma kilka wariantów w Medusie",
       split_product: "Jego warianty są w różnych produktach Medusy",
-      removed_in_baselinker: "Usunięty w BaseLinkerze",
+      removed_in_baselinker: "Usunięty w Base",
       new_variant_needs_options: "Nowy wariant: dodaj go w Medusie z tym SKU, połączy się przy następnym odczycie",
       category_missing: "Kategorii nie ma w Medusie (createMissingCategories jest wyłączone)",
       sku_on_card: "To SKU jest już na karcie",
@@ -608,9 +608,9 @@ const pl: typeof en = {
       waiting: "Czeka na zapis: {{count}}",
       off: "Import wyłączony",
     },
-    title: "Zamówienia z marketplace'ów z BaseLinkera",
-    subtitle: "Zamówienia z marketplace'ów (Allegro, Amazon, eBay, Erli i inne) zebrane przez BaseLinkera, obok zamówień w sklepie, którymi się stały.",
-    how: "Wyszukiwane co 5 minut; stają się zamówieniami w Medusie, każde dokładnie raz, tylko gdy zapis importu zamówień jest uzbrojony. Nasze zamówienia wysłane do BaseLinkera nigdy nie wracają.",
+    title: "Zamówienia z marketplace'ów z Base",
+    subtitle: "Zamówienia z marketplace'ów (Allegro, Amazon, eBay, Erli i inne) zebrane przez Base, obok zamówień w sklepie, którymi się stały.",
+    how: "Wyszukiwane co 5 minut; stają się zamówieniami w Medusie, każde dokładnie raz, tylko gdy zapis importu zamówień jest uzbrojony. Nasze zamówienia wysłane do Base nigdy nie wracają.",
     waiting: "Na zapis importu zamówień czeka zamówień: {{count}}.",
     off: "Import zamówień jest wyłączony: ustaw orderImportSources, żeby importować zamówienia z marketplace'ów.",
     emailNote:
@@ -624,12 +624,12 @@ const pl: typeof en = {
       flagged: "Oznaczone",
     },
     col: {
-      order: "Zamówienie w BaseLinkerze",
+      order: "Zamówienie w Base",
       source: "Źródło",
       medusa: "Zamówienie w sklepie",
       total: "Wartość",
       payment: "Płatność",
-      blStatus: "Status w BaseLinkerze",
+      blStatus: "Status w Base",
       details: "Szczegóły",
     },
     noOrder: {
@@ -650,13 +650,13 @@ const pl: typeof en = {
       awaiting: "Czeka na płatność",
     },
     flags: {
-      cancel_blocked: "Anulowane w BaseLinkerze, a w Medusie już zrealizowane: decyduje człowiek",
+      cancel_blocked: "Anulowane w Base, a w Medusie już zrealizowane: decyduje człowiek",
     },
     lines: "pozycji: {{count}}",
     unlinked: "bez połączenia z kartą: {{count}} (pozycje własne)",
     importNow: "Importuj teraz",
     empty: "Brak zamówień w tym widoku",
-    search: "Numer z BaseLinkera, numer zamówienia lub numer z marketplace'u",
+    search: "Numer z Base, numer zamówienia lub numer z marketplace'u",
   },
   returns: {
     points: {
@@ -666,7 +666,7 @@ const pl: typeof en = {
       off: "Zwroty wyłączone",
     },
     title: "Zwroty",
-    subtitle: "Zwroty z menedżera zwrotów BaseLinkera obok zamówienia w sklepie, do którego należą.",
+    subtitle: "Zwroty z menedżera zwrotów Base obok zamówienia w sklepie, do którego należą.",
     how: "Tylko odczyt. Zwrot łączy się z zamówieniem w sklepie, gdy to zamówienie wysłała albo zaimportowała ta wtyczka. Nie zapisujemy danych kupujących.",
     off: "Zwroty są wyłączone (returnsSync: false).",
     col: {
@@ -680,7 +680,7 @@ const pl: typeof en = {
     },
     noOrder: "Zamówienie spoza sklepu",
     empty: "Brak zwrotów z {{days}} dni",
-    search: "Numer zwrotu, zamówienia w BaseLinkerze lub numer zamówienia",
+    search: "Numer zwrotu, zamówienia w Base lub numer zamówienia",
   },
   invoices: {
     points: {
@@ -690,7 +690,7 @@ const pl: typeof en = {
     },
     title: "Numery faktur",
     subtitle:
-      "Numery dokumentów, które wystawia wtyczka Fakturownia, zapisywane w polu {{field}} zamówienia w BaseLinkerze. Najpierw czytamy pole: puste zapisujemy, ten sam numer zostawiamy, innej wartości nigdy nie nadpisujemy.",
+      "Numery dokumentów, które wystawia wtyczka Fakturownia, zapisywane w polu {{field}} zamówienia w Base. Najpierw czytamy pole: puste zapisujemy, ten sam numer zostawiamy, innej wartości nigdy nie nadpisujemy.",
     filter: {
       all: "Wszystkie",
       pending: "Czekające",
@@ -703,7 +703,7 @@ const pl: typeof en = {
       order: "Zamówienie",
       number: "Numer",
       kind: "Rodzaj",
-      bl: "Zamówienie w BaseLinkerze",
+      bl: "Zamówienie w Base",
       status: "Status",
       details: "Szczegóły",
     },
@@ -731,11 +731,11 @@ const pl: typeof en = {
     copied: "Skopiowano",
     demoNote: "Tryb demo: stany poniżej pochodzą z symulowanego konta. W prawdziwym sklepie odpowiadają Twojej konfiguracji.",
     intro: {
-      title: "Wdrożenie BaseLinkera w prawdziwym sklepie",
-      text: "Ta wtyczka łączy Medusę z BaseLinkerem (Base) w obie strony. Łączy warianty z kartami w BaseLinkerze albo je zakłada, importuje produkty z BaseLinkera, gdy to tam żyje katalog, przenosi stany i ceny w wybranym kierunku, wysyła zamówienia sklepu do BaseLinkera dokładnie raz, importuje zamówienia z marketplace'ów dokładnie raz i odbiera statusy, przesyłki, zwroty oraz numery faktur. Każdy zapis, który zmienia dane, czeka za planem, który czytasz, i za przełącznikiem, który uzbraja człowiek.",
+      title: "Wdrożenie Base w prawdziwym sklepie",
+      text: "Ta wtyczka łączy Medusę z Base (dawniej BaseLinker) w obie strony. Łączy warianty z kartami w Base albo je zakłada, importuje produkty z Base, gdy to tam żyje katalog, przenosi stany i ceny w wybranym kierunku, wysyła zamówienia sklepu do Base dokładnie raz, importuje zamówienia z marketplace'ów dokładnie raz i odbiera statusy, przesyłki, zwroty oraz numery faktur. Każdy zapis, który zmienia dane, czeka za planem, który czytasz, i za przełącznikiem, który uzbraja człowiek.",
       time: "Pół dnia na zamówienia i stany; cały dzień z importem katalogu i zamówieniami z marketplace'ów",
       needs: [
-        "Konta BaseLinker z dostępem do API",
+        "Konta Base z dostępem do API",
         "Tokenu API",
         "Katalogu (inventory) i magazynu bl_",
         "Medusy 2.12 lub nowszej",
@@ -746,11 +746,11 @@ const pl: typeof en = {
     },
     diagram: {
       title: "Jak rozmawiają ze sobą części",
-      subtitle: "Marketplace'y sprzedają przez BaseLinkera; ta wtyczka utrzymuje zgodność Medusy i BaseLinkera, zawsze najpierw plan.",
+      subtitle: "Marketplace'y sprzedają przez Base; ta wtyczka utrzymuje zgodność Medusy i Base, zawsze najpierw plan.",
       nodes: {
         marketplaces: "Marketplace'y",
         marketplacesCaption: "Allegro, Amazon, eBay, Erli: oferty i zamówienia",
-        baselinker: "BaseLinker",
+        baselinker: "Base",
         baselinkerCaption: "Katalog, stany magazynu, menedżer zamówień, zwroty, dziennik",
         plugin: "Ta wtyczka",
         pluginCaption: "Połączenia, plany, uzbrojone zapisy, dokładnie raz w obie strony",
@@ -768,9 +768,9 @@ const pl: typeof en = {
       subtitle: "Każdy krok pokazuje swój stan na żywo z tego sklepu.",
       token: {
         title: "Utwórz token API",
-        body: "W BaseLinkerze otwórz Konto i inne, Moje konto, a potem zakładkę API, i wygeneruj token nazwany jak ten sklep. Skopiuj go raz i trzymaj na serwerze: wtyczka maskuje go w każdym logu, błędzie i ekranie.",
-        link: "Dokumentacja API BaseLinkera",
-        check: "Sprawdzenie połączenia (Ustawienia, Konto BaseLinkera) mówi, że token działa.",
+        body: "W Base otwórz Konto i inne, Moje konto, a potem zakładkę API, i wygeneruj token nazwany jak ten sklep. Skopiuj go raz i trzymaj na serwerze: wtyczka maskuje go w każdym logu, błędzie i ekranie.",
+        link: "Dokumentacja API Base",
+        check: "Sprawdzenie połączenia (Ustawienia, Konto Base) mówi, że token działa.",
       },
       options: {
         title: "Skonfiguruj wtyczkę",
@@ -779,7 +779,7 @@ const pl: typeof en = {
       },
       catalog: {
         title: "Wybierz katalog i magazyn",
-        body: "BaseLinker trzyma produkty w katalogach (inventory); stary magazyn BaseLinkera nie jest używany. Sprawdzenie połączenia pokazuje katalogi z ich magazynami: ustaw inventoryId, a jako warehouseId magazyn typu bl (bl_1234). Tylko magazyny bl_ przyjmują zapis stanów; magazyny shop_ i warehouse_ odbijają zewnętrzny system.",
+        body: "Base trzyma produkty w katalogach (inventory); stary magazyn Base nie jest używany. Sprawdzenie połączenia pokazuje katalogi z ich magazynami: ustaw inventoryId, a jako warehouseId magazyn typu bl (bl_1234). Tylko magazyny bl_ przyjmują zapis stanów; magazyny shop_ i warehouse_ odbijają zewnętrzny system.",
         check: "Sprawdzenie połączenia potwierdza katalog i to, że magazyn do niego należy.",
       },
       ids: {
@@ -789,22 +789,22 @@ const pl: typeof en = {
       },
       source: {
         title: "Własne źródło zamówień dla Medusy",
-        body: "W BaseLinkerze otwórz Zamówienia, Ustawienia, Własne źródła zamówień i utwórz źródło nazwane jak sklep. Jego numer wpisz w customSourceId: zamówienia z Medusy są wtedy oznaczone w BaseLinkerze, statusy czytamy po 100 naraz, a import z marketplace'ów nigdy nie zabierze z powrotem naszych zamówień.",
+        body: "W Base otwórz Zamówienia, Ustawienia, Własne źródła zamówień i utwórz źródło nazwane jak sklep. Jego numer wpisz w customSourceId: zamówienia z Medusy są wtedy oznaczone w Base, statusy czytamy po 100 naraz, a import z marketplace'ów nigdy nie zabierze z powrotem naszych zamówień.",
         check: "Sprawdzenie połączenia pokazuje źródło w grupie personal.",
       },
       truth: {
         title: "Zdecyduj, gdzie jest źródło prawdy",
-        body: "Dla każdego rodzaju danych właścicielem jest jedna strona: katalog (catalogSource), stany (stockSource), ceny (idą za katalogiem) i zamówienia z marketplace'ów (orderImportSources). Zanim cokolwiek zaimportujesz albo wyślesz stany, sprawdź duplikaty: u sprzedawcy opon z około 11 000 kart 4 438 par SKU okazało się tym samym fizycznym towarem wpisanym dwa razy. Scal je w BaseLinkerze, aż filtr Konflikty w kartach będzie pusty.",
+        body: "Dla każdego rodzaju danych właścicielem jest jedna strona: katalog (catalogSource), stany (stockSource), ceny (idą za katalogiem) i zamówienia z marketplace'ów (orderImportSources). Zanim cokolwiek zaimportujesz albo wyślesz stany, sprawdź duplikaty: u sprzedawcy opon z około 11 000 kart 4 438 par SKU okazało się tym samym fizycznym towarem wpisanym dwa razy. Scal je w Base, aż filtr Konflikty w kartach będzie pusty.",
         check: "Karty nie pokazują konfliktów albo każdy konflikt jest zrozumiały.",
       },
       dryRun: {
         title: "Przeczytaj plany (próba na sucho)",
-        body: "Synchronizuj karty czyta BaseLinkera i tworzy każdy plan dla obowiązujących kierunków: import katalogu albo plan kart, plan stanów, plan cen. Nic nie jest zapisywane. Przeczytaj je w Ustawieniach, w zakładce Plany, pozycja po pozycji i pole po polu.",
+        body: "Synchronizuj karty czyta Base i tworzy każdy plan dla obowiązujących kierunków: import katalogu albo plan kart, plan stanów, plan cen. Nic nie jest zapisywane. Przeczytaj je w Ustawieniach, w zakładce Plany, pozycja po pozycji i pole po polu.",
         check: "Każdy potrzebny plan ma swój ostatni przebieg w Historii.",
       },
       arm: {
         title: "Uzbrajaj zapisy po jednym",
-        body: "Uzbrój jeden zapis, uruchom Synchronizuj karty, przeczytaj wynik w Historii i dopiero wtedy kolejny zapis. Limity ograniczają każdy przebieg (maxCatalogChangesPerRun, maxStockChangesPerRun, maxPriceChangesPerRun), a pozycja, która trzy razy z rzędu się nie uda, trafia do kwarantanny, dopóki ktoś jej nie zwolni. Zapis kart zacznij od maxCatalogChangesPerRun: 1 i obejrzyj tę jedną kartę w BaseLinkerze. writers: { <nazwa>: false } w opcjach wyłącza zapis na stałe: opcje wygrywają z panelem.",
+        body: "Uzbrój jeden zapis, uruchom Synchronizuj karty, przeczytaj wynik w Historii i dopiero wtedy kolejny zapis. Limity ograniczają każdy przebieg (maxCatalogChangesPerRun, maxStockChangesPerRun, maxPriceChangesPerRun), a pozycja, która trzy razy z rzędu się nie uda, trafia do kwarantanny, dopóki ktoś jej nie zwolni. Zapis kart zacznij od maxCatalogChangesPerRun: 1 i obejrzyj tę jedną kartę w Base. writers: { <nazwa>: false } w opcjach wyłącza zapis na stałe: opcje wygrywają z panelem.",
         check: "Potrzebne zapisy są uzbrojone, każdy z nazwiskiem i datą.",
       },
       orders: {
@@ -814,8 +814,8 @@ const pl: typeof en = {
       },
       invoices: {
         title: "Numery faktur (opcjonalnie)",
-        body: "Z wtyczką Fakturownia numer każdej wystawionej faktury może trafić do zamówienia w BaseLinkerze. Utwórz w BaseLinkerze własne pole zamówienia (albo użyj extra_field_1), ustaw invoiceNumberField i uzbrój zapis numerów faktur.",
-        check: "Wystawiona faktura pokazuje swój numer w zamówieniu w BaseLinkerze.",
+        body: "Z wtyczką Fakturownia numer każdej wystawionej faktury może trafić do zamówienia w Base. Utwórz w Base własne pole zamówienia (albo użyj extra_field_1), ustaw invoiceNumberField i uzbrój zapis numerów faktur.",
+        check: "Wystawiona faktura pokazuje swój numer w zamówieniu w Base.",
       },
       golive: {
         title: "Start",
@@ -833,9 +833,9 @@ const pl: typeof en = {
       armed: "Każdy zapis uzbrojony świadomie",
       armedList: "Uzbrojone: {{list}}",
       quarantine: "Żadna pozycja w kwarantannie",
-      ordersOut: "Zamówienia sklepu docierają do BaseLinkera",
+      ordersOut: "Zamówienia sklepu docierają do Base",
       statuses: "Statusy wracają bez błędów",
-      journal: "Dziennik zdarzeń włączony w BaseLinkerze",
+      journal: "Dziennik zdarzeń włączony w Base",
       emails: "E-maile potwierdzenia pomijają zamówienia z marketplace'ów",
       emailsHint: "Wtyczka nie widzi Twojego kodu e-maili: sprawdź subskrybenta order.placed.",
       alerts: "Ktoś pilnuje nieudanych zamówień (baselinker.order_failed i baselinker.order_import_failed)",
@@ -845,15 +845,15 @@ const pl: typeof en = {
       items: [
         {
           q: "Sprawdzenie połączenia mówi, że token jest odrzucony",
-          a: "Token został odwołany, wygenerowany ponownie albo wklejony ze spacją; komunikat pod przyciskiem pochodzi wprost z BaseLinkera. Wygeneruj nowy w Konto i inne, Moje konto, API, wpisz go do zmiennych środowiskowych i uruchom Medusę ponownie.",
+          a: "Token został odwołany, wygenerowany ponownie albo wklejony ze spacją; komunikat pod przyciskiem pochodzi wprost z Base. Wygeneruj nowy w Konto i inne, Moje konto, API, wpisz go do zmiennych środowiskowych i uruchom Medusę ponownie.",
         },
         {
           q: "W historii jest ERROR_RATE_LIMIT",
-          a: "BaseLinker podaje limit 100 zapytań na minutę. Wtyczka trzyma się 80 (requestsPerMinute) z jednym limitem wspólnym dla wszystkich jej zadań, ale liczą się też inne narzędzia korzystające z tego samego konta: zmniejsz requestsPerMinute, gdy mocno pracują. Zapytanie odrzucone z powodu limitu ponawiamy po przerwie; dokumentacja nie mówi nic więcej o tym, co dzieje się powyżej limitu.",
+          a: "Base podaje limit 100 zapytań na minutę. Wtyczka trzyma się 80 (requestsPerMinute) z jednym limitem wspólnym dla wszystkich jej zadań, ale liczą się też inne narzędzia korzystające z tego samego konta: zmniejsz requestsPerMinute, gdy mocno pracują. Zapytanie odrzucone z powodu limitu ponawiamy po przerwie; dokumentacja nie mówi nic więcej o tym, co dzieje się powyżej limitu.",
         },
         {
           q: "Karty są w konflikcie: SKU na kilku kartach",
-          a: "Ten sam towar wpisano dwa razy albo dwa towary mają wspólne SKU. Wtyczka nigdy nie zgaduje: takie karty nie są łączone ani importowane i nie dostają stanów ani cen. Scal karty w BaseLinkerze albo nadaj im różne SKU; konflikt zniknie przy następnym odczycie.",
+          a: "Ten sam towar wpisano dwa razy albo dwa towary mają wspólne SKU. Wtyczka nigdy nie zgaduje: takie karty nie są łączone ani importowane i nie dostają stanów ani cen. Scal karty w Base albo nadaj im różne SKU; konflikt zniknie przy następnym odczycie.",
         },
         {
           q: "EAN jest na dwóch kartach",
@@ -861,11 +861,11 @@ const pl: typeof en = {
         },
         {
           q: "Zestawy i komplety są pomijane",
-          a: "BaseLinker liczy stan zestawu z jego części, a zestaw w Medusie używa kilku pozycji magazynowych. Żadne z nich nie ma jednej liczby do przeniesienia, więc oba są pomijane w planach stanów i w imporcie.",
+          a: "Base liczy stan zestawu z jego części, a zestaw w Medusie używa kilku pozycji magazynowych. Żadne z nich nie ma jednej liczby do przeniesienia, więc oba są pomijane w planach stanów i w imporcie.",
         },
         {
-          q: "addOrder przekroczył czas: czy zamówienie jest teraz w BaseLinkerze dwa razy?",
-          a: "Nie. Każde zamówienie ma znacznik [medusa:<id zamówienia>] w admin_comments, a wtyczka szuka go w BaseLinkerze przed każdym zapisem i ponownie po niejasnej odpowiedzi. Zamówienie, które dotarło z opóźnieniem, zostaje przejęte, nigdy wysłane drugi raz.",
+          q: "addOrder przekroczył czas: czy zamówienie jest teraz w Base dwa razy?",
+          a: "Nie. Każde zamówienie ma znacznik [medusa:<id zamówienia>] w admin_comments, a wtyczka szuka go w Base przed każdym zapisem i ponownie po niejasnej odpowiedzi. Zamówienie, które dotarło z opóźnieniem, zostaje przejęte, nigdy wysłane drugi raz.",
         },
         {
           q: "Zamówienia stoją w kolejce",
@@ -873,27 +873,27 @@ const pl: typeof en = {
         },
         {
           q: "Statusy przychodzą z opóźnieniem albo dziennik odpowiada pusto",
-          a: "Dziennik zdarzeń zamówień trzeba włączyć dla konta w BaseLinkerze (Konto i inne, Moje konto, API); jeśli go nie widać, zapytaj wsparcie Base. Dopóki nie zwraca zdarzeń, wtyczka co 15 minut czyta każde śledzone zamówienie. Ustaw journal: \"off\", żeby przestać pytać.",
+          a: "Dziennik zdarzeń zamówień trzeba włączyć dla konta w Base (Konto i inne, Moje konto, API); jeśli go nie widać, zapytaj wsparcie Base. Dopóki nie zwraca zdarzeń, wtyczka co 15 minut czyta każde śledzone zamówienie. Ustaw journal: \"off\", żeby przestać pytać.",
         },
         {
           q: "Zamówienie z marketplace'u pominięto jako duplikat",
-          a: "W Medusie jest już zamówienie z tym samym numerem z marketplace'u, zwykle zaimportowane przez wtyczkę Allegro. Jeden importer na marketplace: albo wtyczka Allegro, albo import z BaseLinkera dla Allegro.",
+          a: "W Medusie jest już zamówienie z tym samym numerem z marketplace'u, zwykle zaimportowane przez wtyczkę Allegro. Jeden importer na marketplace: albo wtyczka Allegro, albo import z Base dla Allegro.",
         },
         {
           q: "Import zamówienia nie udał się przez stany",
           a: "Medusa odrzuciła zamówienie: wariant nie ma stanu w lokalizacji kanału sprzedaży i nie pozwala na sprzedaż na minusie. Popraw stan albo wariant, potem Importuj teraz. Ponowienie nigdy nie zakłada drugiego zamówienia.",
         },
         {
-          q: "BaseLinker odrzucił stan jednej karty",
+          q: "Base odrzucił stan jednej karty",
           a: "Ostrzeżenie wskazuje kartę (często zestaw albo kartę zewnętrznego magazynu). Pozostałe karty są zapisane; odrzucona jest liczona i po trzech nieudanych przebiegach trafia do kwarantanny. Popraw ją, potem Zwolnij.",
         },
         {
           q: "Ceny różnią się o 23 %",
-          a: "BaseLinker trzyma ceny brutto, Medusa netto, chyba że waluta ma ustawione ceny z podatkiem. Wtyczka przelicza stawką VAT każdego produktu z BaseLinkera, a produkt bez stawki zostawia w spokoju. Ustaw w Medusie preferencję cen dla waluty na ceny z podatkiem, jeśli Twoje ceny są brutto.",
+          a: "Base trzyma ceny brutto, Medusa netto, chyba że waluta ma ustawione ceny z podatkiem. Wtyczka przelicza stawką VAT każdego produktu z Base, a produkt bez stawki zostawia w spokoju. Ustaw w Medusie preferencję cen dla waluty na ceny z podatkiem, jeśli Twoje ceny są brutto.",
         },
         {
           q: "Numer faktury pokazuje konflikt",
-          a: "Pole w BaseLinkerze miało już inną wartość, więc niczego nie nadpisaliśmy. Wyczyść je w BaseLinkerze albo wybierz inne pole (invoiceNumberField), potem Ponów.",
+          a: "Pole w Base miało już inną wartość, więc niczego nie nadpisaliśmy. Wyczyść je w Base albo wybierz inne pole (invoiceNumberField), potem Ponów.",
         },
         {
           q: "Zaimportowane zamówienia wysyłają e-mail potwierdzenia sklepu",
@@ -902,7 +902,7 @@ const pl: typeof en = {
       ],
     },
   },
-  error: "Nie udało się wczytać danych BaseLinkera: {{message}}",
+  error: "Nie udało się wczytać danych Base: {{message}}",
 }
 
 /* Polish typography: no one-letter word left at the end of a line (nb in the page kit). */

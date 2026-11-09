@@ -53,7 +53,7 @@ export function usePromptSpec(): SetupPromptSpec {
   return useMemo(() => {
     const needs = t("guide.intro.needs", { returnObjects: true }) as unknown
     return {
-      service: "BaseLinker",
+      service: "Base",
       pkg: "@koda-plus/medusa-plugin-baselinker",
       route: "/app/baselinker",
       summary: t("subtitle"),
