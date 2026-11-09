@@ -7,6 +7,7 @@
  */
 
 import { TEMPLATES, type EmailLocale } from "../../modules/emails/lib/constants"
+import type { CopyOverrides } from "../../modules/emails/lib/copy-overrides"
 import { anonymize, cartData, canceledData, orderData, shipmentData, welcomeData, type CartRecord, type CustomerRecord, type FulfillmentRecord, type OrderRecord } from "../../modules/emails/lib/data"
 import { applyBrandOverrides } from "../../modules/emails/lib/settings"
 import { renderTemplate, type PreviewTheme, type RenderedEmail } from "../../modules/emails/lib/render"
@@ -83,11 +84,11 @@ export async function previewData(scope: Scope, template: ResolvedTemplate, loca
 }
 
 /** A preview as the provider would render it: the options, the admin's branding, the language asked for. */
-export async function renderPreview(scope: Scope, template: ResolvedTemplate, input: { locale: EmailLocale; theme: PreviewTheme | null; source: PreviewSource }): Promise<RenderedEmail & PreviewData> {
+export async function renderPreview(scope: Scope, template: ResolvedTemplate, input: { locale: EmailLocale; theme: PreviewTheme | null; source: PreviewSource; copy?: CopyOverrides | null }): Promise<RenderedEmail & PreviewData> {
   const svc = emailsService(scope)
   const o = svc.getOptions()
   const settings = await settingsForDisplay(scope)
   const prepared = await previewData(scope, template, input.locale, input.source)
-  const rendered = renderTemplate(template, prepared.data, { locale: input.locale, options: o, brand: applyBrandOverrides(o.brand, settings.brand), theme: input.theme })
+  const rendered = renderTemplate(template, prepared.data, { locale: input.locale, options: o, brand: applyBrandOverrides(o.brand, settings.brand), theme: input.theme, copy: input.copy !== undefined ? input.copy : settings.copy?.[template.key]?.value ?? null })
   return { ...rendered, ...prepared }
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+### Added
+
+- The words of a template can be rewritten in the admin (Templates, Edit the words): the subject, the preheader, the label above the title, the title, the intro and an extra note, per language. Placeholders (`{name}`, `{order}`, `{total}`, `{items}`, `{tracking}`, `{store}`...) are filled from the message and drop out cleanly when empty; `*word*` takes the accent colour. Numbers, products, totals and buttons stay the template's. The preview renders the draft as it is typed (`GET /admin/emails/preview?copy=`), `POST /admin/emails/settings { copy: { key: {...} | null } }` saves it as `live:copy:<key>`, and every send (provider, retries, tests) uses it.
+
 ## 0.3.1 (unreleased)
 
 ### Fixed

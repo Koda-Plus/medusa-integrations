@@ -6,6 +6,7 @@
  */
 
 import type { EmailLocale } from "./constants"
+import type { CopyOverrides } from "./copy-overrides"
 
 export type EmailsModeDto = "demo" | "dev" | "live" | "app"
 
@@ -52,6 +53,12 @@ export interface TemplateDto {
   updatedAt: string | null
   /** Previews can use the store's latest order or cart. */
   latest: boolean
+  /** The words a person rewrote (pl / en: subject, preheader, eyebrow, title, intro, note); null when none. */
+  copy: CopyOverrides | null
+  copyUpdatedBy: string | null
+  copyUpdatedAt: string | null
+  /** The placeholders with a value in this template ("name", "order"...). */
+  placeholders: string[]
   stats: { sent: number; failed: number; skipped: number; lastAt: string | null }
 }
 
@@ -244,6 +251,8 @@ export interface PreviewResponse {
   html: string
   text: string
   bytes: number
+  /** The template's own words before the edits, as a person would type them; null for finished HTML. */
+  defaults: { subject: string; preheader: string; eyebrow: string; title: string; intro: string } | null
 }
 
 export interface TestRequest {
@@ -265,6 +274,8 @@ export interface SettingsRequest {
   brand?: Record<string, unknown> | null
   /** Template switches. */
   templates?: Record<string, boolean>
+  /** Rewritten words per template; the object replaces what was saved, null goes back to the template's own words. */
+  copy?: Record<string, { pl?: Record<string, string>; en?: Record<string, string> } | null>
 }
 
 export interface RetryResponse {

@@ -10,6 +10,7 @@
  */
 
 import { type EmailLocale } from "./constants"
+import { applyCopy, copyVars, editableOf, type CopyOverrides } from "./copy-overrides"
 import { cleanText } from "./html"
 import * as kit from "./kit"
 import { formatDate, formatMoney, formatNumber, formatShortDate, formatTag, monthYear, normalizeLocale, plural } from "./locale"
@@ -31,6 +32,8 @@ export interface RenderedEmail {
   preheader: string
   html: string
   text: string
+  /** The template's own words before the person's edits (documents only), for the hints in the admin. */
+  defaults?: ReturnType<typeof editableOf>
 }
 
 /** The language of a message: asked for, then the data's `locale`, then the default. */
@@ -127,7 +130,7 @@ export class RenderError extends Error {
 export function renderTemplate(
   template: ResolvedTemplate,
   data: Record<string, unknown>,
-  input: { locale?: unknown; options: ResolvedEmailsOptions; brand: ResolvedBrand; theme?: PreviewTheme | null; subjectPrefix?: string },
+  input: { locale?: unknown; options: ResolvedEmailsOptions; brand: ResolvedBrand; theme?: PreviewTheme | null; subjectPrefix?: string; copy?: CopyOverrides | null },
 ): RenderedEmail {
   const locale = messageLocale(input.locale, data, input.options.defaultLocale)
   const ctx = kitContext(locale, input.brand, input.options)
@@ -150,8 +153,12 @@ export function renderTemplate(
     throw new RenderError(`The template "${template.key}" returned a promise; render must be synchronous.`)
   }
   let out: kit.Rendered
+  let defaults: RenderedEmail["defaults"]
   if (isDocument(result)) {
-    const doc = { ...result, subject: `${input.subjectPrefix ?? ""}${result.subject}` }
+    defaults = editableOf(result)
+    const texts = input.copy?.[locale]
+    const edited = texts ? applyCopy(result, texts, copyVars(template.key, data, locale, templateCtx.format, input.brand.name)) : result
+    const doc = { ...edited, subject: `${input.subjectPrefix ?? ""}${edited.subject}` }
     out = kit.layout(doc, ctx)
   } else if (isContent(result)) {
     const subject = `${input.subjectPrefix ?? ""}${result.subject}`.replace(/\s+/g, " ").trim()
@@ -161,7 +168,7 @@ export function renderTemplate(
   }
   if (!out.subject) throw new RenderError(`The template "${template.key}" rendered an empty subject.`)
   const html = locale === "pl" ? typesetHtml(out.html) : out.html
-  return { template: template.key, locale, subject: out.subject, preheader: out.preheader, html: withTheme(html, input.theme), text: out.text }
+  return { template: template.key, locale, subject: out.subject, preheader: out.preheader, html: withTheme(html, input.theme), text: out.text, defaults }
 }
 
 /** Finished content given to the notification module (`content`), without a template. */

@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { placeholdersOf } from "../../../modules/emails/lib/copy-overrides"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { TEST_LIMIT_PER_HOUR, TEST_LIMIT_PER_USER, TEST_WINDOW_MS } from "../../../modules/emails/lib/constants"
 import type { MessageFilter, MessageWindow, ProviderDto, StatusResponse, TemplateDto } from "../../../modules/emails/lib/contract"
@@ -186,7 +187,7 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     ...(history?.byTemplate ?? []).map((r) => ({ template: r.template, status: r.status, count: r.count, last_at: r.last_at }) as StatRow),
   ])
 
-  const names = await actorNames(scope, [settings.brandUpdatedBy, ...Object.values(settings.templates).map((t) => t.updatedBy)])
+  const names = await actorNames(scope, [settings.brandUpdatedBy, ...Object.values(settings.templates).map((t) => t.updatedBy), ...Object.values(settings.copy ?? {}).map((c) => c.updatedBy)])
   /* App mode: the store's own provider cannot send the plugin's built-in templates, so the gallery shows only the store's. */
   const listed = o.mode === "app" ? listTemplates(o).filter((t) => t.source !== "builtin") : listTemplates(o)
   const templates: TemplateDto[] = listed.map((t) => {
@@ -205,6 +206,10 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
       updatedAt: state.updatedAt,
       latest: t.source === "builtin" && LATEST_TEMPLATES.includes(t.key),
       stats: stats[t.key] ?? emptyStats(),
+      copy: settings.copy?.[t.key]?.value ?? null,
+      copyUpdatedBy: settings.copy?.[t.key]?.updatedBy ? names[settings.copy[t.key].updatedBy as string] ?? settings.copy[t.key].updatedBy : null,
+      copyUpdatedAt: settings.copy?.[t.key]?.updatedAt ?? null,
+      placeholders: placeholdersOf(t.key),
     }
   })
 
