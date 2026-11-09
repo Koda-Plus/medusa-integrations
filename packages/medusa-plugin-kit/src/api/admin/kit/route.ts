@@ -1,5 +1,5 @@
 ﻿import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import type { StatusResponse } from "../../../modules/kit/lib/contract"
+import type { SourceRow, StatusResponse } from "../../../modules/kit/lib/contract"
 import { clientOf, optionsOf, settingsOf } from "../../kit/helpers"
 import { isActive, missingOptions } from "../../../modules/kit/lib/options"
 
@@ -25,15 +25,33 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   let counts = { subscribed: 0, failed: 0, last_7_days: 0 }
+  const bySource = new Map<string, SourceRow>()
+  const row = (source: string): SourceRow => {
+    let r = bySource.get(source)
+    if (!r) bySource.set(source, (r = { source, ok: 0, failed: 0, last_at: null }))
+    return r
+  }
   try {
     const ok = (await svc.listKitSubscriberLogs({ status: "ok" })) ?? []
     const failed = (await svc.listKitSubscriberLogs({ status: "failed" })) ?? []
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     const last7 = (await svc.listKitSubscriberLogs({ created_at: { $gte: weekAgo } })) ?? []
+    for (const [list, key] of [[ok, "ok"], [failed, "failed"]] as const) {
+      for (const l of Array.isArray(list) ? list : []) {
+        const r = row(typeof l.source === "string" && l.source.trim() ? l.source.trim() : "form")
+        r[key] += 1
+        const at = l.created_at instanceof Date ? l.created_at.toISOString() : typeof l.created_at === "string" ? l.created_at : null
+        if (at && (!r.last_at || at > r.last_at)) r.last_at = at
+      }
+    }
     counts = { subscribed: Array.isArray(ok) ? ok.length : 0, failed: Array.isArray(failed) ? failed.length : 0, last_7_days: Array.isArray(last7) ? last7.length : 0 }
   } catch {
     /* the table may not exist yet */
   }
+
+  /* Sources with extra tags but no sign-up yet are wired too - list them. */
+  for (const source of Object.keys(settings.source_tags ?? {})) row(source)
+  const sources = [...bySource.values()].sort((a, b) => (b.last_at ?? "").localeCompare(a.last_at ?? "") || a.source.localeCompare(b.source))
 
   const body: StatusResponse = {
     configured: isActive(o),
@@ -59,6 +77,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       product_tag_prefix: settings.product_tag_prefix,
     },
     counts,
+    sources,
   }
   res.setHeader("Cache-Control", "no-store, must-revalidate")
   return res.json(body)

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { ArrowPath, ArrowUpRightOnBox, BarsArrowDown, ChartBar, CheckCircle, Clock, EnvelopeSolid, ExclamationCircle, ListBullet, ShoppingCart, Tag, Users, XCircle } from "@medusajs/icons"
 import { Container, InlineTip, Table, Text, Toaster } from "@medusajs/ui"
-import { broadcasts, check, forms, overview, status, subscribers, tags, type Status } from "../../lib/kit-api"
+import { broadcasts, check, forms, overview, status, subscribers, tags, type KitForm, type KitTag, type Status } from "../../lib/kit-api"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "../../lib/kit-kit"
 import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/kit-guide"
 import { EmptyState, EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/kit-blocks"
@@ -14,8 +14,9 @@ import { ListTab, OptionsTab, RoutingTab, SETTINGS_TABS, type SettingsTabId } fr
 
 /**
  * Kit (formerly ConvertKit): the newsletter of the store on the Kit list.
- * Panel: the connection, the counters, the list in numbers, the broadcasts
- * with their results and the subscription log. Settings: the list (tags,
+ * Panel: the connection, the counters, the storefront forms wired to Kit
+ * (what each one tags and where it lands), the list in numbers, the
+ * broadcasts with their results and the subscription log. Settings: the list (tags,
  * double opt-in form), the tags by source and for buyers, the options.
  * Setup guide: the steps from the key to the test sign-up.
  */
@@ -137,6 +138,7 @@ const KitPage = () => {
 
       {nav.view === "panel" && s ? (
         <>
+          <FormsCard status={s} tagList={tagList} formList={formList} onSettings={() => nav.go("settings", "routing")} />
           {s.configured ? <ListCard /> : null}
           {s.configured ? <BroadcastsCard /> : null}
           <LogCard status={s} filter={logFilter} onFilter={showLog} />
@@ -168,6 +170,81 @@ function ModeBadges({ status: s }: { status?: Status }) {
 
 const pctOf = (lang: string) => (v: number) => `${v.toLocaleString(lang, { maximumFractionDigits: 1 })}%`
 const intOf = (lang: string) => (v: number) => v.toLocaleString(lang)
+
+/**
+ * The storefront forms wired to Kit: one row per sign-up source the store
+ * sends (`form` when it sends none), with the tags a sign-up from it gets,
+ * the Kit form it lands in and how many people used it. Answers "what is
+ * connected to Kit" without reading the settings.
+ */
+function FormsCard({ status: s, tagList, formList, onSettings }: { status: Status; tagList: KitTag[]; formList: KitForm[]; onSettings: () => void }) {
+  const { t, i18n } = useTranslation("kit")
+  const lang = i18n.language || "en"
+  const tagName = (id: number) => tagList.find((tg) => tg.id === id)?.name ?? `#${id}`
+  const form = s.settings.form_id !== null ? formList.find((f) => f.id === s.settings.form_id) : undefined
+  const formName = s.settings.form_id !== null ? (form?.name ?? `#${s.settings.form_id}`) : null
+  const viaForm = s.settings.double_opt_in && formName !== null
+  const rows = s.sources ?? []
+  return (
+    <Section
+      icon={<EnvelopeSolid />}
+      title={t("forms.title")}
+      points={[
+        { icon: <ShoppingCart />, text: t("forms.points.route") },
+        { icon: <Tag />, text: t("forms.points.source") },
+      ]}
+      actions={<RowActions actions={[{ key: "settings", label: t("forms.edit"), icon: <Tag />, onClick: onSettings }]} />}
+    >
+      <div className="px-6 py-4">
+        <InlineTip variant={viaForm ? "success" : "info"} label={t("forms.kitForm")}>
+          {viaForm
+            ? t("forms.viaForm", { name: formName })
+            : formName
+              ? t("forms.formIdle", { name: formName })
+              : t("forms.noForm")}
+        </InlineTip>
+      </div>
+      <div className="overflow-x-auto">
+        <Table>
+          <Table.Header>
+            <Table.Row>
+              <Table.HeaderCell>{t("forms.source")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("forms.tags")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("forms.lands")}</Table.HeaderCell>
+              <Table.HeaderCell className="text-right">{t("forms.signups")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("forms.last")}</Table.HeaderCell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {rows.length === 0 ? <EmptyTableRow cols={5} icon={<EnvelopeSolid />} title={t("forms.empty")} /> : null}
+            {rows.map((r) => {
+              const tagIds = [...new Set([...s.settings.tags, ...(s.settings.source_tags?.[r.source] ?? [])])]
+              return (
+                <Table.Row key={r.source}>
+                  <Table.Cell>
+                    <Text size="small" weight="plus">
+                      {r.source === "form" ? t("forms.default") : r.source}
+                    </Text>
+                    <Text size="xsmall" className="text-ui-fg-muted">
+                      source: {r.source}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell className="text-ui-fg-subtle">{tagIds.map(tagName).join(", ") || t("forms.noTags")}</Table.Cell>
+                  <Table.Cell className="text-ui-fg-subtle">{viaForm ? formName : t("forms.direct")}</Table.Cell>
+                  <Table.Cell className="text-right tabular-nums">
+                    {r.ok.toLocaleString(lang)}
+                    {r.failed > 0 ? <span className="text-ui-fg-error"> / {t("forms.failed", { n: r.failed })}</span> : null}
+                  </Table.Cell>
+                  <Table.Cell className="tabular-nums text-ui-fg-subtle">{r.last_at ? new Date(r.last_at).toLocaleString(lang) : t("forms.never")}</Table.Cell>
+                </Table.Row>
+              )
+            })}
+          </Table.Body>
+        </Table>
+      </div>
+    </Section>
+  )
+}
 
 function ListCard() {
   const { t, i18n } = useTranslation("kit")

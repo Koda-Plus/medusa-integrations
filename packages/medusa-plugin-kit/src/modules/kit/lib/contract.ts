@@ -55,4 +55,18 @@ export interface StatusResponse {
     failed: number
     last_7_days: number
   }
+  /**
+   * The storefront forms wired to Kit, one per sign-up source: every source
+   * seen in the subscription log, plus the sources given extra tags in the
+   * settings before anyone used them. Sorted by the newest sign-up.
+   */
+  sources: SourceRow[]
+}
+
+export interface SourceRow {
+  /** The `source` the storefront sends; `form` when it sends none. */
+  source: string
+  ok: number
+  failed: number
+  last_at: string | null
 }
