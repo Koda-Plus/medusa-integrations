@@ -139,6 +139,29 @@ const en = {
     none: "Not set",
     needsKey: "Saving needs the API key",
   },
+  forms: {
+    title: "Forms connected to Kit",
+    points: {
+      route: "The store sends the address to Kit",
+      source: "Every form has its source"
+    },
+    edit: "Tags by source",
+    kitForm: "Kit form",
+    viaForm: "Sign-ups land in the form {{name}}, Kit sends the confirmation e-mail (double opt-in on).",
+    formIdle: "The chosen form {{name}} works only with double opt-in on. Sign-ups are active at once now, without a form.",
+    noForm: "No Kit form: sign-ups are active at once. Pick a form in the list settings.",
+    source: "Storefront form",
+    tags: "Tags in Kit",
+    lands: "Lands in",
+    signups: "Sign-ups",
+    last: "Last sign-up",
+    empty: "The store has not sent a sign-up yet",
+    default: "Newsletter form",
+    noTags: "no tags",
+    direct: "the list, no form",
+    failed: "{{n}} failed",
+    never: "nobody yet"
+  },
   subscribers: {
     title: "Subscription log",
     points: {
