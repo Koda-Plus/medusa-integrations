@@ -19,9 +19,16 @@
  *   ambiguous_variant  2+ Medusa variants share the key: reported, never linked
  *
  * A variant is linked to at most one card. A SKU link wins over an EAN link.
+ *
+ * MANUAL LINKS. A card without a key in common (an e-book entered without a
+ * SKU, a set under another code) can be linked by a person in the admin: the
+ * pair card id -> variant id is kept in the plugin settings, on the Medusa
+ * side only, and wins over SKU and EAN. Nothing is written to BaseLinker. A
+ * manual pair whose card or variant is gone, or whose variant is already
+ * pinned to another card, is ignored.
  */
 
-export type MatchSource = "sku" | "ean"
+export type MatchSource = "sku" | "ean" | "manual"
 export type CardConflict = "duplicate_sku" | "duplicate_ean" | "ambiguous_variant"
 
 export interface MatchableCard {
@@ -53,6 +60,7 @@ export interface MatchSummary {
   linked: number
   linkedBySku: number
   linkedByEan: number
+  linkedManual: number
   /** Cards without a variant and without a conflict: "only in BaseLinker". */
   unmatched: number
   conflicts: number
@@ -110,6 +118,8 @@ export function variantEans(v: CatalogVariant): string[] {
 export function matchCards(
   cards: readonly MatchableCard[],
   variants: readonly CatalogVariant[],
+  /** Card id -> variant id, linked by a person in the admin. */
+  manual: ReadonlyMap<string, string> = new Map(),
 ): { matches: Map<string, CardMatch>; summary: MatchSummary } {
   /* Medusa side: variants per key. */
   const bySku = new Map<string, CatalogVariant[]>()
@@ -133,8 +143,18 @@ export function matchCards(
   const taken = new Set<string>()
   const pending: MatchableCard[] = []
 
+  /* Pass 0: manual links, before any key. */
+  const variantById = new Map(variants.map((v) => [v.id, v]))
+  for (const c of ordered) {
+    const variant = variantById.get(manual.get(c.blProductId) ?? "")
+    if (!variant || taken.has(variant.id)) continue
+    matches.set(c.blProductId, { blProductId: c.blProductId, key: normalizeSku(c.sku) ?? normalizeEan(c.ean), source: "manual", variant, conflict: null })
+    taken.add(variant.id)
+  }
+
   /* Pass 1: SKU. */
   for (const c of ordered) {
+    if (matches.get(c.blProductId)?.source === "manual") continue
     const sku = normalizeSku(c.sku)
     const base: CardMatch = { blProductId: c.blProductId, key: sku, source: sku ? "sku" : null, variant: null, conflict: null }
     if (!sku) {
@@ -151,7 +171,7 @@ export function matchCards(
       matches.set(c.blProductId, { ...base, conflict: "ambiguous_variant" })
       continue
     }
-    if (found.length === 1) {
+    if (found.length === 1 && !taken.has(found[0].id)) {
       matches.set(c.blProductId, { ...base, variant: found[0] })
       taken.add(found[0].id)
       continue
@@ -188,6 +208,7 @@ export function matchCards(
   /* Summary. */
   let linkedBySku = 0
   let linkedByEan = 0
+  let linkedManual = 0
   let unmatched = 0
   let duplicateSku = 0
   let duplicateEan = 0
@@ -199,6 +220,7 @@ export function matchCards(
     if (!normalizeSku(c.sku)) noSku += 1
     if (m.variant) {
       if (m.source === "ean") linkedByEan += 1
+      else if (m.source === "manual") linkedManual += 1
       else linkedBySku += 1
     } else if (m.conflict === "duplicate_sku") {
       duplicateSku += 1
@@ -223,9 +245,10 @@ export function matchCards(
     matches,
     summary: {
       cards: cards.length,
-      linked: linkedBySku + linkedByEan,
+      linked: linkedBySku + linkedByEan + linkedManual,
       linkedBySku,
       linkedByEan,
+      linkedManual,
       unmatched,
       conflicts: duplicateSku + duplicateEan + ambiguousVariant,
       duplicateSku,

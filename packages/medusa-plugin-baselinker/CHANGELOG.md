@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Manual card links: a card that shares no SKU or EAN with the store (an e-book entered without a SKU, a set under another code) can be linked to a variant by hand from the Cards table ("Link to a product", a search that starts from the card name). The pair is kept in the plugin settings (`card_links`), on the Medusa side only, wins over SKU and EAN and is shown as "linked by hand" with an Unlink action. Nothing is written to Base. `GET/POST /admin/baselinker/links`; the catalog is matched again right after a change.
+
 ### Fixed
 
 - No second parcel from a BaseLinker status: a fulfillment made because BaseLinker reports the order shipped (`fulfillOnStatusIds`, store orders and imported orders) carries `shipped_outside_medusa: "baselinker"` in its metadata. The InPost plugin of Koda Plus records such a fulfillment as skipped. Before, an order checked out with an InPost option reached that plugin like any other fulfillment, and with its `autoCreate` on it made a ShipX parcel for an order BaseLinker had already sent.

@@ -75,3 +75,25 @@ test("variants with a SKU that no card carries are counted as only in Medusa", (
   assert.deepEqual(summary.onlyInMedusaSkus, ["B"])
   assert.equal(summary.noSku, 1)
 })
+
+test("matching: a manual link wins over SKU and EAN and takes the variant", () => {
+  const cards = [
+    { blProductId: "1", sku: null, ean: null },
+    { blProductId: "2", sku: "SC-1", ean: null },
+  ]
+  const variants = [v("variant_a", "SC-1"), v("variant_b", "SC-2")]
+  const { matches, summary } = matchCards(cards, variants, new Map([["1", "variant_a"]]))
+  assert.equal(matches.get("1")?.variant?.id, "variant_a")
+  assert.equal(matches.get("1")?.source, "manual")
+  /* The SKU card does not get the variant pinned to another card. */
+  assert.equal(matches.get("2")?.variant, null)
+  assert.equal(summary.linkedManual, 1)
+  assert.equal(summary.linked, 1)
+})
+
+test("matching: a manual link to a missing variant is ignored", () => {
+  const { matches, summary } = matchCards([{ blProductId: "1", sku: "SC-1", ean: null }], [v("variant_a", "SC-1")], new Map([["1", "variant_gone"]]))
+  assert.equal(matches.get("1")?.source, "sku")
+  assert.equal(matches.get("1")?.variant?.id, "variant_a")
+  assert.equal(summary.linkedManual, 0)
+})

@@ -151,3 +151,30 @@ export async function updateDemoState(svc: BaseLinkerModuleService, change: (sta
   if (svc.isDemo()) await writeSetting(svc, "demo:state", state)
   return state
 }
+
+/* ------------------------------------------------------------------ */
+/* Manual card links                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Setting key of the manual links: { [blProductId]: variantId }. Medusa side only. */
+export const CARD_LINKS_KEY = "card_links"
+
+/** The manual links a person made in the admin, card id -> variant id. */
+export async function loadCardLinks(svc: BaseLinkerModuleService): Promise<Map<string, string>> {
+  const raw = await readSetting<Record<string, unknown>>(svc, CARD_LINKS_KEY)
+  const out = new Map<string, string>()
+  if (raw && typeof raw === "object") for (const [card, variant] of Object.entries(raw)) if (typeof variant === "string" && variant) out.set(card, variant)
+  return out
+}
+
+/**
+ * Links a card to a variant by hand, or removes the link (variantId null).
+ * A variant keeps one card: linking it again moves it to the new card.
+ */
+export async function setCardLink(svc: BaseLinkerModuleService, blProductId: string, variantId: string | null, actor?: Actor | null): Promise<Map<string, string>> {
+  const links = await loadCardLinks(svc)
+  for (const [card, variant] of [...links]) if (card === blProductId || (variantId && variant === variantId)) links.delete(card)
+  if (variantId) links.set(blProductId, variantId)
+  await writeSetting(svc, CARD_LINKS_KEY, Object.fromEntries(links), actor)
+  return links
+}

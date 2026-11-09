@@ -314,3 +314,39 @@ export function useBaseLinkerSend() {
     onSuccess: () => client.invalidateQueries({ queryKey: baselinkerKeys.all }),
   })
 }
+
+/* ---- manual card links ------------------------------------------------ */
+
+export type VariantHit = { id: string; sku: string | null; title: string | null; productId: string; productTitle: string; thumbnail: string | null }
+
+/** Medusa variants for the link picker: the admin product search, flattened to variants. */
+export function useVariantSearch(q: string, enabled: boolean) {
+  return useQuery<VariantHit[]>({
+    queryKey: ["baselinker", "variant-search", q],
+    enabled,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ limit: "20", fields: "id,title,thumbnail,variants.id,variants.sku,variants.title" })
+      if (q.trim()) qs.set("q", q.trim())
+      const r = await baselinkerFetch<{ products?: Array<{ id: string; title: string; thumbnail?: string | null; variants?: Array<{ id: string; sku?: string | null; title?: string | null }> }> }>(`/admin/products?${qs}`)
+      return (r.products ?? []).flatMap((p) =>
+        (p.variants ?? []).map((v) => ({ id: v.id, sku: v.sku ?? null, title: v.title ?? null, productId: p.id, productTitle: p.title, thumbnail: p.thumbnail ?? null })),
+      )
+    },
+  })
+}
+
+/**
+ * Link a card to a variant by hand (or unlink with variantId null). Medusa
+ * side only. The catalog is matched again in the background, so the lists
+ * are refreshed twice while it runs.
+ */
+export function useBaseLinkerLink() {
+  const client = useQueryClient()
+  return useMutation<{ links: Record<string, string>; rematch: boolean }, Error, { blProductId: string; variantId: string | null }>({
+    mutationFn: ({ blProductId, variantId }) =>
+      baselinkerFetch("/admin/baselinker/links", { method: "POST", body: { bl_product_id: blProductId, variant_id: variantId } }),
+    onSuccess: () => {
+      for (const ms of [2500, 7000]) setTimeout(() => void client.invalidateQueries({ queryKey: baselinkerKeys.all }), ms)
+    },
+  })
+}

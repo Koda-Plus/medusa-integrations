@@ -37,7 +37,7 @@ import { runCardsPlan } from "./cards"
 import { runCatalogImportPlan } from "./catalog-import"
 import { runPricePushPlan } from "./prices"
 import { baselinkerService, clientFor, exclusive, queryOf, recordRun, type QueryLike, type Scope } from "./runtime"
-import { loadDemoState, loadDirections } from "./settings"
+import { loadCardLinks, loadDemoState, loadDirections } from "./settings"
 import { loadLevels, resolveLocation, runStockPlan, type LocationChoice } from "./stock"
 import { runStockPushPlan } from "./stock-push"
 
@@ -328,6 +328,7 @@ async function applyRead(svc: BaseLinkerModuleService, read: CatalogRead, varian
   const { matches, summary } = matchCards(
     sellable.map((u) => u.card),
     variants,
+    await loadCardLinks(svc),
   )
 
   const creates: ProductData[] = []
