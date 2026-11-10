@@ -39,7 +39,7 @@ export default async function kitOrderPlaced({ event: { data }, container }: Sub
       await svc.createKitSubscriberLogs({
         email: email.toLowerCase(),
         first_name: null,
-        kit_subscriber_id: result.subscriberId,
+        kit_subscriber_id: result.subscriberId ? String(result.subscriberId) : null,
         state: "active",
         tags: result.tagIds,
         source: "order",

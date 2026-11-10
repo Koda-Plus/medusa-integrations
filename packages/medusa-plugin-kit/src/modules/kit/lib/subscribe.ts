@@ -61,14 +61,15 @@ export async function subscribeToKit(args: {
       await svc.createKitSubscriberLogs({
         email,
         first_name: input.first_name?.trim().slice(0, 80) || null,
-        kit_subscriber_id: subscriber.id || null,
+        kit_subscriber_id: subscriber.id ? String(subscriber.id) : null,
         state: subscriber.state || state,
         tags,
         source: input.source ?? "form",
         status: "ok",
       })
-    } catch {
-      /* the log is best-effort */
+    } catch (logErr: any) {
+      /* the log is best-effort, but a log that never fills must be visible */
+      svc.getLogger?.()?.warn?.(`[kit] The sign-up log row could not be written: ${String(logErr?.message ?? logErr).slice(0, 300)}`)
     }
 
     return {
@@ -89,8 +90,9 @@ export async function subscribeToKit(args: {
         status: "failed",
         error: String(e?.message ?? e).slice(0, 500),
       })
-    } catch {
-      /* the log is best-effort */
+    } catch (logErr: any) {
+      /* the log is best-effort, but a log that never fills must be visible */
+      svc.getLogger?.()?.warn?.(`[kit] The sign-up log row could not be written: ${String(logErr?.message ?? logErr).slice(0, 300)}`)
     }
     throw e
   }

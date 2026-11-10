@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 (unreleased)
+
+### Fixed
+
+- Sign-ups from the storefront reached Kit but never showed in the admin: Kit subscriber ids are past the 32-bit integer range, so every row of `kit_subscriber_log` failed to insert and the best-effort log swallowed the error. The id is stored as text now (migration `Migration20261110120000_kit`), the API still answers with a number, and a log row that cannot be written is logged as a warning.
+
 ## 0.2.1 (2026-11-09)
 
 - The `forms` option names the storefront forms by the source each one sends (`[{ source: "form", name: "Newsletter" }, { source: "drop", name: "Drop alert" }]`); the panel lists them from the start, before the first sign-up, without a note about the Kit form.

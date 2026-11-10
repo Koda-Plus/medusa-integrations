@@ -10,8 +10,8 @@ const KitSubscriberLog = model
     id: model.id({ prefix: "kitsub" }).primaryKey(),
     email: model.text(),
     first_name: model.text().nullable(),
-    /** The Kit subscriber id, when Kit answered. */
-    kit_subscriber_id: model.number().nullable(),
+    /** The Kit subscriber id, when Kit answered. Text: Kit ids are past the 32-bit integer range. */
+    kit_subscriber_id: model.text().nullable(),
     /** The state the subscriber was created in (active / inactive). */
     state: model.text().nullable(),
     /** The tag ids that were applied. */
