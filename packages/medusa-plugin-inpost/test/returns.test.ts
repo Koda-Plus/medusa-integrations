@@ -169,6 +169,7 @@ test("the plan: the customer as sender in E.164, the order number, code or label
     origin: { countryCode: "PL" },
     references: { orderNumber: "Order 1042" },
     enableDropOffCode: true,
+    parcels: [{ dimensions: { length: "64", width: "38", height: "19", unit: "CM" } }],
     expirationDate: "2026-11-16T23:59:59Z",
   })
   assert.equal(plan.destination, "account")

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { displayName, isEmail, normalizePhone } from "./address"
-import { DEMO_RETURN_DAYS } from "./constants"
+import { DEMO_RETURN_DAYS, SIZE_DIMENSIONS_MM } from "./constants"
 import type { ProblemDto, ReturnDto, ReturnFilter, ReturnMethod, ReturnPlanDto, ReturnState } from "./contract"
 import { iso } from "./dto"
 import { referenceFor, type ResolvedInpostOptions } from "./options"
@@ -161,6 +161,13 @@ export function expirationFor(days: number | null, now: Date): string | null {
   return `${d.toISOString().slice(0, 10)}T23:59:59Z`
 }
 
+/** The parcel of a return: the default template in centimetres, as the Returns API wants it. */
+export function returnDimensions(size: keyof typeof SIZE_DIMENSIONS_MM): { length: string; width: string; height: string; unit: "CM" } {
+  const d = SIZE_DIMENSIONS_MM[size] ?? SIZE_DIMENSIONS_MM.small
+  const cm = (mm: number) => String(Math.round(mm / 10))
+  return { length: cm(d.length), width: cm(d.width), height: cm(d.height), unit: "CM" }
+}
+
 export interface ReturnPlan extends ReturnPlanDto {
   request: (ReturnCreateRequest & Record<string, unknown>) | null
 }
@@ -214,6 +221,10 @@ export function buildReturnPlan(
           ...(/^[A-Z]{2}$/.test(country) ? { origin: { countryCode: country } } : {}),
           references: { orderNumber: reference },
           enableDropOffCode: ctx.method === "code",
+          /* InPost refuses a return without a parcel ("Parcel size cannot be empty!", stage 10.11.2026),
+             although its docs mark only the sender as required. The size is the default template, in CM
+             (the only unit the API reads: "cm", "MM" and "mm" fail as an unreadable message). */
+          parcels: [{ dimensions: returnDimensions(ctx.options.defaultParcelSize) }],
           ...(expirationDate ? { expirationDate } : {}),
         }
       : null
