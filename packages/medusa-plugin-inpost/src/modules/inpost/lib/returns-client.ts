@@ -56,7 +56,7 @@ export interface ReturnPerson {
   phone: string
 }
 
-/** The body of POST /returns/v1/organizations/{organizationId}/shipments (only `sender` is required). */
+/** The body of POST /returns/v1/organizations/{organizationId}/shipments (the docs mark only `sender` as required, but stage refuses a return without `parcels`; the unit is "CM"). */
 export interface ReturnCreateRequest {
   sender: ReturnPerson
   recipient?: ReturnPerson
