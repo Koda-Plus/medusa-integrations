@@ -292,7 +292,7 @@ function Warnings({ status, lang }: { status: StatusResponse; lang: string }) {
    before, with the InPost plugin in the same app, the page was the "Von Halsky" tab of the
    InPost page. A marketplace is its own sales channel, not a way to ship, so it stands alone. */
 export const config = defineRouteConfig({
-  label: "InPost Von Halsky",
+  label: "Von Halsky",
   rank: 3,
   icon: VonHalskyIcon,
 })

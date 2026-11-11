@@ -14,7 +14,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const page = readFileSync(join(root, "src/admin/routes/vonhalsky/page.tsx"), "utf8")
 
 test("menu: its own route and sidebar entry, rank 3 next to InPost, the Von Halsky tile", () => {
-  assert.match(page, /defineRouteConfig\(\{\s*label: "InPost Von Halsky",\s*rank: 3,\s*icon: VonHalskyIcon,\s*\}\)/)
+  assert.match(page, /defineRouteConfig\(\{\s*label: "Von Halsky",\s*rank: 3,\s*icon: VonHalskyIcon,\s*\}\)/)
   assert.match(page, /export default VonHalskyPage\s*$/)
 })
 
