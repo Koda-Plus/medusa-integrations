@@ -23,6 +23,7 @@
  */
 
 import { LIMITS, PROBLEMS, type Avail, type OfferState, type ProblemCode, type ProblemSeverity } from "./constants"
+import type { CeneoCategoryRef } from "./categories"
 import type { ResolvedFeedOptions } from "./options"
 import { cdata, charLength, cutChars, oneLine, xmlAttr } from "./xml"
 
@@ -45,8 +46,14 @@ export interface CatalogVariant {
   description: string | null
   /** Thumbnail first, then the gallery, as stored. */
   images: string[]
-  /** "Parent/Child" of the first product category, or null. */
+  /** "Parent/Child" of the most specific public Medusa category, or null. */
   categoryPath: string | null
+  /** The Medusa categories of the product. */
+  categoryIds: string[]
+  /** The mapped Ceneo category of the product, or null when none is mapped. */
+  ceneoCategory: CeneoCategoryRef | null
+  /** The brand from the source in the options, or null. */
+  brand: string | null
   /** The calculated price in the region, or null without one. */
   price: { amount: number; taxInclusive: boolean } | null
   /** Available units over the counted locations; undefined when Medusa has no inventory item. */
@@ -78,6 +85,8 @@ export interface OfferDraft {
   avail: Avail | null
   stock: number | null
   category: string | null
+  /** The Ceneo category id when the category comes from the mapping. */
+  ceneoCategoryId: string | null
   description: string | null
   images: string[]
   attrs: Array<[string, string]>
@@ -122,6 +131,13 @@ function text(v: string | null | undefined): string | null {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+/** Cut to `max` characters, never inside a tag: a half tag would break the page Ceneo shows. */
+export function cutHtml(value: string, max: number): string {
+  const cut = cutChars(value, max)
+  const open = cut.lastIndexOf("<")
+  return open > cut.lastIndexOf(">") ? cut.slice(0, open).trimEnd() : cut
 }
 
 export function offerName(v: CatalogVariant): string {
@@ -173,6 +189,7 @@ export function buildOfferDraft(v: CatalogVariant, o: ResolvedFeedOptions): Offe
     avail: null,
     stock: null,
     category: null,
+    ceneoCategoryId: null,
     description: null,
     images: [],
     attrs: [],
@@ -202,7 +219,12 @@ export function buildOfferDraft(v: CatalogVariant, o: ResolvedFeedOptions): Offe
     const url = offerUrl(o.productUrl, v)
     if (url === null) add("url_missing")
     else if (charLength(url) > LIMITS.url) add("url_too_long")
-    else draft.url = url
+    else {
+      draft.url = url
+      /* A "/" in a SKU or handle is sent as %2F: many storefront routers do not match it. */
+      const slashIn = (ph: string, value: string | null) => o.productUrl?.includes(ph) && value?.includes("/")
+      if (slashIn("{sku}", text(v.sku)) || slashIn("{handle}", text(v.productHandle))) add("url_slash")
+    }
   } else add("url_missing")
 
   /* The price. */
@@ -222,10 +244,28 @@ export function buildOfferDraft(v: CatalogVariant, o: ResolvedFeedOptions): Offe
   else if (o.outOfStock === "check") draft.avail = 99
   else add("out_of_stock")
 
-  /* Category: the Medusa path until the Ceneo mapping (stage 3) replaces it. */
-  const path = v.categoryPath ? oneLine(v.categoryPath) : ""
-  if (!path) add("category_missing")
-  else if (charLength(path) > LIMITS.category) {
+  /*
+   * Category: the mapped Ceneo category, else (includeUnmapped) the Medusa
+   * path, which Ceneo maps on its side. A mapping to a category gone from
+   * the Ceneo tree falls back the same way, with a warning.
+   */
+  const cc = v.ceneoCategory
+  const medusaPath = v.categoryPath ? oneLine(v.categoryPath) : ""
+  let path = ""
+  if (cc && cc.active) {
+    path = cc.path
+    draft.ceneoCategoryId = cc.ceneoId
+  } else {
+    if (cc) add("category_removed", cc.ceneoId)
+    if (!o.includeUnmapped) add("category_required")
+    else if (medusaPath) {
+      path = medusaPath
+      if (!cc) add("category_unmapped")
+    } else add("category_missing")
+  }
+  if (!path) {
+    /* Reported above. */
+  } else if (charLength(path) > LIMITS.category) {
     draft.category = cutChars(path, LIMITS.category)
     add("category_cut")
   } else draft.category = path
@@ -233,7 +273,7 @@ export function buildOfferDraft(v: CatalogVariant, o: ResolvedFeedOptions): Offe
   /* Description, HTML kept: Ceneo shows it as sent. */
   const desc = text(v.description)
   if (desc && charLength(desc) > LIMITS.description) {
-    draft.description = cutChars(desc, LIMITS.description)
+    draft.description = cutHtml(desc, LIMITS.description)
     add("description_cut")
   } else draft.description = desc
 
@@ -256,6 +296,11 @@ export function buildOfferDraft(v: CatalogVariant, o: ResolvedFeedOptions): Offe
   draft.images = images.slice(0, LIMITS.images)
 
   /* Attributes. */
+  if (o.brand) {
+    const brand = text(v.brand)
+    if (brand) draft.attrs.push(["Marka", cutChars(oneLine(brand), LIMITS.attributes)])
+    else add("brand_missing")
+  }
   const ean = text(v.ean) ?? text(v.barcode)
   if (ean === null) add("ean_missing")
   else if (!isGtin(ean)) add("ean_invalid", ean)

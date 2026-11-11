@@ -69,6 +69,12 @@ export function FeedTab({ status }: { status: StatusResponse }) {
       <Fact label={t("settings.outOfStock")}>
         <ToneBadge>{t(`settings.outOfStockValue.${f.outOfStock}`)}</ToneBadge>
       </Fact>
+      <Fact label={t("settings.unmapped")}>
+        <ToneBadge>{t(f.includeUnmapped ? "settings.unmappedValue.include" : "settings.unmappedValue.exclude")}</ToneBadge>
+      </Fact>
+      <Fact label={t("settings.brand")}>
+        {f.brand ? <ToneBadge>{t(`settings.brandValue.${f.brand.from}`, { key: f.brand.key ?? "" })}</ToneBadge> : <span className="text-ui-fg-muted">{t("settings.brandValue.off")}</span>}
+      </Fact>
       <Fact label={t("settings.interval")}>
         <span className="tabular-nums">{t("settings.minutes", { count: f.intervalMinutes })}</span>
       </Fact>

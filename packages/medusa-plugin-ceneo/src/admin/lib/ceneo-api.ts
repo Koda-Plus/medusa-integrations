@@ -1,5 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { FeedBuildResult, StatusResponse } from "../../modules/ceneo/lib/contract"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { OfferState } from "../../modules/ceneo/lib/constants"
+import type {
+  CategoryMapResponse,
+  CategorySyncResult,
+  CeneoCategorySearchResponse,
+  FeedBuildResult,
+  OffersResponse,
+  ProductCeneoResponse,
+  StatusResponse,
+} from "../../modules/ceneo/lib/contract"
 import { backendUrl, kitFetch } from "./ceneo-kit"
 
 /** The admin API of the plugin, with the dashboard's own auth (kit). */
@@ -12,6 +21,73 @@ export function errorMessage(err: unknown): string {
 export const ceneoKeys = {
   all: ["ceneo"] as const,
   status: ["ceneo", "status"] as const,
+  offers: (state: OfferState | null, q: string, offset: number) => ["ceneo", "offers", state ?? "all", q, offset] as const,
+  categoryMap: ["ceneo", "category-map"] as const,
+  search: (q: string) => ["ceneo", "category-search", q] as const,
+  product: (id: string) => ["ceneo", "product", id] as const,
+}
+
+export const OFFERS_PAGE = 25
+
+export function useCeneoOffers(state: OfferState | null, q: string, offset: number) {
+  const params = new URLSearchParams({ limit: String(OFFERS_PAGE), offset: String(offset) })
+  if (state) params.set("state", state)
+  if (q) params.set("q", q)
+  return useQuery<OffersResponse>({
+    queryKey: ceneoKeys.offers(state, q, offset),
+    queryFn: () => ceneoFetch<OffersResponse>(`/admin/ceneo/offers?${params.toString()}`),
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  })
+}
+
+export function useCategoryMap() {
+  return useQuery<CategoryMapResponse>({
+    queryKey: ceneoKeys.categoryMap,
+    queryFn: () => ceneoFetch<CategoryMapResponse>("/admin/ceneo/category-map"),
+    staleTime: 30_000,
+  })
+}
+
+export function useCeneoCategorySearch(q: string) {
+  return useQuery<CeneoCategorySearchResponse>({
+    queryKey: ceneoKeys.search(q),
+    queryFn: () => ceneoFetch<CeneoCategorySearchResponse>(`/admin/ceneo/categories?${new URLSearchParams({ q, limit: "30" }).toString()}`),
+    enabled: q.trim().length >= 2,
+    staleTime: 60_000,
+  })
+}
+
+export function useProductCeneo(id: string) {
+  return useQuery<ProductCeneoResponse>({
+    queryKey: ceneoKeys.product(id),
+    queryFn: () => ceneoFetch<ProductCeneoResponse>(`/admin/ceneo/products/${encodeURIComponent(id)}`),
+    staleTime: 30_000,
+  })
+}
+
+export function useSetCategoryMap() {
+  const qc = useQueryClient()
+  return useMutation<unknown, unknown, { category_id: string; ceneo_id: string | null }>({
+    mutationFn: (body) => ceneoFetch("/admin/ceneo/category-map", { method: "POST", body }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ceneoKeys.all }),
+  })
+}
+
+export function useSyncCategories() {
+  const qc = useQueryClient()
+  return useMutation<CategorySyncResult, unknown, void>({
+    mutationFn: () => ceneoFetch<CategorySyncResult>("/admin/ceneo/categories/sync", { method: "POST" }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ceneoKeys.all }),
+  })
+}
+
+export function useTakeOver() {
+  const qc = useQueryClient()
+  return useMutation<unknown, unknown, string>({
+    mutationFn: (rowId) => ceneoFetch(`/admin/ceneo/offers/${encodeURIComponent(rowId)}/take-over`, { method: "POST" }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ceneoKeys.all }),
+  })
 }
 
 export function useCeneoStatus() {

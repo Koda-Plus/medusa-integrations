@@ -27,6 +27,9 @@ function variant(over: Partial<CatalogVariant> = {}): CatalogVariant {
     description: "<p>Kubek 300 ml</p>",
     images: ["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"],
     categoryPath: "Dom/Kuchnia/Kubki",
+    categoryIds: ["pcat_1"],
+    ceneoCategory: { ceneoId: "1", path: "Dom i wnętrze/Kuchnia/Kubki", active: true },
+    brand: "Ćmielów",
     price: { amount: 39.9, taxInclusive: true },
     available: 12,
     ...over,
@@ -50,7 +53,7 @@ test("feed: a complete variant is an ok offer with every field Ceneo needs", () 
   assert.deepEqual(d.price, { amount: 39.9, currency_code: "pln" })
   assert.equal(d.avail, 1)
   assert.equal(d.stock, 12)
-  assert.deepEqual(d.attrs, [["EAN", "5901234123457"], ["Kod producenta", "MID-1"]])
+  assert.deepEqual(d.attrs, [["Marka", "Ćmielów"], ["EAN", "5901234123457"], ["Kod producenta", "MID-1"]])
   assert.equal(isInFeed(d), true)
 })
 
@@ -109,7 +112,7 @@ test("feed: images are absolute, unique and at most 20; EAN is checked", () => {
   assert.deepEqual(codes(variant({ images: [] })), ["image_missing"])
   assert.deepEqual(codes(variant({ ean: "123", barcode: null })), ["ean_invalid"])
   assert.deepEqual(codes(variant({ ean: null, barcode: null })), ["ean_missing"])
-  assert.deepEqual(codes(variant({ categoryPath: null })), ["category_missing"])
+  assert.deepEqual(codes(variant({ categoryPath: null, ceneoCategory: null })), ["category_missing"])
 })
 
 test("feed: two variants wanting one id both lose it", () => {
