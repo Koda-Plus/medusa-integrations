@@ -387,6 +387,7 @@ const en = {
     accentHint: "Buttons and highlights. Text in it is darkened or lightened until it reads well.",
     header: "Band colour",
     headerHint: "The dark band at the top. A colour too light for white text is darkened.",
+    headerLight: "Light band at the top (dark text), like a light section of the store",
     button: "Button colour",
     buttonHint: "The main button of a message. Empty: the accent. Its text is dark or white, whichever reads better.",
     paper: "Background colour",

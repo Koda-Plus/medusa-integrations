@@ -25,3 +25,14 @@ test("a cream paper sets the page, fields and lines; a dark paper is lifted to a
   const dark = makePalette("#43C463", "#0B0F0C", { paper: "#333333" })
   assert.ok(contrast(dark.light.ink, dark.light.page) >= 7)
 })
+
+test("a light band: dark text, a darkened accent that reads, a dark header colour lifted", () => {
+  const p = makePalette("#43C463", "#EFECE1", { headerTone: "light" })
+  assert.equal(p.night, "#EFECE1")
+  assert.ok(contrast(p.onNight, p.night) >= 7)
+  assert.ok(contrast(p.accentOnNight, p.night) >= 4.5)
+  assert.ok(contrast(p.onNightFaint, p.night) >= 4.5)
+  const lifted = makePalette("#43C463", "#0B0F0C", { headerTone: "light" })
+  assert.ok(contrast(lifted.onNight, lifted.night) >= 7)
+  assert.equal(makePalette("#43C463", "#EFECE1").onNight, "#FFFFFF", "the dark band stays the default")
+})

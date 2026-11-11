@@ -388,6 +388,7 @@ const pl: typeof en = {
     accentHint: "Przyciski i wyróżnienia. Tekst w tym kolorze jest przyciemniany albo rozjaśniany, aż będzie czytelny.",
     header: "Kolor pasa",
     headerHint: "Ciemny pas u góry. Kolor zbyt jasny dla białego tekstu zostanie przyciemniony.",
+    headerLight: "Jasny pas u góry (ciemny tekst), jak jasna sekcja sklepu",
     button: "Kolor przycisku",
     buttonHint: "Główny przycisk maila. Puste: kolor akcentu. Tekst na nim jest ciemny albo biały, zależnie od czytelności.",
     paper: "Kolor tła",

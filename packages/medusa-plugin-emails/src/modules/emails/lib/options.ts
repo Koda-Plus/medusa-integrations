@@ -52,6 +52,8 @@ export interface EmailsBrandOptions {
   accentColor?: string
   /** The dark band at the top. Default #212721. A colour too light for white text is darkened. */
   headerColor?: string
+  /** "light": a light band with dark text, like a cream hero section. Default "dark". */
+  headerTone?: "dark" | "light"
   /** The main button. Default: the accent. Its text is dark or white, whichever reads better. */
   buttonColor?: string
   /** The light page around the message (a cream #F6F4EC); its fields and lines follow. Default: a grey of the band's hue. */
@@ -205,6 +207,7 @@ export interface ResolvedBrand {
   headerColor: string | null
   buttonColor: string | null
   paperColor: string | null
+  headerTone: "dark" | "light"
   footer: ResolvedText | null
   supportEmail: string | null
   headingFont: string
@@ -331,6 +334,8 @@ function resolveBrand(b: EmailsBrandOptions | undefined, problems: string[]): Re
   if (o.buttonColor !== undefined && !buttonColor) problems.push("brand.buttonColor (a hex colour like #FFBB0F)")
   const paperColor = o.paperColor === undefined ? null : normalizeHex(o.paperColor)
   if (o.paperColor !== undefined && !paperColor) problems.push("brand.paperColor (a hex colour like #F6F4EC)")
+  if (o.headerTone !== undefined && o.headerTone !== "dark" && o.headerTone !== "light") problems.push("brand.headerTone (\"dark\" or \"light\")")
+  const headerTone = o.headerTone === "light" ? "light" : "dark"
   const supportEmail = o.supportEmail === undefined ? null : isEmail(str(o.supportEmail)) ? str(o.supportEmail) : null
   if (o.supportEmail !== undefined && !supportEmail) problems.push("brand.supportEmail (one e-mail address)")
   const logo = o.logo && typeof o.logo === "object" ? o.logo : {}
@@ -350,6 +355,7 @@ function resolveBrand(b: EmailsBrandOptions | undefined, problems: string[]): Re
     headerColor,
     buttonColor,
     paperColor,
+    headerTone,
     footer: resolveText(o.footer, 300),
     supportEmail,
     headingFont: cssFontFamily(o.headingFont, SYSTEM_FONTS),
