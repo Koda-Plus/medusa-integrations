@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Its own sidebar entry** (11 November 2026): "InPost Von Halsky" at `/app/vonhalsky`, rank 3, next to InPost. It is no longer the "Von Halsky" tab of the InPost page: a marketplace is a sales channel of its own, not a way to ship.
+
 Found on InPost's stage environment with a real merchant API application (6 November 2026):
 
 - **Check connection** works for a merchant's Client Credentials application: `GET /v1/organizations` is for integrators and answers 401 or 403 to a merchant token, so the check goes on with the organization's offers (bad credentials still stop it).

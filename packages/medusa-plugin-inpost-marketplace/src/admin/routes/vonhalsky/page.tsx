@@ -8,10 +8,9 @@ import { Container, InlineTip, toast } from "@medusajs/ui"
 import type { OfferFilter, OrderFilter, StatusResponse } from "../../../modules/vonhalsky/lib/contract"
 import { errorMessage, useImportNow, useRefreshOffers, useSimulateOrder, useSyncNow, useVonHalskyStatus, vonHalskyKeys } from "../../lib/vonhalsky-api"
 import { CasesSection } from "../../lib/vonhalsky-cases"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
+import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
 import { GuideView, usePromptSpec } from "../../lib/vonhalsky-guide-view"
 import { VonHalskyIcon } from "../../lib/vonhalsky-icon"
-import { addPageTab, hostedNavIcon } from "../../lib/vonhalsky-kit"
 import { LogSection } from "../../lib/vonhalsky-log"
 import { OFFER_FILTERS, OffersSection } from "../../lib/vonhalsky-offers"
 import { ORDER_FILTERS, OrdersSection } from "../../lib/vonhalsky-orders"
@@ -35,11 +34,9 @@ import { fmtDateTime, fmtNumber, modeOf } from "../../lib/vonhalsky-ui"
  * /vonhalsky?section=offers&filter=pending, /vonhalsky?section=cases,
  * /vonhalsky?section=orders&q=...
  *
- * One menu entry for InPost: when the InPost plugin of Koda Plus is
- * installed in the same app, this page is its "Von Halsky" tab
- * (`/inpost?service=vonhalsky`), `/vonhalsky` redirects there with every
- * parameter and the own sidebar entry steps aside. Without it the page
- * stands alone as before. The plugins meet only in the kit's registry.
+ * Its own sidebar entry next to InPost (rank 3), with or without the InPost
+ * plugin of Koda Plus in the same app (since 11.11.2026; before, it was the
+ * "Von Halsky" tab of the InPost page).
  */
 const SETTINGS_TABS = ["pricing", "offers", "categories", "orders", "shipping", "account"] as const
 type SettingsTabId = (typeof SETTINGS_TABS)[number]
@@ -291,18 +288,13 @@ function Warnings({ status, lang }: { status: StatusResponse; lang: string }) {
   )
 }
 
-/* The tab on the InPost page (when that plugin is installed), drawn by this plugin's own page. */
-addPageTab({ host: "inpost", id: "vonhalsky", ns: "vonhalsky", name: "Von Halsky", order: 20, Icon: VonHalskyIcon, Component: VonHalskyPage })
-
-const VonHalskyRoute = () => (
-  <KitTabRoute host="inpost" tab="vonhalsky">
-    <VonHalskyPage />
-  </KitTabRoute>
-)
-
+/* Its own sidebar entry, right under InPost (rank 3, as the InPost plugin), since 11.11.2026:
+   before, with the InPost plugin in the same app, the page was the "Von Halsky" tab of the
+   InPost page. A marketplace is its own sales channel, not a way to ship, so it stands alone. */
 export const config = defineRouteConfig({
   label: "InPost Von Halsky",
-  icon: hostedNavIcon(VonHalskyIcon, { host: "inpost", tab: "vonhalsky" }),
+  rank: 3,
+  icon: VonHalskyIcon,
 })
 
-export default VonHalskyRoute
+export default VonHalskyPage
