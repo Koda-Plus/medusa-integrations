@@ -38,7 +38,7 @@ import {
 import { cssFontFamily, fontFaceName, safeHttpsUrl, safeUrl } from "./html"
 import { sha256 } from "./keys"
 import { validTimeZone } from "./locale"
-import { resolveReferences, resolveText, type ReferenceOption, type ResolvedReference, type ResolvedText } from "./references"
+import { resolveText, type ResolvedText } from "./localized"
 import { addressList, isEmail, parseSender, type Sender } from "./security"
 import { normalizeHex } from "./theme"
 import type { EmailTemplateDefinition, LocalizedText } from "./types"
@@ -132,8 +132,6 @@ export interface EmailsPluginOptions {
   maxRetries?: number
   /** Days the send log keeps. Default 365; 0 keeps everything. */
   logRetentionDays?: number
-  /** Stores running the plugin, shown in the admin. Empty by default. */
-  references?: ReferenceOption[]
   /** Provider registration only: the channels it serves. Must include "email". */
   channels?: string[]
   /**
@@ -262,7 +260,6 @@ export interface ResolvedEmailsOptions {
   timeoutMs: number
   maxRetries: number
   logRetentionDays: number
-  references: ResolvedReference[]
   channels: string[]
   /** Option values that were ignored, for the admin. */
   problems: string[]
@@ -476,7 +473,6 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     timeoutMs: int(o.timeoutMs, DEFAULT_TIMEOUT_MS, 1000, 120_000),
     maxRetries: int(o.maxRetries, DEFAULT_MAX_RETRIES, 0, 5),
     logRetentionDays: int(o.logRetentionDays, DEFAULT_RETENTION_DAYS, 0, 3650),
-    references: resolveReferences(o.references),
     channels,
     problems,
   }

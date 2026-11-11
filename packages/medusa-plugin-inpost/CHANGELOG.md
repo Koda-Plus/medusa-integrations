@@ -11,6 +11,7 @@
 - Demo mode simulates returns with no request (a 9 digit code, a tracking number of 24 digits from 6303, 14 days to send it, a label marked as simulated) and seeds three sample returns once, also on a demo seeded by an earlier version; the reset removes them.
 - The storefront map in Settings: a new option `geowidgetToken` (the PUBLIC Geowidget token from InPost Manager). Settings, InPost account, show a "Storefront map (Geowidget)" card read from the token itself: set or not, sandbox or production, the domains it was issued for, the expiry, and a warning when the map's environment differs from the ShipX one. Never the whole token. `GET /store/inpost/geowidget` serves the token, its environment and the Geowidget script host, so a storefront reads it from Medusa instead of keeping a copy (404 `geowidget_not_configured` when missing or expired).
 - A new table, `inpost_parcel_return` (migration `Migration20261106120000_inpost_returns`): run `npx medusa db:migrate`. No customer data in it.
+- Removed: the `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
 
 ## 0.3.0 (unreleased)
 

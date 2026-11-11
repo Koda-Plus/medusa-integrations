@@ -2,8 +2,7 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { StatusResponse } from "../../modules/inpost/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./inpost-guide"
-import { fmtRating, kitReferences } from "./inpost-ui"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec, type StepState } from "./inpost-guide"
 
 /*
  * The "Setup guide" view: what the rollout takes, how the parts talk, the
@@ -121,7 +120,7 @@ export function usePromptSpec(): SetupPromptSpec {
   )
 }
 
-export function GuideView({ status: s, lang }: { status: StatusResponse; lang: string }) {
+export function GuideView({ status: s }: { status: StatusResponse }) {
   const { t } = useTranslation("inpost")
   const demo = s.mode === "demo"
   const live = !demo
@@ -311,15 +310,6 @@ export function GuideView({ status: s, lang }: { status: StatusResponse; lang: s
       />
       <GuideChecklist title={t("guide.checklist.title")} subtitle={t("guide.checklist.subtitle")} items={checklist} />
       <GuideFaq title={t("guide.faqTitle")} items={FAQ_KEYS.map((k) => ({ q: t(`guide.faq.${k}.q`), a: <p>{t(`guide.faq.${k}.a`)}</p> }))} />
-      <References
-        items={kitReferences(s.references, lang)}
-        title={t("references.title")}
-        subtitle={t("references.subtitle")}
-        openLabel={t("references.open")}
-        soonLabel={t("references.soon")}
-        reviewLabel={t("references.review")}
-        ratingLabel={(value) => fmtRating(value, lang)}
-      />
     </div>
   )
 }

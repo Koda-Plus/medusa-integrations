@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+
+- The `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
+
 ### Fixed
 
 - Imported orders reach the shipping provider of their mapped option. `createOrderWorkflow` stores the shipping method data as given and never asks the provider, so an order carried only `allegro_delivery_method_id` and `allegro_pickup_point_id`, and the InPost plugin of Koda Plus recorded no parcel for it. Now, for an Allegro delivery method mapped in `orderImport.shippingOptions`, the data is validated by the option's provider before the order is created (`validateFulfillmentData`, as a cart does), and the answer is kept next to the `allegro_*` keys. It is kept only when the payment type is known, a pickup delivery still has its point, cash on delivery follows the payment type (`CASH_ON_DELIVERY`, never "not paid": Allegro Pay collects nothing) and collects exactly the Allegro total. Otherwise, when the provider refuses, on the default `shippingOptionId` and for demo orders, the order keeps its own keys, the import goes on, and the import row says why (`details.handoff`, and `attention` when a person should act; both stay through a retry and the adoption of the order). When the created order's total differs from Allegro after a cash on delivery hand-over, the row asks a person to correct the amount before shipping (`handed_cod_total_mismatch`). The order card says "Shipping needs a person" for these rows.

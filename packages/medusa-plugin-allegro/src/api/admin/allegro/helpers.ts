@@ -261,7 +261,6 @@ export async function buildStatus(scope: MedusaContainer | MedusaRequest["scope"
       },
       fakturownia: fakturowniaPresent(scope),
     },
-    references: o.references,
     counts,
     plans: {
       stock: await planSummary(svc, "stock"),

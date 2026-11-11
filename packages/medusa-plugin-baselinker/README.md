@@ -36,7 +36,6 @@ Every write that changes data ships switched off. It waits behind a plan your te
 - **Admin page with two views.** The **Panel**: connection check with everything the account offers (catalogs, warehouses and which of them take stock, price groups, order sources, statuses, custom order fields, journal state), the directions and writers, the plan of every direction in force with its filters and quarantine, the cards, the store orders, the marketplace orders, the returns, the invoice numbers and the history of runs. The **Setup guide**: a diagram of the parts, eleven steps from the token to go-live with a live state each, a go-live checklist ticked from the store itself, and answers to the failures this integration really meets.
 - **Order widget** on every order: the BaseLinker order, its status and the tracking link with **Send to BaseLinker now**, or why the order stays out; for an imported marketplace order its source, payment state and parcel instead. **Product widget** on every product: the linked cards, their BaseLinker stock and the main card they hang under. Both can be embedded by an app that hosts every Koda Plus plugin in one card (see "Works with Koda Plus hosts").
 - **Deep links**: the page opens on one list from a link, for example `/baselinker?section=orders&filter=failed`, `/baselinker?section=cards&q=prod_...` or `/baselinker?view=settings&tab=plans&filter=quarantined`.
-- **References** ("Running in production"): stores you pass in the `references` option are shown on the Panel and at the end of the guide.
 - **Demo mode**: a simulated BaseLinker account built from your own catalog, with duplicated SKUs and EANs, price groups, both stock directions, Allegro and Amazon orders and returns. Nothing leaves Medusa.
 - **Admin in English and Polish.**
 - **Workflows and events** for your own code.
@@ -170,14 +169,13 @@ Order export starts the moment `exportOrders` is on (the default) and `orderStat
 - `orderImportSince` (default: 24 hours before the first discovery): ISO date of the first orders to read.
 - `orderImportMaxAgeHours` (default `72`): an order older than this when the writer reaches it waits for a person instead of being imported.
 
-### Returns, journal, invoice numbers, references
+### Returns, journal, invoice numbers
 
 - `returnsSync` (default `true`): read returns, read only.
 - `returnsWindowDays` (default `30`): returns of the last N days.
 - `journal` (default `auto`): `auto` reads statuses from the BaseLinker order journal when it returns events, with a full read every 2 hours and after a gap of more than 2 days; `off` always reads the full way.
 - `invoiceNumberField` (default `extra_field_1`): the BaseLinker order field for invoice numbers: `extra_field_1`, `extra_field_2` or a custom order field id (`135` or `custom:135`).
 - `invoiceNumberKinds` (default `vat`, `receipt`): Fakturownia document kinds whose number is written.
-- `references` (default none): stores running this integration, shown as "Running in production": `[{ name, url, description?, metrics?, links?, soon? }]`, texts as strings or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped, never an error.
 
 ## How linking works
 
@@ -283,7 +281,7 @@ Without an account, `demo: true` runs every feature against a simulated BaseLink
 
 ## Admin API
 
-- `GET /admin/baselinker`: configuration summary (never the token), counters, directions, writers with who armed them and when, references, journal state, the last run of each kind and, in demo mode, whether the snapshot exists. Reads the database only. Every `GET` route only reads, in demo mode too.
+- `GET /admin/baselinker`: configuration summary (never the token), counters, directions, writers with who armed them and when, journal state, the last run of each kind and, in demo mode, whether the snapshot exists. Reads the database only. Every `GET` route only reads, in demo mode too.
 - `GET /admin/baselinker/running`: what runs right now in any process (the job leases); the page polls it while a run is under way.
 - `POST /admin/baselinker/demo/prepare`: demo mode only, builds the simulated snapshot now (idempotent).
 - `POST /admin/baselinker/check`: what the account offers, read now.

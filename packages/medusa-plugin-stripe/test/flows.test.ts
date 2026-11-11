@@ -266,7 +266,7 @@ test("without a key: an empty panel, the setup in the status, the Medusa side st
 })
 
 test("the status shows the key's kind, mode and last four characters, never the key", () => {
-  const c = container({ apiKey: READ_KEY, providerId: "stripe-test", references: [{ name: "Koda Supply", url: "https://kodasupply.example" }] }, { storeCors: "https://kodasupply.example" })
+  const c = container({ apiKey: READ_KEY, providerId: "stripe-test" }, { storeCors: "https://kodasupply.example" })
   const status = buildStatus(c, null)
   assert.ok(!JSON.stringify(status).includes(READ_KEY))
   assert.deepEqual(status.key, { kind: "restricted", mode: "live", last4: READ_KEY.slice(-4) })
@@ -275,7 +275,7 @@ test("the status shows the key's kind, mode and last four characters, never the 
   assert.equal(status.options.storefrontSource, "store_cors")
   assert.equal(status.webhookUrl, null)
   assert.equal(status.webhookPath, "/hooks/payment/stripe_stripe-test")
-  assert.equal(status.references.length, 1)
+  assert.equal("references" in status, false)
 })
 
 test("this backend's address from the proxy headers, refusing anything that is not a host", () => {

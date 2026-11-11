@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+
+- The `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
+
 ### Added
 
 - A store without marketplace import (no `orderImportSources` and no imported orders) does not see the marketplace orders section nor its point in the header.

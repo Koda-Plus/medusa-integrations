@@ -13,7 +13,6 @@ import {
   isAllegroEnvironment,
   type AllegroEnvironment,
 } from "./constants"
-import { normalizeReferences, type ReferenceInput, type ResolvedReference } from "./references"
 import { WRITER_KEYS, readScopesNeeded, scopesFor as scopesForInputs, type WriterKey } from "./writers"
 
 /**
@@ -150,8 +149,6 @@ export interface AllegroPluginOptions {
     /** Unread message threads (`allegro:api:messaging`, which has no read-only variant). Default false. */
     messages?: boolean
   }
-  /** Stores running this integration, shown in the admin ("Running in production"). */
-  references?: ReferenceInput[]
 }
 
 export interface ResolvedAllegroOptions {
@@ -200,7 +197,6 @@ export interface ResolvedAllegroOptions {
     cap: number
   }
   issues: { returns: boolean; disputes: boolean; messages: boolean }
-  references: ResolvedReference[]
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
@@ -347,7 +343,6 @@ export function resolveOptions(o: AllegroPluginOptions | undefined | null): Reso
       disputes: bool(issues.disputes, demo),
       messages: bool(issues.messages, demo),
     },
-    references: normalizeReferences(opts.references),
   }
 }
 

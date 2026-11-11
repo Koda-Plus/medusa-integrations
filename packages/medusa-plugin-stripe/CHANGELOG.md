@@ -6,6 +6,10 @@
 
 - No burnt order numbers. `POST /store/carts/:id/complete` of a cart paid through Stripe goes on only when its PaymentIntent is `succeeded` or `requires_capture`. Medusa takes the next `display_id` before it authorizes the payment, so completing a cart whose payment was still `processing` (BLIK, Przelewy24), waiting for 3-D Secure or declined rolled the order back and lost the number for good (#103 followed by #125). Such a request now gets `409` with `code: payment_processing` (the webhook places the order when the money arrives) or `payment_not_completed`, and no order is created. Demo mode, a missing key, carts without a Stripe session, completed carts and a Stripe that does not answer all pass through as before.
 
+### Removed
+
+- The `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
+
 ## 0.3.1 (unreleased)
 
 ### Changed

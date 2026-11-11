@@ -20,7 +20,6 @@ import {
   type SendingMethod,
 } from "./constants"
 import { isLockerCode, normalizeLockerCode } from "./lockers"
-import { normalizeReferences, type InpostReference, type InpostReferenceOption } from "./references"
 
 /**
  * Options of `@koda-plus/medusa-plugin-inpost`. The SAME object goes to the
@@ -103,8 +102,6 @@ export interface InpostPluginOptions {
   timeoutMs?: number | string
   /** Requests per minute one IP may send to GET /store/inpost/points. Default 60. */
   pointsPerMinute?: number | string
-  /** Stores running the integration, shown in the admin ("Running in production"). */
-  references?: InpostReferenceOption[]
   /** InPost Returns API (InPost Group developer portal): the client id of the OAuth2 client credentials the InPost Integration Team issues. */
   returnsClientId?: string
   /** Its secret. Never leaves the server, masked in every log and error. */
@@ -175,7 +172,6 @@ export interface ResolvedInpostOptions {
   requestsPerMinute: number
   timeoutMs: number
   pointsPerMinute: number
-  references: InpostReference[]
   /** Values that were set but ignored, for the admin and the boot log. */
   problems: string[]
 }
@@ -355,7 +351,6 @@ export function resolveOptions(o: InpostPluginOptions | undefined | null): Resol
     requestsPerMinute: bounded(opts.requestsPerMinute, DEFAULT_REQUESTS_PER_MINUTE, 1, MAX_REQUESTS_PER_MINUTE),
     timeoutMs: bounded(opts.timeoutMs, DEFAULT_TIMEOUT_MS, 3000, 120_000),
     pointsPerMinute: bounded(opts.pointsPerMinute, DEFAULT_POINTS_PER_MINUTE, 1, 6000),
-    references: normalizeReferences(opts.references),
     problems,
   }
 }

@@ -15,27 +15,6 @@ export interface LocalizedTextDto {
   pl: string | null
 }
 
-export interface ReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  icon: string | null
-  description: LocalizedTextDto | null
-  metrics: Array<{ label: LocalizedTextDto; value: string }>
-  links: Array<{ label: LocalizedTextDto; url: string }>
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: LocalizedTextDto | null
-    author: string | null
-  } | null
-}
-
 export interface TemplateDto {
   key: string
   /** builtin, or added by your options or code (app); a built-in key replaced by your template is "app". */
@@ -128,7 +107,6 @@ export interface StatusResponse {
   abandonedCart: { afterHours: number; maxAgeHours: number; maxPerRun: number }
   limits: { testsPerUser: number; testWindowMinutes: number; testsPerHour: number; passwordResetsPerHour: number }
   retentionDays: number
-  references: ReferenceDto[]
   /** The send log could be read (the migrations ran). */
   logReady: boolean
   /**

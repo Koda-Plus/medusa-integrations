@@ -1,26 +1,12 @@
-// GENERATED from kit/admin/community.ts (kit 1.4.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/community.ts (kit 1.5.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 /**
- * The `community` block of every plugin dictionary: "Add your store", the
- * setup prompt and help on Discord. The same words in every Koda Plus
+ * The `community` block of every plugin dictionary: the setup prompt and
+ * help on Discord. The same words in every Koda Plus
  * plugin, so they live in the kit; `en.ts` and `pl.ts` of a package take
  * them as `community: communityEn` and `community: communityPl`.
  */
 
 export const communityEn = {
-  addStore: {
-    button: "Add your store",
-    title: "Does your store run on this integration?",
-    text: "Tell us about it. Once we check it, the store joins this list with a link and its rating.",
-    name: "Store name",
-    url: "Store address",
-    note: "A few words about the setup (optional)",
-    send: "Send the request",
-    copy: "Copy the text",
-    copied: "Request copied, paste it into a mail to hello@koda.plus",
-    hint: "Your mail app opens with the message to {{email}} ready to send.",
-    subject: "A store for {{integration}}",
-    greeting: "Hello, my store runs on {{integration}}. Please add it to the list of stores.",
-  },
   prompt: {
     button: "Copy prompt",
     title: "Add this integration to your store",
@@ -40,20 +26,6 @@ export const communityEn = {
 }
 
 export const communityPl: typeof communityEn = {
-  addStore: {
-    button: "Dodaj swój sklep",
-    title: "Twój sklep działa na tej integracji?",
-    text: "Daj nam znać. Po sprawdzeniu dodamy go do tej listy z linkiem i oceną.",
-    name: "Nazwa sklepu",
-    url: "Adres sklepu",
-    note: "Kilka słów o wdrożeniu (opcjonalnie)",
-    send: "Wyślij zgłoszenie",
-    copy: "Kopiuj treść",
-    copied: "Treść skopiowana, wklej ją w mail do hello@koda.plus",
-    hint: "Otworzy się Twoja poczta z gotową wiadomością do {{email}}.",
-    subject: "Zgłoszenie sklepu: {{integration}}",
-    greeting: "Dzień dobry, mój sklep działa na integracji {{integration}}. Proszę o dodanie go do listy sklepów.",
-  },
   prompt: {
     button: "Kopiuj prompt",
     title: "Dodaj tę integrację do swojego sklepu",

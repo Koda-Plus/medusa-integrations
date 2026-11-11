@@ -12,7 +12,6 @@ import {
   type OlxMarket,
   type WriterKey,
 } from "./constants"
-import { normalizeReferences, type OlxReference, type OlxReferenceOption } from "./references"
 
 /**
  * Options of `@koda-plus/medusa-plugin-olx`, passed in `medusa-config.ts`:
@@ -68,8 +67,6 @@ export interface OlxPluginOptions {
   requestsPerMinute?: number
   timeoutMs?: number
   userAgent?: string
-  /** Stores running the plugin, shown on the OLX page and in the setup guide. */
-  references?: OlxReferenceOption[]
   /** Count stock only at the stock locations of this sales channel. Default: every location. */
   salesChannelId?: string
   /** Hourly statistics refresh (views, phone views, observers). Default true. */
@@ -125,7 +122,6 @@ export interface ResolvedOlxOptions {
   requestsPerMinute: number
   timeoutMs: number
   userAgent: string
-  references: OlxReference[]
   salesChannelId: string | null
   statsEnabled: boolean
   statsPerRun: number
@@ -233,7 +229,6 @@ export function resolveOptions(o: OlxPluginOptions | undefined | null): Resolved
     requestsPerMinute: Number.isFinite(rpm) && rpm > 0 ? Math.floor(rpm) : DEFAULT_REQUESTS_PER_MINUTE,
     timeoutMs: Number.isFinite(timeout) && timeout >= 1000 ? Math.floor(timeout) : DEFAULT_TIMEOUT_MS,
     userAgent: str(opts.userAgent) || "KodaPlus-Medusa-OLX/0.2 (+https://koda.plus)",
-    references: normalizeReferences(opts.references),
     salesChannelId: str(opts.salesChannelId) || null,
     statsEnabled: opts.statsEnabled !== false,
     statsPerRun: int(opts.statsPerRun, DEFAULT_STATS_PER_RUN, 1, 2000),

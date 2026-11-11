@@ -188,7 +188,6 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
       emails,
     },
     writers: await writersDto(scope),
-    references: o.references,
     lastRuns,
     lastCheck: lastCheck(demo ? "demo" : "live"),
     running: runningKinds(),

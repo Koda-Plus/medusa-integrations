@@ -36,7 +36,7 @@ import {
   useRunDraftOrders,
 } from "../../lib/negotiations-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue } from "../../lib/negotiations-blocks"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/negotiations-guide"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/negotiations-guide"
 import { GuideView, usePromptSpec } from "../../lib/negotiations-guide-view"
 import { NegotiationsIcon } from "../../lib/negotiations-icon"
 import { KitFetchingBar, KitSkeletonRows } from "../../lib/negotiations-kit"
@@ -54,9 +54,7 @@ import {
   fmtMoney,
   fmtMoneyCompact,
   fmtNumber,
-  fmtRating,
   fmtRelative,
-  referencesFor,
 } from "../../lib/negotiations-ui"
 
 /**
@@ -184,7 +182,6 @@ function Header({ status, loading, lang, nav, onOpen }: { status: StatusResponse
   const reset = useResetDemo()
   const waiting = useOldestWaiting()
   const badge = modeBadge(status)
-  const references = status ? referencesFor(status.references, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
   const count = status?.counts.waiting ?? 0
@@ -261,31 +258,6 @@ function Header({ status, loading, lang, nav, onOpen }: { status: StatusResponse
         { icon: <BellAlert />, text: t("points.events") },
         { icon: <Clock />, text: t("points.expiry") },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

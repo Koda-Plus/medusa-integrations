@@ -12,7 +12,6 @@ import {
   parseTaxValue,
   resolveOptions,
 } from "../src/modules/fakturownia/lib/options.ts"
-import { normalizeReview, resolveReferences } from "../src/modules/fakturownia/lib/references.ts"
 
 test("defaults: the final document at payment capture, VAT 23, Polish, 7 days, marked paid, no e-mail", () => {
   const o = resolveOptions({ apiToken: "t0ken-long-enough", account: "mojafirma" })
@@ -139,62 +138,6 @@ test("account: the full address works, anything that is not a subdomain is refus
 test("oid prefix: whitespace removed, at most 20 characters", () => {
   assert.equal(resolveOptions({ oidPrefix: " M 2026- " }).oidPrefix, "M2026-")
   assert.equal(resolveOptions({ oidPrefix: "x".repeat(30) }).oidPrefix.length, 20)
-})
-
-test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {
-  const review = normalizeReview({ rating: "4,8", source: "Clutch", url: "https://clutch.co/review/1", icon: "javascript:alert(1)", quote: { pl: "Polecam" } })
-  assert.deepEqual(review, { rating: 4.8, scale: 5, source: "Clutch", url: "https://clutch.co/review/1", icon: null, quote: { en: null, pl: "Polecam" }, author: null })
-  assert.equal(normalizeReview({ rating: 9, source: "Clutch" })?.rating, 5)
-  assert.equal(normalizeReview({ rating: 9, scale: 10, source: "Google" })?.scale, 10)
-  assert.equal(normalizeReview({ rating: 5, source: "Clutch", url: "http://clutch.co" })?.url, null)
-  assert.equal(normalizeReview({ rating: 0, source: "Clutch" }), null)
-  assert.equal(normalizeReview({ rating: 5 }), null)
-  assert.equal(normalizeReview("5 stars"), null)
-  const [withReview, without] = resolveReferences([
-    { name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch" } },
-    { name: "B", url: "https://b.pl", review: { rating: "great" } },
-  ])
-  assert.equal(withReview.review?.rating, 5)
-  assert.equal(without.review, null)
-  const fromOptions = resolveOptions({ references: [{ name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch", author: "Jan" } }] }).references
-  assert.equal(fromOptions[0].review?.source, "Clutch")
-  assert.equal(fromOptions[0].review?.author, "Jan")
-})
-
-test("references: a store that starts soon needs only its name, a live one still needs an https URL", () => {
-  const refs = resolveReferences([
-    { name: "Soon, no address", soon: true, description: "Opens in spring" },
-    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
-    { name: "Soon, insecure address", soon: true, url: "http://soon.example.com" },
-    { name: "Live, no address" },
-    { name: "Live, insecure address", url: "http://live.example.com" },
-    { name: "Not a boolean", soon: "yes" },
-    { soon: true },
-  ])
-  assert.deepEqual(
-    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
-    [
-      { name: "Soon, no address", soon: true, url: null },
-      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
-      { name: "Soon, insecure address", soon: true, url: null },
-    ],
-  )
-  assert.deepEqual(refs[0].description, { en: "Opens in spring", pl: "Opens in spring" })
-  assert.equal(resolveReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
-  const live = resolveReferences([{ name: "Live", url: "https://a.pl" }])
-  assert.equal(live[0].soon, false)
-  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
-})
-
-test("references: the since date of an older config is ignored, never an error", () => {
-  const refs = resolveReferences([
-    { name: "Live", url: "https://a.pl", since: "2026-04" },
-    { name: "Soon", soon: true, since: { not: "a month" } },
-  ])
-  assert.equal(refs.length, 2)
-  for (const r of refs) assert.equal("since" in r, false)
-  assert.equal(refs[0].url, "https://a.pl/")
-  assert.equal(refs[1].soon, true)
 })
 
 test("dates: the Polish calendar day, also when UTC still says yesterday", () => {
