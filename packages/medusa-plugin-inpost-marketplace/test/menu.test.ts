@@ -1,9 +1,8 @@
 /**
- * One menu entry for InPost: with the InPost plugin of Koda Plus in the same
- * app, this page is the "Von Halsky" tab of the InPost page, the own route
- * redirects there and the own sidebar entry steps aside; without it the page
- * stands alone. The page file is .tsx (node --test cannot load it), so the
- * wiring is read from the source.
+ * Its own sidebar entry, next to InPost (rank 3): a marketplace is a sales
+ * channel of its own, so the page is no tab of the InPost page any more
+ * (since 11.11.2026). The page file is .tsx (node --test cannot load it), so
+ * the wiring is read from the source.
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -14,15 +13,11 @@ import { fileURLToPath } from "node:url"
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const page = readFileSync(join(root, "src/admin/routes/vonhalsky/page.tsx"), "utf8")
 
-test("menu: the page adds itself as a tab of the InPost page at module load, drawn by its own component", () => {
-  assert.match(page, /^addPageTab\(\{ host: "inpost", id: "vonhalsky", ns: "vonhalsky", name: "Von Halsky", order: \d+, Icon: VonHalskyIcon, Component: VonHalskyPage \}\)$/m)
+test("menu: its own route and sidebar entry, rank 3 next to InPost, the Von Halsky tile", () => {
+  assert.match(page, /defineRouteConfig\(\{\s*label: "InPost Von Halsky",\s*rank: 3,\s*icon: VonHalskyIcon,\s*\}\)/)
+  assert.match(page, /export default VonHalskyPage\s*$/)
 })
 
-test("menu: the own route moves to the tab only while the host is there, and draws the page otherwise", () => {
-  assert.match(page, /<KitTabRoute host="inpost" tab="vonhalsky">\s*<VonHalskyPage \/>\s*<\/KitTabRoute>/)
-  assert.match(page, /export default VonHalskyRoute\s*$/)
-})
-
-test("menu: the own sidebar entry keeps its label and steps aside only through the hosted icon", () => {
-  assert.match(page, /defineRouteConfig\(\{\s*label: "[^"]+",\s*icon: hostedNavIcon\(VonHalskyIcon, \{ host: "inpost", tab: "vonhalsky" \}\),\s*\}\)/)
+test("menu: not a tab of the InPost page any more", () => {
+  for (const wiring of ["addPageTab", "KitTabRoute", "hostedNavIcon", 'host: "inpost"']) assert.ok(!page.includes(wiring), wiring)
 })
