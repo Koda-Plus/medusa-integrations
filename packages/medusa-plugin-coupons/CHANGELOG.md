@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-11)
 
 The coupon's whole build in one form, copies, a pause from the list, and the store's own terms.
 
