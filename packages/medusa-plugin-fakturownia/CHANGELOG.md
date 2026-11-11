@@ -15,6 +15,10 @@
 
 - **The reminder gate.** "Send a reminder" goes out only when Medusa (the plugin's record and the order's captured payments) and Fakturownia, read live, both say the document is unpaid (`reminderGate` in `lib/reminder-gate.ts`, a pure function). Fakturownia paid while Medusa is not, Medusa paid, or Fakturownia not answering: nothing is sent, 409 with `reason` (`paid_in_fakturownia`, `paid_in_medusa`, `fakturownia_unreachable`), the refusal kept in the history (`reason`) and shown in "Unpaid documents" (`lastRefusal` of `GET /admin/fakturownia/reminders`); the daily claim is not taken, so it may be tried again at once. A reminder that went out records what is left to pay according to Fakturownia (`price_gross` minus `paid`) in the history (`amount`) and the answer (`outstanding`). Fakturownia's e-mail itself carries the account's template: its API takes no text.
 
+### Removed
+
+- The `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
+
 ## 0.3.2 (2026-10-24)
 
 ### Added

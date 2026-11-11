@@ -10,7 +10,7 @@
 
 import { ADMIN_PAGE_DEFAULT, ADMIN_PAGE_MAX, isStatus, MAX_SEARCH_MATCHES, STORE_PAGE_DEFAULT, STORE_PAGE_MAX, type NegotiationStatus } from "../../modules/negotiations/lib/constants"
 import type { CustomerDto, StatusResponse, StoreThreadResponse, StoreThreadsResponse, ThreadDto, ThreadsResponse } from "../../modules/negotiations/lib/contract"
-import { toReferenceDto, toRunDto, toStoreThreadDto, toThreadDto, type Enrichment } from "../../modules/negotiations/lib/dto"
+import { toRunDto, toStoreThreadDto, toThreadDto, type Enrichment } from "../../modules/negotiations/lib/dto"
 import { expiresSoon } from "../../modules/negotiations/lib/expiry"
 import { formatAmount, sumByCurrency } from "../../modules/negotiations/lib/money"
 import type { DraftOrderRow, MessageRow } from "../../modules/negotiations/lib/rows"
@@ -224,7 +224,6 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
       blocked: drafts.blocked ?? 0,
     },
     lastRuns,
-    references: o.references.map(toReferenceDto),
     demo: info,
   }
 }

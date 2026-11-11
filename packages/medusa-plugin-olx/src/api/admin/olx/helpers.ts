@@ -193,7 +193,6 @@ export async function buildStatus(svc: OlxModuleService): Promise<OlxStatusRespo
     lastRun: runs[0] ? toRunDto(runs[0]) : null,
     lastCompleteSyncAt: complete[0] ? iso(complete[0].finished_at ?? complete[0].started_at) : null,
     running: isSyncRunning(),
-    references: o.references,
     alerts,
     stats: {
       enabled: o.statsEnabled,

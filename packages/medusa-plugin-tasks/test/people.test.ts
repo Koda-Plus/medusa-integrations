@@ -20,7 +20,7 @@ test("people: the whole entry, with a data URI photo, a role in both languages a
   ])
 })
 
-test("people: lenient like the references; broken parts are dropped, broken entries skipped, nothing throws", () => {
+test("people: lenient; broken parts are dropped, broken entries skipped, nothing throws", () => {
   const people = normalizePeople([
     { name: "Insecure photo", avatar: "http://cdn.example.com/a.png" },
     { name: "Script photo", avatar: "javascript:alert(1)" },

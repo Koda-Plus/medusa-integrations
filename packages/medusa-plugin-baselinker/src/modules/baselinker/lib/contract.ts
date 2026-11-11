@@ -201,7 +201,6 @@ export interface StatusResponse {
   /* ---- 0.2 ---- */
   directions: DirectionsDto
   writers: WriterDto[]
-  references: ReferenceDto[]
   journal: JournalDto
   more: {
     catalogSource: "medusa" | "baselinker"
@@ -280,34 +279,6 @@ export interface JournalDto {
   lastLogId: number | null
   lastEventAt: string | null
   lastReadAt: string | null
-}
-
-export interface LocalizedDto {
-  en?: string
-  pl?: string
-}
-
-export interface ReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  /** The store's icon: a data URI or an https URL. */
-  icon: string | null
-  description: LocalizedDto | null
-  metrics: Array<{ label: LocalizedDto; value: string }>
-  links: Array<{ label: LocalizedDto; url: string }>
-  /** The store's rating of the work and where it was given, e.g. Clutch. */
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: LocalizedDto | null
-    author: string | null
-  } | null
 }
 
 /* ------------------------------------------------------------------ */

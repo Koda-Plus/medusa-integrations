@@ -8,7 +8,7 @@ import { Container, InlineTip, toast } from "@medusajs/ui"
 import type { OfferFilter, OrderFilter, StatusResponse } from "../../../modules/vonhalsky/lib/contract"
 import { errorMessage, useImportNow, useRefreshOffers, useSimulateOrder, useSyncNow, useVonHalskyStatus, vonHalskyKeys } from "../../lib/vonhalsky-api"
 import { CasesSection } from "../../lib/vonhalsky-cases"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/vonhalsky-guide"
 import { GuideView, usePromptSpec } from "../../lib/vonhalsky-guide-view"
 import { VonHalskyIcon } from "../../lib/vonhalsky-icon"
 import { LogSection } from "../../lib/vonhalsky-log"
@@ -236,7 +236,6 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
         { icon: <TruckFast />, text: t("points.tracking") },
         { icon: <ArrowUturnLeft />, text: t("points.afterSale") },
       ]}
-      social={<AddStoreButton labels={community.addStore} />}
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

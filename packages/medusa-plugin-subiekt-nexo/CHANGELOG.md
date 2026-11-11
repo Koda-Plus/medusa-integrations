@@ -24,6 +24,10 @@ No migration and no change to the bridge contract: everything reads tables the p
 - The contract has no way to ask the bridge for orders it knows by date, so the safety net only finds orders Medusa has and the plugin lacks, not documents created in Subiekt by hand for an order the plugin never queued; **Check in Subiekt** on the order covers those one by one.
 - A document the plugin stored and the bridge no longer reports (deleted in Subiekt) is shown as "Only in Medusa" and never changed automatically.
 
+### Removed
+
+- The `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
+
 ## 0.2.2 (2026-10-18)
 
 No change to the sync, the bridge contract or the tables: the shared admin kit moves from 1.0.1 to 1.0.9.

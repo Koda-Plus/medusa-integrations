@@ -6,12 +6,12 @@ import { ArrowPath, Envelope, Eye, EyeMini, Language, ListBullet, PaperPlane, Sw
 import { Container, InlineTip } from "@medusajs/ui"
 import { MESSAGE_FILTERS, MESSAGE_WINDOWS, type MessageFilter, type MessageWindow, type StatusResponse } from "../../../modules/emails/lib/contract"
 import { errorMessage, useEmailsMessages, useEmailsSeed, useEmailsStatus } from "../../lib/emails-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/emails-guide"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/emails-guide"
 import { GuideView, usePromptSpec } from "../../lib/emails-guide-view"
 import { EmailsIcon } from "../../lib/emails-icon"
 import { ByTemplateSection, DemoDetails, GallerySection, MessageDrawer, MessagesSection, TestDrawer, type TestInitial } from "../../lib/emails-panels"
 import { BrandingSection, ProviderSection, TemplatesSection } from "../../lib/emails-settings"
-import { fmtNumber, fmtRating, modeState, referencesFor } from "../../lib/emails-ui"
+import { fmtNumber, modeState } from "../../lib/emails-ui"
 import { StatTile, StatTiles } from "../../lib/emails-blocks"
 import { KitLoading } from "../../lib/emails-kit"
 import { BouncesSection } from "../../lib/emails-delivery"
@@ -206,7 +206,6 @@ function Header({
 }) {
   const { t } = useTranslation("emails")
   const mode = modeState(status)
-  const references = status ? referencesFor(status.references, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
   const panel = nav.view === "panel"
@@ -232,31 +231,6 @@ function Header({
         { icon: <Eye />, text: t("points.preview") },
         { icon: <ListBullet />, text: t("points.log") },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

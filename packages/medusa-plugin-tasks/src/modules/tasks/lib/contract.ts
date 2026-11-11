@@ -7,7 +7,6 @@
  */
 
 import type { ActorType, AuthorRole, Board, LinkType, TaskPriority, TaskStatus } from "./constants"
-import type { TasksReference } from "./references"
 
 export type { ActorType, AuthorRole, Board, LinkType, TaskPriority, TaskStatus }
 
@@ -187,7 +186,6 @@ export interface StatusResponse {
   adoption: AdoptionDto | null
   /** Writes by secret API keys on this board. */
   automation: { api_key_activity: number; last_api_key_at: string | null }
-  references: TasksReference[]
 }
 
 export interface ListResponse {

@@ -15,34 +15,6 @@ export type OlxWriterBlocker = "config_off" | "not_armed" | "not_connected" | "n
 export type OlxPlanState = "idle" | "pending" | "held" | "applying" | "done" | "failed" | "quarantined" | "unknown"
 export type OlxPublicationState = "planned" | "blocked" | "publishing" | "published" | "failed" | "quarantined" | "unknown"
 
-export interface OlxLocalizedText {
-  en?: string
-  pl?: string
-}
-
-export interface OlxReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  /** The store's icon: a data URI or an https URL. */
-  icon: string | null
-  description: OlxLocalizedText | null
-  metrics: Array<{ label: OlxLocalizedText; value: string }>
-  links: Array<{ label: OlxLocalizedText; url: string }>
-  /** The store's rating of the work and where it was given, e.g. Clutch. */
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: OlxLocalizedText | null
-    author: string | null
-  } | null
-}
-
 export interface OlxProblemDto {
   code: string
   detail?: string
@@ -191,7 +163,6 @@ export interface OlxStatusResponse {
   /** Live mode: the last complete read from the OLX API. */
   lastCompleteSyncAt: string | null
   running: boolean
-  references: OlxReferenceDto[]
   alerts: Record<OlxAlertKind, number>
   stats: {
     enabled: boolean

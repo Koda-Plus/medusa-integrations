@@ -1,6 +1,5 @@
 import { DEFAULT_SANDBOX_RESET_HOURS, MAX_SANDBOX_RESET_HOURS } from "./constants"
 import { normalizePeople, type NamedPerson, type PersonOption } from "./people"
-import { normalizeReferences, type TasksReference, type TasksReferenceOption } from "./references"
 
 /**
  * Options of `@koda-plus/medusa-plugin-tasks`, passed in `medusa-config.ts`:
@@ -33,8 +32,6 @@ export interface TasksPluginOptions {
    * users in the assignee picker. Default: none.
    */
   people?: PersonOption[]
-  /** Stores running the plugin, shown on the Tasks page and in the setup guide. Default: none. */
-  references?: TasksReferenceOption[]
   /**
    * Keeps sandbox accounts (and keys they created) inside Tasks: off by
    * default, because it refuses admin routes the rest of the store may need.
@@ -83,7 +80,6 @@ export interface ResolvedTasksOptions {
   /** Lower case e-mails and `@domain` entries. */
   agencyAccounts: string[]
   people: NamedPerson[]
-  references: TasksReference[]
   sandboxGuard: { enabled: boolean; allowWrites: string[] }
   sandboxEvents: "skip" | "emit"
   sandboxLimits: SandboxLimits
@@ -188,7 +184,6 @@ export function resolveOptions(o: TasksPluginOptions | undefined | null): Resolv
     sandboxResetHours: bounded(opts.sandboxResetHours, DEFAULT_SANDBOX_RESET_HOURS, 0, MAX_SANDBOX_RESET_HOURS),
     agencyAccounts: emailsAndDomains(opts.agencyAccounts),
     people: normalizePeople(opts.people),
-    references: normalizeReferences(opts.references),
     sandboxGuard: guardOf(opts.sandboxGuard),
     sandboxEvents: opts.sandboxEvents === "emit" ? "emit" : "skip",
     sandboxLimits: limitsOf(opts.sandboxLimits),

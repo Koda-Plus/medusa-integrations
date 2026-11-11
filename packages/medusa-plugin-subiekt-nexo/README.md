@@ -45,7 +45,7 @@ The bridge usually sits behind a Cloudflare Tunnel, so the Subiekt machine opens
 - **Outbox with retries.** Every call to the bridge is a row first and a request second, retried with backoff for about two and a half days, so a bridge machine switched off over a weekend loses nothing. A task fails for good only on a non-retryable error, and then it waits in the admin with a **Send again** button.
 - **Setup guide in the admin** ("Panel" | "Setup guide", `?view=guide`), in English and Polish: what you need, how the parts talk, twelve steps from an empty Windows machine to production with live states, a go-live checklist ticked from the live status, and troubleshooting from real failure modes. The same guide as Markdown: [docs/guide-en.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-en.md), [docs/guide-pl.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/docs/guide-pl.md).
 - **Bridge diagnostics**: bridge, contract, nexo SDK and database versions, the Subiekt licence state, round trip, clock skew (signatures fail beyond five minutes, the admin warns from one), the result of the last signed request, the last event, what the bridge can do and what it cannot yet, with the reason and the setting to change.
-- **Admin page** with the connection, the writers, the stock plan, the products and prices plan with filters and quarantine, the queue, documents (ZK, WZ, FS, PA with KSeF numbers), each with the products of its order (thumbnails, a dialog with every line and the amount breakdown), and the history of background runs. "Running in production" cards from the `references` option.
+- **Admin page** with the connection, the writers, the stock plan, the products and prices plan with filters and quarantine, the queue, documents (ZK, WZ, FS, PA with KSeF numbers), each with the products of its order (thumbnails, a dialog with every line and the amount breakdown), and the history of background runs.
 - **Order widget**: the ZK, WZ and FS or PA of the order (kind, number, date, warehouse, the document it came from, realized or canceled, the KSeF number), the contractor Subiekt got, warnings, **Send to Subiekt now**, **Issue invoice** or **Issue receipt**, and **Check in Subiekt**: what Subiekt has for the order right now against what Medusa recorded, with **Link** for a document only Subiekt has (recorded instead of creating a second one, its queue task settled) and **Update status** when Subiekt realized or canceled it.
 - **Safe stock sync.** Ambiguous matches (one EAN on two products, one inventory item pulled two ways) are reported and never written. Products missing from a reading are never zeroed. Kit components are matched by their own SKU. `stockDryRun` records the plan without writing.
 - **Signed both ways.** HMAC-SHA256 over timestamp, method, path and raw body, with secret rotation and a 5 minute window. Optional Cloudflare Access service token.
@@ -142,7 +142,6 @@ Safety net (0.3.0):
 
 Admin:
 
-- `references`: stores that run the integration in production, shown as cards under the counters and at the end of the guide: `[{ name, url, description?, metrics?: [{ label, value }], links?: [{ label, url }], soon? }]`, every text either a string or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped.
 
 Missing options never break the boot: the module registers, the admin lists what is missing, and nothing is queued until the plugin is configured, so a store configured a week after installing does not flood Subiekt with a week of old orders. In demo mode the 0.2.0 hard switches default to on, because the writers only touch the simulation there; nothing is armed until a person arms it, except the documents and contractors writers the demo arms once as "demo (automatic)".
 
@@ -201,7 +200,7 @@ Koda Plus provides a production bridge for Subiekt nexo PRO: a Windows service o
 
 ## Admin API
 
-- `GET /admin/subiekt`: connection, bridge diagnostics, writers, counters, the last run of each kind, references. Reads the database only.
+- `GET /admin/subiekt`: connection, bridge diagnostics, writers, counters, the last run of each kind. Reads the database only.
 - `POST /admin/subiekt/check`: `GET /v1/health` now.
 - `POST /admin/subiekt/sync` with `{ "what": "stock" | "events" | "tasks" | "products" | "catchup" }`: run a job now (202, background).
 - `POST /admin/subiekt/writers` with `{ "writer": "prices" | "products" | "documents" | "contractors", "armed": true | false }`: arm or disarm a writer (recorded with the admin user).
@@ -272,7 +271,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the backoff, the bridge client, the contract and its examples, the HMAC signatures and their cross-language test vectors, the order payload, the payment routing, the NIP sources and checksum, the stock match and plan, the products and prices plan, the writers and the sales documents, the safety net and the order check against Subiekt, the setup guide, the references option, the demo bridge and the `koda.integration/1` contract, without a network, a bridge or a build. Running the tests needs Node.js 22.6+ (they load the TypeScript sources directly). The contract in [`contract/`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract) is the source of truth for the bridge: change it there first, and keep it additive within a major version.
+`npm test` covers the backoff, the bridge client, the contract and its examples, the HMAC signatures and their cross-language test vectors, the order payload, the payment routing, the NIP sources and checksum, the stock match and plan, the products and prices plan, the writers and the sales documents, the safety net and the order check against Subiekt, the setup guide, the demo bridge and the `koda.integration/1` contract, without a network, a bridge or a build. Running the tests needs Node.js 22.6+ (they load the TypeScript sources directly). The contract in [`contract/`](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-subiekt-nexo/contract) is the source of truth for the bridge: change it there first, and keep it additive within a major version.
 
 ## Uninstall
 

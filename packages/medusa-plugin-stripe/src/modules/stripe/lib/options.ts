@@ -24,7 +24,6 @@ import {
   MIN_TIMEOUT_MS,
 } from "./constants"
 import type { CheckKey } from "./contract"
-import { normalizeReferences, type StripeReference, type StripeReferenceOption } from "./references"
 
 export interface StripePluginOptions {
   /**
@@ -64,8 +63,6 @@ export interface StripePluginOptions {
   timeoutMs?: number | string
   /** Checks to run. Every check runs unless set to false, e.g. { domains: false }. */
   checks?: Partial<Record<CheckKey, boolean | string>>
-  /** Stores running the integration, shown in the admin ("Running in stores built by Koda Plus"). */
-  references?: StripeReferenceOption[]
 }
 
 export type DemoOrderRule = (typeof DEMO_ORDER_RULES)[number]
@@ -83,7 +80,6 @@ export interface ResolvedStripeOptions {
   requestsPerSecond: number
   timeoutMs: number
   checks: Record<CheckKey, boolean>
-  references: StripeReference[]
 }
 
 /** true for true, "true", "1", "yes", "on"; false for false, "false", "0", "no", "off"; otherwise the fallback. */
@@ -178,7 +174,6 @@ export function resolveOptions(input: StripePluginOptions | null | undefined): R
     requestsPerSecond: int(o.requestsPerSecond, DEFAULT_REQUESTS_PER_SECOND, 1, MAX_REQUESTS_PER_SECOND),
     timeoutMs: int(o.timeoutMs, DEFAULT_TIMEOUT_MS, MIN_TIMEOUT_MS, MAX_TIMEOUT_MS),
     checks,
-    references: normalizeReferences(o.references),
   }
 }
 

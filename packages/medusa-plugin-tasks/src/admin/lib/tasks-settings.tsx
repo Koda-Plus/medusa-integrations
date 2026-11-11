@@ -110,7 +110,6 @@ export function GeneralSection({ status }: { status: StatusResponse }) {
               </span>
             )}
           </Fact>
-          <Fact label={t("general.references")}>{fmtNumber(status.references.length, lang)}</Fact>
           <Fact label={t("general.agentKeys")}>{o.agent_key_prefix ? t("general.agentKeysOn", { prefix: o.agent_key_prefix }) : t("general.agentKeysOff")}</Fact>
           <Fact label={t("general.automation")}>
             {status.automation.api_key_activity > 0

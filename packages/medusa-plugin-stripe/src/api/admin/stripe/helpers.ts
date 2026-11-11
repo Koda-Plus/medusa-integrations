@@ -69,7 +69,6 @@ export function buildStatus(scope: Scope, origin: string | null): StripeStatusRe
     webhookPath: webhookPath(o.providerId),
     webhookUrl: expectedWebhookUrl(o.backendUrl ?? origin, o.providerId),
     dashboardUrl: new DashboardLinks(mode === "test" ? "test" : "live").base,
-    references: o.references,
   }
 }
 

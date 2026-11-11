@@ -1,9 +1,9 @@
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Text, clx } from "@medusajs/ui"
-import type { LocalizedTextDto, MessageDto, MoneyDto, ReferenceDto, ReferenceTextDto, RunDto, ThreadDto } from "../../modules/negotiations/lib/contract"
+import type { LocalizedTextDto, MessageDto, MoneyDto, RunDto, ThreadDto } from "../../modules/negotiations/lib/contract"
 import type { NegotiationStatus } from "../../modules/negotiations/lib/constants"
-import { nb, type Reference } from "./negotiations-guide"
+import { nb } from "./negotiations-guide"
 import { ToneBadge, type Tone } from "./negotiations-blocks"
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
@@ -82,38 +82,11 @@ export function fmtDuration(ms: number): string {
   return ms < 10_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 1000)} s`
 }
 
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
-
-/** The text of the admin language, or the other one. Message texts and reference texts alike. */
-export function pickText(text: LocalizedTextDto | ReferenceTextDto | null | undefined, lang: string): string | undefined {
+/** The text of the admin language, or the other one. */
+export function pickText(text: LocalizedTextDto | null | undefined, lang: string): string | undefined {
   if (!text) return undefined
   const pl = /^pl/i.test(lang)
   return (pl ? text.pl || text.en : text.en || text.pl) || undefined
-}
-
-/**
- * The references of the options in the admin language, for the kit's
- * `References` and `ReferencesBadge`: live stores with their address, stores
- * that start soon with the flag (the kit lists them after the live ones,
- * with a "Soon" badge and no link).
- */
-export function referencesFor(items: readonly ReferenceDto[], lang: string): Reference[] {
-  return items.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang),
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang) ?? l.url, url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
 }
 
 /* ------------------------------------------------------------------ */

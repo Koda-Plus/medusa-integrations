@@ -84,34 +84,6 @@ export interface AllegroWriterDto {
   lastSuccessAt: string | null
 }
 
-export interface AllegroLocalizedText {
-  en: string | null
-  pl: string | null
-}
-
-export interface AllegroReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  /** The store's icon: a data URI or an https URL. */
-  icon: string | null
-  description: AllegroLocalizedText | null
-  metrics: Array<{ label: AllegroLocalizedText; value: string }>
-  links: Array<{ label: AllegroLocalizedText; url: string }>
-  /** The store's rating of the work and where it was given, e.g. Clutch. */
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: AllegroLocalizedText | null
-    author: string | null
-  } | null
-}
-
 export interface AllegroPlanSummaryDto {
   kind: AllegroPlanKind
   plannedAt: string | null
@@ -183,7 +155,6 @@ export interface AllegroStatusResponse {
     }
     fakturownia: boolean
   }
-  references: AllegroReferenceDto[]
   counts: {
     offers: number
     live: number

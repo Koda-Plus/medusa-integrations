@@ -6,12 +6,9 @@ import type {
   OlxPlanState,
   OlxProblemDto,
   OlxPublicationState,
-  OlxReferenceDto,
   OlxStatusGroup,
   OlxWriterKey,
 } from "../../modules/olx/lib/contract"
-import { pickText } from "../../modules/olx/lib/references"
-import type { Reference } from "./olx-guide"
 import { ToneBadge, type Tone } from "./olx-blocks"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
@@ -56,36 +53,6 @@ export function fmtNumber(value: number, lang: string): string {
 export function fmtDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "0 s"
   return ms < 10_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 1000)} s`
-}
-
-/* ------------------------------------------------------------------ */
-/* References                                                          */
-/* ------------------------------------------------------------------ */
-
-/* Pure helpers shared with the server code and its unit tests (zero imports there). */
-export { pickText }
-
-/** References of the option in the admin language, shaped for the kit. */
-export function kitReferences(refs: OlxReferenceDto[], lang: string): Reference[] {
-  return refs.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang) || undefined,
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang), url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
-}
-
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
 }
 
 /** The Medusa mark (the hexagon of the admin's own login screen), in the text colour. */

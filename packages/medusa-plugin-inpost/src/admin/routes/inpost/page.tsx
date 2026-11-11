@@ -7,7 +7,7 @@ import { ArchiveBox, ArrowPath, ArrowUpRightOnBox, Cash, DocumentText, Magnifyin
 import { Container, InlineTip, toast, usePrompt } from "@medusajs/ui"
 import type { ParcelFilter, PanelGroup, StatusResponse } from "../../../modules/inpost/lib/contract"
 import { errorMessage, inpostKeys, useInpostDemoReset, useInpostDemoSeed, useInpostPickup, useInpostStatus, useInpostSync } from "../../lib/inpost-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabbedPage, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpost-guide"
+import { HelpButtons, IntegrationHeader, KitTabbedPage, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpost-guide"
 import { GuideView, usePromptSpec } from "../../lib/inpost-guide-view"
 import { InpostIcon } from "../../lib/inpost-icon"
 import { hostPageTabs } from "../../lib/inpost-kit"
@@ -16,7 +16,7 @@ import { DemoDetails, FILTER_ICON, ParcelsSection } from "../../lib/inpost-panel
 import { LockerDrawer } from "../../lib/inpost-plan"
 import { ReturnsAccountSection, ReturnsSection } from "../../lib/inpost-returns"
 import { AccountSection, GeowidgetSection, HistorySection, ShippingSection, WritersSection } from "../../lib/inpost-settings"
-import { fmtNumber, fmtRating, kitReferences, modeOf } from "../../lib/inpost-ui"
+import { fmtNumber, modeOf } from "../../lib/inpost-ui"
 
 /**
  * InPost by Koda Plus. Three views, switched in the header and kept in the URL:
@@ -117,7 +117,7 @@ const InpostPage = () => {
         ) : null}
       </Container>
 
-      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} /> : null}
 
       {s && nav.view === "panel" ? <ParcelsSection status={s} lang={lang} filter={filter} onFilter={setFilter} poll={polling} initialQuery={initialQuery} onSettings={() => nav.go("settings", "writers")} /> : null}
 
@@ -163,7 +163,6 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
   const [lockers, setLockers] = useState(false)
   const mode = modeOf(status)
   const armed = status ? Object.values(status.writers).filter((w) => w.armed).length : 0
-  const references = status ? kitReferences(status.references, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
   const pickupUsed = Boolean(status && (status.options.sendingMethod.courier === "dispatch_order" || status.options.sendingMethod.locker === "dispatch_order"))
@@ -238,31 +237,6 @@ function Header({ status, lang, nav, onAction }: { status: StatusResponse | unde
           { icon: <ArrowPath />, text: t("points.statuses") },
           { icon: <ShieldCheck />, text: t("points.armed"), tone: "green" },
         ]}
-        social={
-          <>
-            <ReferencesBadge
-              items={references}
-              labels={{
-                count: (live, soon) =>
-                  live > 0
-                    ? live === 1
-                      ? t("references.badgeOne")
-                      : t("references.badgeMany", { count: live })
-                    : soon === 1
-                      ? t("references.badgeSoonOne")
-                      : t("references.badgeSoonMany", { count: soon }),
-                soonMore: (soon) => t("references.soonMore", { count: soon }),
-                soon: t("references.soon"),
-                title: t("references.title"),
-                subtitle: t("references.subtitle"),
-                open: t("references.open"),
-                review: t("references.review"),
-                rating: (value) => fmtRating(value, lang),
-              }}
-            />
-            <AddStoreButton labels={community.addStore} />
-          </>
-        }
         help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
         view={nav.view}
         onView={(v) => nav.go(v)}

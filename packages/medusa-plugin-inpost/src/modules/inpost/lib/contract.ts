@@ -170,30 +170,6 @@ export interface CheckResult {
   organization: { id: string; name: string | null; status: string | null; services: string[] } | null
 }
 
-export interface LocalizedTextDto {
-  en?: string
-  pl?: string
-}
-
-export interface ReferenceDto {
-  name: string
-  url: string | null
-  soon: boolean
-  icon: string | null
-  description: LocalizedTextDto | null
-  metrics: Array<{ label: LocalizedTextDto; value: string }>
-  links: Array<{ label: LocalizedTextDto; url: string }>
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: LocalizedTextDto | null
-    author: string | null
-  } | null
-}
-
 export interface StatusResponse {
   mode: InpostMode
   demoReason: "option" | "no_token" | null
@@ -237,7 +213,6 @@ export interface StatusResponse {
   lastCheck: CheckResult | null
   running: boolean
   schedule: string
-  references: ReferenceDto[]
   /** The InPost Returns API: configuration and counters of the return rows of this mode. */
   returns: ReturnsStatusDto
   /** The storefront map: what the public Geowidget token says (never the whole token). */

@@ -108,18 +108,6 @@ const pl: typeof en = {
     attention: "Nieudane w 30 dni",
     templatesOn: "Włączone szablony",
   },
-  references: {
-    title: "Działa w sklepach wdrożonych przez Koda Plus",
-    subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
-    open: "Otwórz sklep",
-    badgeOne: "Działa w 1 sklepie",
-    badgeMany: "Działa w {{count}} sklepach",
-    badgeSoonOne: "Wkrótce w 1 sklepie",
-    badgeSoonMany: "Wkrótce w {{count}} sklepach",
-    soon: "Wkrótce",
-    soonMore: "+{{count}} wkrótce",
-    review: "Zobacz opinię",
-  },
   community: communityPl,
   copy: {
     intro: "Treść tego szablonu jest domyślna. Możesz przepisać temat, tytuł, wstęp i dodać własną informację. Numery, produkty, kwoty i przyciski zostają bez zmian.",

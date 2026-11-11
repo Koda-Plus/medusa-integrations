@@ -11,13 +11,10 @@ import type {
   OrderLinkDto,
   PaymentRowDto,
   PaymentStatus,
-  ReferenceDto,
   Verdict,
 } from "../../modules/stripe/lib/contract"
 import { bankName, brandName } from "../../modules/stripe/lib/methods"
 import { formatMoney } from "../../modules/stripe/lib/money"
-import { pickText } from "../../modules/stripe/lib/references"
-import type { Reference } from "./stripe-guide"
 import { MethodName } from "./stripe-method-icon"
 import { StripeIcon } from "./stripe-icon"
 import { ToneBadge, type Tone } from "./stripe-blocks"
@@ -91,29 +88,6 @@ export function fmtNumber(value: number, lang: string): string {
   } catch {
     return String(value)
   }
-}
-
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
-
-/** The references of the options in the admin language, for the kit. */
-export function referencesFor(items: readonly ReferenceDto[], lang: string): Reference[] {
-  return items.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang) || undefined,
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })).filter((m) => m.label),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang) || l.url, url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
 }
 
 /* ------------------------------------------------------------------ */

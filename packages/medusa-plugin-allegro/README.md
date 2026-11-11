@@ -173,7 +173,6 @@ Customer issues:
 
 References:
 
-- `references` (default `[]`): stores running the integration, `{ name, url, description?, metrics?, links?, soon? }` where texts can be `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped, never thrown.
 
 ## Setup in brief
 
@@ -275,7 +274,7 @@ export const config: SubscriberConfig = { event: ["allegro.writer.tripped", "all
 
 All admin routes need an admin session or token.
 
-- `GET /admin/allegro`: status, counters, writers, plans, imports, outbox, issues, references, the last runs and, in demo mode, `demoSeed` (the sample data not built yet). Reads only.
+- `GET /admin/allegro`: status, counters, writers, plans, imports, outbox, issues, the last runs and, in demo mode, `demoSeed` (the sample data not built yet). Reads only.
 - `POST /admin/allegro/demo/seed`: demo mode, build the missing sample data now (202).
 - `POST /admin/allegro/connect` and `POST /admin/allegro/connect/poll`: the device login. `POST /admin/allegro/disconnect`: forget the tokens.
 - `POST /admin/allegro/sync` with `{ "what": "offers" | "orders" | "all" }`: a sync in the background (202).

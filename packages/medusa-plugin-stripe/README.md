@@ -120,7 +120,6 @@ If your `medusa-config.ts` already has the payment module, add the provider to i
 - `requestsPerSecond` (number, default `10`, from 1 to 50): the plugin's own rate limit. Stripe allows 100 a second in live mode and 25 in a sandbox, for the whole account, the official provider included.
 - `timeoutMs` (number, default `20000`, from 2000 to 120000): one Stripe request.
 - `checks` (object of booleans, default: all on): turn a check off, and its read with it, e.g. `{ domains: false }`. Keys: `provider`, `key`, `account`, `capabilities`, `webhook`, `deliveries`, `domains`, `regions`, `capture`, `orphans`.
-- `references` (array, default none): stores running the integration, shown in the admin ("Running in stores built by Koda Plus"): `[{ name, url, icon?, description?, soon? }]`, texts plain or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped; an old `since` is ignored.
 
 Numbers and booleans may come as strings from environment variables; broken values fall back to the defaults. Missing options never break the boot.
 
@@ -254,7 +253,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the money in minor units and its formatting, the payment method classification of PaymentIntents and charges, the fee and net sums and the 7 and 30 day periods, every health check verdict from Stripe fixtures, the webhook endpoint matching, dispute deadlines, the demo generator and which orders it pays, the options and references, the HTTP client (encoding, retries, the read budget, errors, masking), the cache (stale while revalidate included), the PaymentIntents read in time slices, the flows end to end against a fake Medusa and a scripted Stripe, and the koda.integration/1 contract (the shared conformance checks and the plugin's own rules), without a network or a build.
+`npm test` covers the money in minor units and its formatting, the payment method classification of PaymentIntents and charges, the fee and net sums and the 7 and 30 day periods, every health check verdict from Stripe fixtures, the webhook endpoint matching, dispute deadlines, the demo generator and which orders it pays, the options, the HTTP client (encoding, retries, the read budget, errors, masking), the cache (stale while revalidate included), the PaymentIntents read in time slices, the flows end to end against a fake Medusa and a scripted Stripe, and the koda.integration/1 contract (the shared conformance checks and the plugin's own rules), without a network or a build.
 
 ## Commercial support
 

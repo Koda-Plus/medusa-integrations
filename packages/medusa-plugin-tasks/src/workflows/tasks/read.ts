@@ -261,6 +261,5 @@ export async function buildStatus(scope: Scope, ctx: RequestContext, query: Reco
     },
     adoption: adoption ? adoptionOf(adoption.value) : null,
     automation: { api_key_activity: automation.count, last_api_key_at: iso(automation.last) },
-    references: o.references,
   }
 }

@@ -252,7 +252,6 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
     abandonedCart: o.abandonedCart,
     limits: { testsPerUser: TEST_LIMIT_PER_USER, testWindowMinutes: Math.round(TEST_WINDOW_MS / 60000), testsPerHour: TEST_LIMIT_PER_HOUR, passwordResetsPerHour: o.passwordResetsPerHour },
     retentionDays: o.logRetentionDays,
-    references: o.references,
     logReady,
     history: history ? { total: history.total, firstAt: history.firstAt } : null,
     showAddresses: o.showAddresses,

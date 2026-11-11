@@ -53,7 +53,7 @@ import {
   ToneBadge,
   useDebouncedValue,
 } from "../../lib/subiekt-blocks"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/subiekt-guide"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/subiekt-guide"
 import { GuideView, usePromptSpec } from "../../lib/subiekt-guide-view"
 import { SubiektIcon } from "../../lib/subiekt-icon"
 import { KitSkeletonRows } from "../../lib/subiekt-kit"
@@ -73,8 +73,6 @@ import {
   fmtDateTime,
   fmtDuration,
   fmtNumber,
-  fmtRating,
-  referencesFor,
   runSummary,
 } from "../../lib/subiekt-ui"
 
@@ -179,7 +177,7 @@ const SubiektPage = () => {
         ) : null}
       </Container>
 
-      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} /> : null}
 
       {/* The documents table reads its own endpoint, so it shows even when the status failed, as it always did. */}
       {nav.view === "panel" ? (
@@ -239,7 +237,6 @@ function Header({
   const ready = Boolean(status && (status.mode === "demo" || status.configured))
   const running = new Set(status?.running ?? [])
   const state = connectionState(status)
-  const references = status ? referencesFor(status.references, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
@@ -296,31 +293,6 @@ function Header({
         { icon: <Tag />, text: t("points.prices") },
         { icon: <LockClosedSolid />, text: t("points.safe"), tone: "green" },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

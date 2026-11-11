@@ -1,8 +1,7 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { StatusResponse } from "../../modules/fakturownia/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./fakturownia-guide"
-import { fmtRating, referencesFor } from "./fakturownia-ui"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec, type StepState } from "./fakturownia-guide"
 
 /**
  * THE SETUP GUIDE: from a new Fakturownia account to production, with the
@@ -88,8 +87,7 @@ const { documents } = await res.json()
 // documents[i].pdfUrl: GET it the same way (add ?download=1 for a download)`
 
 export function GuideView({ status }: { status: StatusResponse }) {
-  const { t, i18n } = useTranslation("fakturownia")
-  const lang = i18n.language || "en"
+  const { t } = useTranslation("fakturownia")
   const live = status.mode === "live"
   const c = status.counts
   const o = status.options
@@ -263,15 +261,6 @@ export function GuideView({ status }: { status: StatusResponse }) {
       />
       <GuideChecklist title={t("guide.checklist.title")} subtitle={t("guide.checklist.subtitle")} items={checklist} />
       <GuideFaq title={t("guide.faq.title")} items={faq} />
-      <References
-        items={referencesFor(status.references, lang)}
-        title={t("references.title")}
-        subtitle={t("references.subtitle")}
-        openLabel={t("references.open")}
-        soonLabel={t("references.soon")}
-        reviewLabel={t("references.review")}
-        ratingLabel={(value) => fmtRating(value, lang)}
-      />
     </div>
   )
 }

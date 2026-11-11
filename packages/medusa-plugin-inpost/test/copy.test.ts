@@ -147,11 +147,12 @@ test("every string the admin asks for exists: static keys, statuses, plan proble
 
 test("both dictionaries carry the shared community block of the Koda Plus integrations, from the kit", () => {
   const kit = readFileSync(join(root, "src/admin/lib/inpost-kit-community.ts"), "utf8")
-  for (const key of ["addStore:", "prompt:", "discord:", "greeting:", "failed:"]) assert.ok(kit.includes(key), `kit community: ${key}`)
+  for (const key of ["prompt:", "discord:", "failed:"]) assert.ok(kit.includes(key), `kit community: ${key}`)
   for (const lang of ["en", "pl"]) {
     const text = readFileSync(join(root, `src/admin/i18n/${lang}.ts`), "utf8")
     assert.ok(text.includes(`community: community${lang === "en" ? "En" : "Pl"},`), `${lang}: community from the kit`)
-    for (const key of ["soonMore:", "badgeSoonOne:"]) assert.ok(text.includes(key), `${lang}: ${key}`)
+    /* No store references since 11.11.2026: their strings went with them. */
+    for (const key of ["badgeSoonOne:", "soonMore:"]) assert.ok(!text.includes(key), `${lang}: ${key} left over`)
   }
 })
 

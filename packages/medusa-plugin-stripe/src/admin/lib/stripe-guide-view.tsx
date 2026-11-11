@@ -2,8 +2,7 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { CheckKey, StripeChecksResponse, StripeStatusResponse, Verdict } from "../../modules/stripe/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./stripe-guide"
-import { fmtRating, referencesFor } from "./stripe-ui"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec, type StepState } from "./stripe-guide"
 
 /*
  * THE SETUP GUIDE: a Polish store from a new Stripe account to production,
@@ -125,7 +124,7 @@ function stepState(verdict: Verdict | undefined, otherwise: StepState = "todo"):
   return otherwise
 }
 
-export function GuideView({ status, checks, lang }: { status: StripeStatusResponse; checks: StripeChecksResponse | undefined; lang: string }) {
+export function GuideView({ status, checks }: { status: StripeStatusResponse; checks: StripeChecksResponse | undefined }) {
   const { t } = useTranslation("stripe")
   const verdict = (k: CheckKey): Verdict | undefined => checks?.results.find((r) => r.key === k)?.verdict
   const p = (key: string) => <p key={key}>{t(key)}</p>
@@ -259,15 +258,6 @@ export function GuideView({ status, checks, lang }: { status: StripeStatusRespon
       />
       <GuideChecklist title={t("guide.checklist.title")} subtitle={t("guide.checklist.subtitle")} items={checklist} />
       <GuideFaq title={t("guide.faqTitle")} items={faq} />
-      <References
-        items={referencesFor(status.references, lang)}
-        title={t("references.title")}
-        subtitle={t("references.subtitle")}
-        openLabel={t("references.open")}
-        soonLabel={t("references.soon")}
-        reviewLabel={t("references.review")}
-        ratingLabel={(value) => fmtRating(value, lang)}
-      />
     </div>
   )
 }

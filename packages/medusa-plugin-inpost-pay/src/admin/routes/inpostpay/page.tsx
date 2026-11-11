@@ -7,7 +7,7 @@ import { ArrowPath, ChartBar, CheckCircle, CreditCard, CursorArrowRays, Exclamat
 import { Container, InlineTip, toast } from "@medusajs/ui"
 import type { BasketFilter, StatusResponse } from "../../../modules/inpostpay/lib/contract"
 import { errorMessage, inpostPayKeys, useInpostPaySeed, useInpostPayStatus } from "../../lib/inpostpay-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpostpay-guide"
+import { HelpButtons, IntegrationHeader, KitTabRoute, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/inpostpay-guide"
 import { GuideView, usePromptSpec } from "../../lib/inpostpay-guide-view"
 import { InpostPayIcon } from "../../lib/inpostpay-icon"
 import { addPageTab, hostedNavIcon } from "../../lib/inpostpay-kit"
@@ -170,7 +170,6 @@ function Header({ status, nav, lang }: { status: StatusResponse | undefined; nav
         { icon: <ShoppingCart />, text: t("points.order") },
         { icon: <ShieldCheck />, text: t("points.signed"), tone: "green" },
       ]}
-      social={<AddStoreButton labels={community.addStore} />}
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

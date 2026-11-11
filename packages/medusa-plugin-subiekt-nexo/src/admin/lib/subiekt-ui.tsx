@@ -3,8 +3,7 @@ import { Link } from "react-router-dom"
 import { ArrowUpRightMini } from "@medusajs/icons"
 import { Button, Text } from "@medusajs/ui"
 import { useTranslation } from "react-i18next"
-import type { CatalogChangeStatus, ReferenceDto, RunDto, RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
-import type { Reference } from "./subiekt-guide"
+import type { CatalogChangeStatus, RunDto, RunStatus, SubiektStatusResponse, TaskStatus } from "../../modules/subiekt/lib/contract"
 import { ToneBadge, type Tone } from "./subiekt-blocks"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
@@ -240,38 +239,6 @@ export function fmtMs(ms: number | null | undefined): string {
   return abs < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(abs < 10_000 ? 1 : 0)} s`
 }
 
-type Localized = string | { en?: string; pl?: string } | undefined
-
-/** A reference text in the admin language, falling back to the other one. */
-export function resolveText(value: Localized, lang: string): string | undefined {
-  if (!value) return undefined
-  if (typeof value === "string") return value
-  const pl = lang.toLowerCase().startsWith("pl")
-  return (pl ? value.pl ?? value.en : value.en ?? value.pl) || undefined
-}
-
-/** The `references` option in the admin language, as the guide kit renders them. */
-export function referencesFor(list: ReferenceDto[] | undefined, lang: string): Reference[] {
-  return (list ?? []).map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: resolveText(r.description, lang),
-    metrics: r.metrics.map((m) => ({ label: resolveText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
-    links: r.links.map((l) => ({ label: resolveText(l.label, lang) ?? l.url, url: l.url })),
-    review: r.review ? { ...r.review, quote: resolveText(r.review.quote ?? undefined, lang) } : null,
-  }))
-}
-
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* The store side of a row: its order or product in Medusa             */

@@ -336,7 +336,6 @@ export async function buildStatus(req: MedusaRequest): Promise<StatusResponse> {
     lastCheck: lastCheck(demo ? "demo" : "live"),
     running: isRunning("sync"),
     schedule: SYNC_SCHEDULE,
-    references: o.references,
     returns: await returnsStatus(scope),
     geowidget: geowidgetStatus(o),
   }

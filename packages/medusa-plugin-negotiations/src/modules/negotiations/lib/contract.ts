@@ -161,35 +161,6 @@ export interface RunDto {
   durationMs: number
 }
 
-/** A text of the `references` option: either language may be missing. */
-export interface ReferenceTextDto {
-  en?: string
-  pl?: string
-}
-
-export interface ReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  /** The store's icon: a data URI or an https URL. */
-  icon: string | null
-  description: ReferenceTextDto | null
-  metrics: Array<{ label: ReferenceTextDto; value: string }>
-  links: Array<{ label: ReferenceTextDto; url: string }>
-  /** The store's rating of the work and where it was given, e.g. Clutch. */
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: ReferenceTextDto | null
-    author: string | null
-  } | null
-}
-
 export interface CurrencyAmountDto {
   currencyCode: string
   amount: number
@@ -236,7 +207,6 @@ export interface StatusResponse {
   writers: Record<WriterKey, WriterDto>
   draftOrders: { pending: number; creating: number; created: number; failed: number; unknown: number; blocked: number }
   lastRuns: Partial<Record<RunKind, RunDto>>
-  references: ReferenceDto[]
   demo: { seededAt: string | null; threads: number } | null
 }
 

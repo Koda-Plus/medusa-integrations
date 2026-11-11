@@ -132,7 +132,6 @@ Without `apiToken` (or `account`) the plugin registers, the admin says "Not conf
 - `nipSources` (default: the keys of `taxIdMetadataKeys` in the order metadata, then in the billing address metadata, then `billing_address.tax_id`): where the buyer's NIP is looked for, in order. Strings `order.metadata.<key>`, `billing_address.metadata.<key>`, `billing_address.tax_id`, `billing_address.company` (a NIP typed into the company name, taken only when it passes the checksum), `company:<entity>`, or an object `{ entity, customerField, nipField, nameField }` for a company module of your store read with Query by the order's customer (defaults `customer_id`, `nip`, `name`).
 - `taxIdMetadataKeys` (default `nip`, `tax_id`, `invoice_nip`): the metadata keys of the default `nipSources`.
 - `oidPrefix` (default none): a prefix for the order number sent to Fakturownia, for accounts that already hold documents numbered like Medusa orders (an earlier shop).
-- `references` (default none): stores running the integration, shown in the admin ("Running in production"): `[{ name, url, icon?, description?, metrics?: [{ label, value }], links?: [{ label, url }], review?: { rating, scale?, source, url?, icon?, quote?, author? }, soon? }]`, texts plain or `{ en, pl }`. `icon` is a data URI or an https address; `review` is the store's rating of the work (a positive `rating` up to `scale`, default 5, and its `source`, like Clutch). `soon: true` marks a store that starts on Medusa soon: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https address, are dropped.
 - `requestsPerMinute` (default `60`, 1 to 600): self-imposed rate limit (Fakturownia documents none).
 - `timeoutMs` (default `30000`, 5000 to 120000): one request. The claim of an attempt lasts at least ten minutes, and fifteen times this.
 
@@ -265,7 +264,7 @@ A simulated Fakturownia account inside the plugin, with zero outgoing requests, 
 
 Every route is behind Medusa's admin authentication, and every `GET` only reads (never Fakturownia, never a write). Writes take a JSON body or the `x-koda-request` header and answer 415 otherwise.
 
-- `GET /admin/fakturownia`: configuration summary (never the token), counters, writers, references, the last run of each kind, `demoPrepared` in demo mode. Reads the database only.
+- `GET /admin/fakturownia`: configuration summary (never the token), counters, writers, the last run of each kind, `demoPrepared` in demo mode. Reads the database only.
 - `POST /admin/fakturownia/demo/seed`: demo mode only, the sample documents now (idempotent; 409 in live mode).
 - `POST /admin/fakturownia/check`: harmless reads now (departments, categories).
 - `POST /admin/fakturownia/sync` with `{ "what": "issue" | "statuses" | "payments" | "corrections" }`: run a job now (202, background).

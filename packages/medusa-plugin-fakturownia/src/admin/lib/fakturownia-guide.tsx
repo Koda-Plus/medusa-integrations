@@ -1,8 +1,8 @@
-// GENERATED from kit/admin/guide.tsx (kit 1.4.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
+// GENERATED from kit/admin/guide.tsx (kit 1.5.0) by scripts/kit.mjs. Do not edit here: change the kit and run `npm run kit:sync`.
 import { useMemo, useState, type ReactNode } from "react"
 import { Navigate, useSearchParams } from "react-router-dom"
-import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, Medusa, PaperPlane, PlusMini, Sparkles, SquareTwoStack } from "@medusajs/icons"
-import { Badge, Button, Container, Heading, Input, Label, Popover, StatusBadge, Text, Textarea, clx, toast } from "@medusajs/ui"
+import { ArrowUpRightOnBox, BookOpen, ChartBar, CheckCircleSolid, ChevronDownMini, CogSixTooth, InformationCircleSolid, Medusa, Sparkles, SquareTwoStack } from "@medusajs/icons"
+import { Badge, Button, Container, Heading, Popover, StatusBadge, Text, clx, toast } from "@medusajs/ui"
 import { PAGE_TAB_PARAM, usePageTabHost, usePageTabs, type IconComponent } from "./fakturownia-kit"
 import { KIT_META } from "./fakturownia-kit-meta"
 
@@ -15,12 +15,10 @@ import { KIT_META } from "./fakturownia-kit-meta"
  * Header
  *   usePageNav       Panel, Setup guide or Settings, and the settings tab, kept in ?view= and ?tab=
  *   IntegrationHeader the whole header in three places: who (name, badges, help), why
- *                    (description or key points, stores), toolbar (view tabs, one main action, the others)
+ *                    (description or key points), toolbar (view tabs, one main action, the others)
  *   KeyPoints        short phrases with an icon, as pills: the header and section intros
  *   PageTabs        Panel | Setup guide | Settings, every tab with its name
  *   ModeBadge        the mode of the module; in demo mode it opens a note on what is simulated
- *   ReferencesBadge  "Running in N stores", with the rating and its source; opens the list
- *   AddStoreButton   "Add your store" next to it: a request to Koda Plus, by mail
  *   HelpButtons      "Copy prompt" (an AI agent sets the integration up in another
  *                    Medusa project, like here) and help on the Koda Plus Discord
  * One menu entry for a family of plugins
@@ -29,7 +27,6 @@ import { KIT_META } from "./fakturownia-kit-meta"
  * Settings
  *   SettingsView     a title and tabs over the technical sections (account, writers, plans, history)
  * Guide
- *   References       "Running in production" cards, at the end of the guide
  *   GuideIntro       what the setup takes: time, what you need, a short overview
  *   GuideSteps       numbered steps with a live state (done / to do / optional)
  *   GuideDiagram     boxes and arrows for how the parts talk to each other
@@ -293,7 +290,7 @@ function OtherActions({ items }: { items: HeaderAction[]; label: string }) {
  * A store that ships the integrations as its own (an agency's client) turns
  * the Koda Plus marks off for its team with `window.__KODA_KIT__ = { whiteLabel: true }`
  * in the admin's HTML. The header then shows no setup
- * prompt and Discord help and no store references; everything else stays.
+ * prompt and Discord help; everything else stays.
  */
 export function isWhiteLabel(): boolean {
   try {
@@ -310,7 +307,7 @@ export function isWhiteLabel(): boolean {
  *            (no "by Koda Plus" since kit 1.3.0); on the right the help
  *            about the integration itself (Copy prompt, Discord)
  *   why      the description (with `points`: short phrases with icons, the description
- *            as their tooltip), then the stores running it and "Add your store"
+ *            as their tooltip), then `social` when a page passes it
  *   toolbar  the views as tabs (Panel, Setup guide, Settings) and the page's
  *            actions: one main button, the others as buttons beside it
  */
@@ -334,7 +331,7 @@ export function IntegrationHeader({
   /**
    * No longer shown (kit 1.3.0): a module header names the module only, the
    * "by Koda Plus" line went. Kept so older pages still compile; the setup
-   * prompt and the store request still name the author.
+   * prompt still names the author.
    */
   by?: string
   badges?: ReactNode
@@ -457,274 +454,10 @@ export function FeaturedBadge({ url, labels }: { url: string; labels: FeaturedLa
 }
 
 /* ------------------------------------------------------------------ */
-/* Running in production */
-
-/** A rating of the work at that store, on a review platform such as Clutch. */
-export type ReferenceReview = {
-  rating: number
-  /** The top of the scale, 5 by default. */
-  scale: number
-  /** Who rated: the platform, e.g. "Clutch". */
-  source: string
-  /** The review itself. */
-  url?: string | null
-  /** The source's mark: a data URI or an https URL, shown on a white chip. */
-  icon?: string | null
-  quote?: string
-  author?: string | null
-}
+/* Community: the setup prompt for an AI agent, help on Discord */
 
 /**
- * One store, already in the language of the admin (the page picks en or pl
- * from the option): a live store, or one that starts on Medusa soon.
- */
-export type Reference = {
-  name: string
-  /** The live store. A store that starts soon may have one too, but it is never linked. */
-  url?: string
-  /** The store starts on Medusa soon: listed after the live ones, with a "Soon" badge and no link. */
-  soon?: boolean
-  /** The store's own icon (its favicon or logo mark): a data URI or an https URL. Without one the card shows the first letter. */
-  icon?: string | null
-  description?: string
-  metrics?: Array<{ label: string; value: string }>
-  /** Pages where the integration can be seen at work, e.g. a product with its Allegro link. */
-  links?: Array<{ label: string; url: string }>
-  review?: ReferenceReview | null
-}
-
-type LiveReference = Reference & { url: string }
-
-/** The live stores (each with its address) and, apart, the stores that start soon. An entry that is neither is left out. */
-function splitReferences(items: Reference[]): { live: LiveReference[]; soon: Reference[] } {
-  return {
-    live: items.filter((r): r is LiveReference => !r.soon && typeof r.url === "string" && r.url !== ""),
-    soon: items.filter((r) => r.soon === true),
-  }
-}
-
-const host = (url: string) => {
-  try {
-    return new URL(url).host.replace(/^www\./, "")
-  } catch {
-    return url
-  }
-}
-
-const STAR = "M10 1.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L10 14.9l-5.25 2.75 1-5.85L1.5 7.7l5.9-.9L10 1.5z"
-
-/** Stars out of five, filled to the rating (a 4.5 fills four and a half). */
-export function Stars({ rating, scale = 5, size = 12 }: { rating: number; scale?: number; size?: number }) {
-  const fill = Math.max(0, Math.min(1, rating / (scale || 5))) * 100
-  const row = (color: string) => (
-    <span className="flex gap-x-px" style={{ color }}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <svg key={i} width={size} height={size} viewBox="0 0 20 20" aria-hidden>
-          <path d={STAR} fill="currentColor" />
-        </svg>
-      ))}
-    </span>
-  )
-  return (
-    <span className="relative inline-flex shrink-0" aria-hidden>
-      {row("var(--fg-disabled)")}
-      <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill}%` }}>
-        {row("#F5A524")}
-      </span>
-    </span>
-  )
-}
-
-/** The source of a rating: its mark on a white chip (marks are drawn for light backgrounds), or its name. */
-function SourceMark({ review, height = 10 }: { review: ReferenceReview; height?: number }) {
-  if (!review.icon) {
-    return (
-      <Text size="xsmall" weight="plus" className="text-ui-fg-subtle">
-        {review.source}
-      </Text>
-    )
-  }
-  return (
-    <span className="inline-flex shrink-0 items-center rounded-full bg-white px-2 py-1 shadow-borders-base">
-      <img src={review.icon} alt={review.source} style={{ height, width: "auto" }} />
-    </span>
-  )
-}
-
-function StoreIcon({ reference, size }: { reference: Reference; size: number }) {
-  const box = { width: size, height: size }
-  return reference.icon ? (
-    <img src={reference.icon} alt="" width={size} height={size} style={box} className="shrink-0 rounded-md bg-white object-contain shadow-borders-base" />
-  ) : (
-    <span style={box} className="txt-compact-xsmall-plus flex shrink-0 items-center justify-center rounded-md bg-ui-bg-base text-ui-fg-base shadow-borders-base">
-      {reference.name.slice(0, 1).toUpperCase()}
-    </span>
-  )
-}
-
-export type ReferencesLabels = {
-  /** On the badge, from the live and the soon stores: "Running in 3 stores", "Działa w 1 sklepie", "Coming to 2 stores". */
-  count: (live: number, soon: number) => string
-  /** After the count when there are live stores too: "+2 soon", "+2 wkrótce". */
-  soonMore: (soon: number) => string
-  /** The badge of a store that starts soon: "Soon", "Wkrótce". */
-  soon: string
-  title: string
-  subtitle: string
-  open: string
-  /** "Read the review". */
-  review: string
-  /** A rating in the admin's number format, e.g. "5.0" or "5,0". */
-  rating: (value: number) => string
-}
-
-/** The mean of the ratings, on a five star scale, or null when nobody rated. */
-function meanRating(items: Reference[]): { value: number; first: ReferenceReview } | null {
-  const reviews = items.map((r) => r.review).filter((r): r is ReferenceReview => Boolean(r))
-  if (reviews.length === 0) return null
-  const value = reviews.reduce((sum, r) => sum + (r.rating / (r.scale || 5)) * 5, 0) / reviews.length
-  return { value: Math.round(value * 10) / 10, first: reviews[0] }
-}
-
-/**
- * "Running in N stores" in the page header: the stores' icons, the mean
- * rating with the stars and where it comes from. Opens the list of stores
- * with their numbers, the review and its link. Stores that start soon come
- * after the live ones: faded in the icons, "+N soon" after the count, and in
- * the list without a link. Only the live stores make the rating.
- */
-export function ReferencesBadge({ items, labels }: { items: Reference[]; labels: ReferencesLabels }) {
-  const { live, soon } = splitReferences(items)
-  if (live.length + soon.length === 0) return null
-  const mean = meanRating(live)
-  return (
-    <Popover>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-9 max-w-full items-center gap-x-3 rounded-full border border-ui-border-base bg-ui-bg-component py-1 pl-1.5 pr-3 outline-none transition-fg hover:bg-ui-bg-component-hover focus-visible:shadow-borders-focus"
-        >
-          <span className="flex shrink-0 items-center">
-            {[...live, ...soon].slice(0, 3).map((r, i) => (
-              <span key={r.url ?? r.name} className={clx("rounded-md", i > 0 && "-ml-2", r.soon && "opacity-50")}>
-                <StoreIcon reference={r} size={24} />
-              </span>
-            ))}
-          </span>
-          <span className="flex min-w-0 items-center gap-x-1.5">
-            <span className="txt-compact-small-plus truncate text-ui-fg-base">{labels.count(live.length, soon.length)}</span>
-            {live.length > 0 && soon.length > 0 ? <span className="txt-compact-small shrink-0 text-ui-fg-muted">{labels.soonMore(soon.length)}</span> : null}
-          </span>
-          {mean ? (
-            <span className="flex shrink-0 items-center gap-x-2 border-l border-ui-border-base pl-3">
-              <Stars rating={mean.value} size={13} />
-              <span className="txt-compact-small-plus tabular-nums text-ui-fg-base">{labels.rating(mean.value)}</span>
-              <SourceMark review={mean.first} height={10} />
-            </span>
-          ) : null}
-          <ChevronDownMini className="-ml-1 shrink-0 text-ui-fg-muted" />
-        </button>
-      </Popover.Trigger>
-      <Popover.Content align="start" sideOffset={8} className="w-[min(460px,calc(100vw-32px))] p-0">
-        <div className="flex flex-col gap-y-0.5 border-b border-ui-border-base px-4 py-3">
-          <Text size="small" weight="plus" className="text-ui-fg-base">
-            {labels.title}
-          </Text>
-          <Text size="xsmall" className="text-ui-fg-subtle">
-            {labels.subtitle}
-          </Text>
-        </div>
-        <ul className="flex max-h-[60vh] flex-col divide-y divide-ui-border-base overflow-y-auto">
-          {live.map((r) => (
-            <li key={r.url ?? r.name} className="flex flex-col gap-y-2 px-4 py-3">
-              <a href={r.url} target="_blank" rel="noreferrer" className="group flex items-center gap-x-3">
-                <StoreIcon reference={r} size={32} />
-                <span className="flex min-w-0 flex-col">
-                  <Text size="small" weight="plus" className="truncate text-ui-fg-base">
-                    {r.name}
-                  </Text>
-                  <Text size="xsmall" className="truncate text-ui-fg-interactive group-hover:text-ui-fg-interactive-hover">
-                    {host(r.url)}
-                  </Text>
-                </span>
-                <ArrowUpRightOnBox className="ml-auto shrink-0 text-ui-fg-muted group-hover:text-ui-fg-interactive" />
-              </a>
-              {r.review ? (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <Stars rating={r.review.rating} scale={r.review.scale} />
-                  <span className="txt-compact-xsmall-plus tabular-nums text-ui-fg-base">{labels.rating((r.review.rating / (r.review.scale || 5)) * 5)}</span>
-                  <SourceMark review={r.review} />
-                  {r.review.url ? (
-                    <a href={r.review.url} target="_blank" rel="noreferrer" className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                      {labels.review}
-                      <ArrowUpRightOnBox className="h-3.5 w-3.5" />
-                    </a>
-                  ) : null}
-                </div>
-              ) : null}
-              {r.review?.quote ? (
-                <Text size="xsmall" className="border-l-2 border-ui-border-strong pl-2 italic text-ui-fg-subtle">
-                  {nb(r.review.quote)}
-                  {r.review.author ? <span className="not-italic text-ui-fg-muted"> {r.review.author}</span> : null}
-                </Text>
-              ) : null}
-              {r.description ? (
-                <Text size="xsmall" className="text-ui-fg-subtle">
-                  {nb(r.description)}
-                </Text>
-              ) : null}
-              {r.metrics?.length ? (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {(r.metrics ?? []).map((m) => (
-                    <Badge key={m.label} size="2xsmall" color="green">
-                      <span className="tabular-nums">{m.value}</span>&nbsp;{m.label}
-                    </Badge>
-                  ))}
-                </div>
-              ) : null}
-              {(r.links ?? []).length ? (
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  {(r.links ?? []).map((l) => (
-                    <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                      {l.label}
-                      <ArrowUpRightOnBox className="h-3.5 w-3.5" />
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-            </li>
-          ))}
-          {soon.map((r) => (
-            <li key={r.url ?? r.name} className="flex flex-col gap-y-2 px-4 py-3">
-              <div className="flex items-center gap-x-3">
-                <StoreIcon reference={r} size={32} />
-                <span className="flex min-w-0 items-center gap-x-2">
-                  <Text size="small" weight="plus" className="truncate text-ui-fg-base">
-                    {r.name}
-                  </Text>
-                  <Badge size="2xsmall" color="blue" className="shrink-0">
-                    {labels.soon}
-                  </Badge>
-                </span>
-              </div>
-              {r.description ? (
-                <Text size="xsmall" className="text-ui-fg-subtle">
-                  {nb(r.description)}
-                </Text>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </Popover.Content>
-    </Popover>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Community: add your store, the setup prompt for an AI agent, help on Discord */
-
-/**
- * Koda Plus support: the Discord server, and the address store requests go to.
+ * Koda Plus support: the Discord server and the mail address the setup prompt names.
  * The Discord link is our own redirect, never an invite code: a published
  * version lives forever, an invite does not (and an expired code can be taken
  * over by another server).
@@ -739,23 +472,6 @@ const plain = (text: string) => text.split(NBSP).join(" ")
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
-export type AddStoreLabels = {
-  button: string
-  title: string
-  text: string
-  name: string
-  url: string
-  note: string
-  send: string
-  copy: string
-  copied: string
-  /** Under the form: where the request goes. */
-  hint: string
-  subject: string
-  /** The first line of the mail. */
-  greeting: string
-}
-
 export type PromptLabels = {
   button: string
   title: string
@@ -767,7 +483,6 @@ export type PromptLabels = {
 }
 
 export type CommunityLabels = {
-  addStore: AddStoreLabels
   prompt: PromptLabels
   discord: { button: string; title: string }
   featured: FeaturedLabels
@@ -775,26 +490,12 @@ export type CommunityLabels = {
 
 /**
  * The community strings of a page, from its own `community` block (the same
- * keys in all five dictionaries). `integration` names it in the request mail,
- * e.g. "Allegro by Koda Plus".
+ * keys in all five dictionaries). `integration` (e.g. "Allegro by Koda Plus") is no
+ * longer used since kit 1.5.0 (it named the store request); kept so pages compile.
  */
-export function communityLabels(t: Translate, integration: string): CommunityLabels {
+export function communityLabels(t: Translate, _integration?: string): CommunityLabels {
   const k = (key: string, options?: Record<string, unknown>) => t(`community.${key}`, options)
   return {
-    addStore: {
-      button: k("addStore.button"),
-      title: k("addStore.title"),
-      text: k("addStore.text"),
-      name: k("addStore.name"),
-      url: k("addStore.url"),
-      note: k("addStore.note"),
-      send: k("addStore.send"),
-      copy: k("addStore.copy"),
-      copied: k("addStore.copied"),
-      hint: k("addStore.hint", { email: KODA_EMAIL }),
-      subject: k("addStore.subject", { integration }),
-      greeting: k("addStore.greeting", { integration }),
-    },
     prompt: {
       button: k("prompt.button"),
       title: k("prompt.title"),
@@ -806,93 +507,6 @@ export function communityLabels(t: Translate, integration: string): CommunityLab
     discord: { button: k("discord.button"), title: k("discord.title") },
     featured: { badge: k("featured.badge"), title: k("featured.title") },
   }
-}
-
-/**
- * "Add your store", next to the stores badge: a short form that opens the
- * reader's mail app with the request to Koda Plus ready to send, or copies it
- * for a webmail. Koda Plus checks the store before it joins the list.
- */
-export function AddStoreButton({ labels }: { labels: AddStoreLabels }) {
-  const [name, setName] = useState("")
-  const [url, setUrl] = useState("")
-  const [note, setNote] = useState("")
-  const ready = name.trim() !== "" && url.trim() !== ""
-  const subject = plain(labels.subject)
-  const body = plain(
-    [labels.greeting, "", `${labels.name}: ${name.trim()}`, `${labels.url}: ${url.trim()}`, ...(note.trim() ? ["", note.trim()] : [])].join("\n"),
-  )
-
-  const send = () => {
-    window.location.href = `mailto:${KODA_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-  }
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(`${KODA_EMAIL}\n${subject}\n\n${body}`)
-      toast.success(labels.copied)
-    } catch {
-      toast.error(KODA_EMAIL)
-    }
-  }
-
-  return (
-    <Popover>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          className="txt-compact-small-plus inline-flex h-9 items-center gap-x-1.5 rounded-full px-3 text-ui-fg-subtle outline-none transition-fg hover:bg-ui-bg-base-hover hover:text-ui-fg-base focus-visible:shadow-borders-focus"
-        >
-          <PlusMini />
-          {labels.button}
-        </button>
-      </Popover.Trigger>
-      <Popover.Content align="start" sideOffset={8} className="w-[min(420px,calc(100vw-32px))] p-0">
-        <div className="flex flex-col gap-y-1 border-b border-ui-border-base px-4 py-3">
-          <Text size="small" weight="plus" className="text-ui-fg-base">
-            {labels.title}
-          </Text>
-          <Text size="xsmall" className="text-ui-fg-subtle">
-            {labels.text}
-          </Text>
-        </div>
-        <div className="flex flex-col gap-y-3 px-4 py-4">
-          <div className="flex flex-col gap-y-1.5">
-            <Label size="xsmall" weight="plus" htmlFor="koda-add-store-name">
-              {labels.name}
-            </Label>
-            <Input id="koda-add-store-name" size="small" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-y-1.5">
-            <Label size="xsmall" weight="plus" htmlFor="koda-add-store-url">
-              {labels.url}
-            </Label>
-            <Input id="koda-add-store-url" size="small" type="url" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-y-1.5">
-            <Label size="xsmall" weight="plus" htmlFor="koda-add-store-note">
-              {labels.note}
-            </Label>
-            <Textarea id="koda-add-store-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex flex-col gap-y-3 border-t border-ui-border-base px-4 py-3">
-          <Text size="xsmall" className="text-ui-fg-muted">
-            {labels.hint}
-          </Text>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button size="small" variant="secondary" disabled={!ready} onClick={() => void copy()}>
-              <SquareTwoStack />
-              {labels.copy}
-            </Button>
-            <Button size="small" variant="primary" disabled={!ready} onClick={send}>
-              <PaperPlane />
-              {labels.send}
-            </Button>
-          </div>
-        </div>
-      </Popover.Content>
-    </Popover>
-  )
 }
 
 /** What the setup prompt needs from a page: the same setup its guide shows. */
@@ -1159,114 +773,6 @@ export function SettingsView<T extends string>({
       </Container>
       {children}
     </>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Running in production, as cards at the end of the guide */
-
-function CardIcon({ reference }: { reference: Reference }) {
-  return reference.icon ? (
-    <img src={reference.icon} alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-md bg-white object-contain shadow-borders-base" />
-  ) : (
-    <span className="txt-compact-medium-plus flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ui-bg-base text-ui-fg-base shadow-borders-base">
-      {reference.name.slice(0, 1).toUpperCase()}
-    </span>
-  )
-}
-
-/** The live stores first, as links; then the stores that start soon, with the soon badge and no link. */
-export function References({ items, title, subtitle, openLabel, soonLabel, reviewLabel, ratingLabel }: { items: Reference[]; title: string; subtitle: string; openLabel: string; soonLabel: string; reviewLabel?: string; ratingLabel?: (value: number) => string }) {
-  const { live, soon } = splitReferences(items)
-  if (live.length + soon.length === 0) return null
-  return (
-    <Container className="divide-y p-0">
-      <div className="flex flex-col gap-y-1 px-6 py-4">
-        <Heading level="h2">{title}</Heading>
-        <Text size="small" className="text-ui-fg-subtle">
-          {subtitle}
-        </Text>
-      </div>
-      <div className="grid grid-cols-1 gap-3 px-6 py-4 md:grid-cols-2 xl:grid-cols-3">
-        {live.map((r) => (
-          <div key={r.url ?? r.name} className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
-            <a href={r.url} target="_blank" rel="noreferrer" className="group flex items-center gap-x-3">
-              <CardIcon reference={r} />
-              <span className="flex min-w-0 flex-col">
-                <Text size="small" weight="plus" className="truncate text-ui-fg-base">
-                  {r.name}
-                </Text>
-                <Text size="xsmall" className="truncate text-ui-fg-interactive group-hover:text-ui-fg-interactive-hover">
-                  {host(r.url)}
-                </Text>
-              </span>
-              <ArrowUpRightOnBox className="ml-auto shrink-0 text-ui-fg-muted group-hover:text-ui-fg-interactive" />
-            </a>
-            {r.review ? (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Stars rating={r.review.rating} scale={r.review.scale} />
-                <span className="txt-compact-xsmall-plus tabular-nums text-ui-fg-base">
-                  {(ratingLabel ?? ((v: number) => v.toFixed(1)))((r.review.rating / (r.review.scale || 5)) * 5)}
-                </span>
-                <SourceMark review={r.review} />
-                {r.review.url && reviewLabel ? (
-                  <a href={r.review.url} target="_blank" rel="noreferrer" className="txt-compact-xsmall-plus inline-flex items-center gap-x-0.5 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                    {reviewLabel}
-                    <ArrowUpRightOnBox className="h-3.5 w-3.5" />
-                  </a>
-                ) : null}
-              </div>
-            ) : null}
-            {r.description ? (
-              <Text size="small" className="text-ui-fg-subtle">
-                {nb(r.description)}
-              </Text>
-            ) : null}
-            {r.metrics?.length ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {(r.metrics ?? []).map((m) => (
-                  <Badge key={m.label} size="2xsmall" color="green">
-                    <span className="tabular-nums">{m.value}</span>&nbsp;{m.label}
-                  </Badge>
-                ))}
-              </div>
-            ) : null}
-            <div className="mt-auto flex flex-col gap-y-1 border-t border-ui-border-base pt-2">
-              {(r.links ?? []).map((l) => (
-                <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="txt-compact-small inline-flex w-fit items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                  {l.label}
-                  <ArrowUpRightOnBox className="shrink-0" />
-                </a>
-              ))}
-              <a href={r.url} target="_blank" rel="noreferrer" className="txt-compact-small-plus inline-flex w-fit items-center gap-x-1 text-ui-fg-interactive hover:text-ui-fg-interactive-hover">
-                {openLabel}
-                <ArrowUpRightOnBox className="shrink-0" />
-              </a>
-            </div>
-          </div>
-        ))}
-        {soon.map((r) => (
-          <div key={r.url ?? r.name} className="flex flex-col gap-y-3 rounded-lg border border-ui-border-base bg-ui-bg-component px-4 py-3">
-            <div className="flex items-center gap-x-3">
-              <CardIcon reference={r} />
-              <span className="flex min-w-0 items-center gap-x-2">
-                <Text size="small" weight="plus" className="truncate text-ui-fg-base">
-                  {r.name}
-                </Text>
-                <Badge size="2xsmall" color="blue" className="shrink-0">
-                  {soonLabel}
-                </Badge>
-              </span>
-            </div>
-            {r.description ? (
-              <Text size="small" className="text-ui-fg-subtle">
-                {nb(r.description)}
-              </Text>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </Container>
   )
 }
 

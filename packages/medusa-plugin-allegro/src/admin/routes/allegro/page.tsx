@@ -54,8 +54,8 @@ import {
   useAllegroSync,
 } from "../../lib/allegro-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, StatTile, StatTiles, ToneBadge, type Tone } from "../../lib/allegro-blocks"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/allegro-guide"
-import { GuideView, referencesFor, usePromptSpec } from "../../lib/allegro-guide-view"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/allegro-guide"
+import { GuideView, usePromptSpec } from "../../lib/allegro-guide-view"
 import { AllegroIcon } from "../../lib/allegro-icon"
 import { ImportsSection } from "../../lib/allegro-imports"
 import { IssuesSection } from "../../lib/allegro-issues"
@@ -77,7 +77,6 @@ import {
   fmtDateTime,
   fmtDuration,
   fmtMoney,
-  fmtRating,
   scrollToSection,
   useDebounced,
   useProductThumbs,
@@ -289,7 +288,7 @@ const AllegroPage = () => {
         ) : null}
       </Container>
 
-      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} /> : null}
 
       {s && nav.view === "panel" ? (
         <>
@@ -378,7 +377,6 @@ function Header({
   const canSync = Boolean(status && (status.mode === "demo" || status.connection.connected))
   const running = Boolean(status?.running.offers || status?.running.orders)
   const armed = status?.writers.filter((w) => w.effective).length ?? 0
-  const references = status ? referencesFor(status, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
@@ -420,31 +418,6 @@ function Header({
         { icon: <TruckFast />, text: t("points.back") },
         { icon: <User />, text: t("points.armed"), tone: "green" },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

@@ -9,8 +9,7 @@ import { describeActivity } from "../../modules/tasks/lib/activity"
 import { isOverdue, utcDay } from "../../modules/tasks/lib/dates"
 import { personKey } from "../../modules/tasks/lib/people"
 import { safeAvatarUrl } from "./tasks-rules"
-import { pickText, type TasksReference } from "../../modules/tasks/lib/references"
-import { nb, type Reference } from "./tasks-guide"
+import { nb } from "./tasks-guide"
 import { ToneBadge, type Tone } from "./tasks-blocks"
 
 /*
@@ -92,29 +91,6 @@ export function fmtNumber(value: number, lang: string): string {
   } catch {
     return String(value)
   }
-}
-
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
-
-/** References of the option in the admin language, shaped for the kit. */
-export function kitReferences(refs: TasksReference[], lang: string): Reference[] {
-  return refs.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang) || undefined,
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang), url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
 }
 
 /* ------------------------------------------------------------------ */

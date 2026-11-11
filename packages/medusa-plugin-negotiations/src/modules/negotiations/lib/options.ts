@@ -12,7 +12,6 @@ import {
   MIN_MESSAGE_LENGTH_LIMIT,
 } from "./constants"
 import { normalizeCurrency } from "./money"
-import { normalizeReferences, type NegotiationsReference, type NegotiationsReferenceOption } from "./references"
 import { WRITERS, type WriterKey } from "./writers"
 
 /**
@@ -55,12 +54,6 @@ export interface NegotiationsPluginOptions {
   writers?: { draftOrders?: boolean | string }
   /** The draft order writer: the region and sales channel of the drafts, and the cap of one run. */
   draftOrders?: { regionId?: string; salesChannelId?: string; maxPerRun?: number | string }
-  /**
-   * Stores running the plugin, shown on the admin page and in the setup
-   * guide. Empty by default. `soon: true` lists a store that starts on Medusa
-   * soon, with a "Soon" badge and no link (its `url` is optional).
-   */
-  references?: NegotiationsReferenceOption[]
 }
 
 export interface ResolvedNegotiationsOptions {
@@ -78,7 +71,6 @@ export interface ResolvedNegotiationsOptions {
   /** Hard switches after the demo default. */
   writers: Record<WriterKey, boolean>
   draftOrders: { regionId: string | null; salesChannelId: string | null; maxPerRun: number }
-  references: NegotiationsReference[]
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : "")
@@ -139,6 +131,5 @@ export function resolveOptions(o: NegotiationsPluginOptions | undefined | null):
       salesChannelId: id(draft.salesChannelId),
       maxPerRun: bounded(draft.maxPerRun, DEFAULT_MAX_DRAFT_ORDERS_PER_RUN, 1, 100),
     },
-    references: normalizeReferences(opts.references),
   }
 }

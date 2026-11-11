@@ -102,10 +102,6 @@ Writers (off by default in live mode; in demo mode they default to on and only s
 - `draftOrders.salesChannelId` (default: the store's default sales channel).
 - `draftOrders.maxPerRun` (default `10`): drafts one run creates at most.
 
-Presentation:
-
-- `references` (default empty): stores running the plugin, shown as "Running in production" in the header and the setup guide. Each entry: `name`, `url` (https), and optionally `icon`, `description` (a string, or `{ en, pl }`), `metrics` (`[{ label, value }]`), `links` (`[{ label, url }]`) and `review`. A store that starts on Medusa soon gets `soon: true`: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped; nothing here can break the boot. The package itself names no store.
-
 ## Store API
 
 Every route needs the publishable API key and a logged-in customer (the session cookie, or `Authorization: Bearer` with a customer token). Prices are decimal text in major units with the decimals of the thread's currency (`"469.00"`, `"1200"` for JPY); in requests `"469,50"` works too. For a cart thread prices are for the whole cart, otherwise per unit.
@@ -192,7 +188,7 @@ The team finishes the draft in **Orders**, **Draft orders** (shipping, address) 
 
 ## Admin API
 
-- `GET /admin/negotiations`: the page status: mode, options in use, counters, value in talks, the writer, the last runs, references.
+- `GET /admin/negotiations`: the page status: mode, options in use, counters, value in talks, the writer, the last runs.
 - `GET /admin/negotiations/threads`: the queue. Query: `status` (all, waiting, or a status), `q` (reference, SKU, title, or a customer or product their modules find), `customer_id`, `product_id`, `order` (`recent` or `oldest`), `limit` (up to 100), `offset`.
 - `GET /admin/negotiations/threads/:id`: one thread with the whole conversation, internal notes included.
 - `POST /admin/negotiations/threads/:id/messages` `{ message }`, `/counter` `{ price, message?, valid_days? }`, `/accept` `{ price?, message? }`, `/reject` `{ message? }`, `/notes` `{ note }`, `/draft-order` (queue the draft order of an accepted thread).

@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { SubiektStatusResponse } from "../../modules/subiekt/lib/contract"
 import { GUIDE_STEPS, guideChecks, guideStepStates, type GuideCheckKey, type GuideStepId } from "../../modules/subiekt/lib/guide"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type DiagramNode, type GuideStep, type SetupPromptSpec } from "./subiekt-guide"
-import { RichText, fmtRating, referencesFor } from "./subiekt-ui"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type DiagramNode, type GuideStep, type SetupPromptSpec } from "./subiekt-guide"
+import { RichText } from "./subiekt-ui"
 
 /*
  * The setup guide of the Subiekt page (?view=guide): from an empty Windows
@@ -78,7 +78,7 @@ const DOCUMENTS_CODE = `salesDocument: "auto",
 salesDocumentAfter: "wz",
 createContractors: true,`
 
-export function GuideView({ status, lang }: { status: SubiektStatusResponse; lang: string }) {
+export function GuideView({ status }: { status: SubiektStatusResponse }) {
   const { t } = useTranslation("subiekt")
 
   /** Arrays and objects of the guide copy, as i18next returns them. */
@@ -124,7 +124,6 @@ export function GuideView({ status, lang }: { status: SubiektStatusResponse; lan
       </p>
     )),
   }))
-  const references = referencesFor(s.references, lang)
 
   return (
     <div className="flex flex-col gap-y-3">
@@ -166,15 +165,6 @@ export function GuideView({ status, lang }: { status: SubiektStatusResponse; lan
         }))}
       />
       <GuideFaq title={t("guide.faq.title")} items={faq} />
-      <References
-        items={references}
-        title={t("references.title")}
-        subtitle={t("references.subtitle")}
-        openLabel={t("references.open")}
-        soonLabel={t("references.soon")}
-        reviewLabel={t("references.review")}
-        ratingLabel={(value) => fmtRating(value, lang)}
-      />
     </div>
   )
 }

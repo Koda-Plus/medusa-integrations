@@ -2,6 +2,10 @@
 
 ## 0.2.1 (unreleased)
 
+### Removed
+
+- No "Add your store" button in the page header any more (kit 1.5.0).
+
 ### Added
 
 - Store mode: `rulePoints` on the store adapter, the store's rule as short phrases with an icon instead of one sentence (on the Panel and in Settings; `ruleText` stays as their tooltip).

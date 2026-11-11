@@ -31,7 +31,6 @@ Writes are opt-in. Three writers, off until you allow them in the options and ar
 - **Messages**: unread conversations linked to adverts and products, with links to the advert and the OLX chat inbox. Counts only, no message text.
 - **Product widget** on every product page: its adverts with status, price, statistics and unread messages, its alerts and its publish state, or how to link an advert.
 - **Setup guide** in the admin: the rollout from zero to production with live step states, a diagram, a go-live checklist and troubleshooting, in English and Polish.
-- **Running in production**: stores that use the plugin, from the `references` option, on the Panel and in the guide.
 - **SKU matching** by `external_id` first (what feeds, BaseLinker and this plugin fill in), then by a configurable SKU line in the description such as `Kod produktu: KS-CLT-HOD`. Case-insensitive, never by title.
 - **Safe incomplete reads**: an incomplete read adds and updates but removes nothing, and plans nothing new.
 - **Demo mode**: a simulated OLX account from your own catalog runs through the same parsers, plans and writers. Evaluate everything without an OLX developer account.
@@ -149,7 +148,6 @@ Publishing (`publish`):
 
 Presentation:
 
-- `references`: stores running the plugin, shown as "Running in production". Each entry: `name`, `url` (https), and optionally `description` (a string, or `{ en, pl }`), `metrics` (`[{ label, value }]`) and `links` (`[{ label, url }]`). A store that starts on Medusa soon gets `soon: true`: it is shown with a "Soon" badge and no link, and its `url` is optional. Entries without a name, or live entries without an https URL, are dropped; nothing here can break the boot.
 
 Missing options never break the boot: the module registers, the admin lists what is missing and the jobs wait.
 

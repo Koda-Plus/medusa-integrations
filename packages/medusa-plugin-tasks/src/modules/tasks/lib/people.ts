@@ -10,13 +10,13 @@
  * matches free text names to them without case. Nobody's photo ships with
  * the plugin: the store passes its own.
  *
- * LENIENT ON PURPOSE, like the references: a typo here must never stop
+ * LENIENT ON PURPOSE: a typo here must never stop
  * Medusa from starting. Entries without a name are dropped, broken parts of
  * an entry are dropped (an avatar that is neither an image data URI nor an
  * https URL, a role that is not text), the first entry of a name wins.
  */
 
-import { localized, referenceIcon, type LocalizedText } from "./references"
+import { imageSource, localized, type LocalizedText } from "./localized"
 
 export interface PersonOption {
   /** The name as it appears on the board, e.g. "Anna" or "AI helper". Compared without case. */
@@ -55,7 +55,7 @@ export function normalizePeople(input: unknown): NamedPerson[] {
     seen.add(key)
     out.push({
       name,
-      avatar: referenceIcon(r.avatar),
+      avatar: imageSource(r.avatar),
       role: localized(r.role, 120),
       kind: r.kind === "agent" ? "agent" : "person",
     })

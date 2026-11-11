@@ -75,18 +75,6 @@ const en = {
     filterHint: "Filters the documents below; click again to clear",
     correctionsHint: "Goes to the corrections",
   },
-  references: {
-    title: "Running in stores built by Koda Plus",
-    subtitle: "Live stores implemented by Koda Plus that run on this integration every day.",
-    open: "Open the store",
-    badgeOne: "Running in 1 store",
-    badgeMany: "Running in {{count}} stores",
-    badgeSoonOne: "Coming to 1 store",
-    badgeSoonMany: "Coming to {{count}} stores",
-    soon: "Soon",
-    soonMore: "+{{count}} soon",
-    review: "Read the review",
-  },
   community: communityEn,
   writers: {
     title: "Writes to Fakturownia",

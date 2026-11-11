@@ -36,12 +36,12 @@ import {
   useOlxSync,
 } from "../../lib/olx-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue, type Tone } from "../../lib/olx-blocks"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/olx-guide"
+import { HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/olx-guide"
 import { GuideView, usePromptSpec } from "../../lib/olx-guide-view"
 import { OlxIcon } from "../../lib/olx-icon"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "../../lib/olx-kit"
 import { ActivityCounters, AlertsSection, DemoDetails, MessagesSection, PAGE_SIZE, pagination } from "../../lib/olx-panel"
-import { AdvertStatus, AlertBadge, MedusaMark, fmtDateTime, fmtDuration, fmtNumber, fmtPrice, fmtRating, kitReferences } from "../../lib/olx-ui"
+import { AdvertStatus, AlertBadge, MedusaMark, fmtDateTime, fmtDuration, fmtNumber, fmtPrice } from "../../lib/olx-ui"
 import { PlansSection, WritersSection } from "../../lib/olx-writers"
 
 /**
@@ -158,7 +158,7 @@ const OlxPage = () => {
         ) : null}
       </Container>
 
-      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} /> : null}
 
       {s && nav.view === "panel" ? (
         <>
@@ -221,7 +221,6 @@ function Header({
   const badge = modeBadge(status)
   const canSync = Boolean(status && (status.mode === "demo" || status.connection.connected))
   const armed = status ? status.writers.filter((w) => w.active).length : 0
-  const references = status ? kitReferences(status.references, lang) : []
   const promptSpec = usePromptSpec(status)
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
@@ -259,31 +258,6 @@ function Header({
         { icon: <PencilSquare />, text: t("points.writers"), tone: armed > 0 ? "orange" : "grey" },
         { icon: <LockClosedSolid />, text: t("points.never"), tone: "green" },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

@@ -201,7 +201,6 @@ export async function buildStatus(svc: BaseLinkerModuleService): Promise<StatusR
     demo: demo ? { prepared, createsOrders: o.demoCreatesOrders } : null,
     directions: { catalog: directions.catalog, stock: directions.stock, switchable: demo },
     writers: writers.map(toWriterDto),
-    references: o.references,
     journal: {
       mode: o.journal,
       state: journalHealth(journal, o.journal, demo),

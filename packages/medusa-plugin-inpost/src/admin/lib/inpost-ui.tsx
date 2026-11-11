@@ -3,10 +3,9 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArchiveBox, ArrowUpRightMini, ArrowUpRightOnBox, Cash, TruckFast } from "@medusajs/icons"
 import { Copy, Text, clx } from "@medusajs/ui"
-import type { ParcelDto, ParcelEventDto, ProblemDto, ReferenceDto, ShipmentStage, StatusResponse } from "../../modules/inpost/lib/contract"
-import { pickText } from "../../modules/inpost/lib/references"
+import type { ParcelDto, ParcelEventDto, ProblemDto, ShipmentStage, StatusResponse } from "../../modules/inpost/lib/contract"
 import { ToneBadge, type Tone } from "./inpost-blocks"
-import { nb, type Reference } from "./inpost-guide"
+import { nb } from "./inpost-guide"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
   if (!value) return ""
@@ -44,29 +43,6 @@ export function fmtMoney(amount: string | null | undefined, currency: string | n
 export function fmtDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "0 s"
   return ms < 10_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 1000)} s`
-}
-
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
-
-/** References of the option in the admin language, shaped for the kit. */
-export function kitReferences(refs: ReferenceDto[], lang: string): Reference[] {
-  return refs.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang) || undefined,
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang), url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
 }
 
 /** The mode of the module in one word, for the header badge. */

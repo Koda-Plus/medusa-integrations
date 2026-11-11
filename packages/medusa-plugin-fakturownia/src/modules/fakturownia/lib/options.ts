@@ -16,7 +16,6 @@ import {
   MAX_REQUESTS_PER_MINUTE,
 } from "./constants"
 import { resolveNipSources, type NipSource } from "./nip"
-import { resolveReferences, type ReferenceOption, type ResolvedReference } from "./references"
 import { WRITERS, type WriterKey } from "./writers"
 
 /**
@@ -129,8 +128,6 @@ export interface FakturowniaPluginOptions {
    * Fakturownia was seen e-mailing a document of the account.
    */
   notEmailedAfterHours?: number | string
-  /** Stores running the integration, shown in the admin ("Running in production"). */
-  references?: ReferenceOption[]
 }
 
 export interface ResolvedFakturowniaOptions {
@@ -173,7 +170,6 @@ export interface ResolvedFakturowniaOptions {
   ksefStuckAfterDays: number
   /** 0: off. */
   notEmailedAfterHours: number
-  references: ResolvedReference[]
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : "")
@@ -328,7 +324,6 @@ export function resolveOptions(o: FakturowniaPluginOptions | undefined | null): 
     departmentsBySalesChannel: channelDepartments(opts.departmentsBySalesChannel),
     ksefStuckAfterDays: bounded(opts.ksefStuckAfterDays, DEFAULT_KSEF_STUCK_AFTER_DAYS, 0, 60),
     notEmailedAfterHours: bounded(opts.notEmailedAfterHours, DEFAULT_NOT_EMAILED_AFTER_HOURS, 0, 720),
-    references: resolveReferences(opts.references),
   }
 }
 

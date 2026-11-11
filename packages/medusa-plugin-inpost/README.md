@@ -165,7 +165,6 @@ Returns are configured when the client id, the secret and the organization are s
 
 Presentation:
 
-- `references` (default none): stores running the integration, shown in the admin ("Running in stores built by Koda Plus"): `[{ name, url, icon?, description?, soon? }]`, texts plain or `{ en, pl }`. `soon: true` marks a store that starts on Medusa soon: a "Soon" badge, no link, `url` optional. Entries without a name, or live entries without an https address, are dropped.
 
 ## Storefront
 
@@ -430,7 +429,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` covers the plan and the exact ShipX request for each option, cash on delivery in grosze, the address and locker parsing, the options and references, the ShipX client (hosts, retries of reads only, errors, masking), the points search, the SQL of the claims and the compare and set of statuses, the flows end to end against a fake Medusa and a scripted ShipX (create once, unclear answers, prepaid offers, pickups, cancel rules, the fulfillment status writer), the webhook, the demo generator and the house rules of the copy. With `INPOST_TEST_PG_URL=postgres://...` it also runs the migration (twice) and every SQL statement of the store on a real Postgres, in a scratch schema it drops afterwards. What the plugin relies on from InPost's documentation is in [docs/shipx-api-notes.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost/docs/shipx-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-inpost` in the app.
+`npm test` covers the plan and the exact ShipX request for each option, cash on delivery in grosze, the address and locker parsing, the options, the ShipX client (hosts, retries of reads only, errors, masking), the points search, the SQL of the claims and the compare and set of statuses, the flows end to end against a fake Medusa and a scripted ShipX (create once, unclear answers, prepaid offers, pickups, cancel rules, the fulfillment status writer), the webhook, the demo generator and the house rules of the copy. With `INPOST_TEST_PG_URL=postgres://...` it also runs the migration (twice) and every SQL statement of the store on a real Postgres, in a scratch schema it drops afterwards. What the plugin relies on from InPost's documentation is in [docs/shipx-api-notes.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-inpost/docs/shipx-api-notes.md). To try the plugin in a Medusa app, run `npx medusa plugin:publish` here, then `npx medusa plugin:add @koda-plus/medusa-plugin-inpost` in the app.
 
 ## Commercial support
 

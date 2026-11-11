@@ -45,7 +45,7 @@ import {
   useBaseLinkerSync,
 } from "../../lib/baselinker-api"
 import { FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/baselinker-blocks"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/baselinker-guide"
+import { HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/baselinker-guide"
 import { GuideView, usePromptSpec } from "../../lib/baselinker-guide-view"
 import { BaseLinkerIcon } from "../../lib/baselinker-icon"
 import { KitFetchingBar, KitLoading } from "../../lib/baselinker-kit"
@@ -79,8 +79,6 @@ import {
   fmtDelta,
   fmtDuration,
   fmtNumber,
-  fmtRating,
-  kitReferences,
   runSummary,
   useProductThumbs,
 } from "../../lib/baselinker-ui"
@@ -201,7 +199,7 @@ const BaseLinkerPage = () => {
         ) : null}
       </Container>
 
-      {s && nav.view === "guide" ? <GuideView status={s} lang={lang} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} /> : null}
 
       {s && nav.view === "panel" ? (
         <>
@@ -287,7 +285,6 @@ function Header({
   const f = status?.features
   const f2 = status?.features2
   const state = connectionState(status)
-  const references = status ? kitReferences(status.references ?? [], lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
@@ -354,31 +351,6 @@ function Header({
         { icon: <LockClosedSolid />, text: t("points.plans"), tone: live > 0 ? "orange" : "green" },
         status?.mode === "demo" && { icon: <Beaker />, text: t("points.demo"), tone: "blue" },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import { InlineTip } from "@medusajs/ui"
 import type { StatusResponse } from "../../modules/baselinker/lib/contract"
 import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec, type StepState } from "./baselinker-guide"
-import { ReferencesBlock } from "./baselinker-panel"
 
 /*
  * "Setup guide" view of the BaseLinker page: what the integration does, how
@@ -64,7 +63,7 @@ export function usePromptSpec(): SetupPromptSpec {
   }, [t])
 }
 
-export function GuideView({ status, lang }: { status: StatusResponse; lang: string }) {
+export function GuideView({ status }: { status: StatusResponse }) {
   const { t } = useTranslation("baselinker")
   const demo = status.mode === "demo"
   const check = status.lastCheck
@@ -232,7 +231,6 @@ export function GuideView({ status, lang }: { status: StatusResponse; lang: stri
       />
       <GuideChecklist title={t("guide.checklist.title")} subtitle={t("guide.checklist.subtitle")} items={checklist} />
       <GuideFaq title={t("guide.faq.title")} items={(Array.isArray(faq) ? faq : []).map((f) => ({ q: f.q, a: <p>{f.a}</p> }))} />
-      <ReferencesBlock status={status} lang={lang} />
     </div>
   )
 }

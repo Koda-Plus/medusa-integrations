@@ -1,8 +1,8 @@
 import { useRef, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Text, clx } from "@medusajs/ui"
-import type { LocalizedTextDto, MessageDto, ReferenceDto, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
-import { nb, type Reference } from "./emails-guide"
+import type { LocalizedTextDto, MessageDto, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
+import { nb } from "./emails-guide"
 import { ToneBadge, useDebouncedValue, type Tone } from "./emails-blocks"
 
 /* ------------------------------------------------------------------ */
@@ -51,28 +51,6 @@ export function templateLabel(t: Pick<TemplateDto, "key" | "label"> | undefined,
 export function templateDescription(t: Pick<TemplateDto, "description"> | undefined, lang: string): string {
   const s = t ? pickText(t.description, lang) : ""
   return /^pl/i.test(lang) ? nb(s) : s
-}
-
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
-
-/** The references of the options in the admin language, for the kit's `References` and `ReferencesBadge`. */
-export function referencesFor(items: readonly ReferenceDto[], lang: string): Reference[] {
-  return items.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang) || undefined,
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })).filter((m) => m.label),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang) || l.url, url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
 }
 
 /* ------------------------------------------------------------------ */

@@ -66,34 +66,6 @@ export interface MoneyDto {
   currency: string
 }
 
-export interface LocalizedText {
-  en?: string
-  pl?: string
-}
-
-export interface ReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  /** The store's icon: a data URI or an https URL. */
-  icon: string | null
-  description: LocalizedText | null
-  metrics: Array<{ label: LocalizedText; value: string }>
-  links: Array<{ label: LocalizedText; url: string }>
-  /** The store's rating of the work and where it was given, e.g. Clutch. */
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: LocalizedText | null
-    author: string | null
-  } | null
-}
-
 /** The Medusa order a payment belongs to. */
 export interface OrderLinkDto {
   id: string
@@ -383,7 +355,6 @@ export interface StripeStatusResponse {
   /** The webhook URL this backend expects, from `backendUrl` or the address of this admin. */
   webhookUrl: string | null
   dashboardUrl: string
-  references: ReferenceDto[]
 }
 
 /** One PaymentIntent of an order, for the order widget. */
