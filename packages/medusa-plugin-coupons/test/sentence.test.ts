@@ -162,3 +162,20 @@ test("delivery coupons on both sides are named, not 'free delivery' twice", () =
   const both = coupon({ id: "p_b", code: "BOTH", application_method: { type: "percentage", target_type: "order", value: 3 } }, { combines: { with: ["SHIP_B2B"], never: ["SHIP_GUEST"] } })
   assert.ok(plain(couponSentence(both, N, tPl, fmtPl, "pln")).endsWith("łączy się z SHIP_B2B."))
 })
+
+test("the store's note on a price-list percent and a panel-only rule: in the panel, never for the customer", () => {
+  const n: NameMaps = {
+    ...N,
+    basePriceNote: { pl: "nie dokłada się do Ceny 3 (Premium): klientka płaci niższą z dwóch cen" },
+    storeRules: { p_salon5: { text: "bez 2 wykluczonych produktów", panelNote: "Premium: nic nie zyskuje" } },
+  }
+  const panel = couponSentence(salon, n, tPl, fmtPl, "pln")
+  assert.ok(panel.includes("Nie dokłada się do Ceny 3 (Premium)"), panel)
+  assert.ok(panel.includes("Premium: nic nie zyskuje.") && panel.includes("Zasada sklepu: bez 2"), panel)
+  const mail = couponSentence(salon, n, tPl, fmtPl, "pln", { forCustomer: true })
+  assert.ok(!mail.includes("Premium") && mail.includes("Zasada sklepu: bez 2"), mail)
+  const facts = couponFacts(salon, n, tPl, fmtPl, "pln")
+  assert.ok(facts.some((f) => f.key === "basePriceNote" && f.value.startsWith("Nie dokłada") && f.value.includes("Premium: nic")))
+  /* No price list, no note. */
+  assert.ok(!couponSentence(academy, n, tPl, fmtPl, "pln").includes("Nie dokłada"))
+})

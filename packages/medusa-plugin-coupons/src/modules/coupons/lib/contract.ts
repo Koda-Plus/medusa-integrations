@@ -105,6 +105,8 @@ export interface StoreLookups {
   poolsLabel: Record<string, string> | null
   pools: Array<{ id: string; name: string }>
   priceLists: Array<{ id: string; name: string }>
+  /** The store's words on a percent counted from a price list, by language (option storeTerms.basePriceNote); panel only. */
+  basePriceNote?: Record<string, string> | null
 }
 
 export interface CouponDto {
@@ -305,7 +307,9 @@ export interface NameMaps {
   /** The value of a customer rule that matches nobody (option nobodyCustomerId). */
   nobody?: string | null
   /** The store's own rules of its promotions, by promotion id (option storeRules). */
-  storeRules?: Record<string, { text: string; replacesDiscount?: boolean }>
+  storeRules?: Record<string, { text: string; replacesDiscount?: boolean; panelNote?: string }>
+  /** The store's words on a percent counted from a price list, by language; panel only, never for the customer. */
+  basePriceNote?: Record<string, string> | null
   /**
    * Every coupon code of the store, in upper case: a discount on delivery or
    * not, and whether it can still apply (not ended, not used up). The

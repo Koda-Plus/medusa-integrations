@@ -3,7 +3,7 @@
 export const KIT_META = {
   ns: "baselinker",
   pkg: "@koda-plus/medusa-plugin-baselinker",
-  version: "0.3.1",
+  version: "0.4.0",
   kit: "1.5.0",
   name: "Base",
 } as const

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { User, XMark } from "@medusajs/icons"
+import { InformationCircleSolid, User, XMark } from "@medusajs/icons"
 import { Checkbox, Input, Label, Select, Text, Textarea, clx } from "@medusajs/ui"
 import type { CouponDto, StoreLookups } from "../../modules/coupons/lib/contract"
 import { useCustomerSearch } from "./coupons-api"
@@ -303,6 +303,20 @@ export function CombinesPicker({ value, onChange, coupons, selfCode }: { value: 
 export function NoteField({ value, onChange }: { value: string | null | undefined; onChange: (v: string | null) => void }) {
   const { t } = useTranslation("coupons")
   return <Textarea rows={3} maxLength={500} placeholder={t("fields.notePlaceholder")} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />
+}
+
+/** The store's words on a percent counted from a price list, under the field once one is picked (panel only). */
+export function BasePriceNote({ store, lang, on }: { store: StoreLookups | null | undefined; lang: string; on: boolean }) {
+  const l = store?.basePriceNote
+  const code = (lang ?? "").toLowerCase()
+  const text = on && l ? (l[code] ?? l[code.slice(0, 2)] ?? l["*"] ?? l.en ?? "").trim() : ""
+  if (!text) return null
+  return (
+    <div className="flex items-start gap-x-1.5 rounded-md bg-ui-bg-subtle px-2 py-1.5">
+      <InformationCircleSolid className="mt-px shrink-0 text-ui-fg-interactive" />
+      <span className="txt-compact-xsmall text-ui-fg-subtle">{text}</span>
+    </div>
+  )
 }
 
 /** The store's word for its pools, else the plugin's own. */

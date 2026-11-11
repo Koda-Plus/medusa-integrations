@@ -16,6 +16,7 @@ The coupon's whole build in one form, copies, a pause from the list, and the sto
 - The member groups by one name: option `memberGroupsLabel` (words by language, or one string), default "customers with partner prices", when a coupon is for exactly the groups of `memberGroupIds` (and "everyone except ..." for the rest).
 - The coupon's detail has a "Details" section with everything in full (`couponFacts`): every group, the dates or "no end date", the uses or "no limit", the cart value counted before discounts, and the codes it adds up with or never goes with behind "Show codes".
 - `names` of the list and the detail carry `couponCodes` (every code: delivery or not, still able to apply) and `members`; `GET /admin/coupons/lookups` carries `memberGroupsLabel`.
+- Panel-only words of the store (never in the e-mail with the code): `storeTerms.basePriceNote` (by language) on how a percent counted from a price list meets the customer's own prices, under the price list field, in the sentence and in the details; and `panelNote` on a store rule, after the sentence.
 
 ### Delete, send the code, the counter of uses
 

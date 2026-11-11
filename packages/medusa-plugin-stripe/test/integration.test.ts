@@ -63,12 +63,14 @@ function stripeFor(intents: Pi[], extra: { disputes?: ReturnType<typeof dispute>
 
 /** A Polish store: A paid by card, B a BLIK payment with a dispute to answer, C a Przelewy24 refund that failed, D only metadata, E an Allegro import. */
 function sample() {
-  const card = pi({ amount: 15_000, method: { type: "card", brand: "visa", last4: "4242" }, fee: 239, sessionId: "payses_IntA" })
-  const blik = pi({ amount: 24_900, method: { type: "blik" }, fee: 498, sessionId: "payses_IntB", disputed: true })
-  const p24 = pi({ amount: 9_900, method: { type: "p24", bank: "mbank_mtransfer" }, fee: 258, sessionId: "payses_IntC" })
+  /* The real clock, like the orphan below: the panel reads the last 30 days from now, so payments dated with the fixed NOW fell out of it on 6.11.2026. */
+  const recent = (h: number) => new Date(Date.now() - h * 3_600_000)
+  const card = pi({ amount: 15_000, method: { type: "card", brand: "visa", last4: "4242" }, fee: 239, sessionId: "payses_IntA", created: recent(30) })
+  const blik = pi({ amount: 24_900, method: { type: "blik" }, fee: 498, sessionId: "payses_IntB", disputed: true, created: recent(28) })
+  const p24 = pi({ amount: 9_900, method: { type: "p24", bank: "mbank_mtransfer" }, fee: 258, sessionId: "payses_IntC", created: recent(26) })
   ;(p24.latest_charge as Record<string, unknown>).refunds = { data: [{ id: "re_FixtureFailed", amount: 9_900, currency: "pln", created: Math.floor(Date.now() / 1000) - 3600, status: "failed" }] }
   const orphan = pi({ amount: 5_000, method: { type: "blik" }, fee: 180, sessionId: "payses_IntLost", created: new Date(Date.now() - 3 * 3_600_000) }) /* the real clock: the orphan window counts from now */
-  const disputes = [dispute(blik, { dueInHours: 24 * 9 })]
+  const disputes = [dispute(blik, { dueInHours: 24 * 9, created: Math.floor(recent(20).getTime() / 1000) })]
   const refunds = [refund(p24, 9_900, { status: "failed", failure_reason: "expired_or_canceled_card", created: Math.floor(Date.now() / 1000) - 3600 })]
   const stripe = stripeFor([card, blik, p24, orphan], { disputes, refunds })
   const medusa: MedusaData = {

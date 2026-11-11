@@ -52,6 +52,7 @@ export async function storeLookups(scope: Scope): Promise<{ lookups: StoreLookup
     lookups: {
       features: adapter.features,
       poolsLabel: adapter.poolsLabel ?? null,
+      basePriceNote: adapter.basePriceNote ?? null,
       pools: pools.map((p) => ({ id: p.id, name: p.name || p.id })),
       priceLists: priceLists.map((p) => ({ id: p.id, name: p.name || p.id })),
     },

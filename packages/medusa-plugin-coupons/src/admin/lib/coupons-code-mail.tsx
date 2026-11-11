@@ -474,12 +474,19 @@ export function SendCodeModal({ coupon, names, currency, nobody, onOpenChange }:
                   <iframe title={t("codeMail.previewTitle")} sandbox="" srcDoc={preview.data.html} className="min-h-[24rem] w-full flex-1 rounded-lg border border-ui-border-base bg-ui-bg-base" />
                 </>
               ) : (
-                <EmptyState
-                  compact
-                  icon={<Eye />}
-                  title={data?.ability.preview ? t("codeMail.previewEmpty") : t("codeMail.previewNone")}
-                  className="flex-1 rounded-lg border border-dashed border-ui-border-base"
-                />
+                data?.ability.preview ? (
+                  /* The whole empty area opens the preview too, not only the button above. */
+                  <button
+                    type="button"
+                    onClick={() => void runPreview()}
+                    disabled={preview.isPending || !message.trim() || tooLong || noteTooLong || sentenceBad}
+                    className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-ui-border-base transition-colors hover:border-ui-border-interactive hover:bg-ui-bg-base-hover disabled:cursor-not-allowed disabled:hover:border-ui-border-base disabled:hover:bg-transparent"
+                  >
+                    <EmptyState compact icon={<Eye />} title={t("codeMail.previewEmpty")} />
+                  </button>
+                ) : (
+                  <EmptyState compact icon={<Eye />} title={t("codeMail.previewNone")} className="flex-1 rounded-lg border border-dashed border-ui-border-base" />
+                )
               )}
             </aside>
           </div>
