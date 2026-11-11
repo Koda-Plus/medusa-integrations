@@ -67,6 +67,8 @@ export interface BrandDto {
   logo: { text: string | null; accent: string | null; suffix: string | null; italic: boolean }
   accentColor: string | null
   headerColor: string | null
+  buttonColor: string | null
+  paperColor: string | null
   footer: LocalizedTextDto | null
   supportEmail: string | null
 }

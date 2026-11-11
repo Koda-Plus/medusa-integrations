@@ -33,6 +33,8 @@ export interface BrandOverrides {
   logoItalic?: boolean | null
   accentColor?: string | null
   headerColor?: string | null
+  buttonColor?: string | null
+  paperColor?: string | null
   footerEn?: string | null
   footerPl?: string | null
   supportEmail?: string | null
@@ -46,6 +48,8 @@ export const BRAND_FIELDS: ReadonlyArray<keyof BrandOverrides> = [
   "logoItalic",
   "accentColor",
   "headerColor",
+  "buttonColor",
+  "paperColor",
   "footerEn",
   "footerPl",
   "supportEmail",
@@ -81,7 +85,7 @@ export function sanitizeBrandOverrides(input: unknown): { value: BrandOverrides;
     }
     // eslint-disable-next-line no-control-regex
     const s = v.replace(/[\u0000-\u001F\u007F]+/g, " ").trim()
-    if (field === "accentColor" || field === "headerColor") {
+    if (field === "accentColor" || field === "headerColor" || field === "buttonColor" || field === "paperColor") {
       const hex = normalizeHex(s)
       if (hex) value[field] = hex
       else errors.push(field)
@@ -116,6 +120,8 @@ export function applyBrandOverrides(brand: ResolvedBrand, o: BrandOverrides | nu
     },
     accentColor: pick(o.accentColor, brand.accentColor),
     headerColor: pick(o.headerColor, brand.headerColor),
+    buttonColor: pick(o.buttonColor, brand.buttonColor),
+    paperColor: pick(o.paperColor, brand.paperColor),
     footer: footerEn || footerPl ? { en: footerEn ?? brand.footer?.en ?? null, pl: footerPl ?? brand.footer?.pl ?? null } : brand.footer,
     supportEmail: pick(o.supportEmail, brand.supportEmail),
   }

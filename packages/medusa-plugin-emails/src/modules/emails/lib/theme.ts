@@ -14,6 +14,12 @@
  *     mode) until it reaches a 4.5:1 contrast with its background;
  *   - the text on an accent button is dark or white, whichever reads better;
  *   - a band colour too light for white text is darkened, keeping its hue.
+ *
+ * Two optional colours bring a message closer to a storefront: `button`
+ * (the main button, the accent when missing; its text is dark or white,
+ * whichever reads better) and `paper` (the light page around the card; the
+ * soft fields and lines are made from it, so a cream store gets cream
+ * mail instead of the green-grey default).
  */
 
 import { DEFAULT_ACCENT, DEFAULT_HEADER } from "./constants"
@@ -131,6 +137,10 @@ export interface Palette {
   accent: string
   /** Text on an accent button. */
   onAccent: string
+  /** The main button: the `button` option, or the accent. */
+  button: string
+  /** Text on the main button. */
+  onButton: string
   night: string
   nightCard: string
   nightLine: string
@@ -145,8 +155,10 @@ export interface Palette {
   dark: Surface
 }
 
-export function makePalette(accentOption: unknown, headerOption: unknown): Palette {
+export function makePalette(accentOption: unknown, headerOption: unknown, extra: { button?: unknown; paper?: unknown } = {}): Palette {
   const accent = normalizeHex(accentOption) ?? DEFAULT_ACCENT
+  const button = normalizeHex(extra.button) ?? accent
+  const paper = normalizeHex(extra.paper)
   let night = normalizeHex(headerOption) ?? DEFAULT_HEADER
   const nightHsl = rgbToHsl(parseHex(night) as Rgb)
   if (contrast(night, "#FFFFFF") < 7 || nightHsl.l > 0.3) {
@@ -174,6 +186,16 @@ export function makePalette(accentOption: unknown, headerOption: unknown): Palet
     red: "#B42318",
     redBg: "#FEECEB",
   }
+  if (paper) {
+    /* A light paper only: a dark one would leave dark text on a dark page. */
+    const p = rgbToHsl(parseHex(paper) as Rgb)
+    const page = p.l < 0.86 ? toHex(hslToRgb({ ...p, l: 0.93 })) : paper
+    const ph = rgbToHsl(parseHex(page) as Rgb)
+    light.page = page
+    light.soft = mix(page, lightCard, 0.6)
+    light.thumb = mix(page, lightCard, 0.85)
+    light.line = toHex(hslToRgb({ ...ph, l: Math.max(0.78, ph.l - 0.1) }))
+  }
   const dark: Surface = {
     page: neutral(h, s, 0.052),
     card: darkCard,
@@ -192,9 +214,12 @@ export function makePalette(accentOption: unknown, headerOption: unknown): Palet
   }
   const darkText = light.ink
   const onAccent = contrast(accent, darkText) >= contrast(accent, "#FFFFFF") ? darkText : "#FFFFFF"
+  const onButton = contrast(button, darkText) >= contrast(button, "#FFFFFF") ? darkText : "#FFFFFF"
   return {
     accent,
     onAccent,
+    button,
+    onButton,
     night,
     nightCard: neutral(h, Math.min(nightSat, 0.1), Math.min(0.4, nightL + 0.045)),
     nightLine: neutral(h, Math.min(nightSat, 0.1), Math.min(0.5, nightL + 0.11)),

@@ -52,6 +52,10 @@ export interface EmailsBrandOptions {
   accentColor?: string
   /** The dark band at the top. Default #212721. A colour too light for white text is darkened. */
   headerColor?: string
+  /** The main button. Default: the accent. Its text is dark or white, whichever reads better. */
+  buttonColor?: string
+  /** The light page around the message (a cream #F6F4EC); its fields and lines follow. Default: a grey of the band's hue. */
+  paperColor?: string
   /** One line in the footer: the company and address, or a sentence about the store. */
   footer?: LocalizedText
   /** Shown in the "Questions?" box as a mailto link. */
@@ -199,6 +203,8 @@ export interface ResolvedBrand {
   logo: { text: string | null; accent: string | null; suffix: string | null; italic: boolean }
   accentColor: string | null
   headerColor: string | null
+  buttonColor: string | null
+  paperColor: string | null
   footer: ResolvedText | null
   supportEmail: string | null
   headingFont: string
@@ -321,6 +327,10 @@ function resolveBrand(b: EmailsBrandOptions | undefined, problems: string[]): Re
   if (o.accentColor !== undefined && !accentColor) problems.push("brand.accentColor (a hex colour like #26D07C)")
   const headerColor = o.headerColor === undefined ? null : normalizeHex(o.headerColor)
   if (o.headerColor !== undefined && !headerColor) problems.push("brand.headerColor (a hex colour like #212721)")
+  const buttonColor = o.buttonColor === undefined ? null : normalizeHex(o.buttonColor)
+  if (o.buttonColor !== undefined && !buttonColor) problems.push("brand.buttonColor (a hex colour like #FFBB0F)")
+  const paperColor = o.paperColor === undefined ? null : normalizeHex(o.paperColor)
+  if (o.paperColor !== undefined && !paperColor) problems.push("brand.paperColor (a hex colour like #F6F4EC)")
   const supportEmail = o.supportEmail === undefined ? null : isEmail(str(o.supportEmail)) ? str(o.supportEmail) : null
   if (o.supportEmail !== undefined && !supportEmail) problems.push("brand.supportEmail (one e-mail address)")
   const logo = o.logo && typeof o.logo === "object" ? o.logo : {}
@@ -338,6 +348,8 @@ function resolveBrand(b: EmailsBrandOptions | undefined, problems: string[]): Re
     logo: { text: clip(logo.text, 40), accent: clip(logo.accent, 4), suffix: clip(logo.suffix, 30), italic: logo.italic === true },
     accentColor,
     headerColor,
+    buttonColor,
+    paperColor,
     footer: resolveText(o.footer, 300),
     supportEmail,
     headingFont: cssFontFamily(o.headingFont, SYSTEM_FONTS),
