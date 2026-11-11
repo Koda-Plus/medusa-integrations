@@ -1,6 +1,6 @@
 import type { Logger, MedusaContainer } from "@medusajs/framework/types"
 import { CENEO_MODULE, OFFER_STATES, type OfferState } from "./constants"
-import type { ApiMode, CategoryStats, FeedBuildDto, OfferCounts, ReviewStats, StatusResponse } from "./contract"
+import type { ApiMode, CategoryStats, FeedBuildDto, OfferCounts, OrderStats, ReviewStats, StatusResponse } from "./contract"
 import { feedGaps, type ResolvedCeneoOptions } from "./options"
 
 /**
@@ -39,6 +39,11 @@ export interface CeneoServiceLike {
   createCeneoConsents(data: unknown | unknown[]): Promise<Row[]>
   updateCeneoConsents(data: unknown | unknown[]): Promise<Row[]>
   deleteCeneoConsents(ids: string | string[]): Promise<void>
+
+  listCeneoOrders(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
+  listAndCountCeneoOrders(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<[Row[], number]>
+  createCeneoOrders(data: unknown | unknown[]): Promise<Row[]>
+  updateCeneoOrders(data: unknown | unknown[]): Promise<Row[]>
 }
 
 export type Row = Record<string, unknown> & {
@@ -102,7 +107,7 @@ export const BUILD_FIELDS = ["id", "status", "hash", "bytes", "offers", "warning
  * the newest build of any status and the offer counters. Pure, so it is
  * tested without a database.
  */
-export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts, categories: CategoryStats = { tree: 0, syncedAt: null, mapped: 0 }, reviews: ReviewStats = { answers: 0, agreed: 0, transactions: 0 }): StatusResponse {
+export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts, categories: CategoryStats = { tree: 0, syncedAt: null, mapped: 0 }, reviews: ReviewStats = { answers: 0, agreed: 0, transactions: 0 }, orders: OrderStats = { total: 0, unmatched: 0, lastSyncedAt: null }): StatusResponse {
   const last = lastBuilt ? toFeedBuild(lastBuilt) : null
   const newest = newestAny ? toFeedBuild(newestAny) : null
   return {
@@ -127,6 +132,7 @@ export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newe
     api: { mode: apiMode(o), timeoutMs: o.timeoutMs },
     counts,
     categories,
+    orders,
   }
 }
 
@@ -138,6 +144,17 @@ export async function categoryStats(svc: CeneoServiceLike): Promise<CategoryStat
   ])
   const at = newest?.synced_at
   return { tree, syncedAt: at instanceof Date ? at.toISOString() : typeof at === "string" ? at : null, mapped: maps.length }
+}
+
+/** Kup Teraz orders in the table, of the current mode (demo rows never count for a live store). */
+export async function orderStats(svc: CeneoServiceLike): Promise<OrderStats> {
+  const demo = svc.getOptions().demo
+  const [[[newest], total], [, unmatched]] = await Promise.all([
+    svc.listAndCountCeneoOrders({ demo }, { take: 1, order: { synced_at: "DESC" }, select: ["id", "synced_at"] }),
+    svc.listAndCountCeneoOrders({ demo, matched: false }, { take: 1, select: ["id"] }),
+  ])
+  const at = newest?.synced_at
+  return { total, unmatched, lastSyncedAt: at instanceof Date ? at.toISOString() : typeof at === "string" ? at : null }
 }
 
 /** Zaufane Opinie answers and transactions of the last 30 days. */

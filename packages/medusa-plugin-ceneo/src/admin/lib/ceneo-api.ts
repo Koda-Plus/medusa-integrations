@@ -1,7 +1,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { OfferState } from "../../modules/ceneo/lib/constants"
 import type {
+  ApiCheckResult,
   CategoryMapResponse,
+  CeneoOrderDetailResponse,
+  CeneoOrdersResponse,
+  OrderSyncResult,
   CategorySyncResult,
   CeneoCategorySearchResponse,
   FeedBuildResult,
@@ -25,6 +29,8 @@ export const ceneoKeys = {
   categoryMap: ["ceneo", "category-map"] as const,
   search: (q: string) => ["ceneo", "category-search", q] as const,
   product: (id: string) => ["ceneo", "product", id] as const,
+  orders: (q: string, unmatched: boolean, offset: number) => ["ceneo", "orders", q, unmatched, offset] as const,
+  order: (id: string) => ["ceneo", "order", id] as const,
 }
 
 export const OFFERS_PAGE = 25
@@ -112,4 +118,43 @@ export function useBuildFeed() {
 export function feedUrl(path: string): string {
   const base = backendUrl() || (typeof window !== "undefined" ? window.location.origin : "")
   return `${base}${path}`
+}
+
+export const ORDERS_PAGE = 25
+
+export function useCeneoOrders(q: string, unmatched: boolean, offset: number) {
+  const params = new URLSearchParams({ limit: String(ORDERS_PAGE), offset: String(offset) })
+  if (q) params.set("q", q)
+  if (unmatched) params.set("unmatched", "true")
+  return useQuery<CeneoOrdersResponse>({
+    queryKey: ceneoKeys.orders(q, unmatched, offset),
+    queryFn: () => ceneoFetch<CeneoOrdersResponse>(`/admin/ceneo/orders?${params.toString()}`),
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  })
+}
+
+/** One order with the data read from Ceneo now; never cached long (personal data). */
+export function useCeneoOrder(id: string) {
+  return useQuery<CeneoOrderDetailResponse>({
+    queryKey: ceneoKeys.order(id),
+    queryFn: () => ceneoFetch<CeneoOrderDetailResponse>(`/admin/ceneo/orders/${encodeURIComponent(id)}`),
+    staleTime: 0,
+    gcTime: 60_000,
+  })
+}
+
+export function useSyncOrders() {
+  const qc = useQueryClient()
+  return useMutation<OrderSyncResult, unknown, void>({
+    mutationFn: () => ceneoFetch<OrderSyncResult>("/admin/ceneo/orders/sync", { method: "POST" }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ceneoKeys.all }),
+  })
+}
+
+/** A read, run on click: a fresh token proves the key, then the limits. */
+export function useApiCheck() {
+  return useMutation<ApiCheckResult, unknown, void>({
+    mutationFn: () => ceneoFetch<ApiCheckResult>("/admin/ceneo/api"),
+  })
 }
