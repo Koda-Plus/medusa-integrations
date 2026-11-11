@@ -5,7 +5,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { decideByStatus, pendingStripeIntent } from "../src/modules/stripe/lib/complete-guard.ts"
-import { stripeCompleteGuard } from "../src/api/store-complete-guard.ts"
+import { stripeCompleteGuard } from "../src/api/stripe/complete-guard.ts"
 
 test("statuses: paid goes on, in progress and unpaid stop", () => {
   assert.equal(decideByStatus("succeeded").allow, true)

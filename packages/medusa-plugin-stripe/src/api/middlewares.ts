@@ -1,6 +1,6 @@
 import { defineMiddlewares } from "@medusajs/framework/http"
 import { writeGuard } from "../modules/stripe/lib/kit-guards"
-import { stripeCompleteGuard } from "./store-complete-guard"
+import { stripeCompleteGuard } from "./stripe/complete-guard"
 
 /**
  * Every route under /admin/stripe only reads today. The write guard still
