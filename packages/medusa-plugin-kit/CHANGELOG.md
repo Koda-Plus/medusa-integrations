@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 (unreleased)
+
+### Fixed
+
+- The sample account of demo mode is named in the admin's language ("Demo account (sample data)", "Konto demo (przykładowe dane)"); the English admin showed the Polish name.
+
 ## 0.2.2 (2026-11-11)
 
 ### Fixed

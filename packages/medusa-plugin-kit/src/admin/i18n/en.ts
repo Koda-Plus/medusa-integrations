@@ -96,6 +96,7 @@ const en = {
   account: {
     none: "No account yet, add the API key.",
     plan: "Plan {{plan}}",
+    demoName: "Demo account (sample data)",
   },
   status: {
     configured: "Connected",

@@ -99,6 +99,7 @@ const pl = {
   account: {
     none: "Nie ma jeszcze konta, dodaj klucz API.",
     plan: "Plan {{plan}}",
+    demoName: "Konto demo (przykładowe dane)",
   },
   status: {
     configured: "Połączono",
