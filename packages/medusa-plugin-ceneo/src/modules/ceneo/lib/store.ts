@@ -1,6 +1,6 @@
 import type { Logger, MedusaContainer } from "@medusajs/framework/types"
 import { CENEO_MODULE, OFFER_STATES, type OfferState } from "./constants"
-import type { ApiMode, CategoryStats, FeedBuildDto, OfferCounts, OrderStats, ReviewStats, StatusResponse } from "./contract"
+import type { ApiMode, CategoryStats, FeedBuildDto, OfferCounts, OrderStats, ReviewStats, StatusResponse, WriterDto } from "./contract"
 import { feedGaps, type ResolvedCeneoOptions } from "./options"
 
 /**
@@ -44,6 +44,15 @@ export interface CeneoServiceLike {
   listAndCountCeneoOrders(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<[Row[], number]>
   createCeneoOrders(data: unknown | unknown[]): Promise<Row[]>
   updateCeneoOrders(data: unknown | unknown[]): Promise<Row[]>
+
+  listCeneoWriters(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
+  createCeneoWriters(data: unknown | unknown[]): Promise<Row[]>
+  updateCeneoWriters(data: unknown | unknown[]): Promise<Row[]>
+
+  listCeneoBids(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
+  listAndCountCeneoBids(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<[Row[], number]>
+  createCeneoBids(data: unknown | unknown[]): Promise<Row[]>
+  updateCeneoBids(data: unknown | unknown[]): Promise<Row[]>
 }
 
 export type Row = Record<string, unknown> & {
@@ -107,7 +116,7 @@ export const BUILD_FIELDS = ["id", "status", "hash", "bytes", "offers", "warning
  * the newest build of any status and the offer counters. Pure, so it is
  * tested without a database.
  */
-export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts, categories: CategoryStats = { tree: 0, syncedAt: null, mapped: 0 }, reviews: ReviewStats = { answers: 0, agreed: 0, transactions: 0 }, orders: OrderStats = { total: 0, unmatched: 0, lastSyncedAt: null }): StatusResponse {
+export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts, categories: CategoryStats = { tree: 0, syncedAt: null, mapped: 0 }, reviews: ReviewStats = { answers: 0, agreed: 0, transactions: 0 }, orders: OrderStats = { total: 0, unmatched: 0, imported: 0, held: 0, lastSyncedAt: null }, writers: WriterDto[] = []): StatusResponse {
   const last = lastBuilt ? toFeedBuild(lastBuilt) : null
   const newest = newestAny ? toFeedBuild(newestAny) : null
   return {
@@ -133,6 +142,15 @@ export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newe
     counts,
     categories,
     orders,
+    writers,
+    kupTeraz: {
+      importStates: o.orders.importStates,
+      canceledStates: o.orders.canceledStates,
+      paidPaymentTypes: o.orders.paidPaymentTypes,
+      shippingOptionId: o.orders.shippingOptionId,
+      carrierId: o.orders.carrierId,
+    },
+    cpc: { maxBid: o.cpc.maxBid, maxBidChangePercent: o.cpc.maxBidChangePercent, perRun: o.cpc.perRun, shopName: o.cpc.shopName },
   }
 }
 
@@ -149,12 +167,14 @@ export async function categoryStats(svc: CeneoServiceLike): Promise<CategoryStat
 /** Kup Teraz orders in the table, of the current mode (demo rows never count for a live store). */
 export async function orderStats(svc: CeneoServiceLike): Promise<OrderStats> {
   const demo = svc.getOptions().demo
-  const [[[newest], total], [, unmatched]] = await Promise.all([
+  const [[[newest], total], [, unmatched], [, imported], [, held]] = await Promise.all([
     svc.listAndCountCeneoOrders({ demo }, { take: 1, order: { synced_at: "DESC" }, select: ["id", "synced_at"] }),
     svc.listAndCountCeneoOrders({ demo, matched: false }, { take: 1, select: ["id"] }),
+    svc.listAndCountCeneoOrders({ demo, import_status: "imported" }, { take: 1, select: ["id"] }),
+    svc.listAndCountCeneoOrders({ demo, import_status: ["held", "failed"] }, { take: 1, select: ["id"] }),
   ])
   const at = newest?.synced_at
-  return { total, unmatched, lastSyncedAt: at instanceof Date ? at.toISOString() : typeof at === "string" ? at : null }
+  return { total, unmatched, imported, held, lastSyncedAt: at instanceof Date ? at.toISOString() : typeof at === "string" ? at : null }
 }
 
 /** Zaufane Opinie answers and transactions of the last 30 days. */

@@ -82,7 +82,7 @@ function s(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null
 }
 
-async function resolveRegion(query: QueryLike, o: ResolvedCeneoOptions): Promise<string> {
+export async function resolveRegion(query: QueryLike, o: ResolvedCeneoOptions): Promise<string> {
   if (o.feed.regionId) {
     const { data } = await query.graph({ entity: "region", fields: ["id", "currency_code"], filters: { id: o.feed.regionId } })
     const region = (data as Array<{ id: string; currency_code?: string | null }>)[0]
@@ -101,7 +101,7 @@ async function resolveRegion(query: QueryLike, o: ResolvedCeneoOptions): Promise
   return region.id
 }
 
-async function resolveSalesChannel(query: QueryLike, o: ResolvedCeneoOptions): Promise<string> {
+export async function resolveSalesChannel(query: QueryLike, o: ResolvedCeneoOptions): Promise<string> {
   if (o.feed.salesChannelId) {
     const { data } = await query.graph({ entity: "sales_channel", fields: ["id"], filters: { id: o.feed.salesChannelId } })
     if (data.length === 0) throw new CatalogError("sales_channel_not_found", `The sales channel ${o.feed.salesChannelId} (feed.salesChannelId) does not exist.`)

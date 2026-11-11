@@ -2,7 +2,8 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { CeneoOrderDetailResponse } from "../../../../../modules/ceneo/lib/contract"
 import { toCeneoOrderDto } from "../../../../../modules/ceneo/lib/order-dto"
 import { ceneoSvc } from "../../../../../modules/ceneo/lib/store"
-import { ORDER_FIELDS, orderStates, transportOf } from "../../../../../workflows/ceneo/orders"
+import { IMPORT_FIELDS } from "../../../../../workflows/ceneo/import-orders"
+import { orderStates, transportOf } from "../../../../../workflows/ceneo/orders"
 import { errorText } from "../../../../../workflows/ceneo/runtime"
 
 /**
@@ -15,7 +16,7 @@ import { errorText } from "../../../../../workflows/ceneo/runtime"
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = ceneoSvc(req.scope)
-  const [row] = await svc.listCeneoOrders({ id: req.params.id }, { take: 1, select: ORDER_FIELDS })
+  const [row] = await svc.listCeneoOrders({ id: req.params.id }, { take: 1, select: IMPORT_FIELDS })
   if (!row) {
     res.status(404).json({ code: "not_found", message: "No such Kup Teraz order." })
     return
@@ -37,7 +38,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   }
   res.setHeader("Cache-Control", "no-store")
   const body: CeneoOrderDetailResponse = {
-    order: toCeneoOrderDto(row, names),
+    order: toCeneoOrderDto(row, names, svc.getOptions().orders.importStates),
     remark: detail.remark,
     shipping: detail.shipping[0] ?? null,
     invoice: detail.invoice[0] ?? null,

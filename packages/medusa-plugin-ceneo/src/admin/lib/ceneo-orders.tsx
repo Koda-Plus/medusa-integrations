@@ -1,11 +1,12 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowPath, BoltSolid, ExclamationCircle, ShoppingCart, SquaresPlus } from "@medusajs/icons"
+import { ArrowPath, BoltSolid, ExclamationCircle, PauseSolid, ShoppingCart, SquaresPlus } from "@medusajs/icons"
 import { Button, Drawer, InlineTip, Table, Text, toast } from "@medusajs/ui"
 import type { CeneoOrderDto, StatusResponse } from "../../modules/ceneo/lib/contract"
-import { ORDERS_PAGE, errorMessage, useApiCheck, useCeneoOrder, useCeneoOrders, useSyncOrders } from "./ceneo-api"
+import { ORDERS_PAGE, errorMessage, useApiCheck, useCeneoOrder, useCeneoOrders, useSyncOrders, type OrderFilter } from "./ceneo-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, SearchInput, Section, ToneBadge, useDebouncedValue } from "./ceneo-blocks"
 import { KitLoading, KitSkeletonRows } from "./ceneo-kit"
+import { ImportBadge, ImportPanel } from "./ceneo-kup-teraz"
 
 function money(v: number | null, lang: string): string {
   return v === null ? "-" : new Intl.NumberFormat(lang, { style: "currency", currency: "PLN" }).format(v)
@@ -117,6 +118,7 @@ function OrderDrawer({ id, lang, onClose }: { id: string; lang: string; onClose:
               {pick ? <Field label={t("orders.pickup")} value={[s(pick.Name), s(pick.StreetAddress), s(pick.City)].filter(Boolean).join(", ")} /> : null}
               {inv && s(inv.InvoiceNIP) ? <Field label={t("orders.invoice")} value={[s(inv.InvoiceCompanyName), `NIP ${s(inv.InvoiceNIP)}`].filter(Boolean).join(", ")} /> : null}
               <Problems o={d.order} />
+              <ImportPanel o={d.order} lang={lang} />
             </>
           )}
         </Drawer.Body>
@@ -132,15 +134,15 @@ function OrderDrawer({ id, lang, onClose }: { id: string; lang: string; onClose:
   )
 }
 
-/** Kup Teraz orders as Ceneo reports them, read only; the import comes later. */
+/** Kup Teraz orders as Ceneo reports them, with their import into Medusa. */
 export function OrdersSection({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("ceneo")
-  const [unmatched, setUnmatched] = useState(false)
+  const [filter, setFilter] = useState<OrderFilter>("all")
   const [search, setSearch] = useState("")
   const [offset, setOffset] = useState(0)
   const [open, setOpen] = useState<string | null>(null)
   const q = useDebouncedValue(search.trim(), 300)
-  const orders = useCeneoOrders(q, unmatched, offset)
+  const orders = useCeneoOrders(q, filter, offset)
   const sync = useSyncOrders()
   const check = useApiCheck()
   const rows = orders.data?.orders ?? []
@@ -196,8 +198,9 @@ export function OrdersSection({ status, lang }: { status: StatusResponse; lang: 
         </div>
       ) : null}
       <FilterBar>
-        <FilterButton icon={<SquaresPlus />} label={t("orders.all")} count={status.orders.total} active={!unmatched} onClick={() => (setUnmatched(false), setOffset(0))} />
-        <FilterButton icon={<ExclamationCircle />} label={t("orders.unmatched")} count={status.orders.unmatched} attention active={unmatched} onClick={() => (setUnmatched(!unmatched), setOffset(0))} />
+        <FilterButton icon={<SquaresPlus />} label={t("orders.all")} count={status.orders.total} active={filter === "all"} onClick={() => (setFilter("all"), setOffset(0))} />
+        <FilterButton icon={<ExclamationCircle />} label={t("orders.unmatched")} count={status.orders.unmatched} attention active={filter === "unmatched"} onClick={() => (setFilter(filter === "unmatched" ? "all" : "unmatched"), setOffset(0))} />
+        <FilterButton icon={<PauseSolid />} label={t("orders.held")} count={status.orders.held} attention active={filter === "held"} onClick={() => (setFilter(filter === "held" ? "all" : "held"), setOffset(0))} />
         <FilterDivider />
         <SearchInput
           value={search}
@@ -213,15 +216,16 @@ export function OrdersSection({ status, lang }: { status: StatusResponse; lang: 
           <Table.Row>
             <Table.HeaderCell>{t("orders.col.order")}</Table.HeaderCell>
             <Table.HeaderCell>{t("orders.col.state")}</Table.HeaderCell>
+            <Table.HeaderCell>{t("orders.col.import")}</Table.HeaderCell>
             <Table.HeaderCell className="text-right">{t("orders.col.total")}</Table.HeaderCell>
             <Table.HeaderCell>{t("orders.col.items")}</Table.HeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>
           {orders.isLoading ? (
-            <KitSkeletonRows cols={4} rows={4} />
+            <KitSkeletonRows cols={5} rows={4} />
           ) : rows.length === 0 ? (
-            <EmptyTableRow cols={4} compact icon={<ShoppingCart />} title={t(status.orders.lastSyncedAt ? "orders.empty" : "orders.emptyNever")} />
+            <EmptyTableRow cols={5} compact icon={<ShoppingCart />} title={t(status.orders.lastSyncedAt ? "orders.empty" : "orders.emptyNever")} />
           ) : (
             rows.map((o) => (
               <Table.Row key={o.id} className="cursor-pointer [&_td]:py-2.5 [&_td]:align-top" onClick={() => setOpen(o.id)}>
@@ -235,6 +239,9 @@ export function OrdersSection({ status, lang }: { status: StatusResponse; lang: 
                 </Table.Cell>
                 <Table.Cell>
                   <OrderState o={o} />
+                </Table.Cell>
+                <Table.Cell>
+                  <ImportBadge o={o} />
                 </Table.Cell>
                 <Table.Cell className="text-right tabular-nums">{money(o.amounts.order, lang)}</Table.Cell>
                 <Table.Cell className="max-w-[360px]">

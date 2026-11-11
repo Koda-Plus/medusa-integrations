@@ -8,10 +8,12 @@
  * and per key, refreshed 60 s early, one request at a time (single flight).
  * A 401 on a call drops the token and retries once with a new one.
  *
- * READS ONLY. Every Ceneo method is a GET, the writes too (ConfirmOrder,
- * SendOrder, CancelOrder...), so the barrier is a whitelist of read paths:
- * anything else throws before the network. The writers of stage 6 extend
- * the list behind their own switch.
+ * THE BARRIER. Every Ceneo method is a GET, the writes too (ConfirmOrder,
+ * SendOrder, CancelOrder...), so the method says nothing: the barrier is a
+ * whitelist of read paths plus the write paths of each writer. A write path
+ * passes only through `write()` and only for a writer the client was built
+ * with (`writers`, the effective ones: both switches on). Anything else
+ * throws before the network.
  *
  * ERRORS: network, timeout and 5xx: 3 attempts (pauses 1 s, 4 s). 429: one
  * wait (Retry-After, at most 2 minutes, otherwise 30 s). Other 4xx: thrown
@@ -40,7 +42,7 @@ export class CeneoApiError extends Error {
 
 export class CeneoBlockedError extends Error {
   constructor(path: string) {
-    super(`The Ceneo client only reads in this version; ${path} is not a read method.`)
+    super(`The Ceneo client refuses ${path}: not a read method, and no armed writer covers it.`)
     this.name = "CeneoBlockedError"
   }
 }
@@ -52,10 +54,37 @@ const READ_PATHS: RegExp[] = [
   new RegExp(`^/BasketService\\.svc/Orders\\(guid'[0-9a-fA-F-]{36}'\\)(?:/${ORDER_SUB})?$`),
   /^\/BasketService\.svc\/(?:OrderStates|PaymentMethods|PaymentTypes|ParcelCarriers|OrderCancellationReasons|OrderEditionReasons|OrderReturnReasons)$/,
   /^\/api\/v2\/function\/webapi_meta\.GetExecutionLimits\/Call$/,
+  /^\/api\/v2\/function\/bidding\.(?:GetProductsBidsByShopProductId|GetProductsBidsByCeneoProductId|GetCategoryBidByCategoryId)\/Call$/,
+  /^\/api\/v2\/function\/webapi_data_critical\.(?:shop_getProductTop10OffersBy_IDs|shop_getProductOffersBy_IDs)\/Call$/,
+  /^\/api\/v3\/GetTopCategoryProducts$/,
 ]
 
 export function isReadPath(path: string): boolean {
   return READ_PATHS.some((r) => r.test(path))
+}
+
+/** The write paths, each with the writer that may call it. */
+export const WRITE_PATHS: Readonly<Record<string, "status" | "bids" | "promo">> = {
+  "/BasketService.svc/SetOrders": "status",
+  "/BasketService.svc/ConfirmOrder": "status",
+  "/BasketService.svc/SetOrderShipment": "status",
+  "/BasketService.svc/SendOrder": "status",
+  "/BasketService.svc/CancelOrder": "status",
+  "/api/v2/function/bidding.SetProductsBids/Call": "bids",
+  "/api/v2/function/bidding.SetCategoryBids/Call": "bids",
+  "/api/v3/SetPromotionTextForProducts": "promo",
+  "/api/v3/SetPromotionTextForCategories": "promo",
+  "/api/v3/RemovePromotionTextsForProducts": "promo",
+  "/api/v3/RemovePromotionTextsForCategories": "promo",
+}
+
+export function writerOfPath(path: string): string | null {
+  return Object.prototype.hasOwnProperty.call(WRITE_PATHS, path) ? WRITE_PATHS[path] : null
+}
+
+/** A string parameter of an OData service operation: in single quotes, a quote doubled. */
+export function odataString(v: string): string {
+  return `'${v.replace(/'/g, "''")}'`
 }
 
 export function maskSecrets(text: string, secrets: readonly (string | null | undefined)[]): string {
@@ -87,6 +116,8 @@ export interface CeneoClientOptions {
   apiKey: string
   timeoutMs: number
   logger?: { warn(msg: string): void }
+  /** The writers that may write through this client (the effective ones). Default: none. */
+  writers?: readonly string[]
   baseUrl?: string
   fetch?: FetchLike
   sleep?: (ms: number) => Promise<void>
@@ -120,6 +151,7 @@ export class CeneoClient {
       fetch: (url, init) => fetch(url, init),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       now: () => Date.now(),
+      writers: [],
       ...options,
     }
     this.keyId = createHash("sha256").update(options.apiKey).digest("hex").slice(0, 16)
@@ -165,11 +197,40 @@ export class CeneoClient {
     }
   }
 
-  /** `GetExecutionLimits`: the only method that takes the key as a parameter instead of a token. */
+  /**
+   * A write: a GET on a write path, for a writer this client was built with.
+   * Writes are NOT retried on a network error or a 5xx (Ceneo may have
+   * applied it); the caller records the failure and the next run tries again.
+   */
+  async write(path: string, query: Record<string, string>, writer: string): Promise<unknown> {
+    if (writerOfPath(path) !== writer || !this.o.writers.includes(writer)) throw new CeneoBlockedError(path)
+    const qs = new URLSearchParams({ ...query, $format: "json" })
+    let token = await this.token()
+    try {
+      return this.json(await this.raw(`${path}?${qs.toString()}`, path, { Authorization: `Bearer ${token}` }, token, writer), path, token)
+    } catch (err) {
+      if (!(err instanceof CeneoApiError) || err.status !== 401) throw err
+      token = await this.token(true)
+      return this.json(await this.raw(`${path}?${qs.toString()}`, path, { Authorization: `Bearer ${token}` }, token, writer), path, token)
+    }
+  }
+
+  /** `GetExecutionLimits`: a "function" method, the key as a parameter instead of a token. */
   async limits(): Promise<unknown> {
-    const path = "/api/v2/function/webapi_meta.GetExecutionLimits/Call"
-    const qs = new URLSearchParams({ apiKey: this.o.apiKey, resultFormatter: "json" })
+    return this.fn("/api/v2/function/webapi_meta.GetExecutionLimits/Call", {})
+  }
+
+  /** A read of the "function" API (`/api/v2/function/...`): `apiKey` and `resultFormatter=json` as parameters, no token. */
+  async fn(path: string, params: Record<string, string>): Promise<unknown> {
+    const qs = new URLSearchParams({ ...params, apiKey: this.o.apiKey, resultFormatter: "json" })
     return this.json(await this.raw(`${path}?${qs.toString()}`, path, {}, null), path, null)
+  }
+
+  /** A write of the "function" API, for a writer this client was built with; sent once. */
+  async fnWrite(path: string, params: Record<string, string>, writer: string): Promise<unknown> {
+    if (writerOfPath(path) !== writer || !this.o.writers.includes(writer)) throw new CeneoBlockedError(path)
+    const qs = new URLSearchParams({ ...params, apiKey: this.o.apiKey, resultFormatter: "json" })
+    return this.json(await this.raw(`${path}?${qs.toString()}`, path, {}, null, writer), path, null)
   }
 
   private json(text: string, path: string, token: string | null): unknown {
@@ -181,10 +242,12 @@ export class CeneoClient {
     }
   }
 
-  private async raw(pathAndQuery: string, path: string, headers: Record<string, string>, token: string | null): Promise<string> {
-    if (!isReadPath(path)) throw new CeneoBlockedError(path)
+  private async raw(pathAndQuery: string, path: string, headers: Record<string, string>, token: string | null, writer: string | null = null): Promise<string> {
+    const allowed = writer === null ? isReadPath(path) : writerOfPath(path) === writer && this.o.writers.includes(writer)
+    if (!allowed) throw new CeneoBlockedError(path)
     const url = `${this.o.baseUrl}${pathAndQuery}`
-    const PAUSES = [0, 1000, 4000]
+    /* A write is sent once (a 429 still waits once: Ceneo refused it, nothing was applied). */
+    const PAUSES = writer === null ? [0, 1000, 4000] : [0]
     let last: unknown = null
     let waited = false
     for (let attempt = 0; attempt < PAUSES.length; attempt += 1) {
