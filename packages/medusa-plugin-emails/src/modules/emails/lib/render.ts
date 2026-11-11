@@ -82,7 +82,7 @@ export function kitContext(locale: EmailLocale, brand: ResolvedBrand, options: R
   const footer = brand.footer ? (locale === "pl" ? brand.footer.pl ?? brand.footer.en : brand.footer.en ?? brand.footer.pl) : null
   return {
     locale,
-    palette: makePalette(brand.accentColor, brand.headerColor),
+    palette: makePalette(brand.accentColor, brand.headerColor, { button: brand.buttonColor, paper: brand.paperColor }),
     fonts: { head: brand.headingFont, body: brand.bodyFont, mono: MONO_FONTS, faces: brand.fontFaces },
     brand: {
       name,

@@ -449,7 +449,7 @@ export function actions(primary: Action | null, secondary?: Action | null): Bloc
     const p = ctx.palette
     const mainUrl = safeUrl(main.href) as string
     const mainLabel = inline(main.label, ctx)
-    const button = `<table ${TABLE}><tr><td bgcolor="${p.accent}" style="background:${p.accent};border-radius:12px;mso-padding-alt:14px 24px"><a href="${esc(mainUrl)}" style="display:inline-block;padding:14px 24px;font-family:${ctx.fonts.body};font-size:15px;line-height:20px;font-weight:700;color:${p.onAccent};text-decoration:none;border-radius:12px">${mainLabel.html}&nbsp;&nbsp;&rarr;</a></td></tr></table>`
+    const button = `<table ${TABLE}><tr><td bgcolor="${p.button}" style="background:${p.button};border-radius:12px;mso-padding-alt:14px 24px"><a href="${esc(mainUrl)}" style="display:inline-block;padding:14px 24px;font-family:${ctx.fonts.body};font-size:15px;line-height:20px;font-weight:700;color:${p.onButton};text-decoration:none;border-radius:12px">${mainLabel.html}&nbsp;&nbsp;&rarr;</a></td></tr></table>`
     let secondHtml = ""
     let secondText = ""
     if (second) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 (unreleased)
+
+### Added
+
+- Two brand colours, as options (`brand.buttonColor`, `brand.paperColor`) and in Settings, Branding: the main button (the accent when missing, its text dark or white by contrast) and the light page around the message, with its fields and lines made from it. A storefront with gold buttons on cream gets the same in its e-mails, while the accent keeps the highlights. A paper too dark for the text is lifted to a light tone.
+
 ## 0.4.0 (unreleased)
 
 ### Added

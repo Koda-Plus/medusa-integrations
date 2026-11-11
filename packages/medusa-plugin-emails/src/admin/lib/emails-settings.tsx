@@ -20,6 +20,8 @@ type BrandForm = {
   logoItalic: boolean
   accentColor: string
   headerColor: string
+  buttonColor: string
+  paperColor: string
   footerEn: string
   footerPl: string
   supportEmail: string
@@ -34,6 +36,8 @@ function formOf(b: BrandDto): BrandForm {
     logoItalic: b.logo.italic,
     accentColor: b.accentColor ?? "",
     headerColor: b.headerColor ?? "",
+    buttonColor: b.buttonColor ?? "",
+    paperColor: b.paperColor ?? "",
     footerEn: b.footer?.en ?? "",
     footerPl: b.footer?.pl ?? "",
     supportEmail: b.supportEmail ?? "",
@@ -163,6 +167,8 @@ export function BrandingSection({ status, lang }: { status: StatusResponse; lang
           </div>
           <ColorField id="emails-brand-accent" label={t("branding.accent")} value={form.accentColor} placeholder={options.accentColor || "#26D07C"} onChange={set("accentColor")} hint={t("branding.accentHint")} />
           <ColorField id="emails-brand-header" label={t("branding.header")} value={form.headerColor} placeholder={options.headerColor || "#212721"} onChange={set("headerColor")} hint={t("branding.headerHint")} />
+          <ColorField id="emails-brand-button" label={t("branding.button")} value={form.buttonColor} placeholder={options.buttonColor || options.accentColor || "#26D07C"} onChange={set("buttonColor")} hint={t("branding.buttonHint")} />
+          <ColorField id="emails-brand-paper" label={t("branding.paper")} value={form.paperColor} placeholder={options.paperColor || "#EDF0ED"} onChange={set("paperColor")} hint={t("branding.paperHint")} />
           <div className="flex items-center gap-x-3 md:col-span-2">
             <Switch id="emails-brand-italic" checked={form.logoItalic} onCheckedChange={(v) => set("logoItalic")(v === true)} />
             <Label size="small" htmlFor="emails-brand-italic">
