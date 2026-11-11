@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query"
-import type { StatusResponse } from "../../modules/ceneo/lib/contract"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { FeedBuildResult, StatusResponse } from "../../modules/ceneo/lib/contract"
 import { backendUrl, kitFetch } from "./ceneo-kit"
 
 /** The admin API of the plugin, with the dashboard's own auth (kit). */
@@ -20,6 +20,15 @@ export function useCeneoStatus() {
     queryFn: () => ceneoFetch<StatusResponse>("/admin/ceneo"),
     refetchInterval: 30_000,
     staleTime: 15_000,
+  })
+}
+
+/** Builds the feed now; the status refreshes after it. */
+export function useBuildFeed() {
+  const qc = useQueryClient()
+  return useMutation<FeedBuildResult, unknown, void>({
+    mutationFn: () => ceneoFetch<FeedBuildResult>("/admin/ceneo/feed", { method: "POST" }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ceneoKeys.all }),
   })
 }
 

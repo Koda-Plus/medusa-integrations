@@ -36,7 +36,7 @@ export class Migration20261111100000 extends Migration {
     this.addSql(`
       create table if not exists "ceneo_offer" (
         "id" text not null,
-        "offer_id" text not null,
+        "offer_id" text null,
         "variant_id" text not null,
         "product_id" text not null,
         "sku" text null,
@@ -49,6 +49,7 @@ export class Migration20261111100000 extends Migration {
         "stock" integer null,
         "ceneo_category_id" text null,
         "built_at" timestamptz not null default now(),
+        "retired_at" timestamptz null,
         "demo" boolean not null default false,
         "created_at" timestamptz not null default now(),
         "updated_at" timestamptz not null default now(),
@@ -57,7 +58,7 @@ export class Migration20261111100000 extends Migration {
       );
     `)
     this.addSql(`create unique index if not exists "IDX_ceneo_offer_offer_id_unique" on "ceneo_offer" ("offer_id") where "deleted_at" is null;`)
-    this.addSql(`create index if not exists "IDX_ceneo_offer_variant" on "ceneo_offer" ("variant_id") where "deleted_at" is null;`)
+    this.addSql(`create unique index if not exists "IDX_ceneo_offer_variant_active" on "ceneo_offer" ("variant_id") where "retired_at" is null and "deleted_at" is null;`)
     this.addSql(`create index if not exists "IDX_ceneo_offer_product" on "ceneo_offer" ("product_id") where "deleted_at" is null;`)
     this.addSql(`create index if not exists "IDX_ceneo_offer_state" on "ceneo_offer" ("state") where "deleted_at" is null;`)
   }

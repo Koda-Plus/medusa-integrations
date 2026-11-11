@@ -1,4 +1,4 @@
-import type { MedusaContainer } from "@medusajs/framework/types"
+import type { Logger, MedusaContainer } from "@medusajs/framework/types"
 import { CENEO_MODULE, OFFER_STATES, type OfferState } from "./constants"
 import type { ApiMode, FeedBuildDto, OfferCounts, StatusResponse } from "./contract"
 import { feedGaps, type ResolvedCeneoOptions } from "./options"
@@ -10,10 +10,12 @@ import { feedGaps, type ResolvedCeneoOptions } from "./options"
  */
 export interface CeneoServiceLike {
   getOptions(): ResolvedCeneoOptions
+  getLogger(): Logger
   isDemo(): boolean
 
   listCeneoFeeds(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
   createCeneoFeeds(data: unknown | unknown[]): Promise<Row[]>
+  updateCeneoFeeds(data: unknown | unknown[]): Promise<Row[]>
   deleteCeneoFeeds(ids: string | string[]): Promise<void>
 
   listCeneoOffers(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
@@ -28,7 +30,7 @@ export type Row = Record<string, unknown> & {
   updated_at?: string | Date | null
 }
 
-export function ceneoSvc(scope: MedusaContainer): CeneoServiceLike {
+export function ceneoSvc(scope: Pick<MedusaContainer, "resolve">): CeneoServiceLike {
   return scope.resolve(CENEO_MODULE) as CeneoServiceLike
 }
 
@@ -108,9 +110,32 @@ export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newe
   }
 }
 
-/** The offer counters, one grouped count per state. */
+/** The offer counters of the active rows (one per variant), one count per state. */
 export async function countOffers(svc: CeneoServiceLike): Promise<OfferCounts> {
-  const per = await Promise.all(OFFER_STATES.map(async (state) => [state, (await svc.listAndCountCeneoOffers({ state }, { take: 1, select: ["id"] }))[1]] as const))
+  const per = await Promise.all(OFFER_STATES.map(async (state) => [state, (await svc.listAndCountCeneoOffers({ state, retired_at: null }, { take: 1, select: ["id"] }))[1]] as const))
   const counts = Object.fromEntries(per) as Record<OfferState, number>
   return { ...counts, offers: per.reduce((a, [, n]) => a + n, 0) }
+}
+
+/**
+ * The decision for the build row: refresh the served one (same file) or add
+ * a new one. `served`: the newest build that still has its XML.
+ */
+export function planFeedWrite(served: { id: string; hash?: unknown } | null, hash: string): { kind: "touch"; id: string } | { kind: "insert" } {
+  if (served && served.hash === hash) return { kind: "touch", id: served.id }
+  return { kind: "insert" }
+}
+
+/**
+ * THE GUARD AGAINST A MASS DROP. A scheduled build that would take most of
+ * the served offers off Ceneo at once (a wrong sales channel, prices that
+ * suddenly exclude tax, an empty catalog read) fails instead, and the
+ * previous file stays served. A build started from the admin ("Build now")
+ * is a person's decision and passes, unless the file would be empty.
+ */
+export function shrinkGuard(previousOffers: number | null, nextOffers: number, manual: boolean): "empty" | "shrunk" | null {
+  if (previousOffers === null || previousOffers <= 0) return null
+  if (nextOffers === 0) return "empty"
+  if (!manual && previousOffers >= 20 && nextOffers < previousOffers / 2) return "shrunk"
+  return null
 }

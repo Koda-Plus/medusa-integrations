@@ -78,3 +78,53 @@ export const FEED_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/
 export const ACCOUNT_GUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 /** The placeholders of the product URL template. */
 export const URL_PLACEHOLDERS = ["{handle}", "{product_id}", "{variant_id}", "{sku}"] as const
+
+/* ------------------------------------------------------------------ */
+/* Problems of an offer                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every problem a build can find, with what it does to the offer:
+ *
+ *   error     the offer stays out of the feed until fixed
+ *   excluded  the offer stays out on purpose (unpublished, sold out, gone)
+ *   warning   the offer goes to the feed, something is worth improving
+ *
+ * The feed never carries an offer with an error. The state of an offer is
+ * its worst problem: error, then excluded, then warning, else ok.
+ */
+export const PROBLEMS = {
+  price_missing: "error",
+  price_net: "error",
+  url_missing: "error",
+  url_too_long: "error",
+  sku_missing: "error",
+  offer_id_too_long: "error",
+  offer_id_duplicate: "error",
+  offer_id_taken: "error",
+  name_missing: "error",
+  unpublished: "excluded",
+  out_of_stock: "excluded",
+  variant_gone: "excluded",
+  offer_id_replaced: "excluded",
+  name_cut: "warning",
+  category_missing: "warning",
+  category_cut: "warning",
+  description_cut: "warning",
+  image_missing: "warning",
+  images_cut: "warning",
+  image_url_invalid: "warning",
+  ean_missing: "warning",
+  ean_invalid: "warning",
+  stock_unknown: "warning",
+} as const
+
+export type ProblemCode = keyof typeof PROBLEMS
+export type ProblemSeverity = (typeof PROBLEMS)[ProblemCode]
+
+/** How many feed builds keep their XML (the served one and a few before it). */
+export const FEED_XML_KEEP = 5
+/** How many feed builds are kept at all (the build history of the admin). */
+export const FEED_ROWS_KEEP = 50
+/** The feed job wakes every 5 minutes and builds when the interval has passed or the catalog changed. */
+export const FEED_JOB_SCHEDULE = "*/5 * * * *"
