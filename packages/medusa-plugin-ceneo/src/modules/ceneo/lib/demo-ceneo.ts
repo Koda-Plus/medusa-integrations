@@ -24,6 +24,7 @@ export const DEMO_STATES: CeneoDictEntry[] = [
   { id: 2, value: "UnconfirmedByPlatnosci", description: "Zamówienie nie zostało opłacone" },
   { id: 101, value: "DemoPaid", description: "Opłacone (stan symulowany)" },
   { id: 102, value: "DemoSent", description: "Wysłane (stan symulowany)" },
+  { id: 103, value: "DemoCanceled", description: "Anulowane przez klienta (stan symulowany)" },
 ]
 
 const DAY = 86_400_000
@@ -73,7 +74,9 @@ export function demoOrders(offers: readonly DemoOffer[], now: number): DemoOrder
       const products = r2(items.reduce((a, i) => a + (i.TotalItemPrice ?? 0), 0))
       const delivery = hash(`${seed}:dl`) % 2 === 0 ? 12.99 : 0
       const age = Math.floor((now - created) / DAY)
-      const state = age >= 3 ? 102 : age >= 1 ? 101 : hash(`${seed}:s`) % 3 === 0 ? 2 : 1
+      /* Paid after a day, sent after three; one order in nine is cancelled by the buyer on day two (after it was paid, so an import sees the cancellation). */
+      const canceled = hash(`${seed}:c`) % 9 === 0 && age >= 2
+      const state = canceled ? 103 : age >= 3 ? 102 : age >= 1 ? 101 : hash(`${seed}:s`) % 3 === 0 ? 2 : 1
       out.push({
         raw: {
           Id: guid(seed),

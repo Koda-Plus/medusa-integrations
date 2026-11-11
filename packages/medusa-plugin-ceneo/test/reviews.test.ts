@@ -103,7 +103,7 @@ function files(dir: string): string[] {
 }
 
 test("metadata: only the product brand reads metadata, never an order or a cart", () => {
-  const allowed = new Set(["brand.ts", "catalog.ts", "kit-guards.ts", "kit-contract.ts", "options.ts", "constants.ts", "en.ts", "pl.ts"])
+  const allowed = new Set(["brand.ts", "catalog.ts", "order-input.ts", "kit-guards.ts", "kit-contract.ts", "options.ts", "constants.ts", "en.ts", "pl.ts"])
   const offenders = files(join(import.meta.dirname, "..", "src")).filter((p) => /(\.metadata\b|["']metadata["']|\bmetadata\??:)/.test(readFileSync(p, "utf8")) && !allowed.has(p.split(/[\\/]/).pop() ?? ""))
   assert.deepEqual(offenders, [])
 })

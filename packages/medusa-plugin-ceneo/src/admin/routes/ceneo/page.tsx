@@ -12,6 +12,8 @@ import { ConnectionsTab, FeedTab, SETTINGS_TABS, type SettingsTabId } from "../.
 import { OffersSection } from "../../lib/ceneo-offers"
 import { CategoriesSection } from "../../lib/ceneo-categories"
 import { OrdersSection } from "../../lib/ceneo-orders"
+import { WritersSection } from "../../lib/ceneo-kup-teraz"
+import { CpcSection } from "../../lib/ceneo-cpc"
 import type { StatusResponse } from "../../../modules/ceneo/lib/contract"
 
 /* The host of the koda.integration/1 cards learns about this plugin. */
@@ -120,6 +122,8 @@ const CeneoPage = () => {
       {nav.view === "panel" && s ? <OffersSection status={s} lang={lang} /> : null}
       {nav.view === "panel" && s ? <CategoriesSection lang={lang} /> : null}
       {nav.view === "panel" && s ? <OrdersSection status={s} lang={lang} /> : null}
+      {nav.view === "panel" && s ? <CpcSection status={s} lang={lang} /> : null}
+      {nav.view === "panel" && s ? <WritersSection status={s} lang={lang} /> : null}
     </div>
   )
 }

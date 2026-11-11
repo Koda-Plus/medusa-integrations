@@ -13,6 +13,8 @@ export const CATEGORY_TABLE = "ceneo_category"
 export const CATEGORY_MAP_TABLE = "ceneo_category_map"
 export const CONSENT_TABLE = "ceneo_consent"
 export const ORDER_TABLE = "ceneo_order"
+export const WRITER_TABLE = "ceneo_writer"
+export const BID_TABLE = "ceneo_bid"
 
 export const ID_PREFIX = {
   feed: "cfd",
@@ -34,6 +36,9 @@ export const ORDERS_WINDOW_DAYS = 14
 export const ORDERS_MAX_PAGES = 50
 /** Item reads per run (new orders and orders whose state moved); the rest waits for the next run. */
 export const ORDERS_ITEMS_PER_RUN = 50
+
+/** CPC: bids and the top 10 read, then the armed writers, every hour at minute 25. */
+export const CPC_JOB_SCHEDULE = "25 * * * *"
 
 /** Zaufane Opinie answers are kept this long (Ceneo sends the survey within 21 working days). */
 export const CONSENT_KEEP_DAYS = 90

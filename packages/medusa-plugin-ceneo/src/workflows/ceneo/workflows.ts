@@ -2,7 +2,9 @@ import { createStep, createWorkflow, StepResponse, WorkflowResponse } from "@med
 import { runCeneoFeedBuild, type FeedBuildResult, type FeedTrigger } from "./build-feed"
 import { runCeneoCategorySync, type CategorySyncResult } from "./categories"
 import { runCeneoOrderSync } from "./orders"
-import type { OrderSyncResult } from "../../modules/ceneo/lib/contract"
+import { runCeneoImport, runCeneoWrites } from "./import-orders"
+import { runCeneoCpc } from "./cpc"
+import type { CpcRunResult, KupTerazRunResult, OrderSyncResult } from "../../modules/ceneo/lib/contract"
 
 /**
  * The feed build as a workflow, for the job, the admin and your own code:
@@ -49,4 +51,41 @@ export const syncCeneoOrdersStep = createStep("ceneo-sync-orders-step", async (i
 
 export const syncCeneoOrdersWorkflow = createWorkflow("ceneo-sync-orders", (input: { trigger?: string }) => {
   return new WorkflowResponse(syncCeneoOrdersStep(input))
+})
+
+/**
+ * Kup Teraz writes: stored orders into Medusa (the orders writer), then what
+ * Ceneo should learn (the status writer). Each part does nothing unless its
+ * writer is armed with both switches on:
+ *
+ *   await importCeneoOrdersWorkflow(container).run({ input: { trigger: "manual" } })
+ *
+ * One step: every order is claimed and finished on its own, and a Medusa
+ * order created for one Ceneo order is never undone because another failed.
+ */
+export const importCeneoOrdersStep = createStep("ceneo-import-orders-step", async (input: { trigger?: string }, { container }) => {
+  /* Each part on its own: a failing import never keeps Ceneo from hearing about shipments. */
+  const imported: KupTerazRunResult["import"] = await runCeneoImport(container, input).catch((err: unknown) => ({ status: "failed" as const, error: err instanceof Error ? err.message : String(err) }))
+  const writes: KupTerazRunResult["writes"] = await runCeneoWrites(container, input).catch((err: unknown) => ({ status: "failed" as const, error: err instanceof Error ? err.message : String(err) }))
+  const result: KupTerazRunResult = { import: imported, writes }
+  return new StepResponse(result)
+})
+
+export const importCeneoOrdersWorkflow = createWorkflow("ceneo-import-orders", (input: { trigger?: string }) => {
+  return new WorkflowResponse(importCeneoOrdersStep(input))
+})
+
+/**
+ * CPC: bids and the top 10 read, then one planned bid step and the changed
+ * promotion texts, each only when its writer is armed:
+ *
+ *   await runCeneoCpcWorkflow(container).run({ input: { trigger: "manual" } })
+ */
+export const runCeneoCpcStep = createStep("ceneo-cpc-step", async (input: { trigger?: string }, { container }) => {
+  const result: CpcRunResult = await runCeneoCpc(container, input)
+  return new StepResponse(result)
+})
+
+export const runCeneoCpcWorkflow = createWorkflow("ceneo-cpc", (input: { trigger?: string }) => {
+  return new WorkflowResponse(runCeneoCpcStep(input))
 })

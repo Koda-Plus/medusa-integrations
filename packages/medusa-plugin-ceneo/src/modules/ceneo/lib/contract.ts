@@ -4,6 +4,8 @@
  */
 import type { Avail, BrandSource, OfferIdSource, OfferState, OutOfStockMode, ProblemCode } from "./constants"
 import type { FeedGap } from "./options"
+import type { ImportState } from "./order-input"
+import type { WriterBlocker, WriterKey } from "./writers"
 
 export type FeedBuildStatus = "built" | "failed"
 
@@ -54,6 +56,107 @@ export interface StatusResponse {
   counts: OfferCounts
   categories: CategoryStats
   orders: OrderStats
+  writers: WriterDto[]
+  kupTeraz: {
+    importStates: number[]
+    canceledStates: number[]
+    paidPaymentTypes: number[]
+    shippingOptionId: string | null
+    carrierId: number | null
+  }
+  /** maxBid in grosze. */
+  cpc: { maxBid: number | null; maxBidChangePercent: number; perRun: number; shopName: string | null }
+}
+
+/** One writer as the admin shows it. */
+export interface WriterDto {
+  key: WriterKey
+  /** The hard switch (`writes.<key>`). */
+  allowed: boolean
+  /** Armed by a person in the current mode. */
+  requested: boolean
+  /** Both on and nothing blocking: it writes. */
+  effective: boolean
+  blockers: WriterBlocker[]
+  modeChanged: boolean
+  changedBy: string | null
+  changedAt: string | null
+  failureStreak: number
+  lastFailure: string | null
+  lastFailureAt: string | null
+  trippedAt: string | null
+  tripReason: string | null
+  lastSuccessAt: string | null
+}
+
+export type ImportRunResult =
+  | { status: "ran"; imported: number; failed: number; held: number; canceled: number; released: number; demo: boolean; duration_ms: number }
+  | { status: "failed"; error: string }
+  | { status: "skipped"; reason: "running" }
+  | { status: "off"; blockers: WriterBlocker[]; requested: boolean }
+
+export type WriteRunResult =
+  | { status: "ran"; sent: number; failed: number; demo: boolean; duration_ms: number }
+  | { status: "failed"; error: string }
+  | { status: "skipped"; reason: "running" }
+  | { status: "off"; blockers: WriterBlocker[]; requested: boolean }
+
+export type CpcRunResult =
+  | { status: "ran" | "failed"; read: number; bidsSent: number; promosSent: number; failed: number; error: string | null; demo: boolean; duration_ms: number }
+  | { status: "skipped"; reason: "running" }
+  | { status: "off"; reason: "missing_key" }
+
+/** One bid row; bids in grosze, prices in PLN. */
+export interface BidDto {
+  id: string
+  kind: "product" | "category"
+  key: string
+  name: string | null
+  ceneoProductId: string | null
+  currentBid: number | null
+  clickRate: number | null
+  minSuggestedBid: number | null
+  targetBid: number | null
+  plannedBid: number | null
+  planReasons: Array<"clamped_max" | "clamped_step" | "below_min">
+  targetBy: string | null
+  promoText: string | null
+  promoApplied: string | null
+  promoPending: boolean
+  top10: Array<{ shop: string; price: number | null; position: number | null; stock: number | null; reviews: number | null; suggested: boolean; deliveryCost: number | null }>
+  offersNumber: number | null
+  position: number | null
+  lowestPrice: number | null
+  appliedAt: string | null
+  error: string | null
+  readAt: string | null
+}
+
+export interface CpcResponse {
+  rows: BidDto[]
+  count: number
+  limit: number
+  offset: number
+  categories: BidDto[]
+}
+
+export interface KupTerazRunResult {
+  import: ImportRunResult
+  writes: WriteRunResult
+}
+
+/** What Ceneo was told about an imported order. */
+export interface CeneoWritesDto {
+  shopOrderIdAt: string | null
+  confirmedAt: string | null
+  tracking: string | null
+  shipmentAt: string | null
+  sentAt: string | null
+  cancelAt: string | null
+  cancelQueued: boolean
+  canceledByCeneoAt: string | null
+  error: string | null
+  attention: string | null
 }
 
 /** Kup Teraz orders in the table. */
@@ -61,6 +164,10 @@ export interface OrderStats {
   total: number
   /** Orders with an item no variant has (by the feed offer id). */
   unmatched: number
+  /** Imported into Medusa. */
+  imported: number
+  /** Held or failed: a person looks (failed ones still retry by themselves until their attempts run out). */
+  held: number
   lastSyncedAt: string | null
 }
 
@@ -98,8 +205,21 @@ export interface CeneoOrderDto {
   matched: boolean
   problems: Array<{ code: string; detail?: string }>
   medusaOrderId: string | null
+  importState: ImportState
+  importError: string | null
+  importAttempts: number
+  importedAt: string | null
+  writes: CeneoWritesDto
   demo: boolean
   syncedAt: string | null
+}
+
+export interface CeneoOrderLinkResponse {
+  order: CeneoOrderDto | null
+}
+
+export interface WritersResponse {
+  writers: WriterDto[]
 }
 
 export interface CeneoOrdersResponse {
