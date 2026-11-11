@@ -1,6 +1,6 @@
 import type { MedusaNextFunction, MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { decideByStatus, pendingStripeIntent, type GuardSession } from "../modules/stripe/lib/complete-guard"
-import { clientFor, queryOf, stripeService } from "../workflows/stripe/runtime"
+import { decideByStatus, pendingStripeIntent, type GuardSession } from "../../modules/stripe/lib/complete-guard"
+import { clientFor, queryOf, stripeService } from "../../workflows/stripe/runtime"
 
 /**
  * POST /store/carts/:id/complete: a Stripe cart completes only when its
