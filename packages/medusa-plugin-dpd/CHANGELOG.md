@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1 (unreleased)
+## 0.5.1 (2026-11-11)
 
 - No "Add your store" button in the page header any more (kit 1.5.0).
 

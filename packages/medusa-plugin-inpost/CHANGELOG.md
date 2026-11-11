@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-11-11)
 
 - InPost returns on the InPost Returns API (InPost Group developer portal, the current "Szybkie Zwroty"). The store creates the return of an order and InPost answers with a short drop-off code the customer types at any Paczkomat (nothing to print) or, without the code, a label. New options `returnsClientId`, `returnsClientSecret`, `returnsOrganizationId` (a UUID, not the ShipX organization id), `returnsEnvironment` (`stage` or `production`, `stage` by default with `sandbox: true`), `returnsWriter` (a hard switch, off by default, on in demo mode) and `returnExpirationDays` (7 to 90). A new writer, "Returns in InPost", armed per mode in Settings.
 - A return is created from a plan a person reads (the customer as InPost's sender with the phone in E.164, the origin country, the order number for the label, a code or a label, the expiry, the exact request) and its hash, once: one row per order and Medusa return (unique index), an atomic claim with a lease, a second create answers 409. The Returns API has no idempotency key and no search, so an answer that never came leaves the return `unknown`; nothing sends it again by itself, a person checks InPost and tries again (`checked: true`) or marks it handled.

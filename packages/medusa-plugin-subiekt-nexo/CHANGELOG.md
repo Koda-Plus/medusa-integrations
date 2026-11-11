@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-11-11)
 
 No migration and no change to the bridge contract: everything reads tables the plugin already has and `GET /v1/orders/{id}` from contract 1.0.
 

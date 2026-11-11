@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-11)
 
 - No "Add your store" button in the page header any more (kit 1.5.0).
 - **Its own sidebar entry** (11 November 2026): "Von Halsky" at `/app/vonhalsky`, rank 3, next to InPost. It is no longer the "Von Halsky" tab of the InPost page: a marketplace is a sales channel of its own, not a way to ship.
