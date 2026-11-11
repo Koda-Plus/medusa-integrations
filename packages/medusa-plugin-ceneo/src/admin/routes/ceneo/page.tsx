@@ -6,7 +6,7 @@ import { KitFetchingBar, KitLoading, announce } from "../../lib/ceneo-kit"
 import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/ceneo-guide"
 import { Section, StatTile, StatTiles, ToneBadge } from "../../lib/ceneo-blocks"
 import { GuideView, usePromptSpec } from "../../lib/ceneo-guide-view"
-import { errorMessage, feedUrl, useCeneoStatus } from "../../lib/ceneo-api"
+import { errorMessage, feedUrl, useBuildFeed, useCeneoStatus } from "../../lib/ceneo-api"
 import { CeneoIcon } from "../../lib/ceneo-icon"
 import { ConnectionsTab, FeedTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/ceneo-ui"
 import type { StatusResponse } from "../../../modules/ceneo/lib/contract"
@@ -122,6 +122,16 @@ function FeedCard({ status, lang }: { status: StatusResponse; lang: string }) {
   const { t } = useTranslation("ceneo")
   const f = status.feed
   const url = f.path ? feedUrl(f.path) : null
+  const build = useBuildFeed()
+  const onBuild = () =>
+    build.mutate(undefined, {
+      onSuccess: (r) => {
+        if (r.status === "built") toast.success(t(r.changed ? "toast.built" : "toast.builtSame", { offers: r.offers }))
+        else if (r.status === "failed") toast.error(t("toast.buildFailed", { error: r.error }))
+        else toast.info(t(r.reason === "running" ? "toast.buildRunning" : "toast.buildGaps"))
+      },
+      onError: (e) => toast.error(t("toast.error", { error: errorMessage(e) })),
+    })
   const copy = () => {
     if (!url) return
     void navigator.clipboard.writeText(url).then(
@@ -140,6 +150,12 @@ function FeedCard({ status, lang }: { status: StatusResponse; lang: string }) {
         { icon: <Clock />, text: t("feed.points.schedule", { minutes: f.intervalMinutes }) },
         { icon: <ListBullet />, text: t("feed.points.same") },
       ]}
+      actions={
+        <Button size="small" variant="secondary" onClick={onBuild} isLoading={build.isPending} disabled={f.gaps.length > 0}>
+          <ArrowPath />
+          {t("actions.build")}
+        </Button>
+      }
     >
       {f.gaps.length > 0 ? (
         <div className="flex flex-col gap-y-2 px-6 py-4">

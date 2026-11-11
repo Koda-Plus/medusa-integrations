@@ -51,3 +51,13 @@ export interface StatusResponse {
   api: { mode: ApiMode; timeoutMs: number }
   counts: OfferCounts
 }
+
+/** What started a feed build. */
+export type FeedTrigger = "schedule" | "first" | "change" | "manual"
+
+/** The answer of a feed build (`POST /admin/ceneo/feed`, the workflow). */
+export type FeedBuildResult =
+  | { status: "skipped"; reason: "gaps"; gaps: FeedGap[] }
+  | { status: "skipped"; reason: "running" }
+  | { status: "built"; id: string; changed: boolean; bytes: number; duration_ms: number; offers: number; warnings: number; errors: number; excluded: number }
+  | { status: "failed"; id: string; error: string; code: string | null; duration_ms: number }

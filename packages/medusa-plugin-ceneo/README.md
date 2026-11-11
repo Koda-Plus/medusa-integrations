@@ -2,7 +2,7 @@
 
 Your Medusa catalog on Ceneo, the Polish price comparison site: the Ceneo XML offer feed with Ceneo categories and attributes, the problems that keep a product off the comparison, Zaufane Opinie (trusted reviews) after every order, Kup Teraz orders in Medusa and the CPC bids, from one page in the admin.
 
-Work in progress: this version has the module, the options and the admin page. The feed builder, categories, Zaufane Opinie, Kup Teraz and the bids follow.
+Work in progress: this version has the module, the options, the admin page and the XML feed. Ceneo categories, Zaufane Opinie, Kup Teraz and the bids follow.
 
 ## Install
 
@@ -42,6 +42,19 @@ Every option is optional and nothing stops Medusa from starting. The admin page 
 - `reviews.accountGuid`, `reviews.workDays`: Zaufane Opinie.
 - `apiKey`: the Ceneo API key from Panel Ceneo, for Kup Teraz and the bids.
 - `demo`: simulated Ceneo API, rows flagged demo.
+
+## The feed
+
+The job `ceneo-build-feed` wakes every 5 minutes and builds the file every `feed.intervalMinutes`, and within 10 minutes after a product or variant changes (never more often than every 5 minutes). The admin button "Build now" builds it at once. Ceneo reads `GET /ceneo/feed/<token>.xml` on the backend: the newest successful build, as built, with an ETag. A failed build keeps the previous file served. A scheduled build that would take more than half of the offers off Ceneo at once (or all of them) fails on purpose; "Build now" publishes a smaller file, never an empty one.
+
+What goes into the file:
+
+- One offer per variant of the published products in the sales channel. The id is the variant id (or the SKU); an id once used is never given to another variant.
+- The calculated price of the region, gross, in PLN. A region whose prices exclude tax gives no offers: set the price preference of the region to tax inclusive.
+- `avail` and `stock` from the inventory of the channel's stock locations.
+- The most specific Medusa category as the path, the images (thumbnail first, at most 20), the description, `EAN` and `Kod producenta`.
+
+Every variant left out has its reason on its offer row (a missing price, a missing handle for the address, a SKU used twice, and so on).
 
 ## License
 
