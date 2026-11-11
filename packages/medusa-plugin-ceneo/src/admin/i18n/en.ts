@@ -128,6 +128,8 @@ const en = {
     workDaysValue_other: "{{count}} working days",
     workDaysNow: "Right after the order",
     workDaysCeneo: "Ceneo decides",
+    reviews30: "Zaufane Opinie, 30 days",
+    reviewsStats: "{{answers}} answers, {{agreed}} agreed, {{transactions}} orders sent",
     api: "Ceneo API",
     apiValue: {
       live: "API key set",
@@ -322,6 +324,13 @@ const en = {
         p1: "Download the Ceneo tree on the Panel and map your categories to Ceneo categories: a mapping covers the subcategories. Ceneo compares offers within one category, so a precise one puts you next to the right competitors.",
         p2: "Without a mapping Ceneo gets your category path and maps it on its side (feed.includeUnmapped: false keeps such products out). Set feed.brand to send the brand.",
         check: "Ceneo categories on the Panel shows no unmapped category you sell in.",
+      },
+      reviews: {
+        title: "Turn on Zaufane Opinie",
+        p1: "Set reviews.accountGuid to the GUID from Panel Ceneo (Opinie, Zaufane Opinie, Instrukcja instalacji) and put the Ceneo script in the head of every storefront page. With a cookie banner, call enableManualConsentMode and updateConsentState after the shopper agrees.",
+        p2: "Add a checkbox to the checkout and send the answer to /store/ceneo/consent. Ceneo gets the e-mail for its survey only when the box is ticked; the answer is kept in the plugin's table, never in cart metadata.",
+        p3: "On the order confirmation page fetch /store/ceneo/transaction and pass it to _ceneo('transaction'). The README has the whole Next.js code.",
+        check: "Settings shows orders sent in the last 30 days after a test order.",
       },
       panel: {
         title: "Add the feed in Panel Ceneo",

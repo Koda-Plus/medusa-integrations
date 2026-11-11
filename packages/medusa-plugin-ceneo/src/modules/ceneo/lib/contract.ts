@@ -49,10 +49,29 @@ export interface StatusResponse {
     /** The newest build, when it failed after the last successful one. */
     failed: FeedBuildDto | null
   }
-  reviews: { configured: boolean; rejected: boolean; workDays: number | null }
+  reviews: { configured: boolean; rejected: boolean; workDays: number | null; stats: ReviewStats }
   api: { mode: ApiMode; timeoutMs: number }
   counts: OfferCounts
   categories: CategoryStats
+}
+
+/** Zaufane Opinie over the last 30 days (no personal data, counts only). */
+export interface ReviewStats {
+  /** Carts with an answer to the survey checkbox. */
+  answers: number
+  /** Of these, the shopper agreed to the survey. */
+  agreed: number
+  /** Orders whose transaction the confirmation page fetched. */
+  transactions: number
+}
+
+/** GET /store/ceneo/transaction: `transaction` goes as is to `_ceneo('transaction', ...)`. */
+export interface CeneoTransactionResponse {
+  account_guid: string
+  /** The Medusa order id: compare it with the confirmation page's order before sending. */
+  order_id: string
+  survey: boolean
+  transaction: import("./transaction").CeneoTransaction
 }
 
 /** The Ceneo tree in the table and how much of the Medusa tree is mapped. */

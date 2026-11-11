@@ -133,6 +133,8 @@ const pl = {
     workDaysValue_other: "{{count}} dniach roboczych",
     workDaysNow: "Od razu po zamówieniu",
     workDaysCeneo: "Decyduje Ceneo",
+    reviews30: "Zaufane Opinie, 30 dni",
+    reviewsStats: "Odpowiedzi: {{answers}}, zgody: {{agreed}}, wysłane zamówienia: {{transactions}}",
     api: "API Ceneo",
     apiValue: {
       live: "Klucz API ustawiony",
@@ -327,6 +329,13 @@ const pl = {
         p1: "Pobierz drzewo Ceneo w Panelu i przypisz swoim kategoriom kategorie Ceneo: mapowanie obejmuje podkategorie. Ceneo porównuje oferty w obrębie jednej kategorii, więc trafna kategoria stawia Cię obok właściwej konkurencji.",
         p2: "Bez mapowania Ceneo dostaje ścieżkę kategorii ze sklepu i mapuje ją u siebie (feed.includeUnmapped: false pomija takie produkty). Ustaw feed.brand, żeby wysyłać markę.",
         check: "Kategorie Ceneo w Panelu nie pokazują kategorii bez mapowania, w których sprzedajesz.",
+      },
+      reviews: {
+        title: "Włącz Zaufane Opinie",
+        p1: "Ustaw reviews.accountGuid na GUID z Panelu Ceneo (Opinie, Zaufane Opinie, Instrukcja instalacji) i wstaw skrypt Ceneo w head każdej strony sklepu. Przy banerze cookies wywołaj enableManualConsentMode, a po zgodzie klienta updateConsentState.",
+        p2: "Dodaj checkbox w kasie i wyślij odpowiedź do /store/ceneo/consent. Ceneo dostaje e-mail do ankiety tylko przy zaznaczonym polu; odpowiedź leży w tabeli pluginu, nigdy w metadanych koszyka.",
+        p3: "Na stronie potwierdzenia zamówienia pobierz /store/ceneo/transaction i przekaż wynik do _ceneo('transaction'). Cały kod dla Next.js jest w README.",
+        check: "Ustawienia pokazują wysłane zamówienia z ostatnich 30 dni po zamówieniu testowym.",
       },
       panel: {
         title: "Dodaj plik w Panelu Ceneo",
