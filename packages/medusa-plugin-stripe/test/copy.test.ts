@@ -163,7 +163,7 @@ test("the README has no tables, the hero image, the live demo and every section"
 test("package.json: the version, the keywords of the Medusa catalog, the files", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name: string; version: string; keywords: string[]; files: string[] }
   assert.equal(pkg.name, "@koda-plus/medusa-plugin-stripe")
-  assert.equal(pkg.version, "0.3.1")
+  assert.equal(pkg.version, "0.4.0")
   for (const k of ["medusa-v2", "medusa-plugin-integration", "medusa-plugin-payment", "stripe", "blik", "przelewy24", "p24", "poland", "payments", "disputes", "payouts"]) assert.ok(pkg.keywords.includes(k), k)
   assert.deepEqual(pkg.files, [".medusa/server", "README.md", "CHANGELOG.md", "LICENSE"])
   const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8")
