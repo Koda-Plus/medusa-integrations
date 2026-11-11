@@ -35,6 +35,7 @@ export interface BrandOverrides {
   headerColor?: string | null
   buttonColor?: string | null
   paperColor?: string | null
+  headerTone?: "dark" | "light" | null
   footerEn?: string | null
   footerPl?: string | null
   supportEmail?: string | null
@@ -50,6 +51,7 @@ export const BRAND_FIELDS: ReadonlyArray<keyof BrandOverrides> = [
   "headerColor",
   "buttonColor",
   "paperColor",
+  "headerTone",
   "footerEn",
   "footerPl",
   "supportEmail",
@@ -72,6 +74,11 @@ export function sanitizeBrandOverrides(input: unknown): { value: BrandOverrides;
     const v = raw[field]
     if (v === null || v === "") {
       ;(value as Record<string, unknown>)[field] = null
+      continue
+    }
+    if (field === "headerTone") {
+      if (v === "dark" || v === "light") value.headerTone = v
+      else errors.push(field)
       continue
     }
     if (field === "logoItalic") {
@@ -122,6 +129,7 @@ export function applyBrandOverrides(brand: ResolvedBrand, o: BrandOverrides | nu
     headerColor: pick(o.headerColor, brand.headerColor),
     buttonColor: pick(o.buttonColor, brand.buttonColor),
     paperColor: pick(o.paperColor, brand.paperColor),
+    headerTone: pick(o.headerTone, brand.headerTone),
     footer: footerEn || footerPl ? { en: footerEn ?? brand.footer?.en ?? null, pl: footerPl ?? brand.footer?.pl ?? null } : brand.footer,
     supportEmail: pick(o.supportEmail, brand.supportEmail),
   }

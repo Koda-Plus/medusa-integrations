@@ -69,6 +69,7 @@ export interface BrandDto {
   headerColor: string | null
   buttonColor: string | null
   paperColor: string | null
+  headerTone: "dark" | "light"
   footer: LocalizedTextDto | null
   supportEmail: string | null
 }

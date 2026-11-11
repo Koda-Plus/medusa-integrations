@@ -86,6 +86,7 @@ export function toBrandDto(b: ResolvedBrand): BrandDto {
     headerColor: b.headerColor,
     buttonColor: b.buttonColor,
     paperColor: b.paperColor,
+    headerTone: b.headerTone,
     footer: b.footer ? { en: b.footer.en, pl: b.footer.pl } : null,
     supportEmail: b.supportEmail,
   }

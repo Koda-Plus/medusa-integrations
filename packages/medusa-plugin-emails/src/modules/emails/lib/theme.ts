@@ -20,6 +20,10 @@
  * whichever reads better) and `paper` (the light page around the card; the
  * soft fields and lines are made from it, so a cream store gets cream
  * mail instead of the green-grey default).
+ *
+ * `headerTone: "light"` turns the band light: the header colour stays light
+ * (a dark one is lifted), the text on it is dark and the accent on it is
+ * darkened until it reads, like a cream hero section of a storefront.
  */
 
 import { DEFAULT_ACCENT, DEFAULT_HEADER } from "./constants"
@@ -155,13 +159,16 @@ export interface Palette {
   dark: Surface
 }
 
-export function makePalette(accentOption: unknown, headerOption: unknown, extra: { button?: unknown; paper?: unknown } = {}): Palette {
+export function makePalette(accentOption: unknown, headerOption: unknown, extra: { button?: unknown; paper?: unknown; headerTone?: unknown } = {}): Palette {
   const accent = normalizeHex(accentOption) ?? DEFAULT_ACCENT
   const button = normalizeHex(extra.button) ?? accent
   const paper = normalizeHex(extra.paper)
-  let night = normalizeHex(headerOption) ?? DEFAULT_HEADER
+  const lightBand = extra.headerTone === "light"
+  let night = normalizeHex(headerOption) ?? (lightBand ? "#EFECE1" : DEFAULT_HEADER)
   const nightHsl = rgbToHsl(parseHex(night) as Rgb)
-  if (contrast(night, "#FFFFFF") < 7 || nightHsl.l > 0.3) {
+  if (lightBand) {
+    if (nightHsl.l < 0.86) night = toHex(hslToRgb({ h: nightHsl.h, s: nightHsl.s, l: 0.92 }))
+  } else if (contrast(night, "#FFFFFF") < 7 || nightHsl.l > 0.3) {
     night = toHex(hslToRgb({ h: nightHsl.h, s: nightHsl.s, l: Math.min(nightHsl.l, 0.16) }))
   }
   const { h, s: nightSat, l: nightL } = rgbToHsl(parseHex(night) as Rgb)
@@ -215,6 +222,25 @@ export function makePalette(accentOption: unknown, headerOption: unknown, extra:
   const darkText = light.ink
   const onAccent = contrast(accent, darkText) >= contrast(accent, "#FFFFFF") ? darkText : "#FFFFFF"
   const onButton = contrast(button, darkText) >= contrast(button, "#FFFFFF") ? darkText : "#FFFFFF"
+  if (lightBand) {
+    const band = rgbToHsl(parseHex(night) as Rgb)
+    return {
+      accent,
+      onAccent,
+      button,
+      onButton,
+      night,
+      nightCard: toHex(hslToRgb({ ...band, l: Math.max(0, band.l - 0.045) })),
+      nightLine: toHex(hslToRgb({ ...band, l: Math.max(0, band.l - 0.14) })),
+      nightPill: mix(accent, night, 0.16),
+      onNight: light.ink,
+      onNightSub: light.sub,
+      onNightFaint: untilContrast(light.faint, night, 4.5, "darker"),
+      accentOnNight: untilContrast(accent, night, 4.6, "darker"),
+      light,
+      dark,
+    }
+  }
   return {
     accent,
     onAccent,

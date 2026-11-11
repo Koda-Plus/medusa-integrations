@@ -22,6 +22,7 @@ type BrandForm = {
   headerColor: string
   buttonColor: string
   paperColor: string
+  headerLight: boolean
   footerEn: string
   footerPl: string
   supportEmail: string
@@ -38,6 +39,7 @@ function formOf(b: BrandDto): BrandForm {
     headerColor: b.headerColor ?? "",
     buttonColor: b.buttonColor ?? "",
     paperColor: b.paperColor ?? "",
+    headerLight: b.headerTone === "light",
     footerEn: b.footer?.en ?? "",
     footerPl: b.footer?.pl ?? "",
     supportEmail: b.supportEmail ?? "",
@@ -111,6 +113,10 @@ export function BrandingSection({ status, lang }: { status: StatusResponse; lang
     const changed: Record<string, unknown> = {}
     for (const k of Object.keys(form) as Array<keyof BrandForm>) {
       if (form[k] === initial[k]) continue
+      if (k === "headerLight") {
+        changed.headerTone = form.headerLight === options.headerLight ? null : form.headerLight ? "light" : "dark"
+        continue
+      }
       changed[k] = form[k] === options[k] ? null : form[k]
     }
     try {
@@ -169,6 +175,12 @@ export function BrandingSection({ status, lang }: { status: StatusResponse; lang
           <ColorField id="emails-brand-header" label={t("branding.header")} value={form.headerColor} placeholder={options.headerColor || "#212721"} onChange={set("headerColor")} hint={t("branding.headerHint")} />
           <ColorField id="emails-brand-button" label={t("branding.button")} value={form.buttonColor} placeholder={options.buttonColor || options.accentColor || "#26D07C"} onChange={set("buttonColor")} hint={t("branding.buttonHint")} />
           <ColorField id="emails-brand-paper" label={t("branding.paper")} value={form.paperColor} placeholder={options.paperColor || "#EDF0ED"} onChange={set("paperColor")} hint={t("branding.paperHint")} />
+          <div className="flex items-center gap-x-3 md:col-span-2">
+            <Switch id="emails-brand-headerlight" checked={form.headerLight} onCheckedChange={(v) => set("headerLight")(v === true)} />
+            <Label size="small" htmlFor="emails-brand-headerlight">
+              {t("branding.headerLight")}
+            </Label>
+          </div>
           <div className="flex items-center gap-x-3 md:col-span-2">
             <Switch id="emails-brand-italic" checked={form.logoItalic} onCheckedChange={(v) => set("logoItalic")(v === true)} />
             <Label size="small" htmlFor="emails-brand-italic">
