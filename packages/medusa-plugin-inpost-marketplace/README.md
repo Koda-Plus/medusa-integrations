@@ -171,7 +171,7 @@ The plugin has no store routes.
 
 ## In the sidebar
 
-InPost Von Halsky has its own sidebar entry, "InPost Von Halsky" at `/app/vonhalsky`, with rank 3, so it sits next to the InPost entry of the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) when both are installed. A marketplace is a sales channel of its own, not a way to ship, so it is not a tab of the InPost page (it was, up to 0.1.0 in the monorepo). Links with parameters open the page on that list, for example `/app/vonhalsky?section=orders&filter=held`.
+InPost Von Halsky has its own sidebar entry, "Von Halsky" at `/app/vonhalsky`, with rank 3, so it sits next to the InPost entry of the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) when both are installed. A marketplace is a sales channel of its own, not a way to ship, so it is not a tab of the InPost page (it was, up to 0.1.0 in the monorepo). Links with parameters open the page on that list, for example `/app/vonhalsky?section=orders&filter=held`.
 
 ## Works with Koda Plus hosts
 
