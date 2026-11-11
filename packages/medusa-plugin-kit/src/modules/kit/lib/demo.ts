@@ -51,7 +51,7 @@ export function createDemoKitClient(source: string): KitClient {
     apiKey: "",
     source,
     async account(): Promise<KitAccount> {
-      return { id: "demo", name: "Konto demo (przykładowe dane)", plan_type: "creator", primary_email_address: "newsletter@example.com" }
+      return { id: "demo", name: "Demo account (sample data)", plan_type: "creator", primary_email_address: "newsletter@example.com" }
     },
     async tags(): Promise<KitTag[]> {
       return tags.map((t) => ({ ...t }))

@@ -28,6 +28,8 @@ type LogFilter = "all" | "ok" | "failed"
 const KitPage = () => {
   const { t, i18n } = useTranslation("kit")
   const lang = i18n.language || "en"
+  /* The sample account of demo mode is named in the admin's language, not in the server's words. */
+  const accountName = (a: { id?: string | number | null; name?: string | null }) => (a.id === "demo" ? t("account.demoName") : a.name ?? null)
   const nav = usePageNav(SETTINGS_TABS)
   const client = useQueryClient()
   const statusQ = useQuery({ queryKey: ["kit", "status"], queryFn: status, refetchInterval: 30_000 })
@@ -91,7 +93,7 @@ const KitPage = () => {
           <div className="px-6 py-4">
             {checkQ.data.ok && checkQ.data.account ? (
               <InlineTip variant="success" label={t("check.title")}>
-                {t("check.ok", { name: checkQ.data.account.name ?? checkQ.data.account.primary_email_address ?? "-" })}, {t("check.tags", { n: checkQ.data.tags.length })}, {t("check.forms", { n: checkQ.data.forms.length })}
+                {t("check.ok", { name: accountName(checkQ.data.account) ?? checkQ.data.account.primary_email_address ?? "-" })}, {t("check.tags", { n: checkQ.data.tags.length })}, {t("check.forms", { n: checkQ.data.forms.length })}
               </InlineTip>
             ) : (
               <InlineTip variant="error" label={t("check.title")}>
@@ -107,7 +109,7 @@ const KitPage = () => {
             <StatTile label={t("stats.week")} value={s.counts.last_7_days} hint={t("stats.weekHint")} icon={<Clock />} />
             <StatTile
               label={t("stats.account")}
-              value={s.account ? (s.account.name ?? "Kit") : "-"}
+              value={s.account ? (accountName(s.account) ?? "Kit") : "-"}
               hint={s.account?.plan_type ? t("account.plan", { plan: s.account.plan_type }) : s.account ? undefined : t("stats.accountNone")}
               icon={<EnvelopeSolid />}
               tone={s.account ? "green" : "grey"}
