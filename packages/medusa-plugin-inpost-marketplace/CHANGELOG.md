@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (unreleased)
 
 - No "Add your store" button in the page header any more (kit 1.5.0).
 - **Its own sidebar entry** (11 November 2026): "Von Halsky" at `/app/vonhalsky`, rank 3, next to InPost. It is no longer the "Von Halsky" tab of the InPost page: a marketplace is a sales channel of its own, not a way to ship.
@@ -24,8 +24,6 @@ From InPost's integration scope checklist (run `npx medusa db:migrate`: `Migrati
 - **Connection alert**: a refused token, a 401 or a 403 with problem details on two sync runs in a row is recorded (setting `connection`), `GET /admin/vonhalsky` answers `connection { ok, since, message }`, the page shows a red banner, Settings, Account says since when, and the integration counter `connection_lost` (scope `integration`) is 1. The next run that reaches the marketplace or a working connection check clears it. The bare 403 of the gateway does not count.
 - **Sync frequency**: the offers section and the settings say "Price and stock sync every 5 minutes, last run ..." (`GET /admin/vonhalsky` answers `sync { everyMinutes, priceStock, lastPushAt, lastRunAt }`), as InPost asks integrators to tell sellers.
 - The marketplace's manufacturer part number of an offer is read (`RemoteOffer.mpn`); the integration texts know `title_invalid` and `description_short`.
-
-## 0.1.0 (unreleased)
 
 The first version: the InPost marketplace (InPost Von Halsky, also called InPost Buy) for Medusa v2, on InPost's seller API (OpenAPI 1.7.6). Run `npx medusa db:migrate` after installing: `Migration20261018150000_vonhalsky` adds the offers, the marketplace orders, the sync log and the settings tables; `Migration20261102120000_vonhalsky_live` adds the seller API columns to the first two and the after sale, category and snapshot tables.
 

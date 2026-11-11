@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (unreleased)
 
 - Removed: the `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
 
