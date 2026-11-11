@@ -164,6 +164,18 @@ export function CeneoTransaction({ transaction }: { transaction: unknown }) {
 
 Settings on the admin page counts the answers, the consents and the orders sent over the last 30 days.
 
+## Kup Teraz orders (read only)
+
+With `apiKey` (Panel Ceneo gives one to stores already integrated with Ceneo) the job `ceneo-sync-orders` reads the Kup Teraz orders of the last 14 days every 5 minutes into `ceneo_order`: the Ceneo number, the state, the amounts and the items, each matched to a variant by the feed offer id (an id the variant used before counts too). Nothing is written to Ceneo and no Medusa order is created in this version.
+
+- Personal data stay at Ceneo: the shipping, invoice and pickup data and the buyer's remark are read when an order is opened in the admin, never stored by the plugin.
+- A run fetches the items of at most 50 orders (new ones, and ones whose state moved: a return shows there) and writes as it goes; the rest waits for the next run. Demo rows and live rows never mix: the admin shows the current mode.
+- An item whose id no variant has, or a state missing from the Ceneo dictionary, is shown as a problem on the order.
+- "Test the API key" asks Ceneo for a fresh token and the execution limits per method.
+- `demo: true` simulates orders from your own feed offers (same code paths, rows flagged demo); the states with ids above 100 exist only in the demo.
+
+The client is the only place that talks to the Ceneo API: a token per key cached for its 900 seconds and refreshed after a 401, retries for 5xx and timeouts, one wait on 429, the key and the token masked in every log line. Every Ceneo method is a GET, writes included, so the client lets only read methods out.
+
 ## Categories
 
 The job `ceneo-sync-categories` downloads the Ceneo category tree every night at 3:20 (and the button "Download the Ceneo tree" at once). A download that is not the expected document, or has fewer than 100 categories, changes nothing. A category Ceneo removed stays in the table as removed: offers mapped to it go out with the Medusa path and a warning until you map it again.

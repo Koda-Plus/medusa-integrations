@@ -53,6 +53,72 @@ export interface StatusResponse {
   api: { mode: ApiMode; timeoutMs: number }
   counts: OfferCounts
   categories: CategoryStats
+  orders: OrderStats
+}
+
+/** Kup Teraz orders in the table. */
+export interface OrderStats {
+  total: number
+  /** Orders with an item no variant has (by the feed offer id). */
+  unmatched: number
+  lastSyncedAt: string | null
+}
+
+export type OrderSyncResult =
+  | { status: "synced"; read: number; created: number; updated: number; unmatched: number; deferred: number; truncated: boolean; demo: boolean; duration_ms: number }
+  | { status: "failed"; error: string; status_code: number | null; duration_ms: number }
+  | { status: "skipped"; reason: "running" }
+  | { status: "off"; reason: "missing_key" }
+
+export type ApiCheckResult =
+  | { ok: true; mode: "live" | "demo"; limits: import("./kup-teraz").ApiLimit[]; limitsError?: string }
+  | { ok: false; mode: "live" | "missing_key"; error: string; status_code?: number | null }
+
+export interface CeneoOrderItemDto {
+  shopProductId: string | null
+  name: string | null
+  price: number | null
+  quantity: number
+  total: number | null
+  returned: number
+  variantId: string | null
+}
+
+export interface CeneoOrderDto {
+  id: string
+  ceneoOrderId: string
+  number: string | null
+  shopOrderId: string | null
+  stateId: number | null
+  state: string | null
+  orderedAt: string | null
+  amounts: { order: number | null; products: number | null; delivery: number | null }
+  deliveryForm: string | null
+  items: CeneoOrderItemDto[]
+  matched: boolean
+  problems: Array<{ code: string; detail?: string }>
+  medusaOrderId: string | null
+  demo: boolean
+  syncedAt: string | null
+}
+
+export interface CeneoOrdersResponse {
+  orders: CeneoOrderDto[]
+  count: number
+  limit: number
+  offset: number
+}
+
+/** The order with the data Ceneo keeps (read now, not stored). */
+export interface CeneoOrderDetailResponse {
+  order: CeneoOrderDto
+  remark: string | null
+  shipping: Record<string, unknown> | null
+  invoice: Record<string, unknown> | null
+  pickup: Record<string, unknown> | null
+  services: Record<string, unknown>[]
+  /** Why the Ceneo part is missing (the key, a Ceneo error); the stored part is still shown. */
+  detailError: string | null
 }
 
 /** Zaufane Opinie over the last 30 days (no personal data, counts only). */

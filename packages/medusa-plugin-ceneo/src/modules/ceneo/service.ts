@@ -5,6 +5,7 @@ import CeneoOffer from "./models/offer"
 import CeneoCategory from "./models/category"
 import CeneoCategoryMap from "./models/category-map"
 import CeneoConsent from "./models/consent"
+import CeneoOrder from "./models/order"
 import { feedGaps, resolveOptions, type CeneoPluginOptions, type ResolvedCeneoOptions } from "./lib/options"
 
 type InjectedDependencies = {
@@ -29,6 +30,7 @@ class CeneoModuleService extends MedusaService({
   CeneoCategory,
   CeneoCategoryMap,
   CeneoConsent,
+  CeneoOrder,
 }) {
   protected readonly logger_: Logger
   protected readonly options_: ResolvedCeneoOptions

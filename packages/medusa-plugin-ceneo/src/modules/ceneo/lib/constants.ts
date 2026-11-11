@@ -12,6 +12,7 @@ export const OFFER_TABLE = "ceneo_offer"
 export const CATEGORY_TABLE = "ceneo_category"
 export const CATEGORY_MAP_TABLE = "ceneo_category_map"
 export const CONSENT_TABLE = "ceneo_consent"
+export const ORDER_TABLE = "ceneo_order"
 
 export const ID_PREFIX = {
   feed: "cfd",
@@ -19,12 +20,20 @@ export const ID_PREFIX = {
   category: "cct",
   categoryMap: "ccm",
   consent: "ccs",
+  order: "cor",
 } as const
 
 /** The public Ceneo category tree, read once a day. */
 export const CENEO_TREE_URL = "https://developers.ceneo.pl/api/v3/kategorie"
 /** The tree job: once a day at 03:20, and the admin button. */
 export const CATEGORY_JOB_SCHEDULE = "20 3 * * *"
+
+/** Kup Teraz: the order sync every 5 minutes, over the orders of the last 14 days, at most 50 pages a run. */
+export const ORDERS_JOB_SCHEDULE = "*/5 * * * *"
+export const ORDERS_WINDOW_DAYS = 14
+export const ORDERS_MAX_PAGES = 50
+/** Item reads per run (new orders and orders whose state moved); the rest waits for the next run. */
+export const ORDERS_ITEMS_PER_RUN = 50
 
 /** Zaufane Opinie answers are kept this long (Ceneo sends the survey within 21 working days). */
 export const CONSENT_KEEP_DAYS = 90
