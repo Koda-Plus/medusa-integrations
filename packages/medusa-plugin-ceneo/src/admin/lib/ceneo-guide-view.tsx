@@ -41,6 +41,20 @@ const REGION = `feed: {
   salesChannelId: "sc_...",
 }`
 
+const REVIEWS = `// src/lib/data/cart.ts: a server action, like the rest of the starter
+export async function setCeneoConsent(cartId: string, survey: boolean) {
+  await sdk.client.fetch("/store/ceneo/consent", {
+    method: "POST",
+    body: { cart_id: cartId, survey },
+    headers: await getAuthHeaders(),
+  })
+}
+
+// Order confirmation page, on the server (the cart id kept by placeOrder)
+const ceneo = await sdk.client.fetch(\`/store/ceneo/transaction?cart_id=\${cartId}\`)
+// then in the browser, only when ceneo.order_id is this page's order:
+_ceneo("transaction", ceneo.transaction)`
+
 const NEEDS = ["medusa", "storefront", "panel"] as const
 const CHECKS = ["address", "built", "problems", "demoOff"] as const
 const FAQ = ["why", "ids", "secret"] as const
@@ -86,6 +100,7 @@ export function GuideView({ status }: { status?: StatusResponse }) {
     step("productUrl", state(urlOk), ["p1"]),
     step("region", state(Boolean(status?.feed.regionId && status.feed.salesChannelId), "optional"), ["p1"], REGION),
     step("categories", state(Boolean(status && status.categories.mapped > 0), "optional"), ["p1", "p2"]),
+    step("reviews", state(Boolean(status?.reviews.configured && status.reviews.stats.transactions > 0), "optional"), ["p1", "p2", "p3"], REVIEWS),
     step("panel", built ? "todo" : "later", ["p1"]),
     step("demo", state(Boolean(status?.demo), "optional"), ["p1"]),
   ]

@@ -11,18 +11,27 @@ export const FEED_TABLE = "ceneo_feed"
 export const OFFER_TABLE = "ceneo_offer"
 export const CATEGORY_TABLE = "ceneo_category"
 export const CATEGORY_MAP_TABLE = "ceneo_category_map"
+export const CONSENT_TABLE = "ceneo_consent"
 
 export const ID_PREFIX = {
   feed: "cfd",
   offer: "cof",
   category: "cct",
   categoryMap: "ccm",
+  consent: "ccs",
 } as const
 
 /** The public Ceneo category tree, read once a day. */
 export const CENEO_TREE_URL = "https://developers.ceneo.pl/api/v3/kategorie"
 /** The tree job: once a day at 03:20, and the admin button. */
 export const CATEGORY_JOB_SCHEDULE = "20 3 * * *"
+
+/** Zaufane Opinie answers are kept this long (Ceneo sends the survey within 21 working days). */
+export const CONSENT_KEEP_DAYS = 90
+/** The pruning job: once a day at 03:40. */
+export const CONSENT_JOB_SCHEDULE = "40 3 * * *"
+/** The plugin's metadata namespace a shopper may not write (kit reservedMetadataGuard). */
+export const RESERVED_METADATA_PREFIXES = ["ceneo_"] as const
 
 /** Where the brand (`Marka`) of a product comes from. */
 export const BRAND_SOURCES = ["metadata", "type", "collection", "tag"] as const

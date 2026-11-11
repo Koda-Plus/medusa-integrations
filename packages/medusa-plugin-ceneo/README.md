@@ -41,7 +41,7 @@ Every option is optional and nothing stops Medusa from starting. The admin page 
 - `feed.intervalMinutes`: minutes between builds, default 30.
 - `feed.includeUnmapped`: `true` (default) sends a variant whose category has no Ceneo mapping with the Medusa path and a warning; `false` keeps it out of the file until it is mapped.
 - `feed.brand`: where the brand (`Marka`) comes from: `{ from: "metadata", key: "brand" }` (default), `{ from: "type" }`, `{ from: "collection" }`, `{ from: "tag", key: "Marka:" }` (the tag value after the prefix) or `false` for none.
-- `reviews.accountGuid`, `reviews.workDays`: Zaufane Opinie.
+- `reviews.accountGuid`, `reviews.workDays`: Zaufane Opinie, the account GUID from Panel Ceneo and the working days before the survey (0 to 21, default: Ceneo decides). See Zaufane Opinie below.
 - `apiKey`: the Ceneo API key from Panel Ceneo, for Kup Teraz and the bids.
 - `demo`: simulated Ceneo API, rows flagged demo.
 
@@ -57,6 +57,112 @@ What goes into the file:
 - The Ceneo category path of the most specific mapped Medusa category (or the Medusa path, see `feed.includeUnmapped`), the images (thumbnail first, at most 20), the description (HTML cut at 100k characters, never inside a tag), `Marka`, `EAN` and `Kod producenta`.
 
 Every variant left out has its reason on its offer row (a missing price, a missing handle for the address, a SKU used twice, and so on).
+
+## Zaufane Opinie
+
+Ceneo sends the shopper a survey after the purchase and shows the reviews on Ceneo. It works only in the browser (there is no server API): the Ceneo script on every page, and `_ceneo('transaction', ...)` on the order confirmation page. The plugin gives the storefront the payload and keeps the shopper's answer.
+
+- `POST /store/ceneo/consent { cart_id, survey }`: the answer to the survey checkbox in the checkout, kept per cart in `ceneo_consent` (no personal data, removed after 90 days). Never in cart metadata: the store routes refuse `ceneo_*` metadata keys.
+- `GET /store/ceneo/transaction?cart_id=`: `{ account_guid, survey, transaction }` for the order placed from that cart, within 24 hours, never for a canceled order. `transaction.client_email` only when the shopper ticked the box. Product ids are the feed offer ids, prices per unit gross after discounts, `amount` is the order total.
+
+Both need `reviews.accountGuid` (404 `reviews_off` without it) and the publishable key, like every store route. The cart id is the shopper's own secret (Medusa's own `GET /store/carts/:id` trusts it the same way), so the routes need no login. Keep it out of addresses the shopper sees or shares: the code below reads it on the server from an httpOnly cookie.
+
+### Next.js storefront (Medusa starter)
+
+1. The script, in the root layout, in manual consent mode. It runs once per visit; the cookie banner calls `updateConsentState` itself when the shopper agrees, and the layout passes `tracking` for the visits after.
+
+```tsx
+// src/app/ceneo-script.tsx
+"use client"
+import Script from "next/script"
+
+export function CeneoScript({ guid, tracking }: { guid: string; tracking: boolean }) {
+  return (
+    <Script id="ceneo" strategy="afterInteractive">{`
+      (function(w,d,s,i,dl){w._ceneo=w._ceneo||function(){(w._ceneo.e=w._ceneo.e||[]).push(arguments)};
+      dl=dl===undefined?"dataLayer":dl;
+      var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.defer=true;
+      j.src="https://ssl.ceneo.pl/ct/v5/script.js?accountGuid="+i+"&t="+Date.now()+(dl?"&dl="+dl:"");
+      f.parentNode.insertBefore(j,f)})(window,document,"script","${guid}");
+      _ceneo("enableManualConsentMode");
+      ${tracking ? '_ceneo("updateConsentState",{allow_tracking:true});' : ""}
+    `}</Script>
+  )
+}
+
+// In the cookie banner, when the shopper accepts:
+window._ceneo?.("updateConsentState", { allow_tracking: true })
+```
+
+2. The checkbox in the checkout, unticked by default (the e-mail goes to Ceneo only with consent), saved through a server action next to the starter's cart actions:
+
+```ts
+// src/lib/data/cart.ts
+export async function setCeneoConsent(cartId: string, survey: boolean) {
+  await sdk.client.fetch("/store/ceneo/consent", {
+    method: "POST",
+    body: { cart_id: cartId, survey },
+    headers: await getAuthHeaders(),
+  })
+}
+```
+
+```tsx
+const [survey, setSurvey] = useState(false)
+// ...
+<Checkbox
+  label="Send me the Ceneo survey about this purchase (Zaufane Opinie)"
+  checked={survey}
+  onChange={() => {
+    const next = !survey
+    setSurvey(next)
+    void setCeneoConsent(cart.id, next)
+  }}
+/>
+```
+
+3. In `placeOrder` (`src/lib/data/cart.ts`) keep the cart id for the confirmation page before the cart cookie goes:
+
+```ts
+const cookieStore = await cookies()
+cookieStore.set("_ceneo_cart", id, { httpOnly: true, sameSite: "strict", secure: true, maxAge: 60 * 60 })
+```
+
+4. On the confirmation page (`src/app/[countryCode]/(main)/order/[id]/confirmed/page.tsx`) fetch the payload on the server and render it only for this page's order:
+
+```tsx
+const cartId = (await cookies()).get("_ceneo_cart")?.value
+const ceneo = cartId
+  ? await sdk.client
+      .fetch<{ order_id: string; transaction: unknown }>(`/store/ceneo/transaction?cart_id=${cartId}`, { headers: await getAuthHeaders() })
+      .catch(() => null)
+  : null
+// ...
+{ceneo && ceneo.order_id === params.id ? <CeneoTransaction transaction={ceneo.transaction} /> : null}
+```
+
+```tsx
+// src/modules/order/components/ceneo-transaction.tsx
+"use client"
+import { useEffect } from "react"
+
+type CeneoQueue = ((...args: unknown[]) => void) & { e?: unknown[][] }
+declare global {
+  interface Window { _ceneo?: CeneoQueue }
+}
+
+export function CeneoTransaction({ transaction }: { transaction: unknown }) {
+  useEffect(() => {
+    /* The Ceneo script may load after this effect: queue the call, the script reads the queue. */
+    const w = window
+    w._ceneo = w._ceneo || Object.assign((...args: unknown[]) => { (w._ceneo!.e = w._ceneo!.e || []).push(args) }, { e: [] as unknown[][] })
+    w._ceneo("transaction", transaction)
+  }, [transaction])
+  return null
+}
+```
+
+Settings on the admin page counts the answers, the consents and the orders sent over the last 30 days.
 
 ## Categories
 

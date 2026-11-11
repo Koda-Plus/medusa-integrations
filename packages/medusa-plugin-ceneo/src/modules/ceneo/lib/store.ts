@@ -1,6 +1,6 @@
 import type { Logger, MedusaContainer } from "@medusajs/framework/types"
 import { CENEO_MODULE, OFFER_STATES, type OfferState } from "./constants"
-import type { ApiMode, CategoryStats, FeedBuildDto, OfferCounts, StatusResponse } from "./contract"
+import type { ApiMode, CategoryStats, FeedBuildDto, OfferCounts, ReviewStats, StatusResponse } from "./contract"
 import { feedGaps, type ResolvedCeneoOptions } from "./options"
 
 /**
@@ -33,6 +33,12 @@ export interface CeneoServiceLike {
   createCeneoCategoryMaps(data: unknown | unknown[]): Promise<Row[]>
   updateCeneoCategoryMaps(data: unknown | unknown[]): Promise<Row[]>
   deleteCeneoCategoryMaps(ids: string | string[]): Promise<void>
+
+  listCeneoConsents(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
+  listAndCountCeneoConsents(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<[Row[], number]>
+  createCeneoConsents(data: unknown | unknown[]): Promise<Row[]>
+  updateCeneoConsents(data: unknown | unknown[]): Promise<Row[]>
+  deleteCeneoConsents(ids: string | string[]): Promise<void>
 }
 
 export type Row = Record<string, unknown> & {
@@ -96,7 +102,7 @@ export const BUILD_FIELDS = ["id", "status", "hash", "bytes", "offers", "warning
  * the newest build of any status and the offer counters. Pure, so it is
  * tested without a database.
  */
-export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts, categories: CategoryStats = { tree: 0, syncedAt: null, mapped: 0 }): StatusResponse {
+export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts, categories: CategoryStats = { tree: 0, syncedAt: null, mapped: 0 }, reviews: ReviewStats = { answers: 0, agreed: 0, transactions: 0 }): StatusResponse {
   const last = lastBuilt ? toFeedBuild(lastBuilt) : null
   const newest = newestAny ? toFeedBuild(newestAny) : null
   return {
@@ -117,7 +123,7 @@ export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newe
       last,
       failed: newest && newest.status === "failed" ? newest : null,
     },
-    reviews: { configured: Boolean(o.reviews.accountGuid), rejected: o.reviews.accountGuidRejected, workDays: o.reviews.workDays },
+    reviews: { configured: Boolean(o.reviews.accountGuid), rejected: o.reviews.accountGuidRejected, workDays: o.reviews.workDays, stats: reviews },
     api: { mode: apiMode(o), timeoutMs: o.timeoutMs },
     counts,
     categories,
@@ -132,6 +138,14 @@ export async function categoryStats(svc: CeneoServiceLike): Promise<CategoryStat
   ])
   const at = newest?.synced_at
   return { tree, syncedAt: at instanceof Date ? at.toISOString() : typeof at === "string" ? at : null, mapped: maps.length }
+}
+
+/** Zaufane Opinie answers and transactions of the last 30 days. */
+export async function reviewStats(svc: CeneoServiceLike, now = Date.now()): Promise<ReviewStats> {
+  const since = new Date(now - 30 * 24 * 60 * 60 * 1000)
+  const count = async (f: Record<string, unknown>) => (await svc.listAndCountCeneoConsents({ created_at: { $gte: since }, ...f }, { take: 1, select: ["id"] }))[1]
+  const [answers, agreed, transactions] = await Promise.all([count({ answered_at: { $ne: null } }), count({ survey: true }), count({ transaction_at: { $ne: null } })])
+  return { answers, agreed, transactions }
 }
 
 /** The offer counters of the active rows (one per variant), one count per state. */

@@ -103,6 +103,9 @@ export function ConnectionsTab({ status }: { status: StatusResponse }) {
         <Fact label={t("settings.workDays")}>
           <span className="tabular-nums">{r.workDays === null ? t("settings.workDaysCeneo") : r.workDays === 0 ? t("settings.workDaysNow") : t("settings.workDaysValue", { count: r.workDays })}</span>
         </Fact>
+        <Fact label={t("settings.reviews30")}>
+          <span className="tabular-nums">{t("settings.reviewsStats", { answers: r.stats.answers, agreed: r.stats.agreed, transactions: r.stats.transactions })}</span>
+        </Fact>
         <Fact label={t("settings.api")}>
           <ToneBadge tone={API_TONE[status.api.mode]} dot>
             {t(`settings.apiValue.${status.api.mode}`)}
