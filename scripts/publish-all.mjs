@@ -8,6 +8,10 @@
  *                                             versions about to go out (commit and push that first)
  *   npm run release                           the release
  *   npm run release -- --only olx,allegro     a part of it
+ *   npm run release -- --fresh                preflight every package again, even one that passed before
+ *
+ * In PowerShell call the script itself (node scripts/publish-all.mjs --only ...): PowerShell eats
+ * the `--` of `npm run release -- ...`, and npm then takes --only as its own option.
  *
  * A real release needs: a clean working tree, branch main equal to
  * origin/main, `npm whoami` = koda-plus, every package to release preflighted
@@ -18,6 +22,11 @@
  * script tags `<name>@<version>`, waits until `latest` points at it (the
  * first publish of a new package shows the 0.0.0-stage placeholder for a few
  * minutes) and in the end pushes the tags, never a branch.
+ *
+ * A preflight that passed is remembered (node_modules/.cache/koda-release) by the git tree of the
+ * package and the built admin bundle: the same code with the same build is not tested and built
+ * again. `npm publish --ignore-scripts` then skips prepublishOnly, which would do it all a third
+ * time.
  *
  * Every `npm publish` waits for the 2FA confirmation in the browser (the link
  * npm prints). A run stopped halfway can simply be started again.
@@ -34,6 +43,7 @@ const argv = process.argv.slice(2)
 const flag = (name) => argv.includes(name)
 const dryRun = flag("--dry-run")
 const stamp = flag("--stamp")
+const fresh = flag("--fresh")
 const onlyAt = argv.indexOf("--only")
 const only = onlyAt >= 0 ? new Set(String(argv[onlyAt + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)) : null
 
@@ -87,6 +97,46 @@ function changelogState(p) {
 /* ------------------------------------------------------------------ */
 
 const FORBIDDEN_IN_TARBALL = [/^test\//, /^docs\//, /(^|\/)\.env/, /\.map$/, /medusa-plugin-options\.json$/, /^src\//]
+
+/* ------------------------------------------------------------------ */
+/* Preflight memory                                                    */
+/* ------------------------------------------------------------------ */
+
+const CACHE = path.join(root, "node_modules", ".cache", "koda-release", "preflight.json")
+const BUILT = ".medusa/server/src/admin/index.mjs"
+const readCache = () => {
+  try {
+    return JSON.parse(fs.readFileSync(CACHE, "utf8"))
+  } catch {
+    return {}
+  }
+}
+const cache = readCache()
+/** The committed tree of the package; null while the package has uncommitted changes (nothing is remembered then). */
+function treeOf(p) {
+  if (out(`git status --porcelain -- "packages/${p.dir}"`)) return null
+  return out(`git rev-parse "HEAD:packages/${p.dir}"`)
+}
+const builtAt = (p) => {
+  try {
+    return fs.statSync(path.join(p.path, BUILT)).mtimeMs
+  } catch {
+    return null
+  }
+}
+function passedBefore(p) {
+  if (fresh) return false
+  const hit = cache[p.dir]
+  const tree = treeOf(p)
+  return Boolean(hit && tree && hit.tree === tree && hit.built === builtAt(p))
+}
+function remember(p) {
+  const tree = treeOf(p)
+  if (!tree) return
+  cache[p.dir] = { tree, built: builtAt(p), at: new Date().toISOString() }
+  fs.mkdirSync(path.dirname(CACHE), { recursive: true })
+  fs.writeFileSync(CACHE, JSON.stringify(cache, null, 2))
+}
 
 function preflight(p) {
   const problems = []
@@ -172,9 +222,16 @@ for (const { p, log } of toRelease) if (log === "unreleased") (dryRun ? blockers
 
 console.log(`\nPreflight of ${toRelease.length} package(s):`)
 for (const { p } of toRelease) {
+  if (passedBefore(p)) {
+    console.log(`  ${p.dir}: ok (passed before with the same code and build, skipped; --fresh runs it again)`)
+    continue
+  }
   const problems = preflight(p)
   if (problems.length) refused.push(...problems.map((x) => `${p.dir}: ${x}`))
-  else console.log(`  ${p.dir}: ok`)
+  else {
+    remember(p)
+    console.log(`  ${p.dir}: ok`)
+  }
 }
 
 if (dryRun) {
@@ -200,7 +257,7 @@ if (blockers.length || refused.length) {
 const tags = []
 for (const { p } of toRelease) {
   console.log(`\n= publishing ${tagOf(p)} (confirm in the browser when npm asks)`)
-  const r = run(`npm publish --access public${trusted ? " --provenance" : ""}`, p.path, false)
+  const r = run(`npm publish --access public --ignore-scripts${trusted ? " --provenance" : ""}`, p.path, false)
   if (r.status !== 0) {
     console.error(`\n${tagOf(p)} was not published (exit ${r.status}). Fix the cause and run npm run release again: published versions are skipped.`)
     break
