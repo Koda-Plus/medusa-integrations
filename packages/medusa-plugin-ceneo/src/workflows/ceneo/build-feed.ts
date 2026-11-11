@@ -21,13 +21,15 @@ import { feedGaps } from "../../modules/ceneo/lib/options"
 import { ceneoSvc, planFeedWrite, shrinkGuard, type CeneoServiceLike, type Row } from "../../modules/ceneo/lib/store"
 import { feedHash } from "../../modules/ceneo/lib/token"
 import { CatalogError, loadFeedCatalog } from "./catalog"
+import { loadCategoryMapping } from "./categories"
 import { chunks, errorText, isLocked, queryOf, withLock, type Scope } from "./runtime"
 
 export type { FeedBuildResult, FeedTrigger }
 
-const OFFER_SYNC_FIELDS = ["id", "offer_id", "variant_id", "retired_at", "product_id", "sku", "title", "state", "problems", "in_feed", "price", "avail", "stock"]
+const OFFER_SYNC_FIELDS = ["id", "offer_id", "variant_id", "retired_at", "product_id", "sku", "title", "state", "problems", "in_feed", "price", "avail", "stock", "ceneo_category_id"]
 const WRITE_CHUNK = 500
-const LOCK = "feed"
+export const FEED_LOCK = "feed"
+const LOCK = FEED_LOCK
 
 export function isFeedBuilding(): boolean {
   return isLocked(LOCK)
@@ -90,6 +92,8 @@ export async function runCeneoFeedBuild(scope: Scope, input: { trigger?: FeedTri
     const started = Date.now()
     try {
       const catalog = await loadFeedCatalog(queryOf(scope), o)
+      const mapping = await loadCategoryMapping(svc)
+      for (const v of catalog.variants) v.ceneoCategory = mapping.forProduct(v.categoryIds, catalog.categoryParents)
       const drafts = catalog.variants.map((v) => buildOfferDraft(v, o.feed))
       const rows = (await svc.listCeneoOffers({}, { take: null, select: OFFER_SYNC_FIELDS })) as unknown as OfferRowLite[]
       const holders = new Map(rows.filter((r) => r.offer_id).map((r) => [r.offer_id as string, r.variant_id]))

@@ -9,11 +9,24 @@ export const CENEO_MODULE = "ceneo"
 /* TABLE NAMES, namespaced. */
 export const FEED_TABLE = "ceneo_feed"
 export const OFFER_TABLE = "ceneo_offer"
+export const CATEGORY_TABLE = "ceneo_category"
+export const CATEGORY_MAP_TABLE = "ceneo_category_map"
 
 export const ID_PREFIX = {
   feed: "cfd",
   offer: "cof",
+  category: "cct",
+  categoryMap: "ccm",
 } as const
+
+/** The public Ceneo category tree, read once a day. */
+export const CENEO_TREE_URL = "https://developers.ceneo.pl/api/v3/kategorie"
+/** The tree job: once a day at 03:20, and the admin button. */
+export const CATEGORY_JOB_SCHEDULE = "20 3 * * *"
+
+/** Where the brand (`Marka`) of a product comes from. */
+export const BRAND_SOURCES = ["metadata", "type", "collection", "tag"] as const
+export type BrandSource = (typeof BRAND_SOURCES)[number]
 
 /* ------------------------------------------------------------------ */
 /* The Ceneo XML feed                                                  */
@@ -103,12 +116,17 @@ export const PROBLEMS = {
   offer_id_duplicate: "error",
   offer_id_taken: "error",
   name_missing: "error",
+  category_required: "error",
   unpublished: "excluded",
   out_of_stock: "excluded",
   variant_gone: "excluded",
   offer_id_replaced: "excluded",
   name_cut: "warning",
   category_missing: "warning",
+  category_unmapped: "warning",
+  category_removed: "warning",
+  brand_missing: "warning",
+  url_slash: "warning",
   category_cut: "warning",
   description_cut: "warning",
   image_missing: "warning",

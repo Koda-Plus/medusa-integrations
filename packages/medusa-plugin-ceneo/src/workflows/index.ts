@@ -1,3 +1,5 @@
-export { buildCeneoFeedWorkflow, buildCeneoFeedStep } from "./ceneo/workflows"
+export { buildCeneoFeedWorkflow, buildCeneoFeedStep, syncCeneoCategoriesWorkflow, syncCeneoCategoriesStep } from "./ceneo/workflows"
+export { runCeneoCategorySync } from "./ceneo/categories"
 export { runCeneoFeedBuild, isFeedBuilding } from "./ceneo/build-feed"
 export type { FeedBuildResult, FeedTrigger } from "./ceneo/build-feed"
+export type { CategorySyncResult } from "./ceneo/categories"

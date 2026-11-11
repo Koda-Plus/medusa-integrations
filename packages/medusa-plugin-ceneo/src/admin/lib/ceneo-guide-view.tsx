@@ -85,6 +85,7 @@ export function GuideView({ status }: { status?: StatusResponse }) {
     step("token", state(tokenOk), ["p1", "p2"], TOKEN),
     step("productUrl", state(urlOk), ["p1"]),
     step("region", state(Boolean(status?.feed.regionId && status.feed.salesChannelId), "optional"), ["p1"], REGION),
+    step("categories", state(Boolean(status && status.categories.mapped > 0), "optional"), ["p1", "p2"]),
     step("panel", built ? "todo" : "later", ["p1"]),
     step("demo", state(Boolean(status?.demo), "optional"), ["p1"]),
   ]

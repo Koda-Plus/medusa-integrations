@@ -36,6 +36,7 @@ export interface OfferRowLite {
   price?: unknown
   avail?: number | null
   stock?: number | null
+  ceneo_category_id?: string | null
 }
 
 /** The columns a build writes for one offer. */
@@ -51,6 +52,7 @@ export interface OfferRowData {
   price: OfferPrice | null
   avail: number | null
   stock: number | null
+  ceneo_category_id: string | null
 }
 
 export interface OfferSyncPlan {
@@ -78,6 +80,7 @@ export function rowData(d: OfferDraft, offerId: string | null): OfferRowData {
     price: d.price,
     avail: d.avail,
     stock: d.stock,
+    ceneo_category_id: d.ceneoCategoryId,
   }
 }
 
@@ -97,7 +100,8 @@ export function sameRow(row: OfferRowLite, data: OfferRowData): boolean {
     (row.in_feed ?? false) === data.in_feed &&
     canon(row.price) === canon(data.price) &&
     (row.avail ?? null) === data.avail &&
-    (row.stock ?? null) === data.stock
+    (row.stock ?? null) === data.stock &&
+    (row.ceneo_category_id ?? null) === data.ceneo_category_id
   )
 }
 

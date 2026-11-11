@@ -1,6 +1,6 @@
 import type { Logger, MedusaContainer } from "@medusajs/framework/types"
 import { CENEO_MODULE, OFFER_STATES, type OfferState } from "./constants"
-import type { ApiMode, FeedBuildDto, OfferCounts, StatusResponse } from "./contract"
+import type { ApiMode, CategoryStats, FeedBuildDto, OfferCounts, StatusResponse } from "./contract"
 import { feedGaps, type ResolvedCeneoOptions } from "./options"
 
 /**
@@ -22,6 +22,17 @@ export interface CeneoServiceLike {
   listAndCountCeneoOffers(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<[Row[], number]>
   createCeneoOffers(data: unknown | unknown[]): Promise<Row[]>
   updateCeneoOffers(data: unknown | unknown[]): Promise<Row[]>
+  deleteCeneoOffers(ids: string | string[]): Promise<void>
+
+  listCeneoCategories(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
+  listAndCountCeneoCategories(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<[Row[], number]>
+  createCeneoCategories(data: unknown | unknown[]): Promise<Row[]>
+  updateCeneoCategories(data: unknown | unknown[]): Promise<Row[]>
+
+  listCeneoCategoryMaps(filters?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Row[]>
+  createCeneoCategoryMaps(data: unknown | unknown[]): Promise<Row[]>
+  updateCeneoCategoryMaps(data: unknown | unknown[]): Promise<Row[]>
+  deleteCeneoCategoryMaps(ids: string | string[]): Promise<void>
 }
 
 export type Row = Record<string, unknown> & {
@@ -85,7 +96,7 @@ export const BUILD_FIELDS = ["id", "status", "hash", "bytes", "offers", "warning
  * the newest build of any status and the offer counters. Pure, so it is
  * tested without a database.
  */
-export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts): StatusResponse {
+export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newestAny: Row | null, counts: OfferCounts, categories: CategoryStats = { tree: 0, syncedAt: null, mapped: 0 }): StatusResponse {
   const last = lastBuilt ? toFeedBuild(lastBuilt) : null
   const newest = newestAny ? toFeedBuild(newestAny) : null
   return {
@@ -101,13 +112,26 @@ export function buildStatus(o: ResolvedCeneoOptions, lastBuilt: Row | null, newe
       backorderAvail: o.feed.backorderAvail,
       outOfStock: o.feed.outOfStock,
       intervalMinutes: o.feed.intervalMinutes,
+      includeUnmapped: o.feed.includeUnmapped,
+      brand: o.feed.brand,
       last,
       failed: newest && newest.status === "failed" ? newest : null,
     },
     reviews: { configured: Boolean(o.reviews.accountGuid), rejected: o.reviews.accountGuidRejected, workDays: o.reviews.workDays },
     api: { mode: apiMode(o), timeoutMs: o.timeoutMs },
     counts,
+    categories,
   }
+}
+
+/** The tree size, its last sync and the number of mappings. */
+export async function categoryStats(svc: CeneoServiceLike): Promise<CategoryStats> {
+  const [[[newest], tree], maps] = await Promise.all([
+    svc.listAndCountCeneoCategories({ active: true }, { take: 1, order: { synced_at: "DESC" }, select: ["id", "synced_at"] }),
+    svc.listCeneoCategoryMaps({}, { take: null, select: ["id"] }),
+  ])
+  const at = newest?.synced_at
+  return { tree, syncedAt: at instanceof Date ? at.toISOString() : typeof at === "string" ? at : null, mapped: maps.length }
 }
 
 /** The offer counters of the active rows (one per variant), one count per state. */

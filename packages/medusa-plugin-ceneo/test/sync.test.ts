@@ -15,7 +15,7 @@ function variant(id: string, sku: string | null): CatalogVariant {
   return {
     id, sku, title: null, ean: "5901234123457", barcode: null, midCode: null, manageInventory: false, allowBackorder: false,
     productId: "prod_1", productHandle: "h", productTitle: "Kubek", productStatus: "published", multiVariant: false,
-    description: null, images: ["https://c.pl/a.jpg"], categoryPath: "Dom", price: { amount: 10, taxInclusive: true }, available: undefined,
+    description: null, images: ["https://c.pl/a.jpg"], categoryPath: "Dom", categoryIds: [], ceneoCategory: { ceneoId: "1", path: "Dom", active: true }, brand: "B", price: { amount: 10, taxInclusive: true }, available: undefined,
   }
 }
 

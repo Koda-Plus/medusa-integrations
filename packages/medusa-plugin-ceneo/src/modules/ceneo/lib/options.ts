@@ -11,11 +11,13 @@
 
 import {
   ACCOUNT_GUID_PATTERN,
+  BRAND_SOURCES,
   FEED_TOKEN_PATTERN,
   OFFER_ID_SOURCES,
   URL_PLACEHOLDERS,
   isAvail,
   type Avail,
+  type BrandSource,
   type OfferIdSource,
   type OutOfStockMode,
 } from "./constants"
@@ -49,6 +51,20 @@ export interface CeneoFeedOptions {
   outOfStock?: OutOfStockMode | string
   /** Minutes between feed builds. Default 30, from 5 to 1440. */
   intervalMinutes?: number | string
+  /**
+   * Variants whose Medusa category has no Ceneo mapping: true (default) sends
+   * them with the Medusa category path (Ceneo maps it on its side, a
+   * warning here), false keeps them out until mapped.
+   */
+  includeUnmapped?: boolean | string
+  /**
+   * Where `Marka` comes from: `{ from: "metadata", key: "brand" }` (default:
+   * the product metadata key), `{ from: "type" }` (product type),
+   * `{ from: "collection" }` (collection title) or
+   * `{ from: "tag", key: "marka:" }` (the tag that starts with the key, the
+   * rest is the brand). `false` sends no brand and no warning.
+   */
+  brand?: { from?: BrandSource | string; key?: string } | false
 }
 
 export interface CeneoReviewsOptions {
@@ -87,6 +103,9 @@ export interface ResolvedFeedOptions {
   backorderAvail: Avail
   outOfStock: OutOfStockMode
   intervalMinutes: number
+  includeUnmapped: boolean
+  /** null: no brand at all. */
+  brand: { from: BrandSource; key: string | null } | null
 }
 
 export interface ResolvedCeneoOptions {
@@ -128,6 +147,16 @@ export function isProductUrlTemplate(value: string): boolean {
   return URL_PATTERN.test(value) && URL_PLACEHOLDERS.some((p) => value.includes(p))
 }
 
+function resolveBrand(value: CeneoFeedOptions["brand"]): ResolvedFeedOptions["brand"] {
+  if (value === false) return null
+  const v = value && typeof value === "object" ? value : {}
+  const from: BrandSource = typeof v.from === "string" && (BRAND_SOURCES as readonly string[]).includes(v.from) ? (v.from as BrandSource) : "metadata"
+  const key = str(v.key)
+  if (from === "metadata") return { from, key: key ?? "brand" }
+  if (from === "tag") return key ? { from, key } : null
+  return { from, key: null }
+}
+
 function isOfferIdSource(value: unknown): value is OfferIdSource {
   return typeof value === "string" && (OFFER_ID_SOURCES as readonly string[]).includes(value)
 }
@@ -159,6 +188,8 @@ export function resolveOptions(o: CeneoPluginOptions | undefined | null): Resolv
       backorderAvail: avail(feed.backorderAvail, 7),
       outOfStock: feed.outOfStock === "check" ? "check" : "skip",
       intervalMinutes: clampInt(feed.intervalMinutes, 30, 5, 1440),
+      includeUnmapped: feed.includeUnmapped === false || feed.includeUnmapped === "false" ? false : true,
+      brand: resolveBrand(feed.brand),
     },
     reviews: {
       accountGuid: guidOk ? guid.toLowerCase() : null,

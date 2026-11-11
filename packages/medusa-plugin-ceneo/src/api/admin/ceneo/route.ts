@@ -1,5 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { BUILD_FIELDS, buildStatus, ceneoSvc, countOffers } from "../../../modules/ceneo/lib/store"
+import { BUILD_FIELDS, buildStatus, categoryStats, ceneoSvc, countOffers } from "../../../modules/ceneo/lib/store"
 
 /**
  * GET /admin/ceneo
@@ -13,6 +13,6 @@ import { BUILD_FIELDS, buildStatus, ceneoSvc, countOffers } from "../../../modul
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const svc = ceneoSvc(req.scope)
   const config = { take: 1, order: { built_at: "DESC" }, select: BUILD_FIELDS }
-  const [[lastBuilt], [newest], counts] = await Promise.all([svc.listCeneoFeeds({ status: "built" }, config), svc.listCeneoFeeds({}, config), countOffers(svc)])
-  res.json(buildStatus(svc.getOptions(), lastBuilt ?? null, newest ?? null, counts))
+  const [[lastBuilt], [newest], counts, categories] = await Promise.all([svc.listCeneoFeeds({ status: "built" }, config), svc.listCeneoFeeds({}, config), countOffers(svc), categoryStats(svc)])
+  res.json(buildStatus(svc.getOptions(), lastBuilt ?? null, newest ?? null, counts, categories))
 }

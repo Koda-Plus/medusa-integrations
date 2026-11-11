@@ -18,6 +18,7 @@
 import { QueryContext } from "@medusajs/framework/utils"
 import type { CatalogVariant } from "../../modules/ceneo/lib/feed"
 import type { ResolvedCeneoOptions } from "../../modules/ceneo/lib/options"
+import { brandOf } from "../../modules/ceneo/lib/brand"
 import { availabilityByVariant, type InventoryLinkInput } from "../../modules/ceneo/lib/stock"
 import { chunks, type QueryLike } from "./runtime"
 
@@ -36,6 +37,8 @@ export interface FeedCatalog {
   regionId: string
   salesChannelId: string
   variants: CatalogVariant[]
+  /** Parent of every Medusa category (hidden ones too): the mapping inherits along it. */
+  categoryParents: Map<string, string | null>
 }
 
 interface ProductRecord {
@@ -47,6 +50,10 @@ interface ProductRecord {
   thumbnail?: string | null
   images?: Array<{ url?: string | null; rank?: number | null } | null> | null
   categories?: Array<{ id?: string | null } | null> | null
+  metadata?: Record<string, unknown> | null
+  type?: { value?: string | null } | null
+  collection?: { title?: string | null } | null
+  tags?: Array<{ value?: string | null } | null> | null
   variants?: Array<VariantRecord | null> | null
 }
 
@@ -130,7 +137,7 @@ async function productIdsInChannel(query: QueryLike, salesChannelId: string): Pr
  * tree. Internal or inactive categories (and their subtrees) never reach
  * Ceneo: their names are not meant for shoppers.
  */
-async function categoryPaths(query: QueryLike): Promise<Map<string, string>> {
+async function categoryTree(query: QueryLike): Promise<{ paths: Map<string, string>; parents: Map<string, string | null> }> {
   const nodes = new Map<string, { name: string; parent: string | null; hidden: boolean }>()
   for (let skip = 0; skip < CEILING; skip += LINK_PAGE) {
     const { data } = await query.graph({
@@ -159,8 +166,10 @@ async function categoryPaths(query: QueryLike): Promise<Map<string, string>> {
     }
     if (!hidden && parts.length > 0) paths.set(id, parts.join("/"))
   }
-  return paths
+  const parents = new Map<string, string | null>([...nodes].map(([id, n]) => [id, n.parent]))
+  return { paths, parents }
 }
+
 
 /** The most specific category of a product (the longest path, then the id). */
 function pickCategory(categoryIds: string[], paths: Map<string, string>): string | null {
@@ -189,7 +198,9 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
   const regionId = await resolveRegion(query, o)
   const salesChannelId = await resolveSalesChannel(query, o)
   const productIds = await productIdsInChannel(query, salesChannelId)
-  const paths = await categoryPaths(query)
+  const { paths, parents } = await categoryTree(query)
+  const brandSource = o.feed.brand
+  const brandFields = !brandSource ? [] : brandSource.from === "type" ? ["type.value"] : brandSource.from === "collection" ? ["collection.title"] : brandSource.from === "tag" ? ["tags.value"] : ["metadata"]
 
   const variants: CatalogVariant[] = []
   for (const part of chunks(productIds, PRODUCT_PAGE)) {
@@ -205,6 +216,7 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
         "images.url",
         "images.rank",
         "categories.id",
+        ...brandFields,
         "variants.id",
         "variants.sku",
         "variants.title",
@@ -227,6 +239,7 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
       const images = thumb ? [thumb, ...gallery] : gallery
       const categoryIds = (p.categories ?? []).map((c) => s(c?.id)).filter((id): id is string => id !== null)
       const categoryPath = pickCategory(categoryIds, paths)
+      const brand = brandOf(p, brandSource)
       for (const v of list) {
         variants.push({
           id: v.id,
@@ -245,6 +258,9 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
           description: typeof p.description === "string" ? p.description : null,
           images,
           categoryPath,
+          categoryIds,
+          ceneoCategory: null,
+          brand,
           price: null,
           available: undefined,
         })
@@ -286,5 +302,5 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
   const available = availabilityByVariant(links, locations)
   for (const v of variants) v.available = available.get(v.id)
 
-  return { regionId, salesChannelId, variants }
+  return { regionId, salesChannelId, variants, categoryParents: parents }
 }

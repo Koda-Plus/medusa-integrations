@@ -9,6 +9,8 @@ import { GuideView, usePromptSpec } from "../../lib/ceneo-guide-view"
 import { errorMessage, feedUrl, useBuildFeed, useCeneoStatus } from "../../lib/ceneo-api"
 import { CeneoIcon } from "../../lib/ceneo-icon"
 import { ConnectionsTab, FeedTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/ceneo-ui"
+import { OffersSection } from "../../lib/ceneo-offers"
+import { CategoriesSection } from "../../lib/ceneo-categories"
 import type { StatusResponse } from "../../../modules/ceneo/lib/contract"
 
 /* The host of the koda.integration/1 cards learns about this plugin. */
@@ -114,6 +116,8 @@ const CeneoPage = () => {
       ) : null}
 
       {nav.view === "panel" && s ? <FeedCard status={s} lang={lang} /> : null}
+      {nav.view === "panel" && s ? <OffersSection status={s} lang={lang} /> : null}
+      {nav.view === "panel" && s ? <CategoriesSection lang={lang} /> : null}
     </div>
   )
 }
