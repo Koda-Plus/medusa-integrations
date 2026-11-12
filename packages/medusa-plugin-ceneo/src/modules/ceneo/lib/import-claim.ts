@@ -168,3 +168,22 @@ export async function withRunLease<T>(sql: SqlRunner, writer: string, ms: number
     await releaseRunLease(sql, writer, token).catch(() => undefined)
   }
 }
+
+/**
+ * A person resumes the writes of an imported order that waits for them
+ * (`attention`, or out of attempts): the note and the error go, the
+ * attempts start again, the status writer takes it on its next run. The
+ * steps already sent stay sent.
+ */
+export async function resumeWrites(sql: SqlRunner, id: string, maxAttempts: number): Promise<boolean> {
+  const result = await sql.raw(
+    `update ${T}
+     set "ceneo_writes" = (coalesce("ceneo_writes", '{}'::jsonb) - 'attention' - 'error' - 'error_at') || '{"attempts":0}'::jsonb,
+         "writes_due" = true, "updated_at" = now()
+     where "id" = ? and "import_status" = 'imported' and "deleted_at" is null
+       and ("ceneo_writes"->>'attention' is not null or coalesce(("ceneo_writes"->>'attempts')::int, 0) >= ?)
+     returning "id"`,
+    [id, maxAttempts],
+  )
+  return rowsOf(result).length > 0
+}

@@ -1,6 +1,7 @@
 import type en from "./en"
 import { typeset } from "../lib/ceneo-typeset"
 import { communityPl } from "../lib/ceneo-kit-community"
+import { integrationPl } from "../../modules/ceneo/lib/integration-texts"
 
 /* Typed by en.ts below (every English key exists here). */
 const pl = {
@@ -294,6 +295,7 @@ const pl = {
     importLabel: "Import do Medusy",
     openOrder: "Otwórz zamówienie w Medusie",
     retry: "Ponów import",
+    resumeWrites: "Wznów zapisy do Ceneo",
     retried: "Wróciło do kolejki; weźmie je najbliższy przebieg",
     attention: "Wymaga człowieka",
     lastError: "Ostatni błąd Ceneo: {{error}}",
@@ -553,6 +555,7 @@ const pl = {
     },
   },
   community: communityPl,
+  integration: integrationPl,
 }
 
 const samePolishKeys: typeof en = pl
