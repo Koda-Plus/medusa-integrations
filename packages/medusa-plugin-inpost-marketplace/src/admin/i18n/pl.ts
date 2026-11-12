@@ -601,6 +601,7 @@ const pl = {
     text: "Odczytane na żywo z marketplace. Kontakt kupującego jest tu tylko pokazywany i nigdy nie jest zapisywany.",
     loading: "Odczytuję sprawę",
     failed: "Nie udało się odczytać sprawy",
+    buyerDescription: "Opis kupującego",
     lines: "Produkty",
     noLines: "Brak produktów",
     contact: "Kupujący",

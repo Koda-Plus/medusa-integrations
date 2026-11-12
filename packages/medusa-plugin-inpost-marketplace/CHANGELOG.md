@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 (Unreleased)
+
+Found with InPost's integration team on stage (12 November 2026, claim CL-7ZK9D4D-1):
+
+- A claim keeps its number (CL-...): the list gives it as `displayId` and it was not read.
+- The claims list has no products, value or description, so each new claim is read in full once (at most 20 per run): its products and the value claimed are stored, and the products are not wiped by the next list read.
+- The case drawer shows the buyer's description of the defect, read live from the claim and never stored.
+
 ## 0.1.0 (2026-11-11)
 
 - No "Add your store" button in the page header any more (kit 1.5.0).

@@ -536,6 +536,8 @@ export function parseRefund(input: unknown): RemoteRefund | null {
 
 export interface RemoteClaim {
   id: string
+  /** The number the buyer and InPost use, like CL-7ZK9D4D-1. */
+  displayId: string | null
   orderId: string | null
   /** APPROVED, REJECTED, RESOLUTION_IN_PROGRESS. */
   state: string | null
@@ -547,7 +549,12 @@ export interface RemoteClaim {
   createdAt: string | null
   expiresAt: string | null
   updatedAt: string | null
+  /** The products. Only the full claim (`ClaimResponse`) has them, the list does not. */
   lines: AfterSaleLine[]
+  /** The value claimed (full claim only). */
+  valueMinor: number | null
+  /** The buyer's description of the defect (full claim only): shown live, never stored. */
+  description: string | null
 }
 
 /** `ClaimSummaryResponse` or `ClaimResponse` (v1). */
@@ -557,9 +564,11 @@ export function parseClaim(input: unknown): RemoteClaim | null {
   if (!id) return null
   const spec = obj(c.specification)
   const pct = Number(spec.partialRefundPercent)
+  const value = c.claimValue ?? obj(c.financialClaim).claimValue
   return {
     id,
-    orderId: text(obj(c.relatedOrder).orderId, 255),
+    displayId: text(c.displayId, 80),
+    orderId: text(obj(c.relatedOrder).orderId, 255) ?? text(obj(c.order).merchantOrderId, 255),
     state: upper(c.state, 40),
     resolution: upper(c.resolution, 30),
     requested: upper(spec.requestedResolution, 30),
@@ -569,6 +578,8 @@ export function parseClaim(input: unknown): RemoteClaim | null {
     expiresAt: date(c.expiresAt),
     updatedAt: date(c.updatedAt),
     lines: afterSaleLines(c.orderLines),
+    valueMinor: value === undefined || value === null ? null : toMinor(value),
+    description: text(c.claimDescription, 1000) ?? text(spec.issueDescription, 1000),
   }
 }
 

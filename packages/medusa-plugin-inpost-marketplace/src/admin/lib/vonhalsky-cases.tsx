@@ -244,6 +244,16 @@ function CaseBody({ detail, lang }: { detail: CaseDetailResponse; lang: string }
           </Fact>
         ) : null}
       </div>
+      {detail.description ? (
+        <div className="flex flex-col gap-y-1.5">
+          <Text size="small" weight="plus">
+            {t("caseDrawer.buyerDescription")}
+          </Text>
+          <Text size="small" className="whitespace-pre-line rounded-md border border-ui-border-base px-3 py-2 text-ui-fg-subtle">
+            {detail.description}
+          </Text>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-y-1.5">
         <Text size="small" weight="plus">
           {t("caseDrawer.lines")}

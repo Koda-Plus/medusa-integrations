@@ -52,13 +52,13 @@ export function claimRow(c: RemoteClaim): Record<string, unknown> {
   return {
     kind: "claim",
     remote_id: c.id,
-    display_id: null,
+    display_id: c.displayId,
     marketplace_order_id: c.orderId,
     status: c.state,
     sub_status: c.resolution,
     source: c.requested,
     reason: c.type,
-    amount_minor: c.lines.reduce((s, l) => s + (l.priceMinor ?? 0) * l.quantity, 0) || null,
+    amount_minor: c.valueMinor ?? (c.lines.reduce((s, l) => s + (l.priceMinor ?? 0) * l.quantity, 0) || null),
     lines: lines(c.lines),
     opened_at: date(c.createdAt),
     expires_at: date(c.expiresAt),
@@ -90,15 +90,19 @@ async function upsertCases(scope: Scope, kind: CaseKind, incoming: Array<Record<
   const existing = new Map((((await svc.listVonHalskyCases({ kind, remote_id: ids }, { take: ids.length })) ?? []) as Row[]).map((r) => [String(r.remote_id), r]))
   let created = 0
   let changed = 0
-  for (const c of incoming) {
-    const row = existing.get(String(c.remote_id))
+  for (const listed of incoming) {
+    const row = existing.get(String(listed.remote_id))
+    /* A claim from the list has no products: keep what the full claim gave earlier. */
+    const keep = row && Array.isArray(row.lines) && row.lines.length > 0 && !(Array.isArray(listed.lines) && listed.lines.length > 0)
+    const c: Row = keep ?{ ...listed, lines: row.lines, amount_minor: listed.amount_minor ?? row.amount_minor ?? null } : listed
     if (!row) {
       await svc.createVonHalskyCases({ ...c, demo, events: withEvent([], { kind: "opened", message: `${kind} ${c.display_id ?? c.remote_id} on the marketplace`, ...(demo ? { demo: true } : {}) }) })
       created += 1
       continue
     }
     const moved = row.status !== c.status || row.sub_status !== c.sub_status
-    if (!moved && row.amount_minor === c.amount_minor) continue
+    const filled = (c.display_id ?? null) !== (row.display_id ?? null) || (Array.isArray(c.lines) ? c.lines.length : 0) !== (Array.isArray(row.lines) ? row.lines.length : 0)
+    if (!moved && !filled && row.amount_minor === c.amount_minor) continue
     const { decided_at: decided, ...rest } = c
     await svc.updateVonHalskyCases({
       id: row.id,
@@ -127,6 +131,29 @@ async function recount(scope: Scope, orderIds: readonly string[]): Promise<void>
       return { id: o.id, returns_count: mine.filter((c) => c.kind === "return").length, claims_count: mine.filter((c) => c.kind === "claim").length, refunded_minor: refunded }
     })
     if (updates.length) await svc.updateVonHalskyOrders(updates)
+  }
+}
+
+/**
+ * The claims list has no products, value or description: read the full
+ * claim of each one not stored with its products yet (new claims, at most
+ * 20 per run so a backlog spreads over a few runs), in place.
+ */
+async function completeClaims(scope: Scope, claims: RemoteClaim[]): Promise<void> {
+  const bare = claims.filter((c) => c.lines.length === 0 && c.orderId)
+  if (!bare.length) return
+  const rows = ((await vonHalskySvc(scope).listVonHalskyCases({ kind: "claim", remote_id: bare.map((c) => c.id) }, { take: bare.length })) ?? []) as Row[]
+  const stored = new Set(rows.filter((r) => Array.isArray(r.lines) && r.lines.length > 0).map((r) => String(r.remote_id)))
+  const client = requireClient(scope)
+  for (const c of bare.filter((x) => !stored.has(x.id)).slice(0, 20)) {
+    try {
+      const full = await client.getClaim(String(c.orderId), c.id)
+      if (!full) continue
+      const i = claims.indexOf(c)
+      claims[i] = { ...c, ...full, displayId: full.displayId ?? c.displayId, orderId: full.orderId ?? c.orderId, type: full.type ?? c.type }
+    } catch {
+      /* the list entry is still stored; the next run tries again */
+    }
   }
 }
 
@@ -162,6 +189,7 @@ export async function syncCases(scope: Scope): Promise<{ returns: number; claims
       claims.push(...r.claims)
       if (r.claims.length < PAGE_MAX) break
     }
+    await completeClaims(scope, claims)
     const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
     for (let p = 0; p < pages; p += 1) {
       const r = await client.listRefunds({ offset: p * PAGE_MAX, limit: PAGE_MAX, since })
@@ -297,14 +325,16 @@ export async function caseDetail(scope: Scope, id: string): Promise<CaseDetailRe
   const client = requireClient(scope)
   let contact: CaseDetailResponse["contact"] = null
   let rejectReasons: CaseDetailResponse["rejectReasons"] = []
+  let description: string | null = null
   try {
     const order = row.marketplace_order_id ? await client.getOrder(String(row.marketplace_order_id)) : null
     if (order) contact = { name: [order.buyer.firstName, order.buyer.lastName].filter(Boolean).join(" ") || null, email: order.invoice?.email ?? order.buyer.email, phone: order.buyer.phone ?? order.delivery.phone }
     if (row.kind === "return") rejectReasons = (await client.dictionaries()).returnRejectReasons
+    if (row.kind === "claim" && row.marketplace_order_id) description = (await client.getClaim(String(row.marketplace_order_id), String(row.remote_id)))?.description ?? null
   } catch {
     /* the case itself is still shown */
   }
-  return { case: await caseDto(scope, row), contact, rejectReasons }
+  return { case: await caseDto(scope, row), contact, rejectReasons, description }
 }
 
 /** DEMO MODE ONLY: a return or a claim on an imported simulated order. */

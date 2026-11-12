@@ -594,6 +594,7 @@ const en = {
     text: "Read live from the marketplace. The buyer's contact is shown here and never stored.",
     loading: "Reading the case",
     failed: "The case could not be read",
+    buyerDescription: "Buyer's description",
     lines: "Products",
     noLines: "No products listed",
     contact: "Buyer",
