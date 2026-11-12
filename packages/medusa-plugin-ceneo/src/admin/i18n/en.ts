@@ -1,4 +1,5 @@
 import { communityEn } from "../lib/ceneo-kit-community"
+import { integrationEn } from "../../modules/ceneo/lib/integration-texts"
 
 const en = {
   nav: "Ceneo",
@@ -289,6 +290,7 @@ const en = {
     importLabel: "Import into Medusa",
     openOrder: "Open the Medusa order",
     retry: "Retry the import",
+    resumeWrites: "Resume the writes to Ceneo",
     retried: "Back in the queue; the next run takes it",
     attention: "Needs a person",
     lastError: "Last Ceneo error: {{error}}",
@@ -548,6 +550,7 @@ const en = {
     },
   },
   community: communityEn,
+  integration: integrationEn,
 }
 
 export default en

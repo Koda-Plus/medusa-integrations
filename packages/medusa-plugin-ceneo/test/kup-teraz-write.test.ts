@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { CeneoBlockedError, CeneoClient, odataString, resetCeneoTokens, writerOfPath } from "../src/modules/ceneo/lib/ceneo-client.ts"
-import { claimImport, finishImport, mergeWrites, recordDraft, releaseStale, retryImport, takeRunLease, type SqlRunner } from "../src/modules/ceneo/lib/import-claim.ts"
+import { claimImport, finishImport, mergeWrites, recordDraft, releaseStale, resumeWrites, retryImport, takeRunLease, type SqlRunner } from "../src/modules/ceneo/lib/import-claim.ts"
 import { demoWriteLog, demoWriteTransport, toCancelReasons, toCarriers, writeRequest } from "../src/modules/ceneo/lib/kup-teraz-write.ts"
 import { demoOrders } from "../src/modules/ceneo/lib/demo-ceneo.ts"
 import { resolveOptions } from "../src/modules/ceneo/lib/options.ts"
@@ -321,4 +321,8 @@ test("writes are merged in SQL, only the changed keys; a run lease holds across 
   assert.match(sql.seen[1].sql, /"lease_until" is null or "lease_until" < \?/)
   await mergeWrites(sql, "cor_1", { cancel: { reason: "x", queued_at: "t" } }, { due: true })
   assert.match(sql.seen[2].sql, /"writes_due" = true/)
+  /* A person resumes the writes: the note and the error go, the attempts restart, the order is due again. */
+  await resumeWrites(sql, "cor_1", 5)
+  assert.match(sql.seen[3].sql, /- 'attention' - 'error' - 'error_at'\) \|\| '\{"attempts":0\}'::jsonb/)
+  assert.match(sql.seen[3].sql, /"writes_due" = true/)
 })

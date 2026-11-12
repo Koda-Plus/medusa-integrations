@@ -2,7 +2,7 @@
 
 Your Medusa catalog on Ceneo, the Polish price comparison site: the Ceneo XML offer feed with Ceneo categories and attributes, the problems that keep a product off the comparison, Zaufane Opinie (trusted reviews) after every order, Kup Teraz orders in Medusa and the CPC bids, from one page in the admin.
 
-Work in progress: this version has the module, the options, the admin page and the XML feed. Ceneo categories, Zaufane Opinie, Kup Teraz and the bids follow.
+Nothing is written to Ceneo until you allow it twice: in the plugin options (`writes`) and with the switch of that writer on the admin page. `demo: true` runs every part against a simulated Ceneo account.
 
 ## Install
 
@@ -43,6 +43,17 @@ Every option is optional and nothing stops Medusa from starting. The admin page 
 - `feed.brand`: where the brand (`Marka`) comes from: `{ from: "metadata", key: "brand" }` (default), `{ from: "type" }`, `{ from: "collection" }`, `{ from: "tag", key: "Marka:" }` (the tag value after the prefix) or `false` for none.
 - `reviews.accountGuid`, `reviews.workDays`: Zaufane Opinie, the account GUID from Panel Ceneo and the working days before the survey (0 to 21, default: Ceneo decides). See Zaufane Opinie below.
 - `apiKey`: the Ceneo API key from Panel Ceneo, for Kup Teraz and the bids.
+- `writes.orders`, `writes.status`, `writes.bids`, `writes.promo`: which writers may ever run. Default `false` (in demo `true`). A writer runs only when it is allowed here and a person armed it on the admin page. See Writers below.
+- `orders.importStates`: the Ceneo state ids of Kup Teraz orders ready to ship, the ones imported into Medusa (`[1, 2]` or `"1,2"`). Ceneo documents only some states; the admin lists your account's states. Without it the import stays off.
+- `orders.canceledStates`: the state ids that mean "cancelled at Ceneo".
+- `orders.paidPaymentTypes`: the Ceneo `PaymentTypeId` values paid up front: their Medusa orders get a captured payment. Any other stays unpaid (cash on delivery).
+- `orders.shippingOptionId`: the Medusa shipping option of imported orders (`so_...`), optional.
+- `orders.carrierId`: the Ceneo `ParcelCarriers` id sent with a parcel number. Without it only "sent" goes to Ceneo.
+- `orders.cancelReason`: the reason Ceneo gets when the store cancels an order.
+- `cpc.maxBid`: the highest bid ever sent, in PLN (`"0.80"`). Without it the bids writer cannot be armed (demo: 2.00).
+- `cpc.maxBidChangePercent`: how far one run may move a bid, in percent of the current one (default 50).
+- `cpc.perRun`: offers read per hourly run, 10 to 3000 (default 300).
+- `cpc.shopName`: your store's name as Ceneo lists it among the offers, for the position in the top 10.
 - `demo`: simulated Ceneo API, rows flagged demo.
 
 ## The feed
@@ -164,17 +175,47 @@ export function CeneoTransaction({ transaction }: { transaction: unknown }) {
 
 Settings on the admin page counts the answers, the consents and the orders sent over the last 30 days.
 
-## Kup Teraz orders (read only)
+## Kup Teraz orders
 
-With `apiKey` (Panel Ceneo gives one to stores already integrated with Ceneo) the job `ceneo-sync-orders` reads the Kup Teraz orders of the last 14 days every 5 minutes into `ceneo_order`: the Ceneo number, the state, the amounts and the items, each matched to a variant by the feed offer id (an id the variant used before counts too). Nothing is written to Ceneo and no Medusa order is created in this version.
+With `apiKey` (Panel Ceneo gives one to stores already integrated with Ceneo) the job `ceneo-sync-orders` reads the Kup Teraz orders of the last 14 days every 5 minutes into `ceneo_order`: the Ceneo number, the state, the amounts and the items, each matched to a variant by the feed offer id (an id the variant used before counts too).
 
-- Personal data stay at Ceneo: the shipping, invoice and pickup data and the buyer's remark are read when an order is opened in the admin, never stored by the plugin.
-- A run fetches the items of at most 50 orders (new ones, and ones whose state moved: a return shows there) and writes as it goes; the rest waits for the next run. Demo rows and live rows never mix: the admin shows the current mode.
+- Personal data stay at Ceneo until the order is imported: the shipping, invoice and pickup data and the buyer's remark are read when an order is opened in the admin, never stored by the plugin.
+- A run fetches the items of at most 50 orders (new ones, and ones whose state moved) and writes as it goes; the rest waits for the next run. Demo rows and live rows never mix: the admin shows the current mode.
 - An item whose id no variant has, or a state missing from the Ceneo dictionary, is shown as a problem on the order.
 - "Test the API key" asks Ceneo for a fresh token and the execution limits per method.
-- `demo: true` simulates orders from your own feed offers (same code paths, rows flagged demo); the states with ids above 100 exist only in the demo.
 
-The client is the only place that talks to the Ceneo API: a token per key cached for its 900 seconds and refreshed after a 401, retries for 5xx and timeouts, one wait on 429, the key and the token masked in every log line. Every Ceneo method is a GET, writes included, so the client lets only read methods out.
+### Into Medusa (the orders writer)
+
+When the orders writer is armed, the same job imports every matched order in one of `orders.importStates` as a Medusa order: the Ceneo prices (gross), the shipping and invoice address, the shipping option, a captured payment for the paid types. The order is placed like any other (reservations, `order.placed`), so invoicing and the ERP see it.
+
+- One order in Medusa per Ceneo order, also with two servers: the order is claimed in one SQL statement, and the id of the Medusa draft is saved at once. An import that stopped halfway without that id waits for a person ("Needs attention") instead of risking a second order.
+- A failed import is retried 4 times with growing pauses, then waits for a person. "Retry" on the order puts it back.
+- The order is created with `no_notification` and `metadata.marketplace_order_ref` (`ceneo:<id>`): if your store sends its own confirmation e-mail on `order.placed`, skip the orders that have that key.
+- An order Ceneo cancels (`orders.canceledStates`) is cancelled in Medusa while nothing was shipped; a shipped one waits for a person. This runs only while the orders writer is armed.
+
+### Back to Ceneo (the status writer)
+
+When the status writer is armed, Ceneo hears what happens to imported orders: the store's order number and the confirmation right after the import, the parcel number (`orders.carrierId`) or "sent" when a fulfillment is shipped in Medusa, the cancellation (`orders.cancelReason`) when the order is cancelled in Medusa. Only orders with a write waiting are read, the longest waiting first. A write Ceneo refuses 5 times waits for a person: "Resume the writes to Ceneo" on the order sends it again. Without `orders.carrierId` Ceneo gets "sent" without the parcel number, and the koda.integration/1 status lists it as a problem.
+
+### Writers
+
+Every write to Ceneo belongs to one writer: `orders` (imports into Medusa), `status` (writes back to Ceneo), `bids` and `promo` (CPC). A run hands the client only the writers that are armed, and the client refuses any write method whose writer it was not given, so a bug elsewhere cannot write either.
+
+- A writer runs when the option allows it (`writes.<name>`) and a person armed it on the admin page. Switching between demo and live disarms it.
+- 5 failures in a row that are not about one order (Ceneo down, a refused key) stop the writer: the admin shows why, a person arms it again.
+- One run per writer at a time, across every process: the run holds a lease in the database.
+
+The client is the only place that talks to the Ceneo API: a token per key cached for its 900 seconds and refreshed after a 401, one wait on 429, the key and the token masked in every log line. Reads are retried for 5xx and timeouts; a write is sent once. Every Ceneo method is a GET, writes included, so the client knows each read method and each write method with its writer: anything else never leaves, and a write leaves only for a writer the run was given.
+
+## CPC bids and promotion texts
+
+The job `ceneo-cpc` runs every hour (and "Run now" on the admin page):
+
+1. It reads the bids and the top 10 offers of the feed offers, the least recently read first, at most `cpc.perRun` (Ceneo takes 300 ids per call).
+2. When the bids writer is armed: one step per offer towards the target you set, computed again at sending time, never above `cpc.maxBid` and never more than `cpc.maxBidChangePercent` of the current bid; then the bid is read back. A bid above `maxBid` (set in Panel Ceneo) comes down to it at once.
+3. When the promotion writer is armed: the promotion texts that changed (at most 30 characters, 20 ids per call).
+
+Targets and texts are set per offer and per Ceneo category in the admin, or with `POST /admin/ceneo/cpc` (`targetBid` in grosze as an integer, or `targetBidPln` as a string). Ceneo sets a bid by its own product id: an offer Ceneo has not matched to a product yet gets no bid, and its row says so.
 
 ## Categories
 
@@ -187,6 +228,14 @@ On the admin page each Medusa category gets a Ceneo category. A mapping covers t
 The admin page lists every variant as Ceneo sees it after the last build: state (ok, warning, error, left out), price, `avail`, and each problem in one sentence, with filters and search. The product page shows the same per variant, next to the Ceneo category of the product.
 
 Ceneo never lets an offer id be used again. When a variant was deleted and a new one wants its SKU (`offer_id_taken`), the action "Take over the id" moves the old row to the new variant, only when the old variant is gone from the catalog.
+
+## For Koda hosts (koda.integration/1)
+
+The plugin answers the Koda integration contract, read only (no Ceneo call):
+
+- `GET /admin/ceneo/integration`: who, the mode, the writers armed, the problems.
+- `GET /admin/ceneo/integration/summary?entity=order&id=...` (or `entity=product`, `ids=` up to 50): one line per Medusa order that came from Kup Teraz (where it stands between Medusa and Ceneo) and per product (its variants in the feed).
+- `GET /admin/ceneo/integration/attention?scope=orders|products|integration`: imports that wait for a person, status writes that need a person, variants kept off Ceneo by an error, writers stopped after failures.
 
 ## License
 

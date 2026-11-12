@@ -101,6 +101,14 @@ export function ImportPanel({ o, lang, showOrderLink = true }: { o: CeneoOrderDt
           {t("kupTeraz.lastError", { error: w.error })}
         </Text>
       ) : null}
+      {o.importState === "imported" && w.attention ? (
+        <div>
+          <Button size="small" variant="secondary" onClick={onRetry} isLoading={retry.isPending}>
+            <ArrowPath />
+            {t("kupTeraz.resumeWrites")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

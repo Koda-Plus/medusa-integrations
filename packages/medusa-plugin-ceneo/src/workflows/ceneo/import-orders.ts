@@ -367,7 +367,6 @@ export async function queueShipment(scope: Scope, medusaOrderId: string): Promis
   const at = new Date().toISOString()
   if (tracking && o.orders.carrierId) w.shipment = { tracking, carrier_id: o.orders.carrierId, queued_at: at }
   else w.send_requested_at = at
-  if (tracking && !o.orders.carrierId) w.attention = "A parcel number exists, but orders.carrierId is not set: only \"sent\" goes to Ceneo."
   await mergeWrites(sqlOf(scope), r.id, w as Record<string, unknown>, { due: true })
   return true
 }
