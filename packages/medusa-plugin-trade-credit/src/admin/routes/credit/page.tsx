@@ -6,7 +6,7 @@ import { ArrowPath, ArrowUpRightMini, ArrowUpRightOnBox, Buildings, Calendar, Ca
 import { Button, Container, Drawer, IconButton, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import { KitFetchingBar, KitLoading, KitSkeletonRows, announce } from "../../lib/credit-kit"
 import { KitOrderProductsCell, useKitOrderProducts } from "../../lib/credit-order-products"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/credit-guide"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav } from "../../lib/credit-guide"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/credit-blocks"
 import { GuideView, usePromptSpec } from "../../lib/credit-guide-view"
 import { OptionsTab, SETTINGS_TABS, StoreTab, type SettingsTabId } from "../../lib/credit-settings"
@@ -139,7 +139,6 @@ const CreditPage = () => {
                   { icon: <LockClosedSolid />, text: t("points.block") },
                 ]
           }
-          social={<AddStoreButton labels={community.addStore} />}
           help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
           view={view}
           onView={(v) => nav.go(v)}

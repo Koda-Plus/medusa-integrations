@@ -6,33 +6,13 @@
  */
 
 import type { EmailLocale } from "./constants"
+import type { CopyOverrides } from "./copy-overrides"
 
 export type EmailsModeDto = "demo" | "dev" | "live" | "app"
 
 export interface LocalizedTextDto {
   en: string | null
   pl: string | null
-}
-
-export interface ReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  icon: string | null
-  description: LocalizedTextDto | null
-  metrics: Array<{ label: LocalizedTextDto; value: string }>
-  links: Array<{ label: LocalizedTextDto; url: string }>
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: LocalizedTextDto | null
-    author: string | null
-  } | null
 }
 
 export interface TemplateDto {
@@ -52,6 +32,12 @@ export interface TemplateDto {
   updatedAt: string | null
   /** Previews can use the store's latest order or cart. */
   latest: boolean
+  /** The words a person rewrote (pl / en: subject, preheader, eyebrow, title, intro, note); null when none. */
+  copy: CopyOverrides | null
+  copyUpdatedBy: string | null
+  copyUpdatedAt: string | null
+  /** The placeholders with a value in this template ("name", "order"...). */
+  placeholders: string[]
   stats: { sent: number; failed: number; skipped: number; lastAt: string | null }
 }
 
@@ -60,6 +46,9 @@ export interface BrandDto {
   logo: { text: string | null; accent: string | null; suffix: string | null; italic: boolean }
   accentColor: string | null
   headerColor: string | null
+  buttonColor: string | null
+  paperColor: string | null
+  headerTone: "dark" | "light"
   footer: LocalizedTextDto | null
   supportEmail: string | null
 }
@@ -118,7 +107,6 @@ export interface StatusResponse {
   abandonedCart: { afterHours: number; maxAgeHours: number; maxPerRun: number }
   limits: { testsPerUser: number; testWindowMinutes: number; testsPerHour: number; passwordResetsPerHour: number }
   retentionDays: number
-  references: ReferenceDto[]
   /** The send log could be read (the migrations ran). */
   logReady: boolean
   /**
@@ -244,6 +232,8 @@ export interface PreviewResponse {
   html: string
   text: string
   bytes: number
+  /** The template's own words before the edits, as a person would type them; null for finished HTML. */
+  defaults: { subject: string; preheader: string; eyebrow: string; title: string; intro: string } | null
 }
 
 export interface TestRequest {
@@ -265,6 +255,8 @@ export interface SettingsRequest {
   brand?: Record<string, unknown> | null
   /** Template switches. */
   templates?: Record<string, boolean>
+  /** Rewritten words per template; the object replaces what was saved, null goes back to the template's own words. */
+  copy?: Record<string, { pl?: Record<string, string>; en?: Record<string, string> } | null>
 }
 
 export interface RetryResponse {

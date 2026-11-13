@@ -2,7 +2,15 @@
 
 Ship with DPD Polska from Medusa: the DPD courier and DPD Pickup points, both also with cash on delivery, on the DPD Polska web services.
 
-**Work in progress.** This version creates DPD courier shipments within Poland and DPD Pickup shipments to points in Poland, with or without cash on delivery, gets their labels, and hands them over to the DPD courier (the protocol and the courier order, within Poland only). It also follows the statuses of the shipments in the DPD InfoServices and, with the `fulfillmentStatus` writer, marks the fulfillments shipped and delivered in Medusa. Returns, shipments abroad, the queue mode of the DPD InfoServices and the DPD tracking link in the Medusa label come in the next versions; until then the plan of a return or of a shipment abroad says so and nothing is sent to DPD. The full README comes with the first npm release.
+A fulfillment provider with five shipping options checks the chosen DPD Pickup point at checkout and records it on the fulfillment. The plugin turns that fulfillment into a DPD shipment from a plan a person reads first, stores the label, hands the parcels over to the DPD courier with a protocol, follows the statuses in the DPD InfoServices and, if you want, marks the fulfillments shipped and delivered in Medusa.
+
+**Writes are off by default.** Without them the plugin already works: fulfillments record the option and the point, plans show exactly what would be sent. Creating shipments, ordering the courier and writing statuses to Medusa happen only when you allow the writer in the options and arm it in the admin.
+
+**Scope of this version.** Courier and DPD Pickup shipments within Poland, with or without cash on delivery, labels, the handover to the courier (the protocol and the courier order) and statuses. Returns, shipments abroad, the queue mode of the DPD InfoServices and the DPD tracking link in the Medusa label come in the next versions; until then the plan of a return or of a shipment abroad says so and nothing is sent to DPD.
+
+![DPD page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-dpd/docs/admin-dpd.png)
+
+**Live demo:** Medusa admin [medusa.koda.plus/app/dpd](https://medusa.koda.plus/app/dpd?demo=en), signed in to a public demo account by the link itself, and the storefront [demo.koda.plus](https://demo.koda.plus) with DPD courier and DPD Pickup at checkout. The demo runs on the DPD sandbox: waybills and test labels come from DPD's demo host, and the statuses are simulated, because DPD has no test host for the InfoServices.
 
 ## What it does
 
@@ -305,22 +313,22 @@ MIT, see [LICENSE](https://github.com/Koda-Plus/medusa-integrations/blob/main/pa
 
 ## Changelog
 
-### 0.5.0 (unreleased)
+### 0.5.0 (2026-11-09, first npm release)
 
 Statuses from the DPD InfoServices in their own job, the stages of a shipment and of each waybill, new waybill numbers after a redirect or a return, the `fulfillmentStatus` writer that marks fulfillments shipped and delivered in Medusa, the events `dpd.shipment.created`, `status_changed` and `delivered`, and the simulated statuses of the sandbox and demo mode. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/CHANGELOG.md).
 
-### 0.4.0 (unreleased)
+### 0.4.0 (not published)
 
 The handover to the courier within Poland: a protocol for up to 100 labeled shipments of one sender, then optionally the courier order, never sent twice, with a new date, withdrawing a shipment, canceling the courier and canceling the handover; "do not send"; the handover marker that stops Medusa from canceling a fulfillment that has left. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/CHANGELOG.md).
 
-### 0.3.0 (unreleased)
+### 0.3.0 (not published)
 
 DPD Pickup shipments to points in Poland, with or without cash on delivery: the point checked at the checkout (letting it through when MyPudo cannot answer), in the plan and when a person changes it in the admin; the store routes for a point search and one point; the test catalog of the sandbox and the sample catalog of demo mode. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/CHANGELOG.md).
 
-### 0.2.0 (unreleased)
+### 0.2.0 (not published)
 
 DPD courier shipments in Poland, with or without cash on delivery: the plan with its hash, the boxes, the labels, the unclear answers and their lookup, `autoCreate` and the shipment pass. Full list in [CHANGELOG.md](https://github.com/Koda-Plus/medusa-integrations/blob/main/packages/medusa-plugin-dpd/CHANGELOG.md).
 
-### 0.1.0 (unreleased)
+### 0.1.0 (not published)
 
 The skeleton: the provider with five options, the data module, the options with sender checks, the writers, the integration contract and the admin page in demo mode.

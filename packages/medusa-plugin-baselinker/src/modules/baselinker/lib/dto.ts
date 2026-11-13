@@ -128,7 +128,7 @@ export function toCardDto(r: ProductRow): CardDto {
     stock: r.stock ?? null,
     price: r.price && typeof r.price === "object" && !Array.isArray(r.price) ? r.price : null,
     matchKey: r.match_key ?? null,
-    matchSource: r.match_source === "sku" || r.match_source === "ean" ? r.match_source : null,
+    matchSource: r.match_source === "sku" || r.match_source === "ean" || r.match_source === "manual" ? r.match_source : null,
     variantId: r.variant_id ?? null,
     productId: r.product_id ?? null,
     variantSku: r.variant_sku ?? null,

@@ -270,7 +270,16 @@ function storeRuleOf(c: SentenceCoupon, n: NameMaps) {
   const rule = c.id ? n.storeRules?.[c.id] : undefined
   const text = rule?.text?.trim().replace(/[.\s]+$/, "") ?? ""
   /* The store applies its own rule and Medusa keeps a marker: the rule, its own sentence, takes the discount's place. */
-  return { text, replaces: Boolean(rule?.replacesDiscount && text) }
+  const panelNote = rule?.panelNote?.trim().replace(/[.\s]+$/, "") ?? ""
+  return { text, replaces: Boolean(rule?.replacesDiscount && text), panelNote }
+}
+
+/** The store's words on a percent counted from a price list (panel only), when the coupon has one. */
+function basePriceNoteOf(c: SentenceCoupon, n: NameMaps, lang: string | undefined): string {
+  if (!c.terms?.basePriceList) return ""
+  const l = n.basePriceNote
+  const code = (lang ?? "").toLowerCase()
+  return ((l && (l[code] ?? l[code.slice(0, 2)] ?? l["*"] ?? l.en)) || "").trim().replace(/[.\s]+$/, "")
 }
 
 /**
@@ -300,7 +309,9 @@ export function couponSentence(c: SentenceCoupon, n: NameMaps, t: T, fmt: Senten
   if (rule.replaces) return `${cap(rule.text)}. ${cap(text)}.`
   /* A rule of the store that does not replace the discount: after the sentence, as its own. */
   const extra = rule.text ? ` ${t("sentence.storeRule", { text: rule.text })}.` : ""
-  return `${cap(text)}.${extra}`
+  /* How the price list meets her own prices and the store's panel note: for the panel only, the customer's e-mail never says them. */
+  const panel = opts.forCustomer ? [] : [basePriceNoteOf(c, n, fmt.lang), rule.panelNote].filter(Boolean)
+  return `${cap(text)}.${panel.map((x) => ` ${cap(x)}.`).join("")}${extra}`
 }
 
 /**
@@ -326,6 +337,7 @@ export function couponFacts(c: SentenceCoupon, n: NameMaps, t: T, fmt: SentenceF
   const st = stacking(c, n, t)
   add("combinesWith", st.with, c.terms?.combines?.with)
   add("combinesNever", st.never, c.terms?.combines?.never)
+  add("basePriceNote", [basePriceNoteOf(c, n, fmt.lang), rule.panelNote].filter(Boolean).join("; "))
   if (rule.text && !rule.replaces) add("storeRule", rule.text)
   add("rules", (s.rules ?? []).map((r) => describeRule(r, t)).join(", "))
   return out

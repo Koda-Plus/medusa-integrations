@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 (2026-11-11)
+
+### Added
+
+- Two brand colours, as options (`brand.buttonColor`, `brand.paperColor`) and in Settings, Branding: the main button (the accent when missing, its text dark or white by contrast) and the light page around the message, with its fields and lines made from it. A storefront with gold buttons on cream gets the same in its e-mails, while the accent keeps the highlights. A paper too dark for the text is lifted to a light tone.
+- `brand.headerTone: "light"` (and a switch in Settings, Branding): a light band at the top with dark text and an accent darkened until it reads, like a cream hero section, instead of the dark band. The dark band stays the default.
+
+### Removed
+
+- The `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
+
+## 0.4.0 (unreleased)
+
+### Added
+
+- The words of a template can be rewritten in the admin (Templates, Edit the words): the subject, the preheader, the label above the title, the title, the intro and an extra note, per language. Placeholders (`{name}`, `{order}`, `{total}`, `{items}`, `{tracking}`, `{store}`...) are filled from the message and drop out cleanly when empty; `*word*` takes the accent colour. Numbers, products, totals and buttons stay the template's. The preview renders the draft as it is typed (`GET /admin/emails/preview?copy=`), `POST /admin/emails/settings { copy: { key: {...} | null } }` saves it as `live:copy:<key>`, and every send (provider, retries, tests) uses it.
+
 ## 0.3.1 (unreleased)
 
 ### Fixed

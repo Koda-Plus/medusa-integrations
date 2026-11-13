@@ -6,10 +6,6 @@
  * The second half describes what the admin receives from `/admin/subiekt/*`.
  */
 
-import type { ReferenceDto } from "./references"
-
-export type { ReferenceDto }
-
 /* ------------------------------------------------------------------ */
 /* Bridge contract                                                     */
 /* ------------------------------------------------------------------ */
@@ -497,7 +493,6 @@ export interface SubiektStatusResponse {
   lastRuns: Partial<Record<RunKind, RunDto>>
   running: RunKind[]
   schedules: { tasks: string; events: string; stock: string; products: string; catchup: string | null }
-  references: ReferenceDto[]
 }
 
 export interface TasksResponse {

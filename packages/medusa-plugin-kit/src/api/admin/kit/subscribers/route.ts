@@ -20,7 +20,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       id: String(r.id),
       email: String(r.email ?? ""),
       first_name: r.first_name ?? null,
-      kit_subscriber_id: r.kit_subscriber_id ?? null,
+      kit_subscriber_id: r.kit_subscriber_id ? Number(r.kit_subscriber_id) : null,
       state: r.state ?? null,
       tags: Array.isArray(r.tags) ? (r.tags as any[]).map(Number) : null,
       source: r.source ?? null,

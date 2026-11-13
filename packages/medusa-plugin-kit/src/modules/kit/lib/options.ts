@@ -30,6 +30,13 @@ export interface KitPluginOptions {
   /** The public storefront address, the referrer of form submissions. */
   storefrontUrl?: string
   /**
+   * The storefront forms that subscribe to Kit, by the `source` each one
+   * sends, with a name for the panel: [{ source: "form", name: "Newsletter" },
+   * { source: "drop", name: "Drop alert" }]. The panel lists them even before
+   * the first sign-up. Default: the plain form (source `form`).
+   */
+  forms?: Array<{ source?: string; name?: string }>
+  /**
    * Demo mode: the plugin works on a sample Kit account kept in memory and
    * never calls Kit (sign-ups, tags and the panel all run). Only on explicit
    * request; it wins over an API key. Default false.
@@ -46,6 +53,8 @@ export interface ResolvedKitOptions {
   requestsPerMinute: number
   timeoutMs: number
   storefrontUrl: string | null
+  /** The storefront forms by source, with their names. */
+  forms: Array<{ source: string; name: string }>
   /** Demo mode: a sample account in memory, Kit is never called. */
   demo: boolean
   /** Option values that were ignored, for the admin. */
@@ -95,6 +104,7 @@ export function resolveOptions(input: KitPluginOptions | undefined | null): Reso
     requestsPerMinute: num(o.requestsPerMinute, 90, 1, 120),
     timeoutMs: num(o.timeoutMs, 20_000, 1_000, 60_000),
     storefrontUrl,
+    forms: formsOf(o.forms),
     demo: o.demo === true || o.demo === "true",
     problems,
   }
@@ -110,4 +120,16 @@ export function missingOptions(o: ResolvedKitOptions): string[] {
   const missing: string[] = []
   if (!o.demo && !o.apiKey) missing.push("apiKey")
   return missing
+}
+
+/** The declared storefront forms: unique sources, a name each; the plain form when none is declared. */
+export function formsOf(value: unknown): Array<{ source: string; name: string }> {
+  const out: Array<{ source: string; name: string }> = []
+  for (const f of Array.isArray(value) ? value : []) {
+    const source = typeof f?.source === "string" ? f.source.trim().toLowerCase().slice(0, 40) : ""
+    if (!source || out.some((x) => x.source === source)) continue
+    const name = typeof f?.name === "string" && f.name.trim() ? f.name.trim().slice(0, 80) : source
+    out.push({ source, name })
+  }
+  return out.length > 0 ? out : [{ source: "form", name: "Newsletter" }]
 }

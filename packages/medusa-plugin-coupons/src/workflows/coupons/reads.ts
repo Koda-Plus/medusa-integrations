@@ -283,7 +283,7 @@ export async function namesFor(scope: Scope, coupons: CouponDto[], all?: CouponD
   const options = couponsService(scope).getOptions()
   const nobody = options.nobodyCustomerId
   const members = { ids: [...(options.memberGroupIds ?? [])], label: options.memberGroupsLabel ?? null }
-  return { couponCodes, members, groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, tags, variants, pools, priceLists, nobody, storeRules }
+  return { couponCodes, members, groups: g, categories: cat, products: p, customers: cus, collections: col, shippingTypes: st, shippingOptions: so, salesChannels: sc, regions: reg, tags, variants, pools, priceLists, nobody, storeRules, basePriceNote: store?.basePriceNote ?? null }
 }
 
 /* ------------------------------------------------------------------ */

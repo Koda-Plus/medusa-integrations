@@ -77,18 +77,6 @@ const pl: typeof en = {
     filterHint: "Filtruje dokumenty niżej; drugi klik zdejmuje filtr",
     correctionsHint: "Przewija do korekt",
   },
-  references: {
-    title: "Działa w sklepach wdrożonych przez Koda Plus",
-    subtitle: "Prawdziwe sklepy z wdrożeniem Koda Plus, które pracują na tej integracji na co dzień.",
-    open: "Otwórz sklep",
-    badgeOne: "Działa w 1 sklepie",
-    badgeMany: "Działa w {{count}} sklepach",
-    badgeSoonOne: "Wkrótce w 1 sklepie",
-    badgeSoonMany: "Wkrótce w {{count}} sklepach",
-    soon: "Wkrótce",
-    soonMore: "+{{count}} wkrótce",
-    review: "Zobacz opinię",
-  },
   community: communityPl,
   writers: {
     title: "Zapis do Fakturowni",

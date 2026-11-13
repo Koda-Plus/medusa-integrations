@@ -24,8 +24,8 @@ test("menu: one route of its own, the DPD page under /dpd", () => {
   assert.match(page, /export default DpdPage\s*$/)
 })
 
-test("menu: the own sidebar entry (label, rank, the plain icon)", () => {
-  assert.match(page, /defineRouteConfig\(\{\s*label: "DPD",\s*rank: 4,\s*icon: DpdIcon,\s*\}\)/)
+test("menu: the own sidebar entry (label, rank last among the extensions, the DPD tile)", () => {
+  assert.match(page, /defineRouteConfig\(\{\s*label: "DPD",\s*rank: 100,\s*icon: DpdIcon,\s*\}\)/)
   assert.equal(en.title, "DPD")
 })
 
@@ -34,9 +34,12 @@ test("menu: not a tab of another page and not a host of tabs", () => {
   assert.ok(!/host:\s*"inpost"/.test(page))
 })
 
-test("menu: the icon is a generic shipping icon from @medusajs/icons, never a logo", () => {
-  assert.match(icon, /import \{ TruckFast \} from "@medusajs\/icons"/)
-  assert.ok(!/<path|<img|\.svg"|\.png"/.test(icon), "no drawn or loaded logo")
+test("menu: the icon is DPD's cube drawn inline on the red tile, nothing loaded", () => {
+  assert.match(icon, /export function DpdIcon\(/)
+  assert.match(icon, /<path/)
+  assert.match(icon, /#DC0032/i)
+  const code = icon.replace(/\/\*[\s\S]*?\*\//g, "").replaceAll("http://www.w3.org/2000/svg", "")
+  assert.ok(!/<img|\.svg"|\.png"|https?:\/\//.test(code), "no loaded image")
 })
 
 test("menu: deep links and views are read from the URL", () => {

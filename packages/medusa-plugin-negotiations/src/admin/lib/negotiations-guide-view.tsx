@@ -1,8 +1,7 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { StatusResponse } from "../../modules/negotiations/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./negotiations-guide"
-import { fmtRating, referencesFor } from "./negotiations-ui"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec, type StepState } from "./negotiations-guide"
 
 /*
  * The "Setup guide" view: what the rollout takes, how the parts talk, the
@@ -24,7 +23,6 @@ plugins: [
       // defaultCurrency: "pln", // default: the store's default currency
       // customerAccept: true, // customers may accept a counter offer
       // writers: { draftOrders: true }, // allow the draft order writer, then arm it in Settings
-      // references: [], // stores running the plugin, shown on this page
     },
   },
 ],`
@@ -115,8 +113,7 @@ export function usePromptSpec(): SetupPromptSpec {
 }
 
 export function GuideView({ status }: { status: StatusResponse }) {
-  const { t, i18n } = useTranslation("negotiations")
-  const lang = i18n.language || "en"
+  const { t } = useTranslation("negotiations")
   const live = status.mode === "live"
   const c = status.counts
   const o = status.options
@@ -240,15 +237,6 @@ export function GuideView({ status }: { status: StatusResponse }) {
       />
       <GuideChecklist title={t("guide.checklist.title")} subtitle={t("guide.checklist.subtitle")} items={checklist} />
       <GuideFaq title={t("guide.faq.title")} items={faq} />
-      <References
-        items={referencesFor(status.references, lang)}
-        title={t("references.title")}
-        subtitle={t("references.subtitle")}
-        openLabel={t("references.open")}
-        soonLabel={t("references.soon")}
-        reviewLabel={t("references.review")}
-        ratingLabel={(value) => fmtRating(value, lang)}
-      />
     </div>
   )
 }

@@ -8,6 +8,7 @@
  *   live:brand                    the branding overrides (fields left out
  *                                 come from the options)
  *   live:template:order.placed    { on: boolean }
+ *   live:copy:order.placed        the words a person rewrote, see copy-overrides.ts
  *
  * Demo rows older than a day are ignored, so a shared demo never keeps a
  * stranger's changes.
@@ -18,6 +19,7 @@
  */
 
 import { DEMO_RESET_MS, SETTINGS_CACHE_MS } from "./constants"
+import { hasCopy, sanitizeCopyOverrides, type CopyOverrides } from "./copy-overrides"
 import type { ResolvedBrand, ResolvedEmailsOptions } from "./options"
 import { normalizeHex } from "./theme"
 import { isEmail, maskAll } from "./security"
@@ -31,6 +33,9 @@ export interface BrandOverrides {
   logoItalic?: boolean | null
   accentColor?: string | null
   headerColor?: string | null
+  buttonColor?: string | null
+  paperColor?: string | null
+  headerTone?: "dark" | "light" | null
   footerEn?: string | null
   footerPl?: string | null
   supportEmail?: string | null
@@ -44,6 +49,9 @@ export const BRAND_FIELDS: ReadonlyArray<keyof BrandOverrides> = [
   "logoItalic",
   "accentColor",
   "headerColor",
+  "buttonColor",
+  "paperColor",
+  "headerTone",
   "footerEn",
   "footerPl",
   "supportEmail",
@@ -68,6 +76,11 @@ export function sanitizeBrandOverrides(input: unknown): { value: BrandOverrides;
       ;(value as Record<string, unknown>)[field] = null
       continue
     }
+    if (field === "headerTone") {
+      if (v === "dark" || v === "light") value.headerTone = v
+      else errors.push(field)
+      continue
+    }
     if (field === "logoItalic") {
       if (typeof v === "boolean") value.logoItalic = v
       else errors.push(field)
@@ -79,7 +92,7 @@ export function sanitizeBrandOverrides(input: unknown): { value: BrandOverrides;
     }
     // eslint-disable-next-line no-control-regex
     const s = v.replace(/[\u0000-\u001F\u007F]+/g, " ").trim()
-    if (field === "accentColor" || field === "headerColor") {
+    if (field === "accentColor" || field === "headerColor" || field === "buttonColor" || field === "paperColor") {
       const hex = normalizeHex(s)
       if (hex) value[field] = hex
       else errors.push(field)
@@ -114,6 +127,9 @@ export function applyBrandOverrides(brand: ResolvedBrand, o: BrandOverrides | nu
     },
     accentColor: pick(o.accentColor, brand.accentColor),
     headerColor: pick(o.headerColor, brand.headerColor),
+    buttonColor: pick(o.buttonColor, brand.buttonColor),
+    paperColor: pick(o.paperColor, brand.paperColor),
+    headerTone: pick(o.headerTone, brand.headerTone),
     footer: footerEn || footerPl ? { en: footerEn ?? brand.footer?.en ?? null, pl: footerPl ?? brand.footer?.pl ?? null } : brand.footer,
     supportEmail: pick(o.supportEmail, brand.supportEmail),
   }
@@ -135,6 +151,7 @@ export function settingKey(demo: boolean, name: string): string {
 
 export const brandKey = (demo: boolean) => settingKey(demo, "brand")
 export const templateKey = (demo: boolean, key: string) => settingKey(demo, `template:${key}`)
+export const copyKey = (demo: boolean, key: string) => settingKey(demo, `copy:${key}`)
 
 export interface SettingRow {
   key: string
@@ -154,9 +171,11 @@ export interface EffectiveSettings {
   brandUpdatedBy: string | null
   brandUpdatedAt: string | null
   templates: Record<string, TemplateSwitch>
+  /** The rewritten words per template, with who changed them and when. */
+  copy: Record<string, { value: CopyOverrides; updatedBy: string | null; updatedAt: string | null }>
 }
 
-export const EMPTY_SETTINGS: EffectiveSettings = { brand: null, brandUpdatedBy: null, brandUpdatedAt: null, templates: {} }
+export const EMPTY_SETTINGS: EffectiveSettings = { brand: null, brandUpdatedBy: null, brandUpdatedAt: null, templates: {}, copy: {} }
 
 function iso(v: Date | string | null | undefined): string | null {
   if (!v) return null
@@ -167,7 +186,7 @@ function iso(v: Date | string | null | undefined): string | null {
 /** The rows of one mode as settings. Demo rows older than a day are ignored. */
 export function readSettings(rows: readonly SettingRow[], demo: boolean, now: Date = new Date()): EffectiveSettings {
   const prefix = `${demo ? "demo" : "live"}:`
-  const out: EffectiveSettings = { brand: null, brandUpdatedBy: null, brandUpdatedAt: null, templates: {} }
+  const out: EffectiveSettings = { brand: null, brandUpdatedBy: null, brandUpdatedAt: null, templates: {}, copy: {} }
   for (const row of rows) {
     if (!row || typeof row.key !== "string" || !row.key.startsWith(prefix)) continue
     const at = iso(row.updated_at)
@@ -180,6 +199,9 @@ export function readSettings(rows: readonly SettingRow[], demo: boolean, now: Da
       out.brandUpdatedAt = at
     } else if (name.startsWith("template:")) {
       out.templates[name.slice("template:".length)] = { on: value.on === true, updatedBy: row.updated_by ?? null, updatedAt: at }
+    } else if (name.startsWith("copy:")) {
+      const copy = sanitizeCopyOverrides(value).value
+      if (hasCopy(copy)) out.copy[name.slice("copy:".length)] = { value: copy, updatedBy: row.updated_by ?? null, updatedAt: at }
     }
   }
   return out

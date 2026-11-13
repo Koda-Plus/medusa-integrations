@@ -262,6 +262,8 @@ export interface CaseDetailResponse {
   contact: { name: string | null; email: string | null; phone: string | null } | null
   /** Reasons a return may be rejected with. */
   rejectReasons: Array<{ id: string; code: string; description: string | null }>
+  /** A claim: the buyer's description of the defect, read live. */
+  description: string | null
 }
 
 export interface CategoryDto {

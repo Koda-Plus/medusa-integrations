@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-inpost-marketplace",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "InPost Von Halsky by Koda Plus: the InPost marketplace (InPost Von Halsky, also called InPost Buy) for Medusa on InPost seller API. Variants become marketplace offers with categories, parameters, photos and GPSR data, price and stock follow Medusa, marketplace orders are imported as Medusa orders exactly once, returns, claims and refunds are handled in the admin and a statistics tab compares the channel with your other sales channels. Demo mode runs a simulated marketplace without calling anything outside.",
   "author": {
     "name": "Koda Plus",

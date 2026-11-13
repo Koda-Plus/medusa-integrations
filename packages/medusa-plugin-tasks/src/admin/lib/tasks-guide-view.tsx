@@ -1,13 +1,12 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { StatusResponse } from "../../modules/tasks/lib/contract"
-import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, References, type GuideStep, type SetupPromptSpec, type StepState } from "./tasks-guide"
-import { fmtRating, kitReferences } from "./tasks-ui"
+import { GuideChecklist, GuideDiagram, GuideFaq, GuideIntro, GuideSteps, type GuideStep, type SetupPromptSpec, type StepState } from "./tasks-guide"
 
 /*
  * The "Setup guide" view: what the setup takes, how the parts talk, the
- * steps with their live state, a checklist, troubleshooting and the stores
- * running the plugin. Every sentence comes from the i18n files; the code
+ * steps with their live state, a checklist and troubleshooting. Every
+ * sentence comes from the i18n files; the code
  * blocks are English, like the code they go into.
  */
 
@@ -24,7 +23,6 @@ plugins: [
       // sandboxGuard: true, // the demo account: no invites, users or API keys, no writes outside Tasks
       // sandboxResetHours: 24, // sample tasks come back after this long (0: only on reset)
       // agentKeyPrefix: "tasks:", // secret API keys titled "tasks: ..." reach only Tasks (the default)
-      // references: [], // stores running the plugin, shown on this page
     },
   },
 ],`
@@ -112,8 +110,7 @@ export function usePromptSpec(): SetupPromptSpec {
 }
 
 export function GuideView({ status }: { status: StatusResponse }) {
-  const { t, i18n } = useTranslation("tasks")
-  const lang = i18n.language || "en"
+  const { t } = useTranslation("tasks")
   const c = status.counts
   const o = status.options
   const state = (done: boolean, otherwise: StepState = "optional"): StepState => (done ? "done" : otherwise)
@@ -232,15 +229,6 @@ export function GuideView({ status }: { status: StatusResponse }) {
       />
       <GuideChecklist title={t("guide.checklist.title")} subtitle={t("guide.checklist.subtitle")} items={checklist} />
       <GuideFaq title={t("guide.faq.title")} items={faq} />
-      <References
-        items={kitReferences(status.references, lang)}
-        title={t("references.title")}
-        subtitle={t("references.subtitle")}
-        openLabel={t("references.open")}
-        soonLabel={t("references.soon")}
-        reviewLabel={t("references.review")}
-        ratingLabel={(value) => fmtRating(value, lang)}
-      />
     </div>
   )
 }

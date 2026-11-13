@@ -1,6 +1,6 @@
 /**
  * Options: defaults, the three modes, links with placeholders, template
- * switches and definitions, references, and the rule that nothing here ever
+ * switches and definitions, and the rule that nothing here ever
  * throws.
  */
 import { test } from "node:test"
@@ -15,7 +15,6 @@ import {
   resolveOptions,
   SYSTEM_FONTS,
 } from "../src/modules/emails/lib/options.ts"
-import { resolveReferences } from "../src/modules/emails/lib/references.ts"
 import { LIVE } from "./helpers.ts"
 
 test("defaults: dev mode without a key, English, UTC, safe limits, every switch untouched", () => {
@@ -38,7 +37,7 @@ test("defaults: dev mode without a key, English, UTC, safe limits, every switch 
   assert.equal(o.negotiationAmounts, "major")
   assert.equal(o.logRetentionDays, 365)
   assert.equal(o.brand.bodyFont, SYSTEM_FONTS)
-  assert.deepEqual(o.references, [])
+  assert.equal("references" in o, false)
   assert.deepEqual(o.problems, [])
   assert.deepEqual(missingOptions(o), ["apiKey", "from"])
 })
@@ -117,30 +116,6 @@ test("numbers are clamped: abandoned cart window, retries, rate", () => {
   assert.equal(o.logRetentionDays, 0)
 })
 
-test("references: none by default, a store that starts soon needs only its name, a live one an https URL", () => {
-  const refs = resolveReferences([
-    { name: "Soon, no address", soon: true, description: { en: "Opens in spring", pl: "Startuje wiosną" } },
-    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
-    { name: "Live", url: "https://live.example.com", since: "2026-04" },
-    { name: "Live, no address" },
-    { name: "Live, insecure address", url: "http://insecure.example.com" },
-    { name: "Not a boolean", soon: "yes" },
-    { soon: true },
-  ])
-  assert.deepEqual(
-    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
-    [
-      { name: "Soon, no address", soon: true, url: null },
-      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
-      { name: "Live", soon: false, url: "https://live.example.com/" },
-    ],
-  )
-  assert.deepEqual(refs[0].description, { en: "Opens in spring", pl: "Startuje wiosną" })
-  for (const r of refs) assert.equal("since" in r, false, "the since date of an older config is ignored")
-  assert.equal(resolveReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
-  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
-})
-
 test("recommended options and the fingerprint of the provider's options", () => {
   assert.deepEqual(recommendedOptions(resolveOptions({})), ["brand.name", "storefrontUrl", "replyTo", "timeZone"])
   assert.deepEqual(recommendedOptions(resolveOptions(LIVE)), [])
@@ -149,4 +124,10 @@ test("recommended options and the fingerprint of the provider's options", () => 
   assert.deepEqual(fingerprintDifferences(a, b), ["apiKey", "brand"])
   assert.ok(!JSON.stringify(a).includes(LIVE.apiKey as string), "the key is never in the fingerprint")
   assert.deepEqual(fingerprintDifferences(a, optionsFingerprint(resolveOptions({ ...LIVE, channels: ["email"] }))), [])
+})
+
+test("a references key left over from an older config is ignored", () => {
+  const o = resolveOptions({ references: [{ name: "Store", url: "https://store.example.com" }] } as never)
+  assert.equal("references" in o, false)
+  assert.deepEqual(o.problems, [])
 })

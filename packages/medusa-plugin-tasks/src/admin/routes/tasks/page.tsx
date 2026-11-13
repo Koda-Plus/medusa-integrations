@@ -33,7 +33,7 @@ import { BoardColumns, RoadmapView, TaskFilters, applyFilters, filtered, type Bo
 import { filtersFromParams, filtersToParams } from "../../lib/tasks-rules"
 import { TaskDrawer } from "../../lib/tasks-drawer"
 import { CreateTaskModal, useFailToast, type PickedRecord } from "../../lib/tasks-form"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/tasks-guide"
+import { HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/tasks-guide"
 import { EmptyTableRow, FilterButton, SearchInput, Section, StatTile, StatTiles, ToneBadge } from "../../lib/tasks-blocks"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "../../lib/tasks-kit"
 import { GuideView, usePromptSpec } from "../../lib/tasks-guide-view"
@@ -45,9 +45,7 @@ import {
   actorOf,
   fmtDateTime,
   fmtNumber,
-  fmtRating,
   fmtRelative,
-  kitReferences,
   taskTitle,
   useLabels,
   usePeopleIndex,
@@ -297,7 +295,6 @@ function Header({ status, loading, lang, nav, onNew }: { status: StatusResponse 
   const { t } = useTranslation("tasks")
   const client = useQueryClient()
   const reset = useResetAction()
-  const references = status ? kitReferences(status.references, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
@@ -330,31 +327,6 @@ function Header({ status, loading, lang, nav, onNew }: { status: StatusResponse 
         { icon: <Sparkles />, text: t("points.agents") },
         status?.sandbox && { icon: <Beaker />, text: t("points.sandbox"), tone: "blue" },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

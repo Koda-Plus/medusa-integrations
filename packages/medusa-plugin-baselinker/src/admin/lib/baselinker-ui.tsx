@@ -8,18 +8,15 @@ import type {
   CardConflict,
   ImportStatus,
   InvoiceRowStatus,
-  LocalizedDto,
   OrderRowStatus,
   PlanAction,
   PlanStatus,
-  ReferenceDto,
   RunDto,
   RunStatus,
   StatusResponse,
   StockChangeStatus,
 } from "../../modules/baselinker/lib/contract"
 import { ToneBadge, type Tone } from "./baselinker-blocks"
-import type { Reference } from "./baselinker-guide"
 import { kitFetch } from "./baselinker-kit"
 
 export function fmtDateTime(value: string | null | undefined, lang: string): string {
@@ -219,36 +216,6 @@ export function fmtMoney(value: number | null | undefined, currency: string | nu
   } catch {
     return `${value.toFixed(2)} ${cur}`.trim()
   }
-}
-
-/** A `{ en, pl }` text in the admin language, falling back to the other one. */
-export function localize(text: LocalizedDto | null | undefined, lang: string): string {
-  if (!text) return ""
-  const pl = lang.toLowerCase().startsWith("pl")
-  return (pl ? text.pl ?? text.en : text.en ?? text.pl) ?? ""
-}
-
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
-
-/** References of the option in the admin language, shaped for the kit (the header badge and the cards at the end of the guide). */
-export function kitReferences(refs: ReferenceDto[], lang: string): Reference[] {
-  return refs.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: localize(r.description, lang) || undefined,
-    metrics: r.metrics.map((m) => ({ label: localize(m.label, lang), value: m.value })),
-    links: r.links.map((l) => ({ label: localize(l.label, lang), url: l.url })),
-    review: r.review ? { ...r.review, quote: localize(r.review.quote, lang) || undefined } : null,
-  }))
 }
 
 export function ConflictBadge({ conflict }: { conflict: CardConflict }) {

@@ -80,6 +80,8 @@ function adminDir(value, name) {
 const widgetsDir = adminDir(appSettings.widgetsDir ?? "admin/widgets", "widgetsDir")
 const widgetsDirFor = Object.fromEntries(Object.entries(appSettings.widgetsDirFor ?? {}).map(([ns, dir]) => [ns, adminDir(dir, `widgetsDirFor.${ns}`)]))
 const hostWanted = appSettings.host === true
+/* Admin pages the app leaves out for now, by namespace (e.g. ["inpostpay"]): the route is not copied and an old copy is removed, so the page, its sidebar entry and its tab on a host page are gone while the module keeps working. */
+const hiddenPages = new Set(Array.isArray(appSettings.hiddenPages) ? appSettings.hiddenPages : [])
 
 const sha = (spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root, encoding: "utf8" }).stdout ?? "").trim() || "unknown"
 const KIT_VERSION = fs.readFileSync(path.join(root, "kit/VERSION"), "utf8").trim()
@@ -118,7 +120,7 @@ function isVendoredBy(file, p) {
 function planFor(p) {
   const src = path.join(p.path, "src")
   const pairs = []
-  const dirs = [`modules/${p.moduleDir}`, `providers/${p.ns}`, `workflows/${p.ns}`, `api/admin/${p.ns}`, `api/store/${p.ns}`, `api/hooks/${p.ns}`, `api/${p.ns}`, `admin/routes/${p.ns}`]
+  const dirs = [`modules/${p.moduleDir}`, `providers/${p.ns}`, `workflows/${p.ns}`, `api/admin/${p.ns}`, `api/store/${p.ns}`, `api/hooks/${p.ns}`, `api/${p.ns}`, ...(hiddenPages.has(p.ns) ? [] : [`admin/routes/${p.ns}`])]
   for (const d of dirs) {
     for (const file of walk(path.join(src, d))) {
       const rel = path.relative(src, file).split(path.sep).join("/")

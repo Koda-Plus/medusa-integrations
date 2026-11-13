@@ -171,34 +171,6 @@ export interface WriterDto {
 
 export type WritersDto = Record<WriterKey, WriterDto>
 
-export interface LocalizedTextDto {
-  en: string | null
-  pl: string | null
-}
-
-export interface ReferenceDto {
-  name: string
-  /** https. Null only for a store that starts soon and has no address yet. */
-  url: string | null
-  /** The store starts on Medusa soon: a "Soon" badge, no link. */
-  soon: boolean
-  /** The store's icon: a data URI or an https URL. */
-  icon: string | null
-  description: LocalizedTextDto | null
-  metrics: Array<{ label: LocalizedTextDto; value: string }>
-  links: Array<{ label: LocalizedTextDto; url: string }>
-  /** The store's rating of the work and where it was given, e.g. Clutch. */
-  review: {
-    rating: number
-    scale: number
-    source: string
-    url: string | null
-    icon: string | null
-    quote: LocalizedTextDto | null
-    author: string | null
-  } | null
-}
-
 export interface StatusResponse {
   mode: FakturowniaMode
   /** Why demo mode is on: the `demo` option (since 0.3.0 the only way). `no_token` is kept for older servers. */
@@ -267,7 +239,6 @@ export interface StatusResponse {
     emails: number
   }
   writers: WritersDto
-  references: ReferenceDto[]
   lastRuns: Partial<Record<RunKind, RunDto>>
   lastCheck: CheckResult | null
   running: string[]

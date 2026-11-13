@@ -5,7 +5,7 @@ import { Button, FocusModal, Heading, InlineTip, Input, Label, Text, clx, toast 
 import type { CouponDto, NameMaps, WizardInput, WizardKind } from "../../modules/coupons/lib/contract"
 import { checkWizard, cleanCode, endOfMonth, suggestCode, wizardWarnings } from "../../modules/coupons/lib/wizard"
 import { CouponsRequestError, errorMessage, useCreateCoupon, useLookups, usePoolProducts } from "./coupons-api"
-import { BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, poolsWord } from "./coupons-fields"
+import { BasePriceNote, BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, poolsWord } from "./coupons-fields"
 import { couponSentence, wizardCoupon } from "./coupons-sentence"
 import { couponCodesOf } from "../../modules/coupons/lib/describe"
 import { useFormat } from "./coupons-ui"
@@ -101,6 +101,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
       variants: variantNames(poolProducts.byPool),
       couponCodes: couponCodesOf(existing),
       members: { ids: memberGroupIds, label: lookups.data?.memberGroupsLabel ?? null },
+      basePriceNote: store?.basePriceNote ?? null,
     }),
     [lookups.data, customerNames, store, poolProducts.byPool, existing, memberGroupIds],
   )
@@ -344,6 +345,7 @@ export function CreateCouponModal({ open, onOpenChange, existing, memberGroupIds
                               {t("fields.basePriceList")}
                             </Label>
                             <PriceListSelect value={form.terms?.basePriceList} onChange={(v) => setTerm("basePriceList", v)} lists={store?.priceLists ?? []} none={t("fields.basePriceNone")} />
+                            <BasePriceNote store={store} lang={fmt.lang} on={Boolean(form.terms?.basePriceList)} />
                           </div>
                           <div className="flex flex-col gap-y-1">
                             <Label size="xsmall" weight="plus">

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.3 (unreleased)
+
+### Fixed
+
+- The sample account of demo mode is named in the admin's language ("Demo account (sample data)", "Konto demo (przykładowe dane)"); the English admin showed the Polish name.
+
+## 0.2.2 (2026-11-11)
+
+### Fixed
+
+- Sign-ups from the storefront reached Kit but never showed in the admin: Kit subscriber ids are past the 32-bit integer range, so every row of `kit_subscriber_log` failed to insert and the best-effort log swallowed the error. The id is stored as text now (migration `Migration20261110120000_kit`), the API still answers with a number, and a log row that cannot be written is logged as a warning.
+
+## 0.2.1 (2026-11-09)
+
+- The `forms` option names the storefront forms by the source each one sends (`[{ source: "form", name: "Newsletter" }, { source: "drop", name: "Drop alert" }]`); the panel lists them from the start, before the first sign-up, without a note about the Kit form.
+- The panel lists the storefront forms connected to Kit: one row per sign-up source, with the tags a sign-up from it gets, where it lands (the double opt-in form or the list directly), the sign-ups and the last one. `GET /admin/kit` returns them as `sources`.
+
 ## 0.2.0 (2026-10-18)
 
 The first release on npm: the newsletter of a Medusa v2 store on the Kit list (kit.com, formerly ConvertKit). Version 0.1.0 lived only in the repository and was never published. Run `npx medusa db:migrate` after installing: one migration (`Migration20261011100000`) adds the subscription log and the settings tables.

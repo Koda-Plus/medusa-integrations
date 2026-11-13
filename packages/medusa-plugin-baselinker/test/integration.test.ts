@@ -92,7 +92,7 @@ test("an imported order: the channel (BaseLinker and the marketplace, priority 6
   const channel = imported.facts.find((f) => f.slot === "channel")
   assert.equal(channel?.code, "baselinker")
   assert.equal(channel?.priority, 60)
-  assert.equal(channel?.value.fallback, "BaseLinker: Allegro")
+  assert.equal(channel?.value.fallback, "Base: Allegro")
   assert.match(String(channel?.sub?.fallback), /a1b2c3d4/)
   const payment = imported.facts.find((f) => f.slot === "payment")
   assert.equal(payment?.code, "cod")

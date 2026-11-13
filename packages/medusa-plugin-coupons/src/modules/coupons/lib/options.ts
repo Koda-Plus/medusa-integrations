@@ -181,6 +181,14 @@ export interface StoreTermsAdapter {
   features: StoreFeature[]
   /** What the store calls its pools, by language: { pl: "Grupy rabatowe", en: "Discount groups" }. */
   poolsLabel?: Record<string, string>
+  /**
+   * The store's words, by language, on how a percent counted from a price
+   * list meets the customer's own prices (e.g. "never adds up with the
+   * members' price list: she pays the lower of the two"). Shown only in the
+   * panel: under the price list field, in the coupon's sentence and its
+   * details, never in the e-mail with the code. Default none.
+   */
+  basePriceNote?: Record<string, string>
   lookups: (scope: unknown) => Promise<{ pools?: StorePool[]; priceLists?: Array<{ id: string; name: string }> }>
   read: (scope: unknown, promotionIds: string[]) => Promise<Record<string, StoreTerms>>
   /** Saves the terms of one promotion (null: the store forgets them). `kind` is the coupon's kind after the save. */
@@ -206,6 +214,8 @@ export interface StoreTermsAdapter {
 export interface StoreRule {
   text: string
   replacesDiscount?: boolean
+  /** Words only for the panel (the sentence and the details), never in the e-mail with the code: e.g. what the coupon gives the members, who have their own prices. */
+  panelNote?: string
 }
 
 export interface ResolvedCouponsOptions {

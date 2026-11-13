@@ -15,7 +15,6 @@ import type {
   LocalizedTextDto,
   MessageDto,
   MoneyDto,
-  ReferenceDto,
   RunDto,
   RunKind,
   RunStatus,
@@ -26,7 +25,6 @@ import type {
 } from "./contract"
 import { legacySystemNote } from "./legacy"
 import { amountFromMedusa, formatAmount, formatOrNull, multiply } from "./money"
-import type { NegotiationsReference } from "./references"
 import type { DraftOrderRow, MessageRow, RunRow } from "./rows"
 import { isActive } from "./status"
 import { snippet } from "./text"
@@ -273,7 +271,7 @@ export function toStoreThreadDto(t: Thread, o: StoreDtoOptions, messages?: Messa
 }
 
 /* ------------------------------------------------------------------ */
-/* Runs and references                                                 */
+/* Runs                                                                */
 /* ------------------------------------------------------------------ */
 
 export function toRunDto(row: RunRow): RunDto {
@@ -288,18 +286,5 @@ export function toRunDto(row: RunRow): RunDto {
     message: row.message ?? null,
     startedAt: iso(row.started_at) ?? new Date(0).toISOString(),
     durationMs: Number(row.duration_ms) || 0,
-  }
-}
-
-export function toReferenceDto(r: NegotiationsReference): ReferenceDto {
-  return {
-    name: r.name,
-    url: r.url,
-    soon: r.soon,
-    icon: r.icon,
-    description: r.description,
-    metrics: r.metrics,
-    links: r.links,
-    review: r.review,
   }
 }
