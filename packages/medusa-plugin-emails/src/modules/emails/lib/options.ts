@@ -38,7 +38,7 @@ import {
 import { cssFontFamily, fontFaceName, safeHttpsUrl, safeUrl } from "./html"
 import { sha256 } from "./keys"
 import { validTimeZone } from "./locale"
-import { resolveReferences, resolveText, type ReferenceOption, type ResolvedReference, type ResolvedText } from "./references"
+import { resolveText, type ResolvedText } from "./localized"
 import { addressList, isEmail, parseSender, type Sender } from "./security"
 import { normalizeHex } from "./theme"
 import type { EmailTemplateDefinition, LocalizedText } from "./types"
@@ -52,6 +52,12 @@ export interface EmailsBrandOptions {
   accentColor?: string
   /** The dark band at the top. Default #212721. A colour too light for white text is darkened. */
   headerColor?: string
+  /** "light": a light band with dark text, like a cream hero section. Default "dark". */
+  headerTone?: "dark" | "light"
+  /** The main button. Default: the accent. Its text is dark or white, whichever reads better. */
+  buttonColor?: string
+  /** The light page around the message (a cream #F6F4EC); its fields and lines follow. Default: a grey of the band's hue. */
+  paperColor?: string
   /** One line in the footer: the company and address, or a sentence about the store. */
   footer?: LocalizedText
   /** Shown in the "Questions?" box as a mailto link. */
@@ -126,8 +132,6 @@ export interface EmailsPluginOptions {
   maxRetries?: number
   /** Days the send log keeps. Default 365; 0 keeps everything. */
   logRetentionDays?: number
-  /** Stores running the plugin, shown in the admin. Empty by default. */
-  references?: ReferenceOption[]
   /** Provider registration only: the channels it serves. Must include "email". */
   channels?: string[]
   /**
@@ -199,6 +203,9 @@ export interface ResolvedBrand {
   logo: { text: string | null; accent: string | null; suffix: string | null; italic: boolean }
   accentColor: string | null
   headerColor: string | null
+  buttonColor: string | null
+  paperColor: string | null
+  headerTone: "dark" | "light"
   footer: ResolvedText | null
   supportEmail: string | null
   headingFont: string
@@ -253,7 +260,6 @@ export interface ResolvedEmailsOptions {
   timeoutMs: number
   maxRetries: number
   logRetentionDays: number
-  references: ResolvedReference[]
   channels: string[]
   /** Option values that were ignored, for the admin. */
   problems: string[]
@@ -321,6 +327,12 @@ function resolveBrand(b: EmailsBrandOptions | undefined, problems: string[]): Re
   if (o.accentColor !== undefined && !accentColor) problems.push("brand.accentColor (a hex colour like #26D07C)")
   const headerColor = o.headerColor === undefined ? null : normalizeHex(o.headerColor)
   if (o.headerColor !== undefined && !headerColor) problems.push("brand.headerColor (a hex colour like #212721)")
+  const buttonColor = o.buttonColor === undefined ? null : normalizeHex(o.buttonColor)
+  if (o.buttonColor !== undefined && !buttonColor) problems.push("brand.buttonColor (a hex colour like #FFBB0F)")
+  const paperColor = o.paperColor === undefined ? null : normalizeHex(o.paperColor)
+  if (o.paperColor !== undefined && !paperColor) problems.push("brand.paperColor (a hex colour like #F6F4EC)")
+  if (o.headerTone !== undefined && o.headerTone !== "dark" && o.headerTone !== "light") problems.push("brand.headerTone (\"dark\" or \"light\")")
+  const headerTone = o.headerTone === "light" ? "light" : "dark"
   const supportEmail = o.supportEmail === undefined ? null : isEmail(str(o.supportEmail)) ? str(o.supportEmail) : null
   if (o.supportEmail !== undefined && !supportEmail) problems.push("brand.supportEmail (one e-mail address)")
   const logo = o.logo && typeof o.logo === "object" ? o.logo : {}
@@ -338,6 +350,9 @@ function resolveBrand(b: EmailsBrandOptions | undefined, problems: string[]): Re
     logo: { text: clip(logo.text, 40), accent: clip(logo.accent, 4), suffix: clip(logo.suffix, 30), italic: logo.italic === true },
     accentColor,
     headerColor,
+    buttonColor,
+    paperColor,
+    headerTone,
     footer: resolveText(o.footer, 300),
     supportEmail,
     headingFont: cssFontFamily(o.headingFont, SYSTEM_FONTS),
@@ -458,7 +473,6 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     timeoutMs: int(o.timeoutMs, DEFAULT_TIMEOUT_MS, 1000, 120_000),
     maxRetries: int(o.maxRetries, DEFAULT_MAX_RETRIES, 0, 5),
     logRetentionDays: int(o.logRetentionDays, DEFAULT_RETENTION_DAYS, 0, 3650),
-    references: resolveReferences(o.references),
     channels,
     problems,
   }

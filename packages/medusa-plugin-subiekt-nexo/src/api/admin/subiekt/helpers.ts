@@ -120,7 +120,6 @@ export async function buildStatus(svc: SubiektModuleService): Promise<SubiektSta
     lastRuns,
     running: runningKinds(),
     schedules: { tasks: TASKS_SCHEDULE, events: EVENTS_SCHEDULE, stock: STOCK_SCHEDULE, products: PRODUCTS_SCHEDULE, catchup: o.catchUpEnabled ? CATCH_UP_SCHEDULE : null },
-    references: o.references,
   }
 }
 

@@ -384,6 +384,7 @@ export function createDemoClient(): DemoClient {
       }
       const c: RemoteClaim = {
         id: nextId("demo-clm"),
+        displayId: `CL-${orderId}-1`,
         orderId,
         state: "RESOLUTION_IN_PROGRESS",
         resolution: null,
@@ -394,6 +395,8 @@ export function createDemoClient(): DemoClient {
         expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
         updatedAt: created,
         lines: [caseLine],
+        valueMinor: null,
+        description: null,
       }
       claims.set(c.id, c)
       note("claim", c.id)

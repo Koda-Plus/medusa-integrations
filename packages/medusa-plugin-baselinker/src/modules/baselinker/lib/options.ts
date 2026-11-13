@@ -14,7 +14,6 @@ import {
   DEFAULT_TIMEOUT_MS,
   MAX_REQUESTS_PER_MINUTE,
 } from "./constants"
-import { resolveReferences, type ReferenceInput, type ResolvedReference } from "./references"
 import { WRITER_KEYS, type WriterKey } from "./writers"
 
 /**
@@ -170,7 +169,7 @@ export interface BaseLinkerPluginOptions {
   /** Orders other plugins imported from a marketplace (`marketplace_order_ref`) go to BaseLinker too. Default false. */
   exportMarketplaceOrders?: boolean | string
 
-  /* ---- 0.2: returns, journal, invoice numbers, references ----------- */
+  /* ---- 0.2: returns, journal, invoice numbers ----------------------- */
 
   /** Read returns (read only). Default true. */
   returnsSync?: boolean | string
@@ -182,8 +181,6 @@ export interface BaseLinkerPluginOptions {
   invoiceNumberField?: string | number
   /** Fakturownia kinds whose number is written. Default `vat`, `receipt`. */
   invoiceNumberKinds?: string[] | string
-  /** Stores running this integration, shown in the admin ("Running in production"). */
-  references?: ReferenceInput[]
 }
 
 export interface ResolvedBaseLinkerOptions {
@@ -238,7 +235,6 @@ export interface ResolvedBaseLinkerOptions {
   /** `extra_field_1`, `extra_field_2` or `custom:<id>`. */
   invoiceNumberField: string
   invoiceNumberKinds: string[]
-  references: ResolvedReference[]
 }
 
 /** BaseLinker warehouse keys look like `bl_123`, `shop_456` or `warehouse_789`. */
@@ -395,7 +391,6 @@ export function resolveOptions(o: BaseLinkerPluginOptions | undefined | null): R
     journal: opts.journal === "off" ? "off" : "auto",
     invoiceNumberField: parseInvoiceField(opts.invoiceNumberField),
     invoiceNumberKinds: kinds.length > 0 ? [...new Set(kinds)] : [...DEFAULT_INVOICE_KINDS],
-    references: resolveReferences(opts.references),
   }
 }
 

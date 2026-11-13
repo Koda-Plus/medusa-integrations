@@ -25,17 +25,14 @@ import type {
   DocumentKind,
   DocumentStatus,
   GovState,
-  LocalizedTextDto,
   MoneyDto,
   OrderTimesDto,
   PlanStatus,
-  ReferenceDto,
   RunDto,
   RunStatus,
   StatusResponse,
   WriterDto,
 } from "../../modules/fakturownia/lib/contract"
-import type { Reference } from "./fakturownia-guide"
 import { ToneBadge, type RowAction, type Tone } from "./fakturownia-blocks"
 import { errorMessage, openFile, pdfPath, useFakturowniaDocumentAction, useFakturowniaEmail, useFakturowniaMarkIssued, type DocumentAction } from "./fakturownia-api"
 
@@ -457,36 +454,6 @@ export function fmtDelta(value: number, currency: string | null | undefined, lan
 
 export function fmtQuantity(value: number, lang: string): string {
   return fmtNumber(Math.round(value * 10_000) / 10_000, lang)
-}
-
-/** The text of the admin language, or the other one. */
-export function pickText(text: LocalizedTextDto | null | undefined, lang: string): string | undefined {
-  if (!text) return undefined
-  const pl = /^pl/i.test(lang)
-  return (pl ? text.pl ?? text.en : text.en ?? text.pl) ?? undefined
-}
-
-/** The references of the options in the admin language, for the kit's `References` and `ReferencesBadge`. */
-export function referencesFor(items: readonly ReferenceDto[], lang: string): Reference[] {
-  return items.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang),
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang) ?? "", value: m.value })).filter((m) => m.label),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang) ?? l.url, url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
-}
-
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
 }
 
 const PLAN_TONE: Record<PlanStatus, Tone> = { draft: "orange", manual: "orange", approved: "blue", issued: "green", dismissed: "grey", done: "green", obsolete: "grey" }

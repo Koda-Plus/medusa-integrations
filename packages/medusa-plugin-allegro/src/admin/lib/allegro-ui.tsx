@@ -56,15 +56,6 @@ export function shortId(id: string | null | undefined): string {
   return id ? id.slice(0, 8) : ""
 }
 
-/** A rating in the admin's number format: 5.0 or 5,0. */
-export function fmtRating(value: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-  } catch {
-    return value.toFixed(1)
-  }
-}
-
 export function scrollToSection(id: string): void {
   if (typeof document === "undefined") return
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })

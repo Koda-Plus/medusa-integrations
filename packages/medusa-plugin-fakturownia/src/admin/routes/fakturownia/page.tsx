@@ -39,7 +39,7 @@ import {
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, StatTile, StatTiles, ToneBadge, useDebouncedValue } from "../../lib/fakturownia-blocks"
 import { CorrectionsSection } from "../../lib/fakturownia-corrections"
 import { DocumentDrawer } from "../../lib/fakturownia-document"
-import { AddStoreButton, HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/fakturownia-guide"
+import { HelpButtons, IntegrationHeader, KeyPoints, ModeBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/fakturownia-guide"
 import { GuideView, usePromptSpec } from "../../lib/fakturownia-guide-view"
 import { FakturowniaIcon } from "../../lib/fakturownia-icon"
 import { KitLoading, KitSkeletonRows } from "../../lib/fakturownia-kit"
@@ -60,8 +60,6 @@ import {
   fmtDuration,
   fmtMoney,
   fmtNumber,
-  fmtRating,
-  referencesFor,
   runSummary,
   useDocumentActions,
 } from "../../lib/fakturownia-ui"
@@ -256,7 +254,6 @@ function Header({ status, fetching, lang, nav, onAction }: { status: StatusRespo
   const ready = Boolean(status?.configured)
   const mode = connectionState(status)
   const demo = status?.mode === "demo"
-  const references = status ? referencesFor(status.references, lang) : []
   const promptSpec = usePromptSpec()
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
 
@@ -294,31 +291,6 @@ function Header({ status, fetching, lang, nav, onAction }: { status: StatusRespo
         { icon: <EyeSlash />, text: t("points.noBuyerData") },
         demo && { icon: <Beaker />, text: t("points.demo"), tone: "blue" },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

@@ -19,6 +19,7 @@ import {
   MinusCircle,
   Moon,
   PaperPlane,
+  PencilSquare,
   Phone,
   ShoppingCart,
   Sun,
@@ -30,6 +31,7 @@ import { Link } from "react-router-dom"
 import { Button, Drawer, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
 import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { OrderLink, ResendLink } from "./emails-links"
+import { CopyEditor, cleanDraft, type CopyDraft } from "./emails-copy"
 import { CampaignBadge, DeliveryBadge } from "./emails-delivery"
 import { KitFetchingBar, KitLoading, KitSkeletonRows } from "./emails-kit"
 import { KeyPoints } from "./emails-guide"
@@ -92,11 +94,26 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
   const [source, setSource] = useState<PreviewSource>("sample")
   const current = templates.find((x) => x.key === active) ?? null
   const effectiveSource: PreviewSource = current?.latest ? source : "sample"
-  const preview = useEmailsPreview(active, locale, theme, effectiveSource)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<CopyDraft>({})
+  const draftJson = useDebounced(editing ? JSON.stringify(cleanDraft(draft) ?? {}) : "", 350)
+  const preview = useEmailsPreview(active, locale, theme, effectiveSource, editing && draftJson ? draftJson : null)
 
   useEffect(() => {
     if (!active && templates.length > 0) setActive(templates[0].key)
   }, [active, templates])
+
+  /* Another template: the draft of this one is dropped. */
+  useEffect(() => {
+    setEditing(false)
+    setDraft({})
+  }, [active])
+
+  const startEditing = () => {
+    if (!current) return
+    setDraft({ pl: { ...(current.copy?.pl ?? {}) }, en: { ...(current.copy?.en ?? {}) } })
+    setEditing(true)
+  }
 
   const sourceText = preview.data
     ? preview.data.source === "latest"
@@ -154,6 +171,22 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
             </div>
           </div>
 
+          {current && editing ? (
+            <CopyEditor template={current} locale={locale} draft={draft} defaults={preview.data?.defaults} onChange={setDraft} onClose={() => setEditing(false)} />
+          ) : current ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-dashed border-ui-border-strong px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <Text size="xsmall" className="text-ui-fg-subtle">
+                {current.copy
+                  ? t("copy.edited", { who: current.copyUpdatedBy ?? t("copy.someone"), when: current.copyUpdatedAt ? fmtDateTime(current.copyUpdatedAt, lang) : "" })
+                  : t("copy.intro")}
+              </Text>
+              <Button size="small" variant="secondary" onClick={startEditing} className="shrink-0">
+                <PencilSquare />
+                {t("copy.edit")}
+              </Button>
+            </div>
+          ) : null}
+
           <div className="overflow-hidden rounded-lg border border-ui-border-base bg-ui-bg-subtle">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ui-border-base px-4 py-2">
               <div className="flex items-center gap-x-1.5">
@@ -167,6 +200,7 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
                     {t("gallery.size", { size: fmtKb(preview.data.bytes, lang) })}
                   </Text>
                 ) : null}
+                {editing ? <ToneBadge tone="orange">{t("copy.draftBadge")}</ToneBadge> : null}
                 {sourceText ? <ToneBadge tone={preview.data?.source === "latest" ? "blue" : "grey"}>{sourceText}</ToneBadge> : null}
               </div>
             </div>
@@ -241,6 +275,7 @@ function TemplateCard({ template, lang, active, showSource, onClick }: { templat
           {template.key}
         </Text>
         {showSource && template.source === "app" ? <ToneBadge>{t("templates.app")}</ToneBadge> : null}
+        {template.copy ? <ToneBadge tone="blue">{t("copy.badge")}</ToneBadge> : null}
         {!template.enabled ? <ToneBadge>{template.allowed ? t("templates.off") : t("templates.blocked")}</ToneBadge> : null}
       </span>
     </button>

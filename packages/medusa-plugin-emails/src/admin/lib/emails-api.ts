@@ -63,7 +63,7 @@ export const emailsKeys = {
   messages: (filter: MessageFilter, q: string, template: string, orderId: string, customerId: string, since: string, offset: number, limit: number) =>
     ["koda-emails", "messages", filter, q, template, orderId, customerId, since, offset, limit] as const,
   message: (id: string) => ["koda-emails", "message", id] as const,
-  preview: (template: string, locale: string, theme: string, source: PreviewSource) => ["koda-emails", "preview", template, locale, theme, source] as const,
+  preview: (template: string, locale: string, theme: string, source: PreviewSource, copy = "") => ["koda-emails", "preview", template, locale, theme, source, copy] as const,
 }
 
 /** The status of the page: read once a minute, and on "Refresh". Never polled from an order card. */
@@ -123,10 +123,11 @@ export function useEmailsMessage(id: string | null) {
   })
 }
 
-export function useEmailsPreview(template: string | null, locale: string, theme: "light" | "dark", source: PreviewSource) {
+/** `copy`: a draft of the words being edited (JSON), rendered but never saved. */
+export function useEmailsPreview(template: string | null, locale: string, theme: "light" | "dark", source: PreviewSource, copy: string | null = null) {
   return useQuery<PreviewResponse>({
-    queryKey: emailsKeys.preview(template ?? "", locale, theme, source),
-    queryFn: () => emailsFetch<PreviewResponse>(`/admin/emails/preview?${params({ template, locale, theme, source })}`),
+    queryKey: emailsKeys.preview(template ?? "", locale, theme, source, copy ?? ""),
+    queryFn: () => emailsFetch<PreviewResponse>(`/admin/emails/preview?${params({ template, locale, theme, source, copy })}`),
     enabled: Boolean(template),
     /* Switching the theme or the language keeps the e-mail on screen until the other one arrives. */
     placeholderData: (previous, query) => (query?.queryKey[2] === template ? previous : undefined),

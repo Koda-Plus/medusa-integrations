@@ -1,8 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { resolveOptions } from "../src/modules/negotiations/lib/options.ts"
-import { normalizeReferences, normalizeReview, pickText } from "../src/modules/negotiations/lib/references.ts"
-import { toReferenceDto } from "../src/modules/negotiations/lib/dto.ts"
 import { readWriterSetting, writerSettingKey, writerState } from "../src/modules/negotiations/lib/writers.ts"
 import { cartSnapshot, pickListPrice, threadTitle } from "../src/modules/negotiations/lib/catalog.ts"
 import { createRateLimiter } from "../src/modules/negotiations/lib/rate-limit.ts"
@@ -22,7 +20,6 @@ test("defaults: live, 14 days, net prices, Store API on, customers may accept, e
   assert.equal(o.messagesPerHour, 60)
   assert.deepEqual(o.writers, { draftOrders: false })
   assert.deepEqual(o.draftOrders, { regionId: null, salesChannelId: null, maxPerRun: 10 })
-  assert.deepEqual(o.references, [], "the package names no store")
 })
 
 test("values from environment strings; nonsense falls back instead of breaking the boot", () => {
@@ -49,7 +46,7 @@ test("values from environment strings; nonsense falls back instead of breaking t
   assert.equal(o.openPerHour, 1)
   assert.deepEqual(o.writers, { draftOrders: false }, "an explicit false wins even in demo mode")
   assert.deepEqual(o.draftOrders, { regionId: "reg_01J", salesChannelId: null, maxPerRun: 100 })
-  assert.deepEqual(o.references.map((r) => r.url), ["https://shop.example.com/"], "https only")
+  assert.equal("references" in o, false, "the old references option is ignored")
   assert.equal(resolveOptions({ expiryDays: 0 }).expiryDays, 0, "0 turns expiry off")
   assert.equal(resolveOptions({ expiryDays: 9999 }).expiryDays, 365)
 })
@@ -113,92 +110,4 @@ test("the store rate limit: a sliding window per customer", () => {
   assert.equal(third.retryAfterSeconds, 60)
   assert.equal(limiter.hit("cus_2", t + 2).ok, true, "per customer")
   assert.equal(limiter.hit("cus_1", t + 60_001).ok, true, "the window slides")
-})
-
-test("references: entries without a name or an https URL are dropped, parts are cleaned, nothing throws", () => {
-  const refs = normalizeReferences([
-    {
-      name: "Hurtownia Test",
-      url: "https://www.hurtownia.example.com",
-      description: { en: "Tools wholesale", pl: "Hurtownia narzędzi" },
-      metrics: [{ label: { en: "threads a month", pl: "wątków miesięcznie" }, value: "120" }, { label: "broken" }],
-      links: [{ label: "Product", url: "https://www.hurtownia.example.com/p/1" }, { label: "Insecure", url: "http://x.pl" }],
-    },
-    { name: "No URL" },
-    { name: "Plain http", url: "http://shop.pl" },
-    { name: "", url: "https://shop.pl" },
-    { name: "Duplicate", url: "https://www.hurtownia.example.com" },
-    "not an object",
-    { name: "Same text", url: "https://shop.example.com", description: "Same in both" },
-  ])
-  assert.equal(refs.length, 2)
-  assert.equal(refs[0].soon, false)
-  assert.equal(refs[0].metrics.length, 1)
-  assert.equal(refs[0].links.length, 1)
-  assert.deepEqual(refs[1].description, { en: "Same in both", pl: "Same in both" })
-  assert.deepEqual(normalizeReferences("nope"), [])
-  assert.deepEqual(normalizeReferences(undefined), [])
-  assert.equal(resolveOptions({ references: [{ name: "A", url: "https://a.pl" }] }).references.length, 1)
-})
-
-test("references: a review needs a positive rating and a source, never exceeds its scale, links only over https", () => {
-  const review = normalizeReview({ rating: "4,8", source: "Clutch", url: "https://clutch.co/review/1", icon: "javascript:alert(1)", quote: { pl: "Polecam" } })
-  assert.deepEqual(review, { rating: 4.8, scale: 5, source: "Clutch", url: "https://clutch.co/review/1", icon: null, quote: { pl: "Polecam" }, author: null })
-  assert.equal(normalizeReview({ rating: 9, source: "Clutch" })?.rating, 5)
-  assert.equal(normalizeReview({ rating: 9, scale: 10, source: "Google" })?.scale, 10)
-  assert.equal(normalizeReview({ rating: 5, source: "Clutch", url: "http://clutch.co" })?.url, null)
-  assert.equal(normalizeReview({ rating: 0, source: "Clutch" }), null)
-  assert.equal(normalizeReview({ rating: 5 }), null)
-  assert.equal(normalizeReview("5 stars"), null)
-  const [withReview, without] = normalizeReferences([
-    { name: "A", url: "https://a.pl", review: { rating: 5, source: "Clutch" } },
-    { name: "B", url: "https://b.pl", review: { rating: "great" } },
-  ])
-  assert.equal(withReview.review?.rating, 5)
-  assert.equal(without.review, null)
-})
-
-test("references: the admin language with a fallback to the other one", () => {
-  assert.equal(pickText({ en: "Tools", pl: "Narzędzia" }, "pl"), "Narzędzia")
-  assert.equal(pickText({ en: "Tools", pl: "Narzędzia" }, "en-US"), "Tools")
-  assert.equal(pickText({ en: "Only English" }, "pl"), "Only English")
-  assert.equal(pickText({ pl: "Tylko polski" }, "en"), "Tylko polski")
-  assert.equal(pickText(null, "pl"), "")
-})
-
-test("references: a store that starts soon needs only its name, a live one still needs an https URL", () => {
-  const refs = normalizeReferences([
-    { name: "Soon, no address", soon: true, description: "Opens in spring" },
-    { name: "Soon, with an address", soon: true, url: "https://soon.example.com" },
-    { name: "Soon, insecure address", soon: true, url: "http://soon.example.com" },
-    { name: "Live, no address" },
-    { name: "Live, insecure address", url: "http://live.example.com" },
-    { name: "Not a boolean", soon: "yes" },
-    { soon: true },
-  ])
-  assert.deepEqual(
-    refs.map((r) => ({ name: r.name, soon: r.soon, url: r.url })),
-    [
-      { name: "Soon, no address", soon: true, url: null },
-      { name: "Soon, with an address", soon: true, url: "https://soon.example.com/" },
-      { name: "Soon, insecure address", soon: true, url: null },
-    ],
-  )
-  assert.deepEqual(refs[0].description, { en: "Opens in spring", pl: "Opens in spring" })
-  assert.equal(normalizeReferences(Array.from({ length: 15 }, (_, i) => ({ name: `Store ${i}`, soon: true }))).length, 12)
-  assert.deepEqual(resolveOptions({ references: [{ name: "Soon", soon: true }] }).references.map((r) => r.soon), [true])
-  const dto = toReferenceDto(refs[0])
-  assert.deepEqual([dto.name, dto.url, dto.soon], ["Soon, no address", null, true], "the admin gets the flag and no address")
-})
-
-test("references: the since date of an older config is ignored, never an error", () => {
-  const refs = normalizeReferences([
-    { name: "Live", url: "https://a.pl", since: "2026-04" },
-    { name: "Soon", soon: true, since: { not: "a month" } },
-  ])
-  assert.equal(refs.length, 2)
-  for (const r of refs) assert.equal("since" in r, false)
-  assert.equal(refs[0].url, "https://a.pl/")
-  assert.equal(refs[1].soon, true)
-  for (const r of refs) assert.equal("since" in toReferenceDto(r), false)
 })

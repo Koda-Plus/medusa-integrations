@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-11-11)
 
 - InPost returns on the InPost Returns API (InPost Group developer portal, the current "Szybkie Zwroty"). The store creates the return of an order and InPost answers with a short drop-off code the customer types at any Paczkomat (nothing to print) or, without the code, a label. New options `returnsClientId`, `returnsClientSecret`, `returnsOrganizationId` (a UUID, not the ShipX organization id), `returnsEnvironment` (`stage` or `production`, `stage` by default with `sandbox: true`), `returnsWriter` (a hard switch, off by default, on in demo mode) and `returnExpirationDays` (7 to 90). A new writer, "Returns in InPost", armed per mode in Settings.
 - A return is created from a plan a person reads (the customer as InPost's sender with the phone in E.164, the origin country, the order number for the label, a code or a label, the expiry, the exact request) and its hash, once: one row per order and Medusa return (unique index), an atomic claim with a lease, a second create answers 409. The Returns API has no idempotency key and no search, so an answer that never came leaves the return `unknown`; nothing sends it again by itself, a person checks InPost and tries again (`checked: true`) or marks it handled.
@@ -11,6 +11,7 @@
 - Demo mode simulates returns with no request (a 9 digit code, a tracking number of 24 digits from 6303, 14 days to send it, a label marked as simulated) and seeds three sample returns once, also on a demo seeded by an earlier version; the reset removes them.
 - The storefront map in Settings: a new option `geowidgetToken` (the PUBLIC Geowidget token from InPost Manager). Settings, InPost account, show a "Storefront map (Geowidget)" card read from the token itself: set or not, sandbox or production, the domains it was issued for, the expiry, and a warning when the map's environment differs from the ShipX one. Never the whole token. `GET /store/inpost/geowidget` serves the token, its environment and the Geowidget script host, so a storefront reads it from Medusa instead of keeping a copy (404 `geowidget_not_configured` when missing or expired).
 - A new table, `inpost_parcel_return` (migration `Migration20261106120000_inpost_returns`): run `npx medusa db:migrate`. No customer data in it.
+- Removed: the `references` option, the "Running in N stores" badge, the store cards at the end of the setup guide and the "Add your store" button. A `references` key left in the options is ignored.
 
 ## 0.3.0 (unreleased)
 

@@ -99,6 +99,7 @@ const pl = {
   account: {
     none: "Nie ma jeszcze konta, dodaj klucz API.",
     plan: "Plan {{plan}}",
+    demoName: "Konto demo (przykładowe dane)",
   },
   status: {
     configured: "Połączono",
@@ -141,6 +142,30 @@ const pl = {
     off: "Wyłączony",
     none: "Nie ustawiono",
     needsKey: "Zapis wymaga klucza API",
+  },
+  forms: {
+    title: "Formularze podpięte do Kita",
+    points: {
+      route: "Sklep wysyła adres do Kita",
+      source: "Każdy formularz ma swoje źródło"
+    },
+    edit: "Tagi według źródła",
+    kitForm: "Formularz Kita",
+    viaForm: "Zapisy trafiają do formularza {{name}}, Kit wysyła mail z potwierdzeniem (podwójne potwierdzenie włączone).",
+    formIdle: "Wybrany formularz {{name}} działa dopiero po włączeniu podwójnego potwierdzenia. Teraz zapis jest od razu aktywny, bez formularza.",
+    noForm: "Bez formularza Kita: zapis jest od razu aktywny. Formularz wybierzesz w Ustawieniach listy.",
+    source: "Formularz w sklepie",
+    tags: "Tagi w Kicie",
+    lands: "Trafia do",
+    signups: "Zapisy",
+    last: "Ostatni zapis",
+    empty: "Sklep jeszcze nie wysłał żadnego zapisu",
+    default: "Formularz newslettera",
+    noTags: "bez tagów",
+    direct: "lista Kita, od razu aktywny",
+    viaFormShort: "formularz {{name}} (z potwierdzeniem)",
+    failed: "{{n}} nieudane",
+    never: "jeszcze nikt"
   },
   subscribers: {
     title: "Log zapisów",

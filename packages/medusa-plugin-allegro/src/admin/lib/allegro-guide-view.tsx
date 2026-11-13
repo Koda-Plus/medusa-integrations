@@ -1,50 +1,16 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { AllegroStatusResponse, AllegroWriterKey } from "../../modules/allegro/lib/contract"
-import { pickText } from "../../modules/allegro/lib/references"
 import {
   GuideChecklist,
   GuideDiagram,
   GuideFaq,
   GuideIntro,
   GuideSteps,
-  References,
   type GuideStep,
-  type Reference,
   type SetupPromptSpec,
   type StepState,
 } from "./allegro-guide"
-import { fmtRating } from "./allegro-ui"
-
-/** References of the options, in the admin language, shaped for the kit. */
-export function referencesFor(status: AllegroStatusResponse, lang: string): Reference[] {
-  return status.references.map((r) => ({
-    name: r.name,
-    url: r.url ?? undefined,
-    soon: r.soon,
-    icon: r.icon,
-    description: pickText(r.description, lang) || undefined,
-    metrics: r.metrics.map((m) => ({ label: pickText(m.label, lang), value: m.value })),
-    links: r.links.map((l) => ({ label: pickText(l.label, lang), url: l.url })),
-    review: r.review ? { ...r.review, quote: pickText(r.review.quote, lang) || undefined } : null,
-  }))
-}
-
-/** "Running in production" cards, at the end of the guide; the page header has the badge. */
-export function ReferencesBlock({ status, lang }: { status: AllegroStatusResponse; lang: string }) {
-  const { t } = useTranslation("allegro")
-  return (
-    <References
-      items={referencesFor(status, lang)}
-      title={t("references.title")}
-      subtitle={t("references.subtitle")}
-      openLabel={t("references.open")}
-      soonLabel={t("references.soon")}
-      reviewLabel={t("references.review")}
-      ratingLabel={(value) => fmtRating(value, lang)}
-    />
-  )
-}
 
 const CODE = {
   key: `openssl rand -base64 32
@@ -138,7 +104,7 @@ function Paragraphs({ items }: { items: string[] }) {
   )
 }
 
-export function GuideView({ status, lang }: { status: AllegroStatusResponse; lang: string }) {
+export function GuideView({ status }: { status: AllegroStatusResponse }) {
   const { t } = useTranslation("allegro")
   const s = status
   const live = s.mode === "live"
@@ -249,7 +215,6 @@ export function GuideView({ status, lang }: { status: AllegroStatusResponse; lan
       />
       <GuideChecklist title={t("guide.checklistTitle")} subtitle={t("guide.checklistSubtitle")} items={checklist} />
       <GuideFaq title={t("guide.faqTitle")} items={faq.map((f) => ({ q: f.q, a: <Paragraphs items={f.a} /> }))} />
-      <ReferencesBlock status={status} lang={lang} />
     </div>
   )
 }

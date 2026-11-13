@@ -1,5 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { complianceSvc } from "../../../../../modules/compliance/lib/store"
+import { complianceSvc, storeReadDue } from "../../../../../modules/compliance/lib/store"
 import { gpsrPayload } from "../../../../compliance/helpers"
 
 /**
@@ -18,6 +18,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     return
   }
   const payload = await gpsrPayload(req.scope, rows[0])
+  /* The setup guide knows the storefront shows the GPSR block once it reads it. */
+  if (storeReadDue(rows[0])) {
+    const meta = rows[0].metadata && typeof rows[0].metadata === "object" ? rows[0].metadata : {}
+    svc.updateComplianceProducts([{ id: rows[0].id, metadata: { ...meta, store_read_at: new Date().toISOString() } }]).catch(() => {
+      /* a missed mark only delays the guide, never the offer */
+    })
+  }
   res.setHeader("Cache-Control", "public, max-age=300")
   res.json({ product: payload })
 }

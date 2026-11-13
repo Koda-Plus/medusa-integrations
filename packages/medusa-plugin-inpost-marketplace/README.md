@@ -2,6 +2,8 @@
 
 The **InPost marketplace** (InPost Von Halsky, also called InPost Marketplace or InPost Buy) for Medusa v2 stores in Poland, on InPost's seller API. Your variants become marketplace offers with the category, parameters, photos, GPSR data, price and stock the marketplace asks for; price and stock follow Medusa; marketplace orders come in as real Medusa orders, exactly once each; returns, claims and refunds are handled from the Medusa admin; and a statistics tab shows what the channel earns against your other sales channels.
 
+![InPost Von Halsky page in the Medusa admin](https://raw.githubusercontent.com/Koda-Plus/medusa-integrations/main/packages/medusa-plugin-inpost-marketplace/docs/admin-vonhalsky.png)
+
 ## What it does
 
 - **Offers**: one row per Medusa variant with what the marketplace needs: the EAN (variant `ean` or `barcode`, then metadata) or the brand with the manufacturer part number, the name, the description (HTML turned into text), up to 20 photos, the dimensions and weight (all four or none), the VAT rate, the GPSR manufacturer (from the [EU Compliance plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-compliance) when it is installed, else from product metadata) and a marketplace leaf category with its required parameters. What is missing is shown per variant as the reasons it cannot be listed and the warnings that do not block it.
@@ -169,13 +171,9 @@ Every route needs an admin session or token. Writes take a JSON body or the `x-k
 
 The plugin has no store routes.
 
-## One InPost menu
+## In the sidebar
 
-With the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) of Koda Plus in the same app, InPost Von Halsky does not take a sidebar entry of its own: its page is the "Von Halsky" tab of the "InPost" entry (`/app/inpost?service=vonhalsky`), next to Shipping and, when installed, InPost Pay. The page in the tab is the same page, drawn by this plugin.
-
-- `/app/vonhalsky` keeps working: it moves to the tab with every parameter (`/app/vonhalsky?section=orders&filter=held` opens the tab on that list), so links from hosts, counters and the order card need no change.
-- The own sidebar entry steps aside at runtime (Medusa has no conditional sidebar entries): its icon draws a hidden marker while the InPost plugin is there and one CSS rule of the shared kit hides that link. In a browser without CSS `:has()` the entry stays and leads to the tab.
-- Without the InPost plugin nothing changes: the own entry "InPost Von Halsky" and the page at `/app/vonhalsky`. Nothing to configure, and no import between the packages: the two meet in the registry of the shared kit (page tabs, kit 1.1.0).
+InPost Von Halsky has its own sidebar entry, "Von Halsky" at `/app/vonhalsky`, with rank 3, so it sits next to the InPost entry of the [InPost plugin](https://github.com/Koda-Plus/medusa-integrations/tree/main/packages/medusa-plugin-inpost) when both are installed. A marketplace is a sales channel of its own, not a way to ship, so it is not a tab of the InPost page (it was, up to 0.1.0 in the monorepo). Links with parameters open the page on that list, for example `/app/vonhalsky?section=orders&filter=held`.
 
 ## Works with Koda Plus hosts
 

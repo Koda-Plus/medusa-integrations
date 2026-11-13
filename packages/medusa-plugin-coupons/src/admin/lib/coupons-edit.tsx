@@ -6,7 +6,7 @@ import type { CouponDto, CouponKind, CouponPatch, NameMaps, StoreTerms } from ".
 import { checkPatch, editWarnings, exclusionsEditable, isPercent, targetsEditable, valueEditable, type NormalizedPatch } from "../../modules/coupons/lib/edit"
 import { cleanCode, nextCode } from "../../modules/coupons/lib/wizard"
 import { CouponsRequestError, errorMessage, useDuplicateCoupon, useLookups, usePoolProducts, useSetStatus, useUpdateCoupon } from "./coupons-api"
-import { BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, Section, poolsWord } from "./coupons-fields"
+import { BasePriceNote, BigCard, Chips, CombinesPicker, CustomerPicker, Field, NoteField, NumberInput, PickList, PriceListSelect, Section, poolsWord } from "./coupons-fields"
 import { couponSentence } from "./coupons-sentence"
 import { StatusBadge, useFormat } from "./coupons-ui"
 import { ToneBadge } from "./coupons-blocks"
@@ -411,6 +411,7 @@ export function EditCouponModal({
                             {s.kind === "buy_get" ? t("fields.freeFromPriceList") : t("fields.basePriceList")}
                           </Label>
                           <PriceListSelect value={form.terms.basePriceList} onChange={(v) => setTerm("basePriceList", v)} lists={store?.priceLists ?? []} none={t("fields.basePriceNone")} />
+                          {s.kind !== "buy_get" ? <BasePriceNote store={store} lang={fmt.lang} on={Boolean(form.terms.basePriceList)} /> : null}
                         </div>
                         {s.kind !== "buy_get" ? (
                           <div className="flex flex-col gap-y-1">

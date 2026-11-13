@@ -8,7 +8,7 @@ import { Container, InlineTip, toast, usePrompt } from "@medusajs/ui"
 import type { DispatchFilter, ShipmentFilter, ShipmentGroup, StatusResponse } from "../../../modules/dpd/lib/contract"
 import { dpdKeys, errorMessage, useDpdDemoReset, useDpdDemoSeed, useDpdStatus } from "../../lib/dpd-api"
 import { StatTile, StatTiles, type Tone } from "../../lib/dpd-blocks"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/dpd-guide"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type HeaderAction, type PageNav } from "../../lib/dpd-guide"
 import { GuideView, usePromptSpec } from "../../lib/dpd-guide-view"
 import { DpdIcon, DpdMark } from "../../lib/dpd-icon"
 import { DispatchDrawer, DispatchesSection } from "../../lib/dpd-dispatch"
@@ -346,7 +346,6 @@ function Header({
         { icon: <ListBullet />, text: t("points.panel") },
         { icon: <ShieldCheck />, text: t("points.armed"), tone: "green" },
       ]}
-      social={<AddStoreButton labels={community.addStore} />}
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}

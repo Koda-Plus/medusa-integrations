@@ -51,7 +51,6 @@ import {
   useBaseLinkerReturns,
 } from "./baselinker-api"
 import { EmptyTableRow, FilterBar, FilterButton, FilterDivider, RowActions, SearchInput, Section, ToneBadge, useDebouncedValue } from "./baselinker-blocks"
-import { References } from "./baselinker-guide"
 import { KitFetchingBar, KitSkeletonRows } from "./baselinker-kit"
 import {
   ImportStatusBadge,
@@ -66,8 +65,6 @@ import {
   fmtDateTime,
   fmtMoney,
   fmtNumber,
-  fmtRating,
-  kitReferences,
   useProductThumbs,
 } from "./baselinker-ui"
 
@@ -154,26 +151,6 @@ export function DemoDetails({ status }: { status: StatusResponse }) {
   const { t } = useTranslation("baselinker")
   if (status.mode !== "demo") return null
   return <span>{t("demo.text")}</span>
-}
-
-/* ------------------------------------------------------------------ */
-/* Running in production, as cards at the end of the guide             */
-/* (the page header shows the same stores in its badge)                */
-/* ------------------------------------------------------------------ */
-
-export function ReferencesBlock({ status, lang }: { status: StatusResponse; lang: string }) {
-  const { t } = useTranslation("baselinker")
-  return (
-    <References
-      items={kitReferences(status.references ?? [], lang)}
-      title={t("references.title")}
-      subtitle={t("references.subtitle")}
-      openLabel={t("references.open")}
-      soonLabel={t("references.soon")}
-      reviewLabel={t("references.review")}
-      ratingLabel={(value) => fmtRating(value, lang)}
-    />
-  )
 }
 
 /* ------------------------------------------------------------------ */

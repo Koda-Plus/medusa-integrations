@@ -9,7 +9,6 @@ import {
   DEFAULT_TIMEOUT_MS,
   TAX_ID_METADATA_KEYS,
 } from "./constants"
-import { normalizeReferences, type ReferenceDto } from "./references"
 
 export type SalesDocumentOption = "none" | "fs" | "pa" | "auto"
 export type PriceTarget = "variant" | "price_list"
@@ -95,8 +94,6 @@ export interface SubiektPluginOptions {
   salesDocument?: SalesDocumentOption
   /** When the sales document is issued: after the WZ (`wz`, default: the goods left) or right after the ZK (`zk`). */
   salesDocumentAfter?: "wz" | "zk"
-  /** Stores that run this integration in production, shown in the admin. See the README. */
-  references?: unknown[]
 
   /* ---------------------------- 0.3.0 ---------------------------- */
 
@@ -143,7 +140,6 @@ export interface ResolvedSubiektOptions {
   createContractors: boolean
   salesDocument: SalesDocumentOption
   salesDocumentAfter: "wz" | "zk"
-  references: ReferenceDto[]
   catchUpEnabled: boolean
   catchUpMinAgeMinutes: number
   catchUpMaxAgeDays: number
@@ -216,7 +212,6 @@ export function resolveOptions(o: SubiektPluginOptions | undefined | null): Reso
     createContractors: bool(opts.createContractors, demo),
     salesDocument: salesDocument ?? (demo ? "auto" : "none"),
     salesDocumentAfter: str(opts.salesDocumentAfter).toLowerCase() === "zk" ? "zk" : "wz",
-    references: normalizeReferences(opts.references),
     catchUpEnabled: bool(opts.catchUpEnabled, true),
     catchUpMinAgeMinutes: count(opts.catchUpMinAgeMinutes, DEFAULT_CATCH_UP_MIN_AGE_MINUTES, 24 * 60),
     catchUpMaxAgeDays: count(opts.catchUpMaxAgeDays, DEFAULT_CATCH_UP_MAX_AGE_DAYS, 60),

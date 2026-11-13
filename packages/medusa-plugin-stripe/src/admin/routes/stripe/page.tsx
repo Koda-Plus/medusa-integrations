@@ -7,13 +7,12 @@ import { Container, InlineTip, toast } from "@medusajs/ui"
 import { ToneBadge, type Tone } from "../../lib/stripe-blocks"
 import type { PaymentFilter, StripeMode, StripeOverviewResponse, StripeStatusResponse } from "../../../modules/stripe/lib/contract"
 import { errorMessage, useStripeChecks, useStripeOverview, useStripeRefresh, useStripeStatus } from "../../lib/stripe-api"
-import { AddStoreButton, HelpButtons, IntegrationHeader, ModeBadge, ReferencesBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/stripe-guide"
+import { HelpButtons, IntegrationHeader, ModeBadge, SettingsView, communityLabels, usePageNav, type PageNav } from "../../lib/stripe-guide"
 import { GuideView, usePromptSpec } from "../../lib/stripe-guide-view"
 import { HealthSection, HealthStrip } from "../../lib/stripe-health"
 import { StripeIcon } from "../../lib/stripe-icon"
 import { BalanceSection, DemoDetails, DisputesSection, Freshness, MethodsSection, PAYMENT_FILTERS, PaymentsSection, PeriodSwitch, PeriodTiles, ReadErrors, RefundsSection, type PeriodDays, type TileTarget } from "../../lib/stripe-panel"
 import { AccessTab, ChecksTab, OptionsTab, SETTINGS_TABS, type SettingsTabId } from "../../lib/stripe-settings"
-import { fmtRating, referencesFor } from "../../lib/stripe-ui"
 import { KitFetchingBar, KitHostSlot, KitLoading } from "../../lib/stripe-kit"
 
 /**
@@ -121,7 +120,7 @@ const StripePage = () => {
         {nav.view === "panel" && o ? <KitFetchingBar active={overview.isFetching} /> : null}
       </Container>
 
-      {s && nav.view === "guide" ? <GuideView status={s} checks={checks.data} lang={lang} /> : null}
+      {s && nav.view === "guide" ? <GuideView status={s} checks={checks.data} /> : null}
 
       {s && nav.view === "panel" ? (
         <>
@@ -172,7 +171,6 @@ const StripePage = () => {
 function Header({ status, overview, lang, nav }: { status: StripeStatusResponse | undefined; overview: StripeOverviewResponse | undefined; lang: string; nav: PageNav<SettingsTabId> }) {
   const { t } = useTranslation("stripe")
   const refresh = useStripeRefresh()
-  const references = status ? referencesFor(status.references, lang) : []
   const promptSpec = usePromptSpec(status)
   const community = communityLabels((key, options) => t(key, options), `${t("title")} ${t("by")}`)
   const dashboard = status?.dashboardUrl ?? "https://dashboard.stripe.com"
@@ -213,31 +211,6 @@ function Header({ status, overview, lang, nav }: { status: StripeStatusResponse 
         { icon: <ShieldCheck />, text: t("points.checks") },
         { icon: <LockClosedSolid />, text: t("points.money"), tone: "green" },
       ]}
-      social={
-        <>
-          <ReferencesBadge
-            items={references}
-            labels={{
-              count: (live, soon) =>
-                live > 0
-                  ? live === 1
-                    ? t("references.badgeOne")
-                    : t("references.badgeMany", { count: live })
-                  : soon === 1
-                    ? t("references.badgeSoonOne")
-                    : t("references.badgeSoonMany", { count: soon }),
-              soonMore: (soon) => t("references.soonMore", { count: soon }),
-              soon: t("references.soon"),
-              title: t("references.title"),
-              subtitle: t("references.subtitle"),
-              open: t("references.open"),
-              review: t("references.review"),
-              rating: (value) => fmtRating(value, lang),
-            }}
-          />
-          <AddStoreButton labels={community.addStore} />
-        </>
-      }
       help={<HelpButtons spec={promptSpec} lang={lang} labels={community} />}
       view={nav.view}
       onView={(v) => nav.go(v)}
