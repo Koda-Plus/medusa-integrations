@@ -202,7 +202,7 @@ const pl = {
       offer: "Wariant",
       state: "Stan",
       price: "Cena",
-      avail: "avail",
+      avail: "Dostępność (avail)",
     },
     offerId: "Id oferty w Ceneo",
     noId: "bez id",
