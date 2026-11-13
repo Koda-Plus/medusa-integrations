@@ -459,18 +459,13 @@ async function smokeVersion(version, packages, tarballs, routes = {}) {
           if (m.type() === "error") consoleErrors.push(m.text())
         })
         await page.goto(`${base}/app/login`, { waitUntil: "networkidle", timeout: 120_000 })
-        /* The first visit makes Vite optimize the admin dependencies (slow on Windows): a chunk asked for meanwhile comes back as HTML and the page stays blank. One reload, then it counts. */
-        let form = await page.waitForSelector('input[name="email"]', { timeout: 60_000 }).catch(() => null)
-        if (!form) {
-          errors.length = 0
-          await page.reload({ waitUntil: "networkidle", timeout: 120_000 })
-          form = await page.waitForSelector('input[name="email"]', { timeout: 60_000 }).catch(() => null)
-        }
+        const form = await page.waitForSelector('input[name="email"]', { timeout: 60_000 }).catch(() => null)
         /* Without the form nothing below says why: keep a screenshot and what the page reported. */
         if (!form) {
           await page.screenshot({ path: path.join(shots, `${version}-login.png`), fullPage: false }).catch(() => {})
           const body = (await page.locator("body").innerText().catch(() => "")).slice(0, 500)
-          throw new Error(`admin login form not found at ${page.url()}
+          /* Seen on Windows only: a fresh server's Vite optimizes the admin dependencies on the first visit and a chunk comes back as HTML ("Unexpected token '<'"); the same build loads after a restart. */
+          throw new Error(`admin login form not found at ${page.url()}${isWin ? " (on Windows a fresh dev server can serve a chunk as HTML; --no-browser skips this step)" : ""}
 page errors: ${errors.join(" | ") || "none"}
 console errors: ${consoleErrors.slice(0, 10).join(" | ") || "none"}
 body: ${body || "(empty)"}`)
