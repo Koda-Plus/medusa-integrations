@@ -10,7 +10,8 @@
  *   region         `feed.regionId`, or the oldest region in PLN
  *   sales channel  `feed.salesChannelId`, or the default channel of the store
  *   products       linked to that channel (`product_sales_channel`)
- *   price          `calculated_price` for the region in PLN
+ *   price          `calculated_price` for the region in PLN; a net price
+ *                  gets the VAT rates of Poland from the tax module
  *   stock          `product_variant_inventory_items` over the channel's
  *                  locations (`sales_channel_locations`)
  */
@@ -19,6 +20,7 @@ import { QueryContext } from "@medusajs/framework/utils"
 import type { CatalogVariant } from "../../modules/ceneo/lib/feed"
 import type { ResolvedCeneoOptions } from "../../modules/ceneo/lib/options"
 import { brandOf } from "../../modules/ceneo/lib/brand"
+import { grossFromNet, ratesByItem, type TaxLineLite } from "../../modules/ceneo/lib/net-price"
 import { availabilityByVariant, type InventoryLinkInput } from "../../modules/ceneo/lib/stock"
 import { chunks, type QueryLike } from "./runtime"
 
@@ -47,6 +49,7 @@ interface ProductRecord {
   title?: string | null
   description?: string | null
   status?: string | null
+  type_id?: string | null
   thumbnail?: string | null
   images?: Array<{ url?: string | null; rank?: number | null } | null> | null
   categories?: Array<{ id?: string | null } | null> | null
@@ -71,6 +74,14 @@ interface VariantRecord {
 interface PriceRecord {
   id: string
   calculated_price?: { calculated_amount?: number | string | null; is_calculated_price_tax_inclusive?: boolean | null } | null
+}
+
+/** The tax module, as the feed needs it: the lines Medusa would put in a cart in Poland. */
+export interface TaxLinesLike {
+  getTaxLines(
+    items: Array<{ id: string; product_id: string; product_type_id: string | null; quantity: number; unit_price: number; currency_code: string }>,
+    context: { address: { country_code: string } },
+  ): Promise<TaxLineLite[]>
 }
 
 const PRODUCT_PAGE = 200
@@ -194,7 +205,7 @@ async function channelLocations(query: QueryLike, salesChannelId: string): Promi
   return ids
 }
 
-export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions): Promise<FeedCatalog> {
+export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions, taxes: TaxLinesLike | null = null): Promise<FeedCatalog> {
   const regionId = await resolveRegion(query, o)
   const salesChannelId = await resolveSalesChannel(query, o)
   const productIds = await productIdsInChannel(query, salesChannelId)
@@ -203,6 +214,7 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
   const brandFields = !brandSource ? [] : brandSource.from === "type" ? ["type.value"] : brandSource.from === "collection" ? ["collection.title"] : brandSource.from === "tag" ? ["tags.value"] : ["metadata"]
 
   const variants: CatalogVariant[] = []
+  const typeOf = new Map<string, string | null>()
   for (const part of chunks(productIds, PRODUCT_PAGE)) {
     const { data } = await query.graph({
       entity: "product",
@@ -212,6 +224,7 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
         "title",
         "description",
         "status",
+        "type_id",
         "thumbnail",
         "images.url",
         "images.rank",
@@ -229,6 +242,7 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
       filters: { id: part },
     })
     for (const p of data as ProductRecord[]) {
+      typeOf.set(p.id, s(p.type_id))
       const list = (p.variants ?? []).filter((v): v is VariantRecord => Boolean(v?.id))
       const gallery = (p.images ?? [])
         .filter((i): i is { url?: string | null; rank?: number | null } => Boolean(i))
@@ -285,6 +299,25 @@ export async function loadFeedCatalog(query: QueryLike, o: ResolvedCeneoOptions)
       const amount = typeof cp.calculated_amount === "number" ? cp.calculated_amount : Number(cp.calculated_amount)
       if (cp.calculated_amount !== null && cp.calculated_amount !== undefined && Number.isFinite(amount)) {
         v.price = { amount, taxInclusive: cp.is_calculated_price_tax_inclusive === true }
+      }
+    }
+  }
+
+  /* Net prices (a B2B store): Ceneo shows gross, so add the VAT of Poland the way the store routes do. */
+  const net = variants.filter((v) => v.price !== null && !v.price.taxInclusive)
+  if (taxes && net.length > 0) {
+    for (const part of chunks(net, VARIANT_PAGE)) {
+      /* A failing tax module leaves the prices net: those variants show `price_net`, the rest of the file is built. */
+      const lines = await taxes
+        .getTaxLines(
+          part.map((v) => ({ id: v.id, product_id: v.productId, product_type_id: typeOf.get(v.productId) ?? null, quantity: 1, unit_price: v.price?.amount ?? 0, currency_code: "pln" })),
+          { address: { country_code: "pl" } },
+        )
+        .catch((): TaxLineLite[] => [])
+      const rates = ratesByItem(lines)
+      for (const v of part) {
+        const own = rates.get(v.id)
+        if (v.price && own && own.length > 0) v.price = { amount: grossFromNet(v.price.amount, own), taxInclusive: true }
       }
     }
   }

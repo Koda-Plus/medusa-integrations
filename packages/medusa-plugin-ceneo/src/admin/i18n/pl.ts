@@ -157,7 +157,7 @@ const pl = {
   },
   problems: {
     price_missing: "Brak ceny w regionie pliku",
-    price_net: "Cena regionu jest bez podatku, a Ceneo potrzebuje ceny brutto",
+    price_net: "Cena jest netto, a Medusa nie ma stawki VAT dla Polski; dodaj region podatkowy Polska, żeby Ceneo dostało cenę brutto",
     url_missing: "Brak adresu produktu: znacznik z feed.productUrl nie ma wartości",
     url_too_long: "Adres produktu ma ponad 1000 znaków",
     sku_missing: "Brak SKU, a id oferty pochodzi z SKU",

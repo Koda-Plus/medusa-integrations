@@ -4,8 +4,9 @@
  */
 
 import type { MedusaContainer } from "@medusajs/framework/types"
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { ensureLeaseRow, withRunLease, type SqlRunner } from "../../modules/ceneo/lib/import-claim"
+import type { TaxLinesLike } from "./catalog"
 
 export type Scope = Pick<MedusaContainer, "resolve">
 
@@ -15,6 +16,16 @@ export interface QueryLike {
 
 export function queryOf(scope: Scope): QueryLike {
   return scope.resolve(ContainerRegistrationKeys.QUERY) as unknown as QueryLike
+}
+
+/** The tax module, for gross prices from net ones; null when the app runs without it. */
+export function taxesOf(scope: Scope): TaxLinesLike | null {
+  try {
+    const svc = scope.resolve(Modules.TAX) as unknown as Partial<TaxLinesLike> | undefined
+    return svc && typeof svc.getTaxLines === "function" ? (svc as TaxLinesLike) : null
+  } catch {
+    return null
+  }
 }
 
 type LockHolder = typeof globalThis & { [k: symbol]: boolean | undefined }
