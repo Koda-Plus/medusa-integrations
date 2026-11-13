@@ -63,7 +63,7 @@ The job `ceneo-build-feed` wakes every 5 minutes and builds the file every `feed
 What goes into the file:
 
 - One offer per variant of the published products in the sales channel. The id is the variant id (or the SKU); an id once used is never given to another variant.
-- The calculated price of the region, gross, in PLN. A region whose prices exclude tax gives no offers: set the price preference of the region to tax inclusive.
+- The calculated price of the region, gross, in PLN. A store with net prices (B2B, VAT added in the cart) gets the VAT rates Medusa's tax module has for Poland added, the same way the store routes compute gross prices; without a tax region for Poland a net price keeps the variant out of the file.
 - `avail` and `stock` from the inventory of the channel's stock locations.
 - The Ceneo category path of the most specific mapped Medusa category (or the Medusa path, see `feed.includeUnmapped`), the images (thumbnail first, at most 20), the description (HTML cut at 100k characters, never inside a tag), `Marka`, `EAN` and `Kod producenta`.
 

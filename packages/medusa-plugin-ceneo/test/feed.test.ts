@@ -1,3 +1,4 @@
+import { grossFromNet, ratesByItem } from "../src/modules/ceneo/lib/net-price.ts"
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { resolveOptions } from "../src/modules/ceneo/lib/options.ts"
@@ -152,4 +153,14 @@ test("stock: the minimum over inventory items, only the channel's locations, non
   assert.equal(availabilityByVariant(links, new Set(["sloc_a"])).get("v1"), 3)
   assert.equal(availabilityByVariant(links, new Set()).get("v1"), 0)
   assert.equal(availabilityByVariant(links, new Set(["sloc_a"])).get("v2"), undefined)
+})
+
+test("net prices: the VAT rates of Poland make the gross price Ceneo shows", () => {
+  const rates = ratesByItem([{ line_item_id: "v1", rate: 23 }, { line_item_id: "v2", rate: "8" }, { line_item_id: "v3", rate: null }, { line_item_id: "v1", rate: 0 }])
+  assert.deepEqual(rates.get("v1"), [23, 0])
+  assert.deepEqual(rates.get("v2"), [8])
+  assert.equal(rates.has("v3"), false)
+  assert.equal(grossFromNet(289, [23]), 355.47)
+  assert.equal(grossFromNet(39, [23]), 47.97)
+  assert.equal(grossFromNet(100, []), 100)
 })

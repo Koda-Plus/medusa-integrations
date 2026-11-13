@@ -22,7 +22,7 @@ import { ceneoSvc, planFeedWrite, shrinkGuard, type CeneoServiceLike, type Row }
 import { feedHash } from "../../modules/ceneo/lib/token"
 import { CatalogError, loadFeedCatalog } from "./catalog"
 import { loadCategoryMapping } from "./categories"
-import { FEED_LEASE, chunks, errorText, isLocked, queryOf, withFeedLease, type Scope } from "./runtime"
+import { FEED_LEASE, chunks, errorText, isLocked, queryOf, taxesOf, withFeedLease, type Scope } from "./runtime"
 
 export type { FeedBuildResult, FeedTrigger }
 
@@ -89,7 +89,7 @@ export async function runCeneoFeedBuild(scope: Scope, input: { trigger?: FeedTri
   const result = await withFeedLease(scope, async (): Promise<FeedBuildResult> => {
     const started = Date.now()
     try {
-      const catalog = await loadFeedCatalog(queryOf(scope), o)
+      const catalog = await loadFeedCatalog(queryOf(scope), o, taxesOf(scope))
       const mapping = await loadCategoryMapping(svc)
       for (const v of catalog.variants) v.ceneoCategory = mapping.forProduct(v.categoryIds, catalog.categoryParents)
       const drafts = catalog.variants.map((v) => buildOfferDraft(v, o.feed))

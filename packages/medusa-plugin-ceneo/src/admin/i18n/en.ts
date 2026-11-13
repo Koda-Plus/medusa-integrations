@@ -152,7 +152,7 @@ const en = {
   },
   problems: {
     price_missing: "No price in the feed region",
-    price_net: "The region price excludes tax; Ceneo needs the gross price",
+    price_net: "The price excludes tax and Medusa has no VAT rate for Poland; add a tax region for Poland so Ceneo gets the gross price",
     url_missing: "No product address: a placeholder of feed.productUrl has no value",
     url_too_long: "The product address is longer than 1000 characters",
     sku_missing: "No SKU, and the offer id comes from the SKU",
