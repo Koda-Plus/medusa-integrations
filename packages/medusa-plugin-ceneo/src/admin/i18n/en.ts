@@ -197,7 +197,7 @@ const en = {
       offer: "Variant",
       state: "State",
       price: "Price",
-      avail: "avail",
+      avail: "Availability (avail)",
     },
     offerId: "Ceneo offer id",
     noId: "no id",
