@@ -33,10 +33,10 @@ const CeneoOffer = model
     demo: model.boolean().default(false),
   })
   .indexes([
-    { on: ["offer_id"], unique: true, where: "deleted_at IS NULL" },
-    { on: ["variant_id"], unique: true, where: "retired_at IS NULL AND deleted_at IS NULL" },
-    { on: ["product_id"], where: "deleted_at IS NULL" },
-    { on: ["state"], where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_offer_offer_id_unique", on: ["offer_id"], unique: true, where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_offer_variant_active", on: ["variant_id"], unique: true, where: "retired_at IS NULL AND deleted_at IS NULL" },
+    { name: "IDX_ceneo_offer_product", on: ["product_id"], where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_offer_state", on: ["state"], where: "deleted_at IS NULL" },
   ])
 
 export default CeneoOffer

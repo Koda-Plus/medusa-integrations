@@ -43,10 +43,10 @@ const CeneoOrder = model
     synced_at: model.dateTime(),
   })
   .indexes([
-    { on: ["ceneo_order_id"], unique: true, where: "deleted_at IS NULL" },
-    { on: ["ordered_at"], where: "deleted_at IS NULL" },
-    { on: ["medusa_order_id"], where: "deleted_at IS NULL AND medusa_order_id IS NOT NULL" },
-    { on: ["writes_due"], where: "deleted_at IS NULL AND writes_due = true" },
+    { name: "IDX_ceneo_order_ceneo_id_unique", on: ["ceneo_order_id"], unique: true, where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_order_ordered_at", on: ["ordered_at"], where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_order_medusa_order_id", on: ["medusa_order_id"], where: "deleted_at IS NULL AND medusa_order_id IS NOT NULL" },
+    { name: "IDX_ceneo_order_writes_due", on: ["writes_due"], where: "deleted_at IS NULL AND writes_due = true" },
   ])
 
 export default CeneoOrder

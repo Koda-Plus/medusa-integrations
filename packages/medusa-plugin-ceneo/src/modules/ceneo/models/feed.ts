@@ -24,6 +24,6 @@ const CeneoFeed = model
     built_at: model.dateTime(),
     demo: model.boolean().default(false),
   })
-  .indexes([{ on: ["status", "built_at"], where: "deleted_at IS NULL" }])
+  .indexes([{ name: "IDX_ceneo_feed_status_built", on: ["status", "built_at"], where: "deleted_at IS NULL" }])
 
 export default CeneoFeed

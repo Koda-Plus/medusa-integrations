@@ -39,6 +39,7 @@ const en = {
     builtSame: "Feed built, the file did not change: {{offers}} offers",
     buildFailed: "The build failed, Ceneo keeps getting the previous file: {{error}}",
     buildRunning: "A build is already running",
+    buildStarted: "The build goes on in the background. The panel shows it when it is done.",
     buildGaps: "The feed still waits for its options",
   },
   stats: {

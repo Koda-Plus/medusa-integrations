@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { CeneoBlockedError, CeneoClient, odataString, resetCeneoTokens, writerOfPath } from "../src/modules/ceneo/lib/ceneo-client.ts"
-import { claimImport, finishImport, mergeWrites, recordDraft, releaseStale, resumeWrites, retryImport, takeRunLease, type SqlRunner } from "../src/modules/ceneo/lib/import-claim.ts"
+import { claimImport, ensureLeaseRow, finishImport, mergeWrites, recordDraft, releaseStale, resumeWrites, retryImport, takeRunLease, withRunLease, type SqlRunner } from "../src/modules/ceneo/lib/import-claim.ts"
 import { demoWriteLog, demoWriteTransport, toCancelReasons, toCarriers, writeRequest } from "../src/modules/ceneo/lib/kup-teraz-write.ts"
 import { demoOrders } from "../src/modules/ceneo/lib/demo-ceneo.ts"
 import { resolveOptions } from "../src/modules/ceneo/lib/options.ts"
@@ -325,4 +325,17 @@ test("writes are merged in SQL, only the changed keys; a run lease holds across 
   await resumeWrites(sql, "cor_1", 5)
   assert.match(sql.seen[3].sql, /- 'attention' - 'error' - 'error_at'\) \|\| '\{"attempts":0\}'::jsonb/)
   assert.match(sql.seen[3].sql, /"writes_due" = true/)
+})
+
+test("the feed build holds a lease of its own: its row is created once, a held lease skips the run", async () => {
+  const free = fakeSql((q) => (q.startsWith("update") && q.includes("lease_until") && !q.includes("= null") ? [{ id: "feed" }] : []))
+  await ensureLeaseRow(free, "feed")
+  assert.match(free.seen[0].sql, /insert into "ceneo_writer" \("id"\) values \(\?\) on conflict \("id"\) do nothing/)
+  assert.equal(await withRunLease(free, "feed", 1000, async () => "built"), "built")
+  /* Released after the run, by its own token only. */
+  assert.match(free.seen.at(-1)?.sql ?? "", /"lease_token" = null.*"lease_token" = \?/s)
+  const held = fakeSql(() => [])
+  let ran = false
+  assert.equal(await withRunLease(held, "feed", 1000, async () => (ran = true)), null)
+  assert.equal(ran, false)
 })

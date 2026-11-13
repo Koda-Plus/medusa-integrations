@@ -22,17 +22,15 @@ import { ceneoSvc, planFeedWrite, shrinkGuard, type CeneoServiceLike, type Row }
 import { feedHash } from "../../modules/ceneo/lib/token"
 import { CatalogError, loadFeedCatalog } from "./catalog"
 import { loadCategoryMapping } from "./categories"
-import { chunks, errorText, isLocked, queryOf, withLock, type Scope } from "./runtime"
+import { FEED_LEASE, chunks, errorText, isLocked, queryOf, withFeedLease, type Scope } from "./runtime"
 
 export type { FeedBuildResult, FeedTrigger }
 
 const OFFER_SYNC_FIELDS = ["id", "offer_id", "variant_id", "retired_at", "product_id", "sku", "title", "state", "problems", "in_feed", "price", "avail", "stock", "ceneo_category_id"]
 const WRITE_CHUNK = 500
-export const FEED_LOCK = "feed"
-const LOCK = FEED_LOCK
-
+/** A build of this process only; one in another process holds the database lease. */
 export function isFeedBuilding(): boolean {
-  return isLocked(LOCK)
+  return isLocked(FEED_LEASE)
 }
 
 async function writeOffers(svc: CeneoServiceLike, plan: OfferSyncPlan, now: Date): Promise<void> {
@@ -88,7 +86,7 @@ export async function runCeneoFeedBuild(scope: Scope, input: { trigger?: FeedTri
   if (gaps.length > 0) return { status: "skipped", reason: "gaps", gaps }
   const trigger = input.trigger ?? "schedule"
 
-  const result = await withLock(LOCK, async (): Promise<FeedBuildResult> => {
+  const result = await withFeedLease(scope, async (): Promise<FeedBuildResult> => {
     const started = Date.now()
     try {
       const catalog = await loadFeedCatalog(queryOf(scope), o)

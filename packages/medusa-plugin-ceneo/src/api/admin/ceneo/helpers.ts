@@ -1,5 +1,8 @@
 import type { MedusaRequest } from "@medusajs/framework/http"
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import type { IEventBusModuleService } from "@medusajs/framework/types"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { CATALOG_CHANGED_EVENT } from "../../../modules/ceneo/lib/constants"
+import { markCatalogChanged } from "../../../modules/ceneo/lib/schedule"
 import type { CeneoCategoryDto, OfferDto } from "../../../modules/ceneo/lib/contract"
 import { OFFER_FIELDS, checkTakeOver, takenId, toOfferDto, type OfferRow } from "../../../modules/ceneo/lib/offers"
 import type { CeneoServiceLike, Row } from "../../../modules/ceneo/lib/store"
@@ -12,6 +15,21 @@ export function bodyOf(req: MedusaRequest): Record<string, unknown> {
 
 export function queryOf(req: MedusaRequest): QueryLike {
   return req.scope.resolve(ContainerRegistrationKeys.QUERY) as unknown as QueryLike
+}
+
+/**
+ * The feed holds something new: noted in this process, and sent as an event,
+ * so a feed job in a separate worker hears it too. A lost event only waits
+ * for the interval build.
+ */
+export async function catalogChanged(req: MedusaRequest): Promise<void> {
+  markCatalogChanged()
+  try {
+    const bus = req.scope.resolve<IEventBusModuleService>(Modules.EVENT_BUS)
+    await bus.emit({ name: CATALOG_CHANGED_EVENT, data: {} })
+  } catch {
+    /* No event bus: the interval build picks the change up. */
+  }
 }
 
 export function intParam(v: unknown, fallback: number, min: number, max: number): number {

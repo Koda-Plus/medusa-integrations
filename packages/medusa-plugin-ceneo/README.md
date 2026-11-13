@@ -58,7 +58,7 @@ Every option is optional and nothing stops Medusa from starting. The admin page 
 
 ## The feed
 
-The job `ceneo-build-feed` wakes every 5 minutes and builds the file every `feed.intervalMinutes`, and within 10 minutes after a product or variant changes (never more often than every 5 minutes). The admin button "Build now" builds it at once. Ceneo reads `GET /ceneo/feed/<token>.xml` on the backend: the newest successful build, as built, with an ETag. A failed build keeps the previous file served. A scheduled build that would take more than half of the offers off Ceneo at once (or all of them) fails on purpose; "Build now" publishes a smaller file, never an empty one.
+The job `ceneo-build-feed` wakes every 5 minutes and builds the file every `feed.intervalMinutes`, and within 10 minutes after a product or variant changes (never more often than every 5 minutes). The admin button "Build now" builds it at once; a build longer than 20 seconds goes on in the background and the panel shows it when it is done. One build at a time across every process (server and worker): it holds a lease in the database. A category mapping or a moved id made in the admin reaches a separate worker as the event `ceneo.catalog-changed`. Ceneo reads `GET /ceneo/feed/<token>.xml` on the backend: the newest successful build, as built, with an ETag. A failed build keeps the previous file served. A scheduled build that would take more than half of the offers off Ceneo at once (or all of them) fails on purpose; "Build now" publishes a smaller file, never an empty one.
 
 What goes into the file:
 

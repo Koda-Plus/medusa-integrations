@@ -13,7 +13,7 @@ import type {
   OrderSyncResult,
   CategorySyncResult,
   CeneoCategorySearchResponse,
-  FeedBuildResult,
+  FeedBuildAnswer,
   OffersResponse,
   ProductCeneoResponse,
   StatusResponse,
@@ -115,8 +115,8 @@ export function useCeneoStatus() {
 /** Builds the feed now; the status refreshes after it. */
 export function useBuildFeed() {
   const qc = useQueryClient()
-  return useMutation<FeedBuildResult, unknown, void>({
-    mutationFn: () => ceneoFetch<FeedBuildResult>("/admin/ceneo/feed", { method: "POST" }),
+  return useMutation<FeedBuildAnswer, unknown, void>({
+    mutationFn: () => ceneoFetch<FeedBuildAnswer>("/admin/ceneo/feed", { method: "POST" }),
     onSettled: () => qc.invalidateQueries({ queryKey: ceneoKeys.all }),
   })
 }

@@ -6,6 +6,7 @@ import { model } from "@medusajs/framework/utils"
  * hard switch lives in the plugin options (`writes`) and always wins.
  * `mode` is where it was flipped (demo or live): a toggle armed in demo
  * mode does not arm a real account. The circuit breaker writes here too.
+ * The row `feed` is no writer: it only holds the feed build lease.
  */
 const CeneoWriter = model.define("ceneo_writer", {
   id: model.id().primaryKey(),

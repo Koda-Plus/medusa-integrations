@@ -42,6 +42,7 @@ const pl = {
     builtSame: "Plik zbudowany bez zmian, ofert: {{offers}}",
     buildFailed: "Budowa się nie udała, Ceneo dostaje poprzedni plik: {{error}}",
     buildRunning: "Budowa już trwa",
+    buildStarted: "Budowa trwa w tle. Panel pokaże ją, gdy się skończy.",
     buildGaps: "Plik czeka jeszcze na ustawienia",
   },
   stats: {

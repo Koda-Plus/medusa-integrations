@@ -1,9 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ancestry, effectiveMapping } from "../../../../modules/ceneo/lib/categories"
 import type { CategoryMapResponse, CategoryMapRow, CeneoCategoryDto } from "../../../../modules/ceneo/lib/contract"
-import { markCatalogChanged } from "../../../../modules/ceneo/lib/schedule"
 import { categoryStats, ceneoSvc } from "../../../../modules/ceneo/lib/store"
-import { bodyOf, medusaCategories, queryOf, toCategoryDto } from "../helpers"
+import { bodyOf, catalogChanged, medusaCategories, queryOf, toCategoryDto } from "../helpers"
 
 /**
  * GET /admin/ceneo/category-map
@@ -83,6 +82,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     else await svc.createCeneoCategoryMaps([{ category_id: categoryId, ceneo_id: ceneoId }])
   }
   svc.getLogger().info(`[ceneo] Category ${categoryId} ${ceneoId ? `mapped to Ceneo ${ceneoId}` : "unmapped"}.`)
-  markCatalogChanged()
+  await catalogChanged(req)
   res.json({ category_id: categoryId, ceneo_id: ceneoId })
 }

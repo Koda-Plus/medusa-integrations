@@ -158,6 +158,11 @@ export async function releaseRunLease(sql: SqlRunner, writer: string, token: str
   await sql.raw(`update ${W} set "lease_token" = null, "lease_until" = null, "updated_at" = now() where "id" = ? and "lease_token" = ?`, [writer, token])
 }
 
+/** A run lease that is not a writer (the feed build): its row in the writer table, created once, never armed. */
+export async function ensureLeaseRow(sql: SqlRunner, id: string): Promise<void> {
+  await sql.raw(`insert into ${W} ("id") values (?) on conflict ("id") do nothing`, [id])
+}
+
 /** Runs `fn` under the writer's database lease; null when another process holds it. */
 export async function withRunLease<T>(sql: SqlRunner, writer: string, ms: number, fn: () => Promise<T>): Promise<T | null> {
   const token = `${writer}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`

@@ -18,8 +18,8 @@ const CeneoConsent = model
     transaction_at: model.dateTime().nullable(),
   })
   .indexes([
-    { on: ["cart_id"], unique: true, where: "deleted_at IS NULL" },
-    { on: ["created_at"], where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_consent_cart_unique", on: ["cart_id"], unique: true, where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_consent_created_at", on: ["created_at"], where: "deleted_at IS NULL" },
   ])
 
 export default CeneoConsent
