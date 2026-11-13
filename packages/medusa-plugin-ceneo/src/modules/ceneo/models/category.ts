@@ -20,8 +20,8 @@ const CeneoCategory = model
     synced_at: model.dateTime(),
   })
   .indexes([
-    { on: ["ceneo_id"], unique: true, where: "deleted_at IS NULL" },
-    { on: ["active"], where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_category_ceneo_id_unique", on: ["ceneo_id"], unique: true, where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_category_active", on: ["active"], where: "deleted_at IS NULL" },
   ])
 
 export default CeneoCategory

@@ -350,3 +350,6 @@ export type FeedBuildResult =
   | { status: "skipped"; reason: "running" }
   | { status: "built"; id: string; changed: boolean; bytes: number; duration_ms: number; offers: number; warnings: number; errors: number; excluded: number }
   | { status: "failed"; id: string; error: string; code: string | null; duration_ms: number }
+
+/** POST /admin/ceneo/feed: the result, or `started` when the build outlasts the wait and goes on in the background. */
+export type FeedBuildAnswer = FeedBuildResult | { status: "started" }

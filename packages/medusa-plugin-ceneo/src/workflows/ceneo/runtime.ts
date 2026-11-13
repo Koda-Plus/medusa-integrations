@@ -1,10 +1,11 @@
 /**
- * WHAT EVERY CENEO RUN NEEDS FROM MEDUSA: Query and one run at a time per
- * process.
+ * WHAT EVERY CENEO RUN NEEDS FROM MEDUSA: Query, one run at a time per
+ * process, and the feed lease across processes.
  */
 
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { ensureLeaseRow, withRunLease, type SqlRunner } from "../../modules/ceneo/lib/import-claim"
 
 export type Scope = Pick<MedusaContainer, "resolve">
 
@@ -37,6 +38,23 @@ export async function withLock<T>(name: string, fn: () => Promise<T>): Promise<T
   } finally {
     holder[key] = false
   }
+}
+
+export const FEED_LEASE = "feed"
+/** Longer than any build; a crashed process frees the lease after it. */
+export const FEED_LEASE_MS = 30 * 60_000
+
+/**
+ * Runs `fn` as the only feed build or id move: first in this process, then
+ * across processes (server and worker) through the database lease. Null
+ * when another run holds either, so `fn` never returns null itself.
+ */
+export async function withFeedLease<T extends {}>(scope: Scope, fn: () => Promise<T>): Promise<T | null> {
+  return withLock(FEED_LEASE, async () => {
+    const sql = scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as unknown as SqlRunner
+    await ensureLeaseRow(sql, FEED_LEASE)
+    return withRunLease(sql, FEED_LEASE, FEED_LEASE_MS, fn)
+  }).then((r) => r ?? null)
 }
 
 export function chunks<T>(list: readonly T[], size: number): T[][] {

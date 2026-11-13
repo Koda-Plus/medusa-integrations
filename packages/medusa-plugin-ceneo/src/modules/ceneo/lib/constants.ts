@@ -169,3 +169,5 @@ export const FEED_XML_KEEP = 5
 export const FEED_ROWS_KEEP = 50
 /** The feed job wakes every 5 minutes and builds when the interval has passed or the catalog changed. */
 export const FEED_JOB_SCHEDULE = "*/5 * * * *"
+/** Emitted by admin routes that change what the feed holds (a mapping, a moved id): the subscriber runs where the feed job runs, also in a separate worker. */
+export const CATALOG_CHANGED_EVENT = "ceneo.catalog-changed"

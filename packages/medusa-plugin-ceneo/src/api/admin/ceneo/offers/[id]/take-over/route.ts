@@ -1,10 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { OFFER_FIELDS, checkTakeOver, takenId, type OfferRow } from "../../../../../../modules/ceneo/lib/offers"
-import { markCatalogChanged } from "../../../../../../modules/ceneo/lib/schedule"
 import { ceneoSvc } from "../../../../../../modules/ceneo/lib/store"
-import { FEED_LOCK } from "../../../../../../workflows/ceneo/build-feed"
-import { withLock } from "../../../../../../workflows/ceneo/runtime"
-import { queryOf } from "../../../helpers"
+import { withFeedLease } from "../../../../../../workflows/ceneo/runtime"
+import { catalogChanged, queryOf } from "../../../helpers"
 
 const REFUSALS: Record<string, string> = {
   not_taken: "This offer was not refused for an id another variant holds.",
@@ -21,10 +19,10 @@ const REFUSALS: Record<string, string> = {
  * again under a new variant. The holder's row moves with the id (its
  * history stays in one place); this variant's own row is retired, or
  * removed when it never had an id. The next build writes the offer.
- * Runs under the feed lock: never next to a build of this process.
+ * Runs under the feed lease: never next to a build, in any process.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
-  const done = await withLock(FEED_LOCK, () => takeOver(req, res).then(() => true))
+  const done = await withFeedLease(req.scope, () => takeOver(req, res).then(() => true))
   if (done === null) res.status(409).json({ code: "feed_building", message: "The feed is being built; try again in a moment." })
 }
 
@@ -75,6 +73,6 @@ async function takeOver(req: MedusaRequest, res: MedusaResponse): Promise<void> 
     },
   ])
   svc.getLogger().info(`[ceneo] Offer id ${id} moved from variant ${holder.variant_id} to ${requester.variant_id}.`)
-  markCatalogChanged()
+  await catalogChanged(req)
   res.json({ offer_id: id, variant_id: requester.variant_id, row_id: holder.id })
 }

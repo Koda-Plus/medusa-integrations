@@ -11,6 +11,6 @@ const CeneoCategoryMap = model
     category_id: model.text(),
     ceneo_id: model.text(),
   })
-  .indexes([{ on: ["category_id"], unique: true, where: "deleted_at IS NULL" }])
+  .indexes([{ name: "IDX_ceneo_category_map_category_unique", on: ["category_id"], unique: true, where: "deleted_at IS NULL" }])
 
 export default CeneoCategoryMap

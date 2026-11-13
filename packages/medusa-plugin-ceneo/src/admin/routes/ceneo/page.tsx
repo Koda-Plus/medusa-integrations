@@ -138,6 +138,7 @@ function FeedCard({ status, lang }: { status: StatusResponse; lang: string }) {
       onSuccess: (r) => {
         if (r.status === "built") toast.success(t(r.changed ? "toast.built" : "toast.builtSame", { offers: r.offers }))
         else if (r.status === "failed") toast.error(t("toast.buildFailed", { error: r.error }))
+        else if (r.status === "started") toast.info(t("toast.buildStarted"))
         else toast.info(t(r.reason === "running" ? "toast.buildRunning" : "toast.buildGaps"))
       },
       onError: (e) => toast.error(t("toast.error", { error: errorMessage(e) })),

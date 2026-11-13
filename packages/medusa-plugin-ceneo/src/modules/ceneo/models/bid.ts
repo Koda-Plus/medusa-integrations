@@ -40,8 +40,8 @@ const CeneoBid = model
     demo: model.boolean().default(false),
   })
   .indexes([
-    { on: ["kind", "key", "demo"], unique: true, where: "deleted_at IS NULL" },
-    { on: ["read_at"], where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_bid_kind_key_demo_unique", on: ["kind", "key", "demo"], unique: true, where: "deleted_at IS NULL" },
+    { name: "IDX_ceneo_bid_read_at", on: ["read_at"], where: "deleted_at IS NULL" },
   ])
 
 export default CeneoBid
