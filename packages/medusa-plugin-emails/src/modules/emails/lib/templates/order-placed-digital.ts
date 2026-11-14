@@ -58,7 +58,7 @@ export function renderOrderPlacedDigital(ctx: EmailTemplateContext<OrderEmailDat
     intro: intro.nr ? [intro.before, kit.nowrap(intro.nr), intro.after] : intro.before,
     band: kit.tracker([
       { label: c.steps[0], when: format.shortDate(data.order_date, true), state: "done" },
-      { label: c.steps[1], state: "current" },
+      { label: c.steps[1], state: "done" },
     ]),
     blocks: [
       filesBlock(ctx, c.files),
@@ -68,7 +68,10 @@ export function renderOrderPlacedDigital(ctx: EmailTemplateContext<OrderEmailDat
         [common.date, format.date(data.order_date, true)],
         [common.payment, text(data.payment_method, 120)],
       ]),
-      items.length > 0 ? kit.section(c.ordered, kit.items(items), totalsBlock(data, format, locale)) : totalsBlock(data, format, locale),
+      /* Nic nie jedzie, wiec w sumie nie ma wiersza dostawy. */
+      items.length > 0
+        ? kit.section(c.ordered, kit.items(items), totalsBlock({ ...data, shipping_total: null }, format, locale))
+        : totalsBlock({ ...data, shipping_total: null }, format, locale),
       kit.actions(account ? { label: d.myFiles, href: account } : null, { label: common.backToStore, href: links.store() }),
     ],
   }
@@ -81,7 +84,8 @@ export function renderOrderPlacedMixed(ctx: EmailTemplateContext<OrderEmailData>
   const common = COPY[locale].common
   const nr = orderNumber(data)
   const name = firstName(data.customer_name)
-  const toShip = kitItems((data.items ?? []).filter((i) => !i?.digital), format, data.currency_code)
+  /* Wszystkie pozycje (z e-bookami), zeby lista zgadzala sie z suma. */
+  const items = kitItems(data.items, format, data.currency_code)
   const title = c.title(name)
   const intro = c.intro(nr)
   const orderUrl = data.order_url ?? links.order({ id: data.order_id ?? null, displayId: nr, country: data.country_code ?? null })
@@ -108,7 +112,7 @@ export function renderOrderPlacedMixed(ctx: EmailTemplateContext<OrderEmailData>
         [common.delivery, text(data.shipping_method, 120)],
         [common.payment, text(data.payment_method, 120)],
       ]),
-      toShip.length > 0 ? kit.section(c.toShip, kit.items(toShip), totalsBlock(data, format, locale)) : totalsBlock(data, format, locale),
+      items.length > 0 ? kit.section(placed.ordered, kit.items(items), totalsBlock(data, format, locale)) : totalsBlock(data, format, locale),
       kit.section(common.address, addressBlock(data.shipping_address)),
       kit.actions({ label: common.viewOrder, href: orderUrl }, { label: common.backToStore, href: links.store() }),
     ],
