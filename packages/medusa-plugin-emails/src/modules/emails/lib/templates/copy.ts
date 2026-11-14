@@ -78,7 +78,6 @@ export interface TemplateCopy {
     title: (name: string | null) => { before: string; accent: string; after: string }
     intro: (nr: string | null) => { before: string; nr: string | null; after: string }
     files: string
-    toShip: string
   }
   orderShipped: {
     label: string
@@ -283,7 +282,6 @@ const en: TemplateCopy = {
         ? { before: "Order ", nr: isNumeric(nr) ? `#${nr}` : nr, after: " is in. Download the e-books now; we will write when the parcel leaves." }
         : { before: "Your order is in. Download the e-books now; we will write when the parcel leaves.", nr: null, after: "" },
     files: "Download now",
-    toShip: "We are packing",
   },
   orderShipped: {
     label: "Order shipped",
@@ -507,7 +505,6 @@ const pl: TemplateCopy = {
         ? { before: "Zamówienie ", nr: isNumeric(nr) ? `nr ${nr}` : nr, after: " jest w systemie. E-booki pobierzesz od razu, a produkty wyślemy - napiszemy, gdy paczka wyruszy." }
         : { before: "Zamówienie jest w systemie. E-booki pobierzesz od razu, a produkty wyślemy - napiszemy, gdy paczka wyruszy.", nr: null, after: "" },
     files: "Do pobrania od razu",
-    toShip: "Kompletujemy do wysyłki",
   },
   orderShipped: {
     label: "Zamówienie wysłane",
