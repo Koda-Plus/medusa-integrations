@@ -114,6 +114,24 @@ export interface EmailsPluginOptions {
   skipOrderMetadataKeys?: string[]
   /** Tracking links per fulfillment provider id when the label has none: { "inpost": "https://.../{number}" }. */
   trackingUrls?: Record<string, string>
+  /**
+   * Digital products (lines with `requires_shipping: false`): a download link
+   * per line in the order confirmation, and the file attached when it is small.
+   * Without `secret` and `url` the message still says what is digital and
+   * points to the account, with no links.
+   */
+  downloads?: {
+    /** Signs the links (HMAC). At least 16 characters; your download route checks with the same one. */
+    secret?: string
+    /** Absolute, or a path joined to `storefrontUrl`; {order_id}, {item_id} and {token} are filled. */
+    url?: string
+    /** Product metadata key with the file's address, read on the server for the attachment. Default "digital_file_url". */
+    fileMetadataKey?: string
+    /** Attach the files. Default true. */
+    attach?: boolean
+    /** Files above this size (all together, in MB, 1 to 25) are not attached; the links stay. Default 10. */
+    maxAttachmentMb?: number
+  }
   /** How long a password reset link works, for the text of the message. Default 15. */
   passwordResetMinutes?: number
   /** Password reset e-mails per address in any hour (1 to 50). Default 3; further requests are logged as skipped. */
@@ -253,6 +271,8 @@ export interface ResolvedEmailsOptions {
   abandonedCart: { afterHours: number; maxAgeHours: number; maxPerRun: number }
   skipOrderMetadataKeys: string[]
   trackingUrls: Record<string, string>
+  /** Digital products: null url/secret when links cannot be signed. */
+  downloads: { secret: string | null; url: string | null; fileMetadataKey: string; attach: boolean; maxAttachmentBytes: number }
   passwordResetMinutes: number
   passwordResetsPerHour: number
   negotiationAmounts: "minor" | "major"
@@ -287,7 +307,7 @@ function baseUrl(v: unknown): string | null {
   return s ? s.replace(/\/+$/, "") : null
 }
 
-const PLACEHOLDER = /\{(order_id|display_id|cart_id|country|locale|token|email|id|ref)\}/g
+const PLACEHOLDER = /\{(order_id|item_id|display_id|cart_id|country|locale|token|email|id|ref)\}/g
 
 /**
  * A link template, absolute. A path ("/account", "/{country}/cart") is
@@ -435,6 +455,21 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     }
   }
 
+  const dl = o.downloads && typeof o.downloads === "object" ? o.downloads : {}
+  const dlSecret = str(dl.secret)
+  if (dlSecret && dlSecret.length < 16) problems.push("downloads.secret (at least 16 characters)")
+  const dlUrlRaw = str(dl.url)
+  const dlUrl = dlUrlRaw ? resolveLinkTemplate(dlUrlRaw, storefrontUrl) : null
+  if (dlUrlRaw && (!dlUrl || !dlUrlRaw.includes("{token}"))) problems.push("downloads.url (an address or path with {token})")
+  const dlKeyRaw = str(dl.fileMetadataKey)
+  const downloads = {
+    secret: dlSecret.length >= 16 ? dlSecret : null,
+    url: dlUrl && dlUrlRaw.includes("{token}") ? dlUrl : null,
+    fileMetadataKey: /^[A-Za-z0-9_.-]{1,64}$/.test(dlKeyRaw) ? dlKeyRaw : "digital_file_url",
+    attach: dl.attach !== false,
+    maxAttachmentBytes: int(dl.maxAttachmentMb, 10, 1, 25) * 1024 * 1024,
+  }
+
   const channels = Array.isArray(o.channels) ? o.channels.filter((c): c is string => typeof c === "string") : []
   const rps = Number(o.requestsPerSecond)
 
@@ -466,6 +501,7 @@ export function resolveOptions(input: EmailsPluginOptions | undefined | null): R
     abandonedCart: { afterHours, maxAgeHours, maxPerRun: int(ac.maxPerRun, DEFAULT_ABANDONED_MAX_PER_RUN, 1, 500) },
     skipOrderMetadataKeys: skip,
     trackingUrls,
+    downloads,
     passwordResetMinutes: int(o.passwordResetMinutes, DEFAULT_RESET_MINUTES, 1, 24 * 60),
     passwordResetsPerHour: int(o.passwordResetsPerHour, DEFAULT_RESETS_PER_HOUR, 1, 50),
     negotiationAmounts: o.negotiationAmounts === "minor" ? "minor" : "major",

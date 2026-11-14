@@ -42,7 +42,7 @@ export const COPY_LIMITS: Record<CopyField, number> = { subject: 150, preheader:
 export const PLACEHOLDERS = ["name", "store", "order", "total", "items", "tracking", "minutes", "ref", "product", "price"] as const
 export type Placeholder = (typeof PLACEHOLDERS)[number]
 
-const ORDER_TEMPLATES: readonly string[] = [TEMPLATES.orderPlaced, TEMPLATES.orderShipped, TEMPLATES.orderCanceled]
+const ORDER_TEMPLATES: readonly string[] = [TEMPLATES.orderPlaced, TEMPLATES.orderPlacedMixed, TEMPLATES.orderPlacedDigital, TEMPLATES.orderShipped, TEMPLATES.orderCanceled]
 const NEGOTIATION_TEMPLATES: readonly string[] = [TEMPLATES.negotiationCountered, TEMPLATES.negotiationAccepted, TEMPLATES.negotiationRejected]
 
 /** The placeholders that have a value in a template, for the hints in the admin. App templates get the generic ones. */

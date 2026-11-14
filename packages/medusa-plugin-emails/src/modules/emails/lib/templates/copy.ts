@@ -48,6 +48,38 @@ export interface TemplateCopy {
     inProgress: string
     ordered: string
   }
+  /** What both digital confirmations say about the files. */
+  downloads: {
+    download: string
+    /** No signed link: the file waits in the account. */
+    inAccount: string
+    attached: (n: number) => string
+    account: (hasAccount: boolean) => string
+    myFiles: string
+  }
+  orderPlacedDigital: {
+    label: string
+    description: string
+    subject: (nr: string | null) => string
+    preheader: (count: number) => string
+    eyebrow: string
+    title: (name: string | null) => { before: string; accent: string; after: string }
+    intro: (nr: string | null) => { before: string; nr: string | null; after: string }
+    steps: [string, string]
+    files: string
+    ordered: string
+  }
+  orderPlacedMixed: {
+    label: string
+    description: string
+    subject: (nr: string | null) => string
+    preheader: (files: number) => string
+    eyebrow: string
+    title: (name: string | null) => { before: string; accent: string; after: string }
+    intro: (nr: string | null) => { before: string; nr: string | null; after: string }
+    files: string
+    toShip: string
+  }
   orderShipped: {
     label: string
     description: string
@@ -213,6 +245,45 @@ const en: TemplateCopy = {
     steps: ["Placed", "Packing", "Shipped", "Delivered"],
     inProgress: "in progress",
     ordered: "Your order",
+  },
+  downloads: {
+    download: "Download",
+    inAccount: "Waiting in your account",
+    attached: (n) => (n === 1 ? "The file is also attached to this e-mail." : "The files are also attached to this e-mail."),
+    account: (hasAccount) =>
+      hasAccount
+        ? "Your files stay in your account, under E-books, whenever you need them again."
+        : "The download links work without signing in. Keep this e-mail, or create an account with this address to keep your files there.",
+    myFiles: "My e-books",
+  },
+  orderPlacedDigital: {
+    label: "Order confirmation: digital products",
+    description: "A customer buys only digital products (e-books), nothing to ship",
+    subject: (nr) => (nr ? `Your e-books from order ${isNumeric(nr) ? `#${nr}` : nr} are ready` : "Your e-books are ready"),
+    preheader: (count) => `${count} ${count === 1 ? "file" : "files"} to download: from this e-mail, from the attachment and from your account.`,
+    eyebrow: "Ready to download",
+    title: (name) => ({ before: name ? `Thank you, ${name}. ` : "Thank you. ", accent: "Your e-books are ready", after: "." }),
+    intro: (nr) =>
+      nr
+        ? { before: "Order ", nr: isNumeric(nr) ? `#${nr}` : nr, after: " is paid. Download your files with the buttons below." }
+        : { before: "Your order is paid. Download your files with the buttons below.", nr: null, after: "" },
+    steps: ["Paid", "Ready to download"],
+    files: "To download",
+    ordered: "Your order",
+  },
+  orderPlacedMixed: {
+    label: "Order confirmation: products and e-books",
+    description: "A customer buys products to ship and digital products (e-books)",
+    subject: (nr) => (nr ? `We have your order ${isNumeric(nr) ? `#${nr}` : nr}, e-books ready now` : "We have your order, e-books ready now"),
+    preheader: (files) => `${files === 1 ? "Your e-book is" : "Your e-books are"} ready to download now. We are packing the rest and will write when the parcel leaves.`,
+    eyebrow: "Order placed",
+    title: (name) => ({ before: name ? `Thank you, ${name}. ` : "Thank you. ", accent: "Your e-books are ready", after: ", the parcel is being packed." }),
+    intro: (nr) =>
+      nr
+        ? { before: "Order ", nr: isNumeric(nr) ? `#${nr}` : nr, after: " is in. Download the e-books now; we will write when the parcel leaves." }
+        : { before: "Your order is in. Download the e-books now; we will write when the parcel leaves.", nr: null, after: "" },
+    files: "Download now",
+    toShip: "We are packing",
   },
   orderShipped: {
     label: "Order shipped",
@@ -396,6 +467,47 @@ const pl: TemplateCopy = {
     steps: ["Przyjęte", "Kompletowanie", "Wysyłka", "Doręczenie"],
     inProgress: "w toku",
     ordered: "Zamówione produkty",
+  },
+  downloads: {
+    download: "Pobierz",
+    inAccount: "Czeka na Twoim koncie",
+    attached: (n) => (n === 1 ? "Plik jest też w załączniku tego maila." : "Pliki są też w załączniku tego maila."),
+    account: (hasAccount) =>
+      hasAccount
+        ? "Pliki zostają na Twoim koncie w sklepie, w zakładce E-booki - pobierzesz je ponownie, kiedy zechcesz."
+        : "Linki do pobrania działają bez logowania. Zachowaj tego maila albo załóż konto na ten adres, a pliki będą czekać na Twoim koncie.",
+    myFiles: "Moje e-booki",
+  },
+  orderPlacedDigital: {
+    label: "Potwierdzenie zamówienia: e-booki",
+    description: "Klient kupuje same produkty cyfrowe (e-booki), bez wysyłki",
+    subject: (nr) => (nr ? `E-booki z zamówienia ${isNumeric(nr) ? `nr ${nr}` : nr} są gotowe` : "Twoje e-booki są gotowe"),
+    preheader: (count) =>
+      `${count} ${plural("pl", count, { one: "plik", few: "pliki", many: "plików" })} do pobrania: z tego maila, z załącznika i z Twojego konta.`,
+    eyebrow: "Gotowe do pobrania",
+    title: (name) => ({ before: name ? `${name}, dziękujemy. ` : "Dziękujemy. ", accent: "E-booki są już Twoje", after: "." }),
+    intro: (nr) =>
+      nr
+        ? { before: "Zamówienie ", nr: isNumeric(nr) ? `nr ${nr}` : nr, after: " jest opłacone. Pobierz pliki przyciskami poniżej." }
+        : { before: "Zamówienie jest opłacone. Pobierz pliki przyciskami poniżej.", nr: null, after: "" },
+    steps: ["Opłacone", "Gotowe do pobrania"],
+    files: "Do pobrania",
+    ordered: "Zamówienie",
+  },
+  orderPlacedMixed: {
+    label: "Potwierdzenie zamówienia: produkty i e-booki",
+    description: "Klient kupuje produkty do wysyłki i produkty cyfrowe (e-booki)",
+    subject: (nr) => (nr ? `Mamy Twoje zamówienie ${isNumeric(nr) ? `nr ${nr}` : nr} - e-booki już do pobrania` : "Mamy Twoje zamówienie - e-booki już do pobrania"),
+    preheader: (files) =>
+      `${files === 1 ? "E-book pobierzesz" : "E-booki pobierzesz"} od razu, resztę kompletujemy. Napiszemy, gdy paczka wyruszy.`,
+    eyebrow: "Zamówienie przyjęte",
+    title: (name) => ({ before: name ? `${name}, dziękujemy. ` : "Dziękujemy. ", accent: "E-booki już czekają", after: ", paczkę kompletujemy." }),
+    intro: (nr) =>
+      nr
+        ? { before: "Zamówienie ", nr: isNumeric(nr) ? `nr ${nr}` : nr, after: " jest w systemie. E-booki pobierzesz od razu, a produkty wyślemy - napiszemy, gdy paczka wyruszy." }
+        : { before: "Zamówienie jest w systemie. E-booki pobierzesz od razu, a produkty wyślemy - napiszemy, gdy paczka wyruszy.", nr: null, after: "" },
+    files: "Do pobrania od razu",
+    toShip: "Kompletujemy do wysyłki",
   },
   orderShipped: {
     label: "Zamówienie wysłane",
