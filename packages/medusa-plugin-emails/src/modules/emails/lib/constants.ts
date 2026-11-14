@@ -120,6 +120,10 @@ export const DEFAULT_SKIP_ORDER_METADATA_KEYS: readonly string[] = ["marketplace
 /** Keys of the built-in templates. */
 export const TEMPLATES = {
   orderPlaced: "order.placed",
+  /** The confirmation of an order with only digital products (e-books): links, no parcel. */
+  orderPlacedDigital: "order.placed.digital",
+  /** The confirmation of an order with products to ship and digital ones. */
+  orderPlacedMixed: "order.placed.mixed",
   orderShipped: "order.shipped",
   orderCanceled: "order.canceled",
   customerWelcome: "customer.welcome",

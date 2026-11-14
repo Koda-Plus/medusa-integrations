@@ -29,7 +29,7 @@ function checkRendered(r: { subject: string; html: string; text: string }, label
 }
 
 test("every built-in template renders in both languages from its sample", () => {
-  assert.equal(BUILT_IN_KEYS.length, 9)
+  assert.equal(BUILT_IN_KEYS.length, 11)
   for (const key of BUILT_IN_KEYS) {
     for (const locale of LOCALES) {
       const r = renderEmailPreview({ template: key, locale, options: LIVE })

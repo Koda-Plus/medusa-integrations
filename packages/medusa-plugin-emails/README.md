@@ -24,6 +24,7 @@ A store that already sends its e-mails through its own provider keeps it: in app
 Wired to Medusa's events, on by default:
 
 - **Order confirmation** (`order.placed`, on `order.placed`): the order's road on a tracker, number, date, delivery, the products with their amounts, the totals with tax and discount notes, the delivery address, a link to the order.
+- **Order confirmation with e-books** (`order.placed.mixed` and `order.placed.digital`, on `order.placed`): picked instead of `order.placed` when the order has digital lines (`requires_shipping: false`). The download links (see `downloads`), the files attached when they fit, a line about the account; the digital-only one has no parcel road and no address.
 - **Order shipped** (`order.shipped`, on `shipment.created`): every tracking number with its link (from the label, or from your `trackingUrls`), the products of this parcel, and a note when the rest follows in another parcel.
 - **Order cancelled** (`order.canceled`, on `order.canceled`): the order as a slip with its status, the cancelled products, where the money goes.
 - **Welcome** (`customer.welcome`, on `customer.created`, registered accounts only): a customer card and three first steps.
@@ -162,6 +163,7 @@ Language and links:
 - `adminUrl` (default: `admin.backendUrl` and `admin.path` of medusa-config.ts): the admin, for the password reset of admin users.
 - `passwordResetMinutes` (default `15`): how long the reset link works, for the text of the message (Medusa's own default).
 - `passwordResetsPerHour` (default `3`, from 1 to 50): password reset e-mails to one address in any hour. Asking for a reset needs no account, so this keeps a stranger from flooding an inbox from your domain and using up your Resend plan; further requests are logged as skipped (`THROTTLED`).
+- `downloads`: digital products. `{ secret, url: "/api/ebook?o={order_id}&i={item_id}&t={token}", fileMetadataKey: "digital_file_url", attach: true, maxAttachmentMb: 10 }`. The secret (16+ characters) signs a link per digital line; your download route checks it with `verifyDownloadToken(secret, orderId, itemId, token)` from `modules/emails/lib/downloads` and serves the file. Without `secret` and `url` the message lists the files with no links.
 - `trackingUrls`: tracking links per fulfillment provider id (or its first part) when a label has none, e.g. `{ inpost: "https://inpost.pl/sledzenie-przesylek?number={number}" }`.
 
 Brand (`brand`), each field also editable in the admin:

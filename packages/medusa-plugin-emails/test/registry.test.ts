@@ -37,8 +37,8 @@ test("the built-in set comes first in a fixed order, then the store's templates 
   registerEmailTemplate("alpha.code", { render: () => ({ subject: "a", html: "<p>a</p>" }) })
   try {
     const keys = listTemplates(o).map((t) => t.key)
-    assert.deepEqual(keys.slice(0, 9), ["order.placed", "order.shipped", "order.canceled", "customer.welcome", "password.reset", "cart.abandoned", "negotiation.countered", "negotiation.accepted", "negotiation.rejected"])
-    assert.deepEqual(keys.slice(9), ["invoice.ready", "company.approved", "alpha.code", "zeta.code"])
+    assert.deepEqual(keys.slice(0, 11), ["order.placed", "order.placed.mixed", "order.placed.digital", "order.shipped", "order.canceled", "customer.welcome", "password.reset", "cart.abandoned", "negotiation.countered", "negotiation.accepted", "negotiation.rejected"])
+    assert.deepEqual(keys.slice(11), ["invoice.ready", "company.approved", "alpha.code", "zeta.code"])
   } finally {
     unregisterEmailTemplate("zeta.code")
     unregisterEmailTemplate("alpha.code")

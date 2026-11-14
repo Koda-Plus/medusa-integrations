@@ -37,7 +37,10 @@ import { SettingsUnavailableError } from "../../modules/emails/lib/settings"
 import { isMissingTable, type MessageRow } from "../../modules/emails/lib/store"
 import { recordPreSend, sendTemplate, type SendOutcome, type SendTemplateInput } from "./send-template"
 import { sendAbandonedCart } from "./abandoned-carts"
-import { adminResetLink, emailsService, graphOne, storeFor, templateStateOf, type Scope } from "./runtime"
+import { adminResetLink, emailsService, graphOne, queryOf, storeFor, templateStateOf, type Scope } from "./runtime"
+import { attachmentName, isDigitalLine, orderKind } from "../../modules/emails/lib/downloads"
+import { safeUrl } from "../../modules/emails/lib/html"
+import type { ResolvedEmailsOptions } from "../../modules/emails/lib/options"
 
 export const ORDER_FIELDS: readonly string[] = [
   "id",
@@ -63,6 +66,7 @@ export const ORDER_FIELDS: readonly string[] = [
   "customer.last_name",
   "customer.company_name",
   "customer.metadata",
+  "customer.has_account",
 ]
 
 /** Columns of newer Medusa versions, asked for when the store has them. */
@@ -138,26 +142,82 @@ function retryFields(key: string, opts: HandlerOptions): { retry?: boolean; requ
 
 /* ------------------------------------------------------------------ */
 
-async function orderEmail(scope: Scope, template: typeof TEMPLATES.orderPlaced | typeof TEMPLATES.orderCanceled, orderId: string, opts: HandlerOptions): Promise<HandlerOutcome> {
+type Attachment = { filename: string; content: string; content_type?: string }
+
+/**
+ * The files of the digital lines, to attach: the product's metadata key
+ * (`downloads.fileMetadataKey`) holds the file's address, read here on the
+ * server. Files that cannot be read, or that would go over the size limit,
+ * are left out (the links stay). Never throws.
+ */
+async function digitalAttachments(scope: Scope, order: OrderRecord, o: ResolvedEmailsOptions): Promise<Attachment[]> {
+  if (!o.downloads.attach) return []
+  const lines = (order.items ?? []).filter((l) => l && isDigitalLine(l) && l.product_id)
+  if (lines.length === 0) return []
+  const logger = emailsService(scope).getLogger()
   try {
-    if (!(await enabled(scope, template))) return { status: "disabled" }
+    const ids = [...new Set(lines.map((l) => String(l.product_id)))]
+    const { data } = await queryOf(scope).graph({ entity: "product", fields: ["id", "metadata"], filters: { id: ids } })
+    const byId = new Map((data as Array<{ id: string; metadata?: Record<string, unknown> | null }>).map((p) => [p.id, p.metadata ?? {}]))
+    const out: Attachment[] = []
+    let total = 0
+    for (const l of lines) {
+      const url = safeUrl(byId.get(String(l.product_id))?.[o.downloads.fileMetadataKey])
+      if (!url) continue
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const buf = Buffer.from(await res.arrayBuffer())
+        if (total + buf.length > o.downloads.maxAttachmentBytes) {
+          logger.info(`[emails] order ${order.id}: a file above the attachment limit, sent as a link only.`)
+          continue
+        }
+        total += buf.length
+        const title = String(l.product_title || l.title || "plik")
+        out.push({ filename: attachmentName(title, url), content: buf.toString("base64"), content_type: res.headers.get("content-type") || "application/pdf" })
+      } catch (err) {
+        logger.warn(`[emails] order ${order.id}: a digital file could not be read for the attachment (${(err as Error)?.message ?? err}); the link stays.`)
+      }
+    }
+    return out
+  } catch (err) {
+    logger.warn(`[emails] order ${order.id}: digital files not attached (${(err as Error)?.message ?? err}).`)
+    return []
+  }
+}
+
+/** The confirmation that fits the lines: only physical, only digital, or both. */
+export function placedTemplateFor(order: Pick<OrderRecord, "items">): string {
+  const kind = orderKind(order.items)
+  return kind === "digital" ? TEMPLATES.orderPlacedDigital : kind === "mixed" ? TEMPLATES.orderPlacedMixed : TEMPLATES.orderPlaced
+}
+
+async function orderEmail(scope: Scope, requested: typeof TEMPLATES.orderPlaced | typeof TEMPLATES.orderCanceled, orderId: string, opts: HandlerOptions): Promise<HandlerOutcome> {
+  let template: string = requested
+  try {
     const o = emailsService(scope).getOptions()
     const order = await loadOrder(scope, orderId)
+    if (order && requested === TEMPLATES.orderPlaced) template = placedTemplateFor(order)
+    if (!(await enabled(scope, template))) return { status: "disabled" }
     if (!order) return skipped(scope, template, orderId, "order not found")
     const reason = orderSkipReason(order, o)
     if (reason) return skipped(scope, template, orderId, reason)
-    const data = template === TEMPLATES.orderPlaced ? orderData(order, o) : canceledData(order, o)
+    const placed = requested === TEMPLATES.orderPlaced
+    const data: Record<string, unknown> = placed ? { ...orderData(order, o) } : { ...canceledData(order, o) }
+    const attachments = placed && template !== TEMPLATES.orderPlaced ? await digitalAttachments(scope, order, o) : []
+    if (attachments.length > 0) data.attached = attachments.length
     const key = eventKey(template, order.id)
     return fromSend(
       await sendTemplate(scope, {
         template,
         to: String(order.email).trim(),
-        data: data as unknown as Record<string, unknown>,
+        data,
         key,
-        trigger: template === TEMPLATES.orderPlaced ? "order.placed" : "order.canceled",
+        trigger: placed ? "order.placed" : "order.canceled",
         resource: { type: "order", id: order.id },
         orderId: order.id,
         receiverId: order.customer_id ?? null,
+        attachments,
         ...retryFields(key, opts),
       }),
     )
@@ -167,7 +227,7 @@ async function orderEmail(scope: Scope, template: typeof TEMPLATES.orderPlaced |
       template,
       orderId,
       err,
-      opts.retry ? undefined : { to: "", key: eventKey(template, orderId), trigger: template === TEMPLATES.orderPlaced ? "order.placed" : "order.canceled", resource: { type: "order", id: orderId }, orderId },
+      opts.retry ? undefined : { to: "", key: eventKey(template, orderId), trigger: requested === TEMPLATES.orderPlaced ? "order.placed" : "order.canceled", resource: { type: "order", id: orderId }, orderId },
     )
   }
 }
@@ -422,6 +482,8 @@ export async function retryMessage(scope: Scope, row: MessageRow, requestedBy: s
   const id = String(row.resource_id ?? "")
   switch (row.template) {
     case TEMPLATES.orderPlaced:
+    case TEMPLATES.orderPlacedMixed:
+    case TEMPLATES.orderPlacedDigital:
       return onOrderPlaced(scope, id, opts)
     case TEMPLATES.orderCanceled:
       return onOrderCanceled(scope, id, opts)

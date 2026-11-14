@@ -117,6 +117,14 @@ export interface EmailItem {
   unit_price?: Money | null
   /** The line value; unit_price times quantity when missing. */
   total?: Money | null
+  /** Nothing to ship: an e-book or another file (`requires_shipping: false`). */
+  digital?: boolean
+}
+
+/** A file of a digital line: its title and its signed download link (null when links are not configured). */
+export interface EmailDownload {
+  title: string
+  url?: string | null
 }
 
 interface WithLocale {
@@ -146,6 +154,12 @@ export interface OrderEmailData extends WithLocale {
   /** Lower-case country code of the shipping address, for links with {country}. */
   country_code?: string | null
   order_url?: string | null
+  /** One per digital line, when the order has any. */
+  downloads?: EmailDownload[] | null
+  /** The buyer has a store account (the files stay there). */
+  has_account?: boolean | null
+  /** How many files are attached to this message. */
+  attached?: number | null
 }
 
 export interface ShipmentEmailData extends OrderEmailData {

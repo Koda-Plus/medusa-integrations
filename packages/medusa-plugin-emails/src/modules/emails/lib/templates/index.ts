@@ -5,6 +5,7 @@ import { customerWelcomeTemplate } from "./customer-welcome"
 import { negotiationAcceptedTemplate, negotiationCounteredTemplate, negotiationRejectedTemplate } from "./negotiation"
 import { orderCanceledTemplate } from "./order-canceled"
 import { orderPlacedTemplate } from "./order-placed"
+import { orderPlacedDigitalTemplate, orderPlacedMixedTemplate } from "./order-placed-digital"
 import { orderShippedTemplate } from "./order-shipped"
 import { passwordResetTemplate } from "./password-reset"
 
@@ -15,6 +16,8 @@ import { passwordResetTemplate } from "./password-reset"
  */
 export const BUILT_IN_TEMPLATES: ReadonlyArray<[string, EmailTemplateDefinition<any>]> = [
   [TEMPLATES.orderPlaced, orderPlacedTemplate],
+  [TEMPLATES.orderPlacedMixed, orderPlacedMixedTemplate],
+  [TEMPLATES.orderPlacedDigital, orderPlacedDigitalTemplate],
   [TEMPLATES.orderShipped, orderShippedTemplate],
   [TEMPLATES.orderCanceled, orderCanceledTemplate],
   [TEMPLATES.customerWelcome, customerWelcomeTemplate],
@@ -28,4 +31,4 @@ export const BUILT_IN_TEMPLATES: ReadonlyArray<[string, EmailTemplateDefinition<
 export const BUILT_IN_KEYS: readonly string[] = BUILT_IN_TEMPLATES.map(([key]) => key)
 
 export { COPY } from "./copy"
-export { sampleCanceled, sampleCart, sampleNegotiation, sampleOrder, samplePasswordReset, sampleShipment, sampleWelcome } from "./samples"
+export { sampleCanceled, sampleCart, sampleNegotiation, sampleOrder, sampleOrderDigital, sampleOrderMixed, samplePasswordReset, sampleShipment, sampleWelcome } from "./samples"
