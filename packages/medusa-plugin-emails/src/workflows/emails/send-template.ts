@@ -51,6 +51,8 @@ export interface SendTemplateInput {
   ignoreSwitch?: boolean
   /** At most this many messages of the template to one address in an hour (password resets). */
   limitPerHour?: number
+  /** Files to attach (base64). Given to the provider only, never stored. */
+  attachments?: Array<{ filename: string; content: string; content_type?: string }> | null
 }
 
 export type SendOutcome =
@@ -156,7 +158,8 @@ export async function sendTemplate(scope: Scope, input: SendTemplateInput): Prom
       receiver_id: input.receiverId ?? null,
       idempotency_key: input.notificationKey ?? input.key,
       provider_data: { emails: emailsMeta(input, customerId) },
-    })) as Record<string, unknown> | null
+      ...(input.attachments && input.attachments.length > 0 ? { attachments: input.attachments } : {}),
+    } as Parameters<typeof notifications.createNotifications>[0])) as Record<string, unknown> | null
     return { status: "queued", notification: created && typeof created === "object" ? created : null }
   } catch (err) {
     const message = svc.mask((err as Error)?.message ?? String(err)).slice(0, 1000)
@@ -216,6 +219,7 @@ export async function sendDirect(scope: Scope, input: SendTemplateInput): Promis
         resource_id: input.resource?.id ?? null,
         receiver_id: input.receiverId ?? null,
         provider_data: { emails: emailsMeta(input, customerId) },
+        attachments: input.attachments ?? null,
       },
     )
     if (result.outcome === "skipped") return { status: "skipped", reason: result.code ?? "skipped" }

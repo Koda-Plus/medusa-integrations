@@ -80,6 +80,68 @@ export function sampleOrder(locale: EmailLocale, now = new Date()): OrderEmailDa
   return order(locale, now)
 }
 
+const EBOOKS: Record<EmailLocale, Array<{ title: string; sku: string; price: number }>> = {
+  pl: [
+    { title: "E-book: Domowe biuro bez bałaganu", sku: "EB-BIURO", price: 39 },
+    { title: "E-book: Planowanie tygodnia", sku: "EB-PLAN", price: 29 },
+  ],
+  en: [
+    { title: "E-book: A tidy home office", sku: "EB-OFFICE", price: 9 },
+    { title: "E-book: Planning your week", sku: "EB-PLAN", price: 7 },
+  ],
+}
+
+function ebookLines(locale: EmailLocale) {
+  return EBOOKS[locale].map((p) => ({ ...line(p, 1), digital: true }))
+}
+
+function sampleDownloads(locale: EmailLocale) {
+  return EBOOKS[locale].map((p, i) => ({ title: p.title, url: `https://shop.example.com/download?order=order_sample&item=item_${i + 1}&token=sample-token` }))
+}
+
+/** Only e-books: nothing to ship, no address, the files attached. */
+export function sampleOrderDigital(locale: EmailLocale, now = new Date()): OrderEmailData {
+  const p = PEOPLE[locale]
+  const items = ebookLines(locale)
+  const total = Math.round(items.reduce((s, i) => s + i.total, 0) * 100) / 100
+  const rate = locale === "pl" ? 0.23 : 0.21
+  return {
+    locale,
+    order_id: "order_sample",
+    order_number: 1043,
+    order_date: at(0.2, now),
+    currency_code: p.currency,
+    customer_name: p.name,
+    items,
+    items_total: total,
+    shipping_total: 0,
+    tax_total: Math.round((total * rate) / (1 + rate) * 100) / 100,
+    total,
+    payment_method: locale === "pl" ? "Karta" : "Card",
+    downloads: sampleDownloads(locale),
+    has_account: false,
+    attached: items.length,
+  }
+}
+
+/** Products to ship and e-books in one order. */
+export function sampleOrderMixed(locale: EmailLocale, now = new Date()): OrderEmailData {
+  const o = order(locale, now)
+  const ebooks = ebookLines(locale).slice(0, 1)
+  const items = [...(o.items ?? []), ...ebooks]
+  const extra = ebooks.reduce((s, i) => s + i.total, 0)
+  return {
+    ...o,
+    order_number: 1044,
+    items,
+    items_total: Math.round(((Number(o.items_total) || 0) + extra) * 100) / 100,
+    total: Math.round(((Number(o.total) || 0) + extra) * 100) / 100,
+    downloads: sampleDownloads(locale).slice(0, 1),
+    has_account: true,
+    attached: 1,
+  }
+}
+
 export function sampleShipment(locale: EmailLocale, now = new Date()): ShipmentEmailData {
   const o = order(locale, now)
   return {
