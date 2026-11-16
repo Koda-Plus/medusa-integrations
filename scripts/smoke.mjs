@@ -30,6 +30,7 @@ import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { listPackages, root, selectPackages } from "./lib/packages.mjs"
 
 const argv = process.argv.slice(2)
@@ -182,7 +183,7 @@ function startPostgres() {
   }
   const as = (cmd) => (runAs ? `su ${runAs} -s /bin/sh -c '${cmd.replace(/'/g, "'\\''")}'` : cmd)
   must(as(`${exe("initdb")} -D "${data}" -U smoke -A trust -E UTF8 --no-locale`), {}, "initdb")
-  must(as(`${exe("pg_ctl")} -D "${data}" -o "-p ${port}${isWin ? "" : ` -k /tmp`} -c listen_addresses=localhost" -l "${path.join(pgDir, "pg.log")}" -w start`), {}, "pg_ctl start")
+  must(as(`${exe("pg_ctl")} -D "${data}" -o "-p ${port}${isWin ? "" : ` -k /tmp`} -c listen_addresses=localhost" -l "${path.join(pgDir, "pg.log")}" -w start`), { stdio: "ignore" }, `pg_ctl start (see ${path.join(pgDir, "pg.log")})`)
   return {
     url: `postgres://smoke@localhost:${port}`,
     stop: () => {
@@ -360,7 +361,8 @@ async function loadPlaywright() {
   }
   const global = sh("npm root -g").out.trim()
   try {
-    return await import(path.join(global, "playwright", "index.mjs"))
+    /* On Windows an absolute path is not an import specifier: it needs a file:// URL. */
+    return await import(pathToFileURL(path.join(global, "playwright", "index.mjs")).href)
   } catch {
     return null
   }
@@ -451,8 +453,23 @@ async function smokeVersion(version, packages, tarballs, routes = {}) {
       try {
         const page = await b.newPage({ viewport: { width: 1440, height: 1000 } })
         const errors = []
+        const consoleErrors = []
         page.on("pageerror", (e) => errors.push(String(e?.message ?? e)))
+        page.on("console", (m) => {
+          if (m.type() === "error") consoleErrors.push(m.text())
+        })
         await page.goto(`${base}/app/login`, { waitUntil: "networkidle", timeout: 120_000 })
+        const form = await page.waitForSelector('input[name="email"]', { timeout: 60_000 }).catch(() => null)
+        /* Without the form nothing below says why: keep a screenshot and what the page reported. */
+        if (!form) {
+          await page.screenshot({ path: path.join(shots, `${version}-login.png`), fullPage: false }).catch(() => {})
+          const body = (await page.locator("body").innerText().catch(() => "")).slice(0, 500)
+          /* Seen on Windows only: a fresh server's Vite optimizes the admin dependencies on the first visit and a chunk comes back as HTML ("Unexpected token '<'"); the same build loads after a restart. */
+          throw new Error(`admin login form not found at ${page.url()}${isWin ? " (on Windows a fresh dev server can serve a chunk as HTML; --no-browser skips this step)" : ""}
+page errors: ${errors.join(" | ") || "none"}
+console errors: ${consoleErrors.slice(0, 10).join(" | ") || "none"}
+body: ${body || "(empty)"}`)
+        }
         await page.fill('input[name="email"]', "smoke@example.com")
         await page.fill('input[name="password"]', "smoke-password-123")
         await page.click('button[type="submit"]')
