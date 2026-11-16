@@ -4,6 +4,8 @@ Your Medusa catalog on Ceneo, the Polish price comparison site: the Ceneo XML of
 
 Nothing is written to Ceneo until you allow it twice: in the plugin options (`writes`) and with the switch of that writer on the admin page. `demo: true` runs every part against a simulated Ceneo account.
 
+**Live demo:** Medusa admin [medusa.koda.plus/app/ceneo](https://medusa.koda.plus/app/ceneo?demo=en), signed in to a public demo account by the link itself, the storefront [demo.koda.plus](https://demo.koda.plus) and its live offer feed [medusa.koda.plus/ceneo/feed/koda-demo-ceneo-feed-2026.xml](https://medusa.koda.plus/ceneo/feed/koda-demo-ceneo-feed-2026.xml). The feed is built from the real demo catalog. The Ceneo seller API is simulated, because Ceneo has no test host and gives API keys only to stores already listed on Ceneo.
+
 ## Install
 
 ```bash
