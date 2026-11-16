@@ -18,8 +18,9 @@ import { cleanText, companyName, personName, safeUrl } from "./html"
 import { metadataLocale, normalizeLocale, pickLocale, toNumber } from "./locale"
 import { buildLink, type ResolvedEmailsOptions } from "./options"
 import { isEmail } from "./security"
+import { downloadUrl, isDigitalLine, orderKind } from "./downloads"
 import { sampleShipment } from "./templates/samples"
-import type { CartEmailData, CanceledEmailData, EmailItem, NegotiationEmailData, OrderEmailData, PasswordResetEmailData, ShipmentEmailData, WelcomeEmailData } from "./types"
+import type { CartEmailData, CanceledEmailData, EmailDownload, EmailItem, NegotiationEmailData, OrderEmailData, PasswordResetEmailData, ShipmentEmailData, WelcomeEmailData } from "./types"
 
 export interface AddressRecord {
   first_name?: string | null
@@ -42,6 +43,8 @@ export interface LineItemRecord {
   quantity?: unknown
   unit_price?: unknown
   total?: unknown
+  requires_shipping?: unknown
+  product_id?: string | null
 }
 
 export interface CustomerRecord {
@@ -155,7 +158,27 @@ export function lineItem(it: LineItemRecord): EmailItem | null {
     quantity,
     unit_price: unit,
     total: total ?? (unit !== null ? Math.round(unit * quantity * 100) / 100 : null),
+    ...(isDigitalLine(it) ? { digital: true } : {}),
   }
+}
+
+/**
+ * The download of each digital line: its title and, when `downloads.secret`
+ * and `downloads.url` are set, its signed link. Null for an order with no
+ * digital line.
+ */
+export function orderDownloads(order: Pick<OrderRecord, "id" | "items">, o: Partial<Pick<ResolvedEmailsOptions, "downloads">>): EmailDownload[] | null {
+  const lines = (Array.isArray(order.items) ? order.items : []).filter((l) => l && isDigitalLine(l))
+  if (lines.length === 0) return null
+  const dl = o.downloads
+  return lines
+    .map((l): EmailDownload | null => {
+      const title = cleanText(l.product_title || l.title, 160)
+      if (!title) return null
+      const url = dl?.secret && dl.url && order.id && l.id ? downloadUrl(dl.url, dl.secret, String(order.id), String(l.id)) : null
+      return { title, url }
+    })
+    .filter((x): x is EmailDownload => x !== null)
 }
 
 export function addressLines(a: AddressRecord | null | undefined): string[] {
@@ -195,7 +218,7 @@ export function orderLocale(order: Pick<OrderRecord, "locale" | "metadata" | "cu
   return localeTag([order.locale, metadataLocale(order.metadata), metadataLocale(order.customer?.metadata)], o.defaultLocale)
 }
 
-export function orderData(order: OrderRecord, o: Pick<ResolvedEmailsOptions, "defaultLocale">): OrderEmailData {
+export function orderData(order: OrderRecord, o: Pick<ResolvedEmailsOptions, "defaultLocale"> & Partial<Pick<ResolvedEmailsOptions, "downloads">>): OrderEmailData {
   const items = (Array.isArray(order.items) ? order.items : []).map(lineItem).filter((i): i is EmailItem => i !== null)
   const custom = cleanText(order.custom_display_id, 40)
   const display = order.display_id === null || order.display_id === undefined ? "" : cleanText(order.display_id, 40)
@@ -217,6 +240,9 @@ export function orderData(order: OrderRecord, o: Pick<ResolvedEmailsOptions, "de
     shipping_method: cleanText(order.shipping_methods?.find((m) => m?.name)?.name, 120) || null,
     shipping_address: addressLines(a),
     country_code: cleanText(a?.country_code, 2).toLowerCase() || null,
+    ...(orderKind(order.items) !== "physical"
+      ? { downloads: orderDownloads(order, o), has_account: order.customer?.has_account === true }
+      : {}),
   }
 }
 

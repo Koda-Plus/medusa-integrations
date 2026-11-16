@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 (2026-11-14)
+
+### Added
+
+- Digital products (e-books, PDFs): a line with `requires_shipping: false` is digital. The order confirmation now comes in three templates, picked by the lines of the order, each with its own words in the admin: `order.placed` (only products to ship, as before), `order.placed.mixed` (products and files: the files first, ready now, then what is being packed) and `order.placed.digital` (only files: no parcel road, no delivery, no address). A retry of any of them sends the one that fits.
+- `downloads` option: `secret` and `url` (with `{order_id}`, `{item_id}`, `{token}`) give every digital line a signed download link in the message. `downloadToken` and `verifyDownloadToken` (`lib/downloads`) let the store's own route check it with the same secret; nothing about where the file lives reaches the customer.
+- The files are attached when the product's metadata (`downloads.fileMetadataKey`, default `digital_file_url`) points to them and they fit `downloads.maxAttachmentMb` (default 10 MB together). Attachments go to the provider only, never into a table. A file that cannot be read is left out and its link stays.
+- The message says whether the files also wait in the account (`has_account` of the order's customer) and whether they are attached.
+
 ## 0.5.0 (2026-11-11)
 
 ### Added
