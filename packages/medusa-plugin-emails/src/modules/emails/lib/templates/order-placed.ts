@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import type { EmailDocument } from "../kit"
 import type { EmailTemplateContext, EmailTemplateDefinition, OrderEmailData } from "../types"
 import { COPY } from "./copy"
@@ -48,6 +49,8 @@ export function renderOrderPlaced({ data, locale, kit, format, links }: EmailTem
 export const orderPlacedTemplate: EmailTemplateDefinition<OrderEmailData> = {
   label: { en: COPY.en.orderPlaced.label, pl: COPY.pl.orderPlaced.label },
   description: { en: COPY.en.orderPlaced.description, pl: COPY.pl.orderPlaced.description },
+  category: CATEGORY.orders,
+  audience: AUDIENCE.customer,
   trigger: { kind: "event", name: "order.placed" },
   enabledByDefault: true,
   sample: (locale) => sampleOrder(locale),

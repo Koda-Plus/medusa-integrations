@@ -74,6 +74,14 @@ export interface EmailTemplateDefinition<D = Record<string, unknown>> {
   label?: LocalizedText
   /** When it is sent, in the admin: "A company account is approved". */
   description?: LocalizedText
+  /**
+   * The group of the template in the admin gallery ("Orders", "Account"):
+   * a header over its templates and a filter with a count. Templates without
+   * one land in "Other". Give every template of a group the same text.
+   */
+  category?: LocalizedText
+  /** Who gets it ("To the customer", "To the office"): a filter in the gallery, shown when templates differ. */
+  audience?: LocalizedText
   /** What sends it, shown in the admin. */
   trigger?: { kind: "event" | "job" | "manual"; name?: string }
   /** Default true. False: off until a person turns it on in the admin (or `templates: { key: true }`). */

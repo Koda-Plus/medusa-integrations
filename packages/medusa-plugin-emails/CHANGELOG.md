@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 (2026-11-24)
+
+### Added
+
+- The template gallery has a search (name, description, key; "zamowienie" finds "Zamówienie"), groups with headers and filters with counts: categories, who gets it and the templates that are off. A template says its group and audience with the new definition fields `category` and `audience` (plain text or `{ en, pl }`); templates without a category land in "Other". The built-in templates are grouped as Orders, Account, Carts and Negotiations.
+
+### Fixed
+
+- "Edit text" shows only where the words can change: templates that render a kit document, outside app mode (in app mode the store's own provider sends, and a template returning finished HTML has no words to rewrite).
+
 ## 0.6.0 (2026-11-14)
 
 ### Added

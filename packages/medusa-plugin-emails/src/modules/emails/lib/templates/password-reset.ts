@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import { DEFAULT_RESET_MINUTES } from "../constants"
 import { cleanText, safeUrl } from "../html"
 import type { EmailDocument } from "../kit"
@@ -34,6 +35,8 @@ export function renderPasswordReset({ data, locale, kit, brand }: EmailTemplateC
 export const passwordResetTemplate: EmailTemplateDefinition<PasswordResetEmailData> = {
   label: { en: COPY.en.passwordReset.label, pl: COPY.pl.passwordReset.label },
   description: { en: COPY.en.passwordReset.description, pl: COPY.pl.passwordReset.description },
+  category: CATEGORY.account,
+  audience: AUDIENCE.customer,
   trigger: { kind: "event", name: "auth.password_reset" },
   enabledByDefault: true,
   /* The link holds the reset token: never in Medusa's notification data, hidden in the demo outbox. */

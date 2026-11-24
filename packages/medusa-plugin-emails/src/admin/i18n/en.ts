@@ -178,6 +178,12 @@ const en = {
     latestNote: "With Newest order the preview uses the products, amounts and number of your newest order or cart; the customer's name, company and address are replaced by the sample ones.",
     sampleNote: "This template shows sample data. A test send goes to the address you type, with a subject starting with [Test].",
     sendThis: "Send a test of this template",
+    search: "Search: name, description, key",
+    all: "All",
+    other: "Other",
+    offOnly: "Off",
+    noMatch: "No template matches",
+    clear: "Clear filters",
     points: {
       devices: "Desktop and phone",
       modes: "Light and dark",

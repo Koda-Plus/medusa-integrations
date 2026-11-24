@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import { companyName, personName } from "../html"
 import type { EmailDocument } from "../kit"
 import type { EmailTemplateContext, EmailTemplateDefinition, WelcomeEmailData } from "../types"
@@ -45,6 +46,8 @@ export function renderCustomerWelcome({ data, locale, kit, format, links, brand 
 export const customerWelcomeTemplate: EmailTemplateDefinition<WelcomeEmailData> = {
   label: { en: COPY.en.customerWelcome.label, pl: COPY.pl.customerWelcome.label },
   description: { en: COPY.en.customerWelcome.description, pl: COPY.pl.customerWelcome.description },
+  category: CATEGORY.account,
+  audience: AUDIENCE.customer,
   trigger: { kind: "event", name: "customer.created" },
   enabledByDefault: true,
   sample: (locale) => sampleWelcome(locale),

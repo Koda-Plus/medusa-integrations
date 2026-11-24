@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import type { EmailDocument } from "../kit"
 import type { EmailTemplateContext, EmailTemplateDefinition, NegotiationEmailData } from "../types"
 import { COPY } from "./copy"
@@ -58,6 +59,8 @@ function definition(variant: Variant, status: "counter_offered" | "accepted" | "
   return {
     label: { en: COPY.en.negotiation.labels[variant], pl: COPY.pl.negotiation.labels[variant] },
     description: { en: COPY.en.negotiation.descriptions[variant], pl: COPY.pl.negotiation.descriptions[variant] },
+    category: CATEGORY.negotiations,
+    audience: AUDIENCE.customer,
     trigger: { kind: "event", name: `negotiation.${variant}` },
     enabledByDefault: false,
     sample: (locale) => sampleNegotiation(locale, status),

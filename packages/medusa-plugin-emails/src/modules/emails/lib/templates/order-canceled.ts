@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import type { EmailDocument } from "../kit"
 import type { CanceledEmailData, EmailTemplateContext, EmailTemplateDefinition } from "../types"
 import { COPY } from "./copy"
@@ -41,6 +42,8 @@ export function renderOrderCanceled({ data, locale, kit, format, links }: EmailT
 export const orderCanceledTemplate: EmailTemplateDefinition<CanceledEmailData> = {
   label: { en: COPY.en.orderCanceled.label, pl: COPY.pl.orderCanceled.label },
   description: { en: COPY.en.orderCanceled.description, pl: COPY.pl.orderCanceled.description },
+  category: CATEGORY.orders,
+  audience: AUDIENCE.customer,
   trigger: { kind: "event", name: "order.canceled" },
   enabledByDefault: true,
   sample: (locale) => sampleCanceled(locale),

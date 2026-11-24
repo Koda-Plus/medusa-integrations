@@ -21,6 +21,10 @@ export interface TemplateDto {
   source: "builtin" | "app"
   label: LocalizedTextDto | null
   description: LocalizedTextDto | null
+  /** The group in the gallery (definition `category`); null lands in "Other". */
+  category: LocalizedTextDto | null
+  /** Who gets it (definition `audience`); null when the template does not say. */
+  audience: LocalizedTextDto | null
   trigger: { kind: "event" | "job" | "manual"; name: string | null }
   /** Off until turned on: abandoned carts, negotiations. */
   optional: boolean

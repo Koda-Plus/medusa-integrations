@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import type { EmailDocument } from "../kit"
 import type { EmailTemplateContext, EmailTemplateDefinition, OrderEmailData } from "../types"
 import { COPY } from "./copy"
@@ -122,6 +123,8 @@ export function renderOrderPlacedMixed(ctx: EmailTemplateContext<OrderEmailData>
 export const orderPlacedDigitalTemplate: EmailTemplateDefinition<OrderEmailData> = {
   label: { en: COPY.en.orderPlacedDigital.label, pl: COPY.pl.orderPlacedDigital.label },
   description: { en: COPY.en.orderPlacedDigital.description, pl: COPY.pl.orderPlacedDigital.description },
+  category: CATEGORY.orders,
+  audience: AUDIENCE.customer,
   trigger: { kind: "event", name: "order.placed" },
   enabledByDefault: true,
   sample: (locale) => sampleOrderDigital(locale),
@@ -131,6 +134,8 @@ export const orderPlacedDigitalTemplate: EmailTemplateDefinition<OrderEmailData>
 export const orderPlacedMixedTemplate: EmailTemplateDefinition<OrderEmailData> = {
   label: { en: COPY.en.orderPlacedMixed.label, pl: COPY.pl.orderPlacedMixed.label },
   description: { en: COPY.en.orderPlacedMixed.description, pl: COPY.pl.orderPlacedMixed.description },
+  category: CATEGORY.orders,
+  audience: AUDIENCE.customer,
   trigger: { kind: "event", name: "order.placed" },
   enabledByDefault: true,
   sample: (locale) => sampleOrderMixed(locale),

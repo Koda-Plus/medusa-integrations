@@ -179,6 +179,12 @@ const pl: typeof en = {
     latestNote: "Przy Najnowszym zamówieniu podgląd bierze produkty, kwoty i numer Twojego najnowszego zamówienia albo koszyka, a imię, firmę i adres klienta zastępuje przykładowymi.",
     sampleNote: "Ten szablon pokazuje dane przykładowe. Test trafia na adres, który wpiszesz, a jego temat zaczyna się od [Test].",
     sendThis: "Wyślij test tego szablonu",
+    search: "Szukaj: nazwa, opis, klucz",
+    all: "Wszystkie",
+    other: "Inne",
+    offOnly: "Wyłączone",
+    noMatch: "Żaden szablon nie pasuje",
+    clear: "Wyczyść filtry",
     points: {
       devices: "Komputer i telefon",
       modes: "Tryb jasny i ciemny",

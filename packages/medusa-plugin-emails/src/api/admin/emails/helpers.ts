@@ -197,6 +197,8 @@ export async function buildStatus(scope: Scope): Promise<StatusResponse> {
       source: t.source === "builtin" ? "builtin" : "app",
       label: localized(t.def.label),
       description: localized(t.def.description),
+      category: localized(t.def.category),
+      audience: localized(t.def.audience),
       trigger: { kind: t.def.trigger?.kind ?? "manual", name: t.def.trigger?.name ?? null },
       optional: state.optional,
       allowed: state.allowed,

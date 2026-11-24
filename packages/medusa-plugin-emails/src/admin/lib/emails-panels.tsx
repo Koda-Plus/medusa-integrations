@@ -13,9 +13,11 @@ import {
   Envelope,
   ExclamationCircle,
   Eye,
+  Folder,
   EyeSlash,
   Language,
   ListBullet,
+  MagnifyingGlass,
   MinusCircle,
   Moon,
   PaperPlane,
@@ -25,11 +27,12 @@ import {
   Sun,
   Swatch,
   Tag,
+  User,
   XCircle,
 } from "@medusajs/icons"
 import { Link } from "react-router-dom"
 import { Button, Drawer, InlineTip, Input, Label, Select, Table, Text, clx, toast, usePrompt } from "@medusajs/ui"
-import type { MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
+import type { LocalizedTextDto, MessageDto, MessageFilter, MessageWindow, PreviewSource, StatusResponse, TemplateDto } from "../../modules/emails/lib/contract"
 import { OrderLink, ResendLink } from "./emails-links"
 import { CopyEditor, cleanDraft, type CopyDraft } from "./emails-copy"
 import { CampaignBadge, DeliveryBadge } from "./emails-delivery"
@@ -46,6 +49,7 @@ import {
   fmtDateTime,
   fmtKb,
   fmtNumber,
+  pickText,
   templateDescription,
   templateLabel,
   useDebounced,
@@ -98,6 +102,35 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
   const [draft, setDraft] = useState<CopyDraft>({})
   const draftJson = useDebounced(editing ? JSON.stringify(cleanDraft(draft) ?? {}) : "", 350)
   const preview = useEmailsPreview(active, locale, theme, effectiveSource, editing && draftJson ? draftJson : null)
+  /* Rewritten words reach only messages the plugin renders from a kit document: not finished HTML, not app mode (the store's provider sends). */
+  const copyEditable = status.mode !== "app" && Boolean(preview.data?.defaults)
+
+  /* Search and filters of the list: categories and audiences come from the templates themselves. */
+  const [q, setQ] = useState("")
+  const [category, setCategory] = useState<string | null>(null)
+  const [audience, setAudience] = useState<string | null>(null)
+  const [offOnly, setOffOnly] = useState(false)
+  const facets = useMemo(() => galleryFacets(templates, lang), [templates, lang])
+  const haystacks = useMemo(() => new Map(templates.map((x) => [x.key, templateHaystack(x)])), [templates])
+  const words = fold(q).split(/\s+/).filter(Boolean)
+  const matches = (x: TemplateDto, skip: "category" | "audience" | "off" | null) =>
+    words.every((w) => (haystacks.get(x.key) ?? "").includes(w)) &&
+    (skip === "category" || category === null || textKey(x.category) === category) &&
+    (skip === "audience" || audience === null || textKey(x.audience) === audience) &&
+    (skip === "off" || !offOnly || !x.enabled)
+  /* A count says what the button would show with the other filters kept. */
+  const countBy = (skip: "category" | "audience" | "off", pick: (x: TemplateDto) => boolean) => templates.filter((x) => matches(x, skip) && pick(x)).length
+  const offTotal = templates.filter((x) => !x.enabled).length
+  const visible = templates.filter((x) => matches(x, null))
+  const groups = facets.categories
+    .map((c) => ({ key: c.key, label: c.label, items: visible.filter((x) => textKey(x.category) === c.key) }))
+    .filter((g) => g.items.length > 0)
+  const clearFilters = () => {
+    setQ("")
+    setCategory(null)
+    setAudience(null)
+    setOffOnly(false)
+  }
 
   useEffect(() => {
     if (!active && templates.length > 0) setActive(templates[0].key)
@@ -135,11 +168,86 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
         { icon: <ShoppingCart />, text: t("gallery.points.data") },
       ]}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr]">
-        <div className="flex flex-col gap-y-2 border-b border-ui-border-base p-4 lg:border-b-0 lg:border-r">
-          {templates.map((x) => (
-            <TemplateCard key={x.key} template={x} lang={lang} active={x.key === active} showSource={status.mode !== "app"} onClick={() => setActive(x.key)} />
-          ))}
+      <FilterBar className="border-b border-ui-border-base">
+        <SearchInput value={q} onChange={setQ} placeholder={t("gallery.search")} />
+        {facets.categories.length > 1 ? (
+          <>
+            <FilterDivider />
+            <FilterButton icon={<ListBullet />} label={t("gallery.all")} count={countBy("category", () => true)} active={category === null} onClick={() => setCategory(null)} />
+            {facets.categories.map((c) => (
+              <FilterButton
+                key={c.key || "other"}
+                icon={<Folder />}
+                label={c.label || t("gallery.other")}
+                count={countBy("category", (x) => textKey(x.category) === c.key)}
+                active={category === c.key}
+                onClick={() => setCategory(category === c.key ? null : c.key)}
+              />
+            ))}
+          </>
+        ) : null}
+        {facets.audiences.length > 1 ? (
+          <>
+            <FilterDivider />
+            {facets.audiences.map((a) => (
+              <FilterButton
+                key={a.key}
+                icon={<User />}
+                label={a.label}
+                count={countBy("audience", (x) => textKey(x.audience) === a.key)}
+                active={audience === a.key}
+                onClick={() => setAudience(audience === a.key ? null : a.key)}
+              />
+            ))}
+          </>
+        ) : null}
+        {offTotal > 0 ? (
+          <>
+            <FilterDivider />
+            <FilterButton icon={<MinusCircle />} label={t("gallery.offOnly")} count={countBy("off", (x) => !x.enabled)} active={offOnly} onClick={() => setOffOnly(!offOnly)} />
+          </>
+        ) : null}
+      </FilterBar>
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr]">
+        <div className="flex flex-col gap-y-4 border-b border-ui-border-base p-4 lg:border-b-0 lg:border-r">
+          {groups.length === 0 ? (
+            <EmptyState
+              compact
+              icon={<MagnifyingGlass />}
+              title={t("gallery.noMatch")}
+              action={
+                <Button size="small" variant="secondary" onClick={clearFilters}>
+                  {t("gallery.clear")}
+                </Button>
+              }
+            />
+          ) : (
+            groups.map((g) => (
+              <div key={g.key || "other"} className="flex flex-col gap-y-2">
+                {facets.categories.length > 1 ? (
+                  <div className="flex items-center justify-between gap-2 px-1">
+                    <Text size="xsmall" weight="plus" leading="compact" className="uppercase tracking-wide text-ui-fg-muted">
+                      {g.label || t("gallery.other")}
+                    </Text>
+                    <Text size="xsmall" leading="compact" className="tabular-nums text-ui-fg-muted">
+                      {g.items.length}
+                    </Text>
+                  </div>
+                ) : null}
+                {g.items.map((x) => (
+                  <TemplateCard
+                    key={x.key}
+                    template={x}
+                    lang={lang}
+                    active={x.key === active}
+                    showSource={status.mode !== "app"}
+                    audience={facets.audiences.length > 1 ? pickText(x.audience, lang) : ""}
+                    onClick={() => setActive(x.key)}
+                  />
+                ))}
+              </div>
+            ))
+          )}
         </div>
         <div className="flex min-w-0 flex-col gap-y-4 p-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -173,7 +281,7 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
 
           {current && editing ? (
             <CopyEditor template={current} locale={locale} draft={draft} defaults={preview.data?.defaults} onChange={setDraft} onClose={() => setEditing(false)} />
-          ) : current ? (
+          ) : current && copyEditable ? (
             <div className="flex flex-col gap-2 rounded-lg border border-dashed border-ui-border-strong px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <Text size="xsmall" className="text-ui-fg-subtle">
                 {current.copy
@@ -249,8 +357,43 @@ export function GallerySection({ status, lang, onSendTest }: { status: StatusRes
   )
 }
 
+/** Lowercase, without accents, ł as l: "zamowienie" finds "Zamówienie". */
+export function fold(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[łŁ]/g, "l").toLowerCase()
+}
+
+/** The filter key of a category or an audience: the same words give one key whatever the admin language. */
+export function textKey(v: LocalizedTextDto | null | undefined): string {
+  return v ? (v.en ?? v.pl ?? "").trim() : ""
+}
+
+/** What the search looks in: key, name, description, category and audience, both languages. */
+function templateHaystack(x: TemplateDto): string {
+  return fold([x.key, x.label?.pl, x.label?.en, x.description?.pl, x.description?.en, x.category?.pl, x.category?.en, x.audience?.pl, x.audience?.en].filter(Boolean).join(" "))
+}
+
+/**
+ * The categories in the order their first template comes (templates without
+ * one last, key ""), and the audiences the templates name.
+ */
+export function galleryFacets(templates: TemplateDto[], lang: string): { categories: Array<{ key: string; label: string }>; audiences: Array<{ key: string; label: string }> } {
+  const categories = new Map<string, string>()
+  const audiences = new Map<string, string>()
+  for (const x of templates) {
+    const c = textKey(x.category)
+    if (c && !categories.has(c)) categories.set(c, pickText(x.category, lang))
+    const a = textKey(x.audience)
+    if (a && !audiences.has(a)) audiences.set(a, pickText(x.audience, lang))
+  }
+  if (templates.some((x) => !textKey(x.category))) categories.set("", "")
+  return {
+    categories: [...categories].map(([key, label]) => ({ key, label })),
+    audiences: [...audiences].map(([key, label]) => ({ key, label })),
+  }
+}
+
 /* showSource: "Your template" next to the built-in ones; in app mode every template is the store's, so it says nothing. */
-function TemplateCard({ template, lang, active, showSource, onClick }: { template: TemplateDto; lang: string; active: boolean; showSource: boolean; onClick: () => void }) {
+function TemplateCard({ template, lang, active, showSource, audience, onClick }: { template: TemplateDto; lang: string; active: boolean; showSource: boolean; audience: string; onClick: () => void }) {
   const { t } = useTranslation("emails")
   return (
     <button
@@ -274,6 +417,7 @@ function TemplateCard({ template, lang, active, showSource, onClick }: { templat
         <Text size="xsmall" leading="compact" className="font-mono text-ui-fg-muted">
           {template.key}
         </Text>
+        {audience ? <ToneBadge>{audience}</ToneBadge> : null}
         {showSource && template.source === "app" ? <ToneBadge>{t("templates.app")}</ToneBadge> : null}
         {template.copy ? <ToneBadge tone="blue">{t("copy.badge")}</ToneBadge> : null}
         {!template.enabled ? <ToneBadge>{template.allowed ? t("templates.off") : t("templates.blocked")}</ToneBadge> : null}

@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import type { EmailDocument } from "../kit"
 import type { CartEmailData, EmailTemplateContext, EmailTemplateDefinition } from "../types"
 import { COPY } from "./copy"
@@ -37,6 +38,8 @@ export function renderCartAbandoned({ data, locale, kit, format, links }: EmailT
 export const cartAbandonedTemplate: EmailTemplateDefinition<CartEmailData> = {
   label: { en: COPY.en.cartAbandoned.label, pl: COPY.pl.cartAbandoned.label },
   description: { en: COPY.en.cartAbandoned.description, pl: COPY.pl.cartAbandoned.description },
+  category: CATEGORY.carts,
+  audience: AUDIENCE.customer,
   trigger: { kind: "job", name: "emails-abandoned-carts" },
   enabledByDefault: false,
   sample: (locale) => sampleCart(locale),

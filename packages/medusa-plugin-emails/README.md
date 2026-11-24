@@ -252,6 +252,8 @@ import { defineEmailTemplate } from "@koda-plus/medusa-plugin-emails/templates"
 export const companyApproved = defineEmailTemplate<{ company_name?: string; tier?: string }>({
   label: { en: "B2B company approved", pl: "Firma B2B zatwierdzona" },
   description: { en: "The team approves a company account", pl: "Zespół zatwierdza konto firmy" },
+  category: { en: "Accounts", pl: "Konta" },
+  audience: { en: "To the customer", pl: "Do klienta" },
   trigger: { kind: "event", name: "company.approved" },
   sample: { company_name: "Krawczyk Builders Ltd", tier: "B2B Premium" },
   render: ({ data, locale, kit, links }) => ({
@@ -265,6 +267,8 @@ export const companyApproved = defineEmailTemplate<{ company_name?: string; tier
 
 // medusa-config.ts: const emails = { ..., templates: { "company.approved": companyApproved } }
 ```
+
+`category` puts the template under a header in the gallery, with a filter and a count (templates without one land in "Other"); `audience` says who gets it and becomes a filter once your templates name more than one. The gallery also searches names, descriptions and keys, without caring about Polish letters.
 
 Then send it from your own code, through the notification module or the bundled workflow:
 

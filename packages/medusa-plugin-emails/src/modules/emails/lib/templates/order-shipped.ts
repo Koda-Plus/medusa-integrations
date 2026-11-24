@@ -1,3 +1,4 @@
+import { AUDIENCE, CATEGORY } from "./groups"
 import { safeUrl } from "../html"
 import type { EmailDocument } from "../kit"
 import type { EmailTemplateContext, EmailTemplateDefinition, ShipmentEmailData } from "../types"
@@ -47,6 +48,8 @@ export function renderOrderShipped({ data, locale, kit, format, links }: EmailTe
 export const orderShippedTemplate: EmailTemplateDefinition<ShipmentEmailData> = {
   label: { en: COPY.en.orderShipped.label, pl: COPY.pl.orderShipped.label },
   description: { en: COPY.en.orderShipped.description, pl: COPY.pl.orderShipped.description },
+  category: CATEGORY.orders,
+  audience: AUDIENCE.customer,
   trigger: { kind: "event", name: "shipment.created" },
   enabledByDefault: true,
   sample: (locale) => sampleShipment(locale),
