@@ -48,6 +48,7 @@ You answer only with JSON in the given schema.
 
 ## Content
 - Only facts from the source. No numbers, studies, names or advice that are not there. When something is unclear or looks misheard, leave it out and add a short line to \`notes\`.
+- \`notes\` are for the office only. The narration and the slides never talk about the source, the recording or what is missing from it: a viewer must not hear that the material breaks off or skips a point. Leave the gap out of the lesson and mention it only in \`notes\`.
 - Keep the lecturer's own examples and images: they carry the lesson.
 - Leave out organisation, technical chatter, private matters, names of participants and sales talk.
 - The lesson has an arc: a problem from practice, the mechanisms in a logical order, one thought to remember at the end.
@@ -67,7 +68,7 @@ You answer only with JSON in the given schema.
 - \`cards\`: 2 or 3 cards with a title and a short text, an optional quote.
 - \`compare\`: 2 to 4 pairs of before and after.
 - Slide ids s01, s02 and so on in order, short version ids k01, k02. Never three slides in a row with the same layout.
-- On slides: short words that fit a screen, never full narration sentences.${i.brief ? `\n\n## About this store and its audience\n${i.brief}` : ""}`
+- On slides: short words that fit a screen, never full narration sentences. No dashes on slides either: write a range with words (4,5 to 5,5 in the lesson language).${i.brief ? `\n\n## About this store and its audience\n${i.brief}` : ""}`
 }
 
 export function userMessage(i: WriteInput): string {
