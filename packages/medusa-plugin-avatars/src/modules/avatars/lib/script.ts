@@ -160,6 +160,14 @@ export function parseScript(raw: unknown): { ok: true; script: Script } | { ok: 
     .filter(Boolean)
     .slice(0, 20)
 
+  /* Every slide and short version is one clip: two with one id would be one clip twice. */
+  const seen = new Set<string>()
+  const ids: Array<[string, string]> = [...slides.map((x, i): [string, string] => [x.id, `slides[${i}].id`]), ...shorts.map((x, i): [string, string] => [x.id, `shorts[${i}].id`])]
+  for (const [id, at] of ids) {
+    if (!id) continue
+    if (seen.has(id)) issues.push({ code: "id_duplicate", at, value: id })
+    seen.add(id)
+  }
   if (issues.length) return { ok: false, issues }
   return { ok: true, script: { title, slides, quiz, shorts, notes } }
 }

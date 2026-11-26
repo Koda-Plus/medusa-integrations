@@ -7,7 +7,7 @@ import { problems } from "../../helpers"
 export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   const found = await readPresentation(req.scope, String(req.params.id))
   if (!found) return problems(res, 404, ["not_found"])
-  res.json({ presentation: toPresentationDetail(found.row, found.jobs, avatarsSvc(req.scope).getOptions().wordsPerMinute) })
+  res.json({ presentation: toPresentationDetail(found.row, found.jobs, avatarsSvc(req.scope).getOptions().wordsPerMinute, avatarsSvc(req.scope).getOptions().maxRenderMinutes) })
 }
 
 /** DELETE /admin/avatars/presentations/:id  Refused (409) while a job runs. */

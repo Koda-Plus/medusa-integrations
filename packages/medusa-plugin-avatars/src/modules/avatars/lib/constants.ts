@@ -86,7 +86,14 @@ export function isSourceKind(value: unknown): value is SourceKind {
 /* Render jobs                                                         */
 /* ------------------------------------------------------------------ */
 
-export const RENDER_STATES = ["queued", "rendering", "ready", "failed"] as const
+/**
+ * One clip: `quoted` (its speech is ready and counted, nothing ordered),
+ * `queued` (confirmed, waits for the order), `ordering` (the order is being
+ * sent: a clip found here after a crash is never sent again), `rendering`
+ * (ordered at Tavus), `ready` (the video is stored) or `failed` (the error
+ * says why).
+ */
+export const RENDER_STATES = ["quoted", "queued", "ordering", "rendering", "ready", "failed"] as const
 export type RenderState = (typeof RENDER_STATES)[number]
 
 /* ------------------------------------------------------------------ */
