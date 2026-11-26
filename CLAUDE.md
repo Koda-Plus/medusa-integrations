@@ -1,16 +1,18 @@
 # CLAUDE.md: medusa-integrations
 
-Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Twenty npm packages, each published on its own. Thirteen integrate an outside service and belong in the medusajs.com/integrations catalog; Compliance, Trade Credit, Packaging, Loyalty, Negotiations, Tasks and Coupons are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
+Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`). Twenty-two npm packages, each published on its own. Fifteen integrate an outside service and belong in the medusajs.com/integrations catalog; Compliance, Trade Credit, Packaging, Loyalty, Negotiations, Tasks and Coupons are our own modules (the catalog lists only third-party services, so they do not carry `medusa-plugin-integration`).
 
 | Package | Namespace | Module (container key) | Catalog |
 | --- | --- | --- | --- |
 | `packages/medusa-plugin-olx` | `olx` | `olx` | Other |
 | `packages/medusa-plugin-allegro` | `allegro` | `allegro` | Other |
 | `packages/medusa-plugin-inpost-marketplace` | `vonhalsky` | `vonhalsky` (InPost Von Halsky, the InPost marketplace, on the seller API 1.7.6) | Other |
+| `packages/medusa-plugin-ceneo` | `ceneo` | `ceneo` (feed, Zaufane Opinie, Kup Teraz, CPC) | Other |
 | `packages/medusa-plugin-baselinker` | `baselinker` | `baselinker` | ERP |
 | `packages/medusa-plugin-subiekt-nexo` | `subiekt` | `subiekt_nexo` | ERP |
 | `packages/medusa-plugin-fakturownia` | `fakturownia` | `fakturownia` | Other |
 | `packages/medusa-plugin-inpost` | `inpost` | data module `inpost` and fulfillment provider `inpost` | Shipping |
+| `packages/medusa-plugin-dpd` | `dpd` | data module `dpd` and fulfillment provider `dpd` | Shipping |
 | `packages/medusa-plugin-inpost-pay` | `inpostpay` | data module `inpostpay` and payment provider `inpost-pay` (`pp_inpost-pay_inpost-pay`) | Payment |
 | `packages/medusa-plugin-stripe` | `stripe` | next to the official Stripe provider | Payment |
 | `packages/medusa-plugin-railway` | `railway` | `koda_railway` (read only, queries only, no tables) | Other |
