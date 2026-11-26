@@ -22,6 +22,7 @@ Monorepo of the Koda Plus plugins for Medusa v2 (`Koda-Plus/medusa-integrations`
 | `packages/medusa-plugin-compliance` | `compliance` | `compliance` | outside the catalog |
 | `packages/medusa-plugin-trade-credit` | `credit` | `credit` | outside the catalog |
 | `packages/medusa-plugin-packaging` | `packaging` | `packaging` | outside the catalog |
+| `packages/medusa-plugin-avatars` | `avatars` | `avatars` | outside the catalog |
 | `packages/medusa-plugin-loyalty` | `loyalty` | `loyalty` | outside the catalog |
 | `packages/medusa-plugin-coupons` | `coupons` | `koda_coupons` (no own tables, plain Medusa promotions) | outside the catalog |
 
