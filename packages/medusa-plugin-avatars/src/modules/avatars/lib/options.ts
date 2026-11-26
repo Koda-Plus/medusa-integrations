@@ -31,8 +31,17 @@ export interface AvatarsPluginOptions {
   geminiApiKey?: string
   /** Gemini text to speech model. Default: gemini-3.8-flash-tts. */
   ttsModel?: string
-  /** Gemini model that transcribes recordings. Default: gemini-3.8-flash. */
+  /** Gemini model that transcribes recordings. Default: gemini-3.5-transcribe. */
   transcribeModel?: string
+  /**
+   * What the script writer should know about the store: the audience, the
+   * tone, words to avoid. Plain text, added to the writer's instructions.
+   */
+  scriptBrief?: string
+  /** Director's notes for the voice (style, pace, accent), read by the text to speech model, never spoken. */
+  voiceStyle?: string
+  /** The largest recording the transcription downloads, in megabytes. Default: 500. */
+  maxSourceMb?: number | string
   /** The voice new avatars get. Default: Kore. */
   defaultVoice?: string
   /** The language new presentations get. Default: pl. */
@@ -56,6 +65,9 @@ export interface ResolvedAvatarsOptions {
   geminiApiKey: string
   ttsModel: string
   transcribeModel: string
+  scriptBrief: string
+  voiceStyle: string
+  maxSourceMb: number
   defaultVoice: string
   defaultLang: Lang
   wordsPerMinute: number
@@ -98,7 +110,10 @@ export function resolveOptions(o: AvatarsPluginOptions | undefined | null): Reso
     claudeModel: text(opts.claudeModel, "claude-opus-5-5"),
     geminiApiKey: text(opts.geminiApiKey, ""),
     ttsModel: text(opts.ttsModel, "gemini-3.8-flash-tts"),
-    transcribeModel: text(opts.transcribeModel, "gemini-3.8-flash"),
+    transcribeModel: text(opts.transcribeModel, "gemini-3.5-transcribe"),
+    scriptBrief: text(opts.scriptBrief, "").slice(0, 8000),
+    voiceStyle: text(opts.voiceStyle, "").slice(0, 4000),
+    maxSourceMb: int(opts.maxSourceMb, 500, 1, 2000),
     defaultVoice: text(opts.defaultVoice, "Kore"),
     defaultLang: isLang(lang) ? lang : "pl",
     wordsPerMinute: int(opts.wordsPerMinute, 135, 60, 250),

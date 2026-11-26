@@ -7,7 +7,7 @@ import { avatarsSvc } from "../../modules/avatars/lib/store"
  * (a second call finds the rows and does nothing). Fictional names only.
  */
 
-const SCRIPT = {
+export const DEMO_SCRIPT = {
   title: "Workplace safety basics",
   slides: [
     {
@@ -59,14 +59,14 @@ export async function seedDemo(container: MedusaContainer): Promise<{ created: b
   ])
   await svc.createAvatarsPresentations([
     {
-      title: SCRIPT.title,
+      title: DEMO_SCRIPT.title,
       lang: "en",
       state: "review",
       source_kind: "text",
       source_text: "A short sample lecture about workplace safety, used by the demo mode.",
       target_minutes: 2,
       avatar_id: avatar.id,
-      script: SCRIPT,
+      script: DEMO_SCRIPT,
       script_hash: "demo",
       demo: true,
     },

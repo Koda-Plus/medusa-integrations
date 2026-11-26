@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { ArrowPath, ArrowUpTray, CheckCircle, Clock, DocumentText, ExclamationCircle, Eye, FaceSmile, Camera, ListBullet, Plus, ShieldCheck, Sparkles, Trash, User, XMark } from "@medusajs/icons"
 import { Button, Container, Heading, IconButton, InlineTip, Input, Label, Select, Table, Text, Textarea, toast } from "@medusajs/ui"
@@ -280,7 +280,9 @@ function PresentationsCard({
               <Table.Row key={p.id}>
                 <Table.Cell>
                   <span className="flex items-center gap-x-2">
-                    <span className="txt-compact-small-plus text-ui-fg-base">{p.title}</span>
+                    <Link to={`/avatars/presentations/${encodeURIComponent(p.id)}`} className="txt-compact-small-plus text-ui-fg-base hover:underline">
+                      {p.title}
+                    </Link>
                     <ToneBadge>{p.lang.toUpperCase()}</ToneBadge>
                     {p.demo ? <ToneBadge tone="blue">{t("mode.demo")}</ToneBadge> : null}
                   </span>

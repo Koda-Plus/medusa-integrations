@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-avatars",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI Avatars by Koda Plus: turn a recorded lecture or a text into a presentation with a talking avatar. Transcript, script, slides and a quiz written by Claude, edited and approved in the Medusa admin, voiced by your own TTS and rendered by Tavus. Written consent of the person is required before any render. Demo mode without outside calls.",
   "author": {
     "name": "Koda Plus",
@@ -56,6 +56,7 @@
     "prepublishOnly": "npm test && npm run typecheck && medusa plugin:build"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@medusajs/admin-sdk": "2.15.3",
     "@medusajs/cli": "2.15.3",
     "@medusajs/framework": "2.15.3",
@@ -86,7 +87,8 @@
     "@tanstack/react-query": "^5.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-i18next": ">=13.0.0",
-    "react-router-dom": "^6.0.0 || ^7.0.0"
+    "react-router-dom": "^6.0.0 || ^7.0.0",
+    "@anthropic-ai/sdk": "^1.14.0"
   },
   "peerDependenciesMeta": {
     "@medusajs/ui": {
