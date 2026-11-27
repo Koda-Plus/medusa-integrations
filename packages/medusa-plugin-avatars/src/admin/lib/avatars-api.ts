@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { AvatarDto, PresentationDto, StatusResponse } from "../../modules/avatars/lib/contract"
-import { KitRequestError, authHeaders, backendUrl, kitFetch } from "./avatars-kit"
+import type { AvatarDto, PresentationDetailDto, PresentationDto, StatusResponse } from "../../modules/avatars/lib/contract"
+import type { Script, ScriptIssue } from "../../modules/avatars/lib/script"
+import { KitRequestError, authHeaders, backendUrl, kitFetch, kitRequestInit } from "./avatars-kit"
 
 export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -59,6 +60,44 @@ export const useRecordConsent = () =>
 export const useRevokeConsent = () => useWrite((avatarId: string) => kitFetch(`/admin/avatars/avatars/${id(avatarId)}/consent`, { method: "DELETE" }))
 export const useCreatePresentation = () => useWrite((body: PresentationInput) => kitFetch<{ presentation: PresentationDto }>("/admin/avatars/presentations", { method: "POST", body }))
 export const useDeletePresentation = () => useWrite((presentationId: string) => kitFetch(`/admin/avatars/presentations/${id(presentationId)}`, { method: "DELETE" }))
+export function usePresentation(presentationId: string) {
+  return useQuery<{ presentation: PresentationDetailDto }>({
+    queryKey: ["avatars", "presentation", presentationId],
+    queryFn: () => kitFetch(`/admin/avatars/presentations/${id(presentationId)}`),
+    /* While a step runs in the background job, look again every few seconds. */
+    refetchInterval: (q) => (["transcribing", "scripting", "rendering"].includes(q.state.data?.presentation.state ?? "") ? 5000 : false),
+  })
+}
+
+export const useStartScript = () => useWrite((presentationId: string) => kitFetch<{ presentation: PresentationDto }>(`/admin/avatars/presentations/${id(presentationId)}/start`, { method: "POST" }))
+export const useSaveScript = () =>
+  useWrite(({ presentationId, script, baseHash }: { presentationId: string; script: Script; baseHash: string | null }) =>
+    kitFetch<{ presentation: PresentationDetailDto; issues: ScriptIssue[] }>(`/admin/avatars/presentations/${id(presentationId)}/script`, { method: "POST", body: { script, base_hash: baseHash ?? "" } }),
+  )
+export const useApproveScript = () =>
+  useWrite(({ presentationId, scriptHash }: { presentationId: string; scriptHash: string }) =>
+    kitFetch<{ presentation: PresentationDto }>(`/admin/avatars/presentations/${id(presentationId)}/approve`, { method: "POST", body: { script_hash: scriptHash } }),
+  )
+
+/** The issues of a refused script save (shape problems), when the server sent them. */
+export function issuesOf(err: unknown): ScriptIssue[] {
+  if (err instanceof KitRequestError) {
+    const body = err.body as { issues?: unknown } | null
+    if (body && Array.isArray(body.issues)) return body.issues as ScriptIssue[]
+  }
+  return []
+}
+
+/** One narration as speech: a WAV blob URL to play (revoke it when done). */
+export async function previewAudio(presentationId: string, item: string, text: string): Promise<string> {
+  const res = await fetch(`${backendUrl()}/admin/avatars/presentations/${id(presentationId)}/preview`, kitRequestInit({ method: "POST", body: { item, text } }))
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as { code?: unknown } | null
+    throw new Error(typeof json?.code === "string" ? json.code : `HTTP ${res.status}`)
+  }
+  return URL.createObjectURL(await res.blob())
+}
+
 export const useSeedDemo = () => useWrite(() => kitFetch<{ created: boolean }>("/admin/avatars/demo/seed", { method: "POST" }))
 
 /**

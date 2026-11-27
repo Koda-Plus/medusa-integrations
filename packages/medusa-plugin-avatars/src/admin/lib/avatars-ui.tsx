@@ -48,6 +48,9 @@ export function OptionsTab({ status }: { status: StatusResponse }) {
         <Fact label={t("settings.wpm")}>{mono(o.wordsPerMinute)}</Fact>
         <Fact label={t("settings.maxMinutes")}>{mono(o.maxRenderMinutes)}</Fact>
         <Fact label={t("settings.prefix")}>{mono(o.filePrefix)}</Fact>
+        <Fact label={t("settings.maxSourceMb")}>{mono(o.maxSourceMb)}</Fact>
+        <Fact label={t("settings.scriptBrief")}>{key(o.scriptBrief)}</Fact>
+        <Fact label={t("settings.voiceStyle")}>{key(o.voiceStyle)}</Fact>
         <Fact label={t("settings.demo")}>
           <ToneBadge tone={status.demo ? "blue" : "grey"}>{status.demo ? t("settings.on") : t("settings.off")}</ToneBadge>
         </Fact>

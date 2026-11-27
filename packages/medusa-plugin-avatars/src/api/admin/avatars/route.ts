@@ -32,6 +32,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
       wordsPerMinute: o.wordsPerMinute,
       maxRenderMinutes: o.maxRenderMinutes,
       filePrefix: o.filePrefix,
+      scriptBrief: Boolean(o.scriptBrief),
+      voiceStyle: Boolean(o.voiceStyle),
+      maxSourceMb: o.maxSourceMb,
     },
     counts: {
       avatars: avatars.length,

@@ -2,6 +2,7 @@
  * The shapes the admin API answers with. Type imports only: shared by the
  * server and the admin bundle.
  */
+import type { ScriptIssue } from "./script"
 import type { ConsentState, Lang, PresentationState, RenderState, SourceKind } from "./constants"
 
 export interface AvatarDto {
@@ -64,6 +65,8 @@ export interface PresentationDetailDto extends PresentationDto {
   transcript: string | null
   script: unknown
   script_hash: string | null
+  /** What breaks the writing rules in the stored script: warnings, the script is kept. */
+  issues: ScriptIssue[]
   jobs: RenderJobDto[]
 }
 
@@ -79,6 +82,10 @@ export interface StatusResponse {
     wordsPerMinute: number
     maxRenderMinutes: number
     filePrefix: string
+    /** Whether a store brief for the script writer is set (the text stays on the server). */
+    scriptBrief: boolean
+    voiceStyle: boolean
+    maxSourceMb: number
   }
   counts: {
     avatars: number

@@ -3,6 +3,7 @@ import { AVATARS_MODULE, isLang, isPresentationState, isSourceKind, RENDER_STATE
 import { canRender, consentOf } from "./consent"
 import type { AvatarDto, PresentationDetailDto, PresentationDto, RenderJobDto } from "./contract"
 import type { ConfiguredServices, ResolvedAvatarsOptions } from "./options"
+import type { ScriptIssue } from "./script"
 
 /**
  * The generated CRUD of the module, as the routes and workflows use it from
@@ -131,6 +132,13 @@ export function toPresentation(row: Row, wordsPerMinute: number): PresentationDt
   }
 }
 
+/** The rule issues of the last script check, kept next to the pipeline state. */
+function issuesOf(row: Row): ScriptIssue[] {
+  const meta = row.metadata && typeof row.metadata === "object" ? (row.metadata as { pipeline?: { issues?: unknown } }) : {}
+  const list = meta.pipeline?.issues
+  return Array.isArray(list) ? list.filter((i): i is ScriptIssue => Boolean(i) && typeof (i as ScriptIssue).code === "string" && typeof (i as ScriptIssue).at === "string").slice(0, 200) : []
+}
+
 export function toPresentationDetail(row: Row, jobs: Row[], wordsPerMinute: number): PresentationDetailDto {
   return {
     ...toPresentation(row, wordsPerMinute),
@@ -138,6 +146,7 @@ export function toPresentationDetail(row: Row, jobs: Row[], wordsPerMinute: numb
     transcript: str(row.transcript),
     script: row.script ?? null,
     script_hash: str(row.script_hash),
+    issues: issuesOf(row),
     jobs: jobs.map(toJob).sort((a, b) => a.item_id.localeCompare(b.item_id)),
   }
 }
