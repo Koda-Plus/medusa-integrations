@@ -16,5 +16,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.status(r.status).json({ type: r.status === 404 ? "not_found" : r.status === 409 ? "conflict" : "invalid_data", code: r.problems[0], problems: r.problems, issues: r.issues ?? [], message: r.problems.join(", ") })
     return
   }
-  res.json({ presentation: toPresentationDetail(r.row, [], avatarsSvc(req.scope).getOptions().wordsPerMinute), issues: r.issues })
+  const o = avatarsSvc(req.scope).getOptions()
+  const jobs = await avatarsSvc(req.scope).listAvatarsRenderJobs({ presentation_id: r.row.id }, { take: 500 })
+  res.json({ presentation: toPresentationDetail(r.row, jobs, o.wordsPerMinute, o.maxRenderMinutes), issues: r.issues })
 }

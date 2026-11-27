@@ -1,7 +1,7 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { AVATARS_MODULE, isLang, isPresentationState, isSourceKind, RENDER_STATES, type RenderState } from "./constants"
 import { canRender, consentOf } from "./consent"
-import type { AvatarDto, PresentationDetailDto, PresentationDto, RenderJobDto } from "./contract"
+import type { AvatarDto, PresentationDetailDto, PresentationDto, RenderJobDto, RenderSummaryDto } from "./contract"
 import type { ConfiguredServices, ResolvedAvatarsOptions } from "./options"
 import type { ScriptIssue } from "./script"
 
@@ -139,7 +139,20 @@ function issuesOf(row: Row): ScriptIssue[] {
   return Array.isArray(list) ? list.filter((i): i is ScriptIssue => Boolean(i) && typeof (i as ScriptIssue).code === "string" && typeof (i as ScriptIssue).at === "string").slice(0, 200) : []
 }
 
-export function toPresentationDetail(row: Row, jobs: Row[], wordsPerMinute: number): PresentationDetailDto {
+export function renderSummary(row: Row, limit: number): RenderSummaryDto {
+  const meta = row.metadata && typeof row.metadata === "object" ? (row.metadata as { render?: Record<string, unknown> }).render ?? {} : {}
+  return {
+    quote_hash: str(meta.quote_hash),
+    minutes: typeof meta.minutes === "number" ? meta.minutes : null,
+    items: Array.isArray(meta.items) ? meta.items.filter((i): i is string => typeof i === "string") : [],
+    shorts: meta.shorts === true,
+    quoted_at: str(meta.quoted_at),
+    started_at: str(meta.started_at),
+    limit,
+  }
+}
+
+export function toPresentationDetail(row: Row, jobs: Row[], wordsPerMinute: number, maxRenderMinutes = 30): PresentationDetailDto {
   return {
     ...toPresentation(row, wordsPerMinute),
     source_text: str(row.source_text),
@@ -148,5 +161,6 @@ export function toPresentationDetail(row: Row, jobs: Row[], wordsPerMinute: numb
     script_hash: str(row.script_hash),
     issues: issuesOf(row),
     jobs: jobs.map(toJob).sort((a, b) => a.item_id.localeCompare(b.item_id)),
+    render: renderSummary(row, maxRenderMinutes),
   }
 }

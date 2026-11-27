@@ -31,8 +31,38 @@ export interface RenderJobDto {
   state: RenderState
   progress: number
   video_url: string | null
+  /** Length of the clip's speech, which is also the length of the clip. */
   duration_ms: number | null
   error: string | null
+}
+
+/** The last quote of a render and the start that confirmed it. */
+export interface RenderSummaryDto {
+  quote_hash: string | null
+  minutes: number | null
+  items: string[]
+  shorts: boolean
+  quoted_at: string | null
+  started_at: string | null
+  /** The most avatar minutes one render may order (option `maxRenderMinutes`). */
+  limit: number
+}
+
+export interface QuoteClipDto {
+  item_id: string
+  duration_ms: number
+  /** Already rendered with the same signature: costs nothing. */
+  reused: boolean
+}
+
+export interface QuoteDto {
+  clips: QuoteClipDto[]
+  minutes: number
+  quote_hash: string
+  limit: number
+  over_limit: boolean
+  /** Clips that may already exist at Tavus (a lost order, a stall, a timeout): the start needs `acknowledge_risky`. */
+  risky: Array<{ item_id: string; error: string; previous_video_id: string | null }>
 }
 
 export interface PresentationDto {
@@ -68,6 +98,25 @@ export interface PresentationDetailDto extends PresentationDto {
   /** What breaks the writing rules in the stored script: warnings, the script is kept. */
   issues: ScriptIssue[]
   jobs: RenderJobDto[]
+  render: RenderSummaryDto
+}
+
+/** One clip of a published presentation, as the store gets it. */
+export interface StoreClipDto {
+  item_id: string
+  video_url: string | null
+  duration_ms: number | null
+}
+
+export interface StorePresentationDto {
+  id: string
+  title: string
+  lang: Lang
+  published_at: string | null
+  minutes: number
+  slides: Array<Record<string, unknown> & { id: string; clip: StoreClipDto | null }>
+  quiz: unknown[]
+  shorts: Array<{ id: string; title: string; clip: StoreClipDto | null }>
 }
 
 export interface StatusResponse {

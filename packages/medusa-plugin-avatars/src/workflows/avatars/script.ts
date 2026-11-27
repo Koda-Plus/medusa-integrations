@@ -44,13 +44,15 @@ const metaOf = (row: Row): Record<string, unknown> => (row.metadata && typeof ro
 const pipelineOf = (row: Row): Pipeline => (metaOf(row).pipeline && typeof metaOf(row).pipeline === "object" ? (metaOf(row).pipeline as Pipeline) : {})
 const withPipeline = (row: Row, p: Pipeline) => ({ ...metaOf(row), pipeline: { ...pipelineOf(row), ...p } })
 
-export type StartProblem = "not_found" | "state" | "claude_missing" | "gemini_missing" | "source_missing"
+export type StartProblem = "not_found" | "state" | "claude_missing" | "gemini_missing" | "source_missing" | "approved"
 
 export async function startScript(container: MedusaContainer, id: string, actor: string | null): Promise<Result<Row, StartProblem>> {
   const svc = avatarsSvc(container)
   const row = await findPresentation(container, id)
   if (!row) return { ok: false, status: 404, problems: ["not_found"] }
   if (!["draft", "failed"].includes(String(row.state))) return { ok: false, status: 409, problems: ["state"] }
+  /* A failed render of an approved script is not a failed script: writing it again would drop the approval. */
+  if (str(row.approved_hash) && row.approved_hash === row.script_hash) return { ok: false, status: 409, problems: ["approved"] }
   const recording = row.source_kind === "recording" && !str(row.transcript)
   if (recording && !str(row.source_file_url)) return { ok: false, status: 400, problems: ["source_missing"] }
   if (!recording && !str(row.transcript) && !str(row.source_text)) return { ok: false, status: 400, problems: ["source_missing"] }

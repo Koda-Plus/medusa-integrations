@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { AvatarDto, PresentationDetailDto, PresentationDto, StatusResponse } from "../../modules/avatars/lib/contract"
+import type { AvatarDto, PresentationDetailDto, PresentationDto, QuoteDto, StatusResponse } from "../../modules/avatars/lib/contract"
 import type { Script, ScriptIssue } from "../../modules/avatars/lib/script"
 import { KitRequestError, authHeaders, backendUrl, kitFetch, kitRequestInit } from "./avatars-kit"
 
@@ -78,6 +78,18 @@ export const useApproveScript = () =>
   useWrite(({ presentationId, scriptHash }: { presentationId: string; scriptHash: string }) =>
     kitFetch<{ presentation: PresentationDto }>(`/admin/avatars/presentations/${id(presentationId)}/approve`, { method: "POST", body: { script_hash: scriptHash } }),
   )
+
+/** Counts the render: makes and measures the speech of each clip, orders nothing. */
+export const useQuoteRender = () =>
+  useWrite(({ presentationId, shorts }: { presentationId: string; shorts: boolean }) => kitFetch<{ quote: QuoteDto }>(`/admin/avatars/presentations/${id(presentationId)}/render/quote`, { method: "POST", body: { shorts } }))
+/** Confirms exactly the quote on screen: its hash and its minutes. */
+export const useStartRender = () =>
+  useWrite(({ presentationId, quoteHash, minutes, acknowledgeRisky }: { presentationId: string; quoteHash: string; minutes: number; acknowledgeRisky: boolean }) =>
+    kitFetch<{ presentation: PresentationDto }>(`/admin/avatars/presentations/${id(presentationId)}/render`, { method: "POST", body: { quote_hash: quoteHash, minutes, acknowledge_risky: acknowledgeRisky } }),
+  )
+export const useCancelRender = () => useWrite((presentationId: string) => kitFetch<{ presentation: PresentationDto }>(`/admin/avatars/presentations/${id(presentationId)}/render/cancel`, { method: "POST" }))
+export const usePublish = () => useWrite((presentationId: string) => kitFetch<{ presentation: PresentationDto }>(`/admin/avatars/presentations/${id(presentationId)}/publish`, { method: "POST" }))
+export const useUnpublish = () => useWrite((presentationId: string) => kitFetch<{ presentation: PresentationDto }>(`/admin/avatars/presentations/${id(presentationId)}/publish`, { method: "DELETE" }))
 
 /** The issues of a refused script save (shape problems), when the server sent them. */
 export function issuesOf(err: unknown): ScriptIssue[] {

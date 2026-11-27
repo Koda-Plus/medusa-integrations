@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 (2026-11-27)
+
+### Added
+
+- The render: a quote that makes and measures the speech of every clip and shows the exact Tavus minutes, a confirmation of exactly that quote, and the background job that orders each clip once, follows it, stores the finished clip through the file provider and deletes the speech.
+- A clip signature (text, face, voice, speech model, voice style): only changed clips are ordered again, rendered ones and made speech are kept across quotes.
+- Safety before paying: the consent is checked at the quote, at the confirmation (its document must answer) and before every order; speech files must be public https; the minutes are capped by `maxRenderMinutes`.
+- Publishing and the store API: `GET /store/avatars/presentations` and `/:id` with the slides, their clips, the quiz and the short versions of published presentations only.
+- Paying twice is guarded: a clip goes to `ordering` before the order, a clip left there fails as `order_unknown` and is never sent again; a quote flags such clips as `risky` and the confirmation needs `acknowledge_risky`. The run and each quote hold a lock of the Locking Module; a unique index keeps one clip row per slide.
+- Nothing waits forever: a deadline of 4 hours per clip, a stall rule for the generation only, a limit of failed downloads, and `POST /admin/avatars/presentations/:id/render/cancel`.
+- Publishing needs every clip ready and a valid consent; the store API hides presentations whose avatar lost its consent and never sends the source of a slide.
+- The video section of the presentation page: count the minutes, confirm (with the warning for risky clips), follow the clips, watch them, stop the render, publish or hide.
+
+### Changed
+
+- Deleting a presentation deletes its speech and clip files.
+- Saving a script answers with the render jobs (it answered with none).
+- Writing the script again is refused once it is approved: a failed render keeps the approval.
+
 ## 0.2.0 (2026-11-26)
 
 ### Added

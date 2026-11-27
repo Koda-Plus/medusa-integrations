@@ -1,6 +1,7 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { RUNNING } from "../../modules/avatars/lib/constants"
 import { avatarsSvc, type Row } from "../../modules/avatars/lib/store"
+import { filesOf, jobFileIds, type RenderDeps } from "./render"
 import { presentationInput, type PresentationProblem } from "../../modules/avatars/lib/validation"
 import type { Result } from "./avatars"
 
@@ -35,13 +36,19 @@ export async function readPresentation(container: MedusaContainer, id: string): 
 }
 
 /** A running job (transcription, script, render) has to finish or fail first: its result would land on a deleted row. */
-export async function deletePresentation(container: MedusaContainer, id: string): Promise<Result<{ id: string }, "not_found" | "running">> {
+export async function deletePresentation(container: MedusaContainer, id: string, deps: RenderDeps = {}): Promise<Result<{ id: string }, "not_found" | "running">> {
   const svc = avatarsSvc(container)
   const row = await findPresentation(container, id)
   if (!row) return { ok: false, status: 404, problems: ["not_found"] }
   if ((RUNNING as readonly string[]).includes(String(row.state))) return { ok: false, status: 409, problems: ["running"] }
   const jobs = await svc.listAvatarsRenderJobs({ presentation_id: id }, { take: 500 })
-  if (jobs.length > 0) await svc.softDeleteAvatarsRenderJobs(jobs.map((j) => j.id))
+  if (jobs.length > 0) {
+    /* The speech and the clips go with the presentation: a published clip URL stops working here. */
+    const ids = jobFileIds(jobs)
+    const files = filesOf(container, deps)
+    if (files && ids.length) await files.deleteFiles(ids).catch(() => undefined)
+    await svc.softDeleteAvatarsRenderJobs(jobs.map((j) => j.id))
+  }
   await svc.softDeleteAvatarsPresentations([id])
   return { ok: true, row: { id } }
 }

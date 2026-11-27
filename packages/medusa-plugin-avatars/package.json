@@ -1,6 +1,6 @@
 {
   "name": "@koda-plus/medusa-plugin-avatars",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AI Avatars by Koda Plus: turn a recorded lecture or a text into a presentation with a talking avatar. Transcript, script, slides and a quiz written by Claude, edited and approved in the Medusa admin, voiced by your own TTS and rendered by Tavus. Written consent of the person is required before any render. Demo mode without outside calls.",
   "author": {
     "name": "Koda Plus",

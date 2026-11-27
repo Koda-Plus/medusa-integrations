@@ -6,6 +6,7 @@ import { Button, Container, InlineTip, Input, Label, Select, Text, Textarea, toa
 import { KitLoading } from "../../../../lib/avatars-kit"
 import { Section, SubpageHeader, ToneBadge, type Tone } from "../../../../lib/avatars-blocks"
 import { AvatarsIcon } from "../../../../lib/avatars-icon"
+import { RenderCard } from "../../../../lib/avatars-render"
 import { errorMessage, issuesOf, previewAudio, problemsOf, useApproveScript, usePresentation, useSaveScript, useStartScript } from "../../../../lib/avatars-api"
 import type { PresentationState } from "../../../../../modules/avatars/lib/constants"
 import type { PresentationDetailDto } from "../../../../../modules/avatars/lib/contract"
@@ -171,7 +172,7 @@ function Body({ p }: { p: PresentationDetailDto }) {
         }
         actions={
           <>
-            {p.state === "draft" || p.state === "failed" ? (
+            {p.state === "draft" || (p.state === "failed" && !p.approved) ? (
               <Button size="small" variant="primary" isLoading={start.isPending} onClick={onStart}>
                 <Sparkles />
                 {p.state === "failed" ? t("detail.retry") : t("detail.start")}
@@ -233,6 +234,8 @@ function Body({ p }: { p: PresentationDetailDto }) {
         ) : null}
         </div>
       </SubpageHeader>
+
+      <RenderCard p={p} dirty={dirty} />
 
       {draft ? (
         <>

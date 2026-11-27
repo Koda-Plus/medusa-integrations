@@ -27,7 +27,7 @@ const AvatarsRenderJob = model
     metadata: model.json().nullable(),
   })
   .indexes([
-    { on: ["presentation_id", "item_id"], where: "deleted_at IS NULL" },
+    { on: ["presentation_id", "item_id"], unique: true, where: "deleted_at IS NULL" },
     { on: ["state"], where: "deleted_at IS NULL" },
   ])
 
