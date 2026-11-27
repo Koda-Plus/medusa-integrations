@@ -26,6 +26,7 @@
  * on port 5544, in the work folder.
  */
 import { spawn, spawnSync } from "node:child_process"
+import { pathToFileURL } from "node:url"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -181,8 +182,11 @@ function startPostgres() {
     fs.chmodSync(pgDir, 0o755)
   }
   const as = (cmd) => (runAs ? `su ${runAs} -s /bin/sh -c '${cmd.replace(/'/g, "'\\''")}'` : cmd)
+  /* pg_ctl start leaves the server holding inherited pipes on Windows, so a piped spawnSync never returns: no pipes here, the server logs to pg.log. */
+  /* One cluster per Medusa version: the stopped cluster of the previous version goes first. */
+  if (!runAs) fs.rmSync(data, { recursive: true, force: true })
   must(as(`${exe("initdb")} -D "${data}" -U smoke -A trust -E UTF8 --no-locale`), {}, "initdb")
-  must(as(`${exe("pg_ctl")} -D "${data}" -o "-p ${port}${isWin ? "" : ` -k /tmp`} -c listen_addresses=localhost" -l "${path.join(pgDir, "pg.log")}" -w start`), {}, "pg_ctl start")
+  must(as(`${exe("pg_ctl")} -D "${data}" -o "-p ${port}${isWin ? "" : ` -k /tmp`} -c listen_addresses=localhost" -l "${path.join(pgDir, "pg.log")}" -w start`), { stdio: "ignore" }, "pg_ctl start")
   return {
     url: `postgres://smoke@localhost:${port}`,
     stop: () => {
@@ -210,8 +214,16 @@ const PEERS = (v) => ({
   "@medusajs/medusa": v,
 })
 
+/* The React that this Medusa release asks for (2.23 moved to React 19): a different one fails npm install with ERESOLVE. */
+function reactFor(version) {
+  const peer = sh(`npm view @medusajs/medusa@${version} peerDependencies.react-dom`).out.trim()
+  const range = /^\^?\d+\.\d+/.test(peer) ? peer : "^18.3.1"
+  return { range, types: range.replace(/^\^?(\d+).*/, "^$1.0.0") }
+}
+
 function writeApp(dir, version, packages, tarballs, dbUrl) {
   fs.mkdirSync(path.join(dir, "src"), { recursive: true })
+  const react = reactFor(version)
   const deps = { ...PEERS(version) }
   for (const p of packages) deps[p.name] = `file:${tarballs[p.name].split(path.sep).join("/")}`
   const pkg = {
@@ -224,11 +236,11 @@ function writeApp(dir, version, packages, tarballs, dbUrl) {
       "@medusajs/test-utils": version,
       "@swc/core": "^1.15.0",
       "@types/node": "^22.5.4",
-      "@types/react": "^18.3.1",
-      "@types/react-dom": "^18.3.1",
+      "@types/react": react.types,
+      "@types/react-dom": react.types,
       "prop-types": "^15.8.1",
-      react: "^18.3.1",
-      "react-dom": "^18.3.1",
+      react: react.range,
+      "react-dom": react.range,
       "ts-node": "^10.9.2",
       typescript: "^5.6.2",
       vite: "^5.4.0",
@@ -360,7 +372,8 @@ async function loadPlaywright() {
   }
   const global = sh("npm root -g").out.trim()
   try {
-    return await import(path.join(global, "playwright", "index.mjs"))
+    /* A bare Windows path is not an ESM specifier (C: reads as a URL scheme): import it as a file URL. */
+    return await import(pathToFileURL(path.join(global, "playwright", "index.mjs")).href)
   } catch {
     return null
   }
@@ -452,7 +465,32 @@ async function smokeVersion(version, packages, tarballs, routes = {}) {
         const page = await b.newPage({ viewport: { width: 1440, height: 1000 } })
         const errors = []
         page.on("pageerror", (e) => errors.push(String(e?.message ?? e)))
-        await page.goto(`${base}/app/login`, { waitUntil: "networkidle", timeout: 120_000 })
+        /* Console errors only explain a failed sign-in: they never fail a plugin page on their own. */
+        const consoleErrors = []
+        page.on("response", (r) => {
+          if (r.status() >= 400) consoleErrors.push(`HTTP ${r.status()} ${r.url()}`)
+        })
+        page.on("console", (m) => {
+          if (m.type() === "error") consoleErrors.push(m.text().slice(0, 300))
+        })
+        /*
+         * NODE_ENV=development serves the admin through Vite's dev server. On a cold
+         * start Vite is still optimizing dependencies, /app/@vite/client answers 404
+         * and the page stays empty, so the first loads are retried.
+         */
+        let form = false
+        for (let attempt = 1; attempt <= 3 && !form; attempt++) {
+          await page.goto(`${base}/app/login`, { waitUntil: "networkidle", timeout: 120_000 })
+          form = await page.locator('input[name="email"]').waitFor({ timeout: 30_000 }).then(() => true, () => false)
+        }
+        /* Without a sign-in form the report needs to show what the page did show. */
+        if (!form) {
+          await page.screenshot({ path: path.join(shots, `${version}-login.png`) })
+          const body = (await page.locator("body").innerText().catch(() => "")).slice(0, 500)
+          throw new Error(`no sign-in form at /app/login (screens/${version}-login.png)
+page errors: ${[...errors, ...consoleErrors].join(" | ") || "none"}
+page text: ${body || "(empty)"}`)
+        }
         await page.fill('input[name="email"]', "smoke@example.com")
         await page.fill('input[name="password"]', "smoke-password-123")
         await page.click('button[type="submit"]')
